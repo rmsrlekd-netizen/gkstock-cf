@@ -16,11 +16,27 @@ export function json(data, { cdnSeconds = 20, swr = 60, status = 200 } = {}) {
   });
 }
 
+// 한국 사이트(DART·KRX)가 Cloudflare 서버 접속을 막을 때: KR_RELAY_URL(중계 서버)을 거쳐 요청
+const KR_HOSTS = /(^|\.)(fss\.or\.kr|krx\.co\.kr)$/i;
 export async function fetchWithTimeout(url, opts = {}, ms = 9000) {
   const ctrl = new AbortController();
+  let u = String(url);
+  const h = new Headers(opts.headers || {});
+  if (!h.has('user-agent')) h.set('user-agent', BROWSER_UA);
+  if (!h.has('accept-language')) h.set('accept-language', 'ko-KR,ko;q=0.9,en;q=0.8');
+  const env = globalThis.process?.env || {};
+  if (env.KR_RELAY_URL) {
+    let host = '';
+    try { host = new URL(u).hostname; } catch {}
+    if (KR_HOSTS.test(host)) {
+      h.set('x-relay-token', env.KR_RELAY_TOKEN || '');
+      u = env.KR_RELAY_URL.replace(/\/+$/, '') + '?u=' + encodeURIComponent(u);
+      ms += 4000;
+    }
+  }
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    return await fetch(url, { ...opts, signal: ctrl.signal });
+    return await fetch(u, { ...opts, headers: h, signal: ctrl.signal });
   } finally {
     clearTimeout(t);
   }

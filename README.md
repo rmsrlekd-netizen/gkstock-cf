@@ -55,3 +55,13 @@ npm install
 npx wrangler dev          # 키는 .dev.vars 파일에 DART_API_KEY=... 형식
 node test/server.mjs      # 가짜 데이터로 화면 확인 → http://localhost:8787
 ```
+
+## (필요할 때만) DART 중계 서버
+
+DART(금융감독원)가 Cloudflare 서버 접속을 막으면 `/api/health`의 `dartWatcher.errors`에 `Too many redirects … error1.html` 또는 `HTTP 520`이 나옵니다. 이때는 `relay/` 폴더를 Netlify에 작은 사이트로 올려 중계합니다.
+
+1. Netlify → Add new site → Import from GitHub → 이 저장소 선택 → **Base directory: `relay`**
+2. Netlify 환경 변수 `RELAY_TOKEN` = 아무 긴 비밀 문자열 (예: 무작위 32자)
+3. Cloudflare → gkstock-cf → Settings → Variables and Secrets 에 추가
+   - `KR_RELAY_URL` = `https://(netlify 주소)/relay`
+   - `KR_RELAY_TOKEN` = 2번과 같은 문자열

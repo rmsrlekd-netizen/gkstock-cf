@@ -1,0 +1,4 @@
+{
+  "regions": ["icn1"],
+  "functions": { "api/relay.js": { "maxDuration": 30 } }
+}

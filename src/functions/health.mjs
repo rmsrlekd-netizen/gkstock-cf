@@ -11,7 +11,7 @@ export default async (req) => {
     if (!aiProvider()) aiTest = { ok: false, error: 'AI 키 없음' };
     else {
       const t0 = Date.now();
-      try { const r = await askAI('JSON으로만 답하세요: {"ok":true}', { maxTokens: 50, timeout: 8000 }); aiTest = { ok: /ok/.test(r), ms: Date.now() - t0, reply: r.slice(0, 80) }; }
+      try { const r = await askAI('JSON으로만 답하세요: {"ok":true}', { maxTokens: 50, timeout: 20000 }); aiTest = { ok: /ok/i.test(r), ms: Date.now() - t0, reply: r.slice(0, 80) }; }
       catch (e) { aiTest = { ok: false, error: String(e.message || e).slice(0, 300) }; }
     }
   }

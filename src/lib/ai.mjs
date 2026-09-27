@@ -3,13 +3,14 @@ import { fetchWithTimeout } from './util.mjs';
 
 // 사용할 AI: GEMINI_API_KEY(구글) 또는 ANTHROPIC_API_KEY(Claude)
 // ※ 구글 키(AIza…)를 ANTHROPIC_API_KEY 칸에 넣었어도 자동으로 Gemini로 인식
-const googleKey = () => process.env.GEMINI_API_KEY || (/^AIza/.test(process.env.ANTHROPIC_API_KEY || '') ? process.env.ANTHROPIC_API_KEY : null);
-const claudeKey = () => (process.env.ANTHROPIC_API_KEY && !/^AIza/.test(process.env.ANTHROPIC_API_KEY) ? process.env.ANTHROPIC_API_KEY : null);
+const isGoogle = (k) => /^(AIza|AQ\.)/.test(k || '');
+const googleKey = () => (process.env.GEMINI_API_KEY || '').trim() || (isGoogle(process.env.ANTHROPIC_API_KEY) ? process.env.ANTHROPIC_API_KEY.trim() : null);
+const claudeKey = () => (process.env.ANTHROPIC_API_KEY && !isGoogle(process.env.ANTHROPIC_API_KEY) ? process.env.ANTHROPIC_API_KEY.trim() : null);
 export const aiProvider = () => (googleKey() ? 'Gemini' : claudeKey() ? 'Claude' : null);
 export const hasAI = () => !!aiProvider();
 
 async function gemini(prompt, { maxTokens, timeout }) {
-  const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'].filter(Boolean))];
+  const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'].filter(Boolean))];
   const until = Date.now() + timeout;
   let lastErr;
   for (const model of models) {
@@ -18,9 +19,10 @@ async function gemini(prompt, { maxTokens, timeout }) {
       if (left < 2500) break;
       const cfg = { maxOutputTokens: maxTokens, temperature: 0.2, responseMimeType: 'application/json' };
       if (thinking) cfg.thinkingConfig = { thinkingBudget: 0 };
-      const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(googleKey())}`, {
+      // 새 형식(AQ.) 키와 기존(AIza) 키 모두 x-goog-api-key 헤더로 전달
+      const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': googleKey() },
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: cfg }),
       }, left);
       const body = await r.text();
@@ -32,8 +34,8 @@ async function gemini(prompt, { maxTokens, timeout }) {
         continue;
       }
       lastErr = new Error(`Gemini API HTTP ${r.status} (${model}) ${body.slice(0, 250)}`);
-      if (r.status === 400 && /thinking/i.test(body)) continue; // 생각 설정을 빼고 같은 모델 재시도
-      if (r.status === 404 || (r.status === 400 && /model|not found|not supported/i.test(body))) break; // 다음 모델
+      if (r.status === 400 && /thinking|invalid argument/i.test(body) && thinking) continue; // 생각 설정을 빼고 같은 모델 재시도
+      if ([404, 429, 500, 502, 503, 504].includes(r.status) || (r.status === 400 && /model|not found|not supported|invalid argument/i.test(body))) break; // 다음 모델
       throw lastErr; // 키 오류 등
     }
   }
@@ -90,7 +92,7 @@ export async function koreanHeadlines(batch) {
 
 입력:
 ${JSON.stringify(input)}`;
-  const arr = parseJSON(await claude(prompt, { maxTokens: 1200, timeout: 9000 }), '[', ']');
+  const arr = parseJSON(await claude(prompt, { maxTokens: 1500, timeout: 20000 }), '[', ']');
   const out = {};
   for (const x of arr) if (x && x.id && x.title) out[x.id] = { title: String(x.title).slice(0, 80), sub: String(x.sub || '').slice(0, 140) };
   return out;
@@ -117,7 +119,7 @@ ${text.slice(0, 9000)}
   "overview": ${overviewRaw ? '"이 회사가 무엇을 하는 회사인지 2~3문장 한국어 요약"' : 'null'}
 }
 규칙: 원문에 있는 사실만 사용하고 추측하지 마세요. 해당 요인이 없으면 빈 배열. 투자 권유 표현 금지. 모두 한국어로.`;
-  const j = parseJSON(await claude(prompt, { maxTokens: 1400, timeout: 9000 }));
+  const j = parseJSON(await claude(prompt, { maxTokens: 1600, timeout: 25000 }));
   const arr = (v, n) => (Array.isArray(v) ? v.filter(Boolean).map((s) => String(s).slice(0, 140)).slice(0, n) : []);
   return {
     headline: j.headline ? String(j.headline).slice(0, 80) : null,
@@ -136,7 +138,7 @@ export async function translateTitles(batch) {
 규칙: 50자 이내, 숫자·금액·제품명 유지, 회사명은 빼도 됨, 과장 금지.
 출력은 JSON 배열만: [{"id":"...","ko":"..."}]
 입력: ${JSON.stringify(batch.map((b) => ({ id: b.id, title: b.title, desc: (b.desc || '').slice(0, 200) })))}`;
-  const arr = parseJSON(await claude(prompt, { maxTokens: 1500, timeout: 12000 }), '[', ']');
+  const arr = parseJSON(await claude(prompt, { maxTokens: 1800, timeout: 20000 }), '[', ']');
   const out = {};
   for (const x of arr) if (x && x.id && x.ko) out[x.id] = String(x.ko).slice(0, 90);
   return out;
@@ -149,7 +151,7 @@ export async function dailyDigest(items) {
 출력은 JSON 하나만:
 {"headline":"오늘 시장의 공시 흐름 한 줄 요약(60자 이내)","items":[{"id":"목록의 id 그대로","title":"핵심 내용 한 줄(45자 이내)","why":"주가 영향 이유(60자 이내)","verdict":"긍정|중립|부정"}]}
 목록: ${JSON.stringify(items)}`;
-  const j = parseJSON(await claude(prompt, { maxTokens: 1500, timeout: 9000 }));
+  const j = parseJSON(await claude(prompt, { maxTokens: 1800, timeout: 25000 }));
   return {
     headline: String(j.headline || '').slice(0, 120),
     items: (Array.isArray(j.items) ? j.items : []).slice(0, 8).map((x) => ({ id: String(x.id || ''), title: String(x.title || '').slice(0, 100), why: String(x.why || '').slice(0, 140), verdict: ['긍정', '중립', '부정'].includes(x.verdict) ? x.verdict : '중립' })),

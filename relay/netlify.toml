@@ -1,0 +1,5 @@
+# GK의 공시레이더 — 한국 사이트(DART·KRX) 중계용 작은 Netlify 사이트
+# Cloudflare 서버 접속을 DART가 막을 때만 사용합니다.
+[build]
+  publish = "public"
+  functions = "netlify/functions"

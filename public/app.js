@@ -685,7 +685,7 @@
   function aiKeyHelp(invalid) {
     return `<div class="box"><h4>AI 분석을 켜는 방법</h4><div style="font-size:.88rem;color:var(--text2);line-height:1.8">
       ${invalid ? '현재 등록된 AI 키가 인식되지 않습니다(키 오류 또는 사용 한도 초과).<br>' : ''}
-      1) <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>에서 무료 Gemini API 키(AIza로 시작) 발급<br>
+      1) <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>에서 무료 Gemini API 키(AIza… 또는 AQ.… 형식) 발급<br>
       2) Cloudflare → Workers 및 Pages → gkstock-cf → 설정 → 변수 및 비밀에 <b>GEMINI_API_KEY</b>(비밀 유형)로 등록<br>
       3) 저장 후 <code>/api/health?ai=1</code> 에서 확인</div></div>`;
   }

@@ -15,9 +15,14 @@ export default async (req) => {
   try {
     let d = await getJSON(key);
     if (!d || Date.now() - (d.at || 0) > 12 * 3600e3) {
-      d = src === 'KR' ? await krCompany(t, corp, ex) : await usCompany(t);
-      d.at = Date.now();
-      await setJSON(key, d).catch(() => {});
+      try {
+        const fresh = src === 'KR' ? await krCompany(t, corp, ex) : await usCompany(t);
+        fresh.at = Date.now();
+        d = fresh;
+        await setJSON(key, d).catch(() => {});
+      } catch (e) {
+        if (!d) throw e; // 새로 못 가져오면 예전 값이라도 보여줌
+      }
     }
     const sm = await getSectors({ allowFetch: false }).catch(() => null);
     const sraw = sm ? (src === 'KR' ? sm.kr?.[t] : sm.us?.[t]) : null;
