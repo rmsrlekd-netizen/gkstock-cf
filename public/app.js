@@ -1002,7 +1002,7 @@
     const rows = day ? day.us.filter(pass) : [];
     const cap = (v) => (v ? '$' + fmtBig(v) : '—');
     const tm = (t) => `<span class="tm ${t === '장전' ? 'pre' : t === '장후' ? 'post' : 'na'}">${esc(t)}</span>`;
-    $('#earnBody').innerHTML = rows.length ? `<table class="etable"><tr><th>기업 (미국 동부 ${esc(day.date)})</th><th>발표</th><th class="num">시가총액</th><th class="num">예상 EPS</th><th class="num hide-m">작년 EPS</th><th class="num hide-m">예상 매출</th><th class="num hide-m">분기</th></tr>${rows.map((x) => `<tr data-open-co="US|${esc(x.t)}|${esc(x.n || '')}"><td><div class="co">${logoHTML('US', x.t, x.n, 'sm')}<div><b>${esc(x.ko || x.n || x.t)}${popSet.has(x.t) ? '<span class="hl">★</span>' : ''}</b><small><span class="mono">${esc(x.t)}</span>${x.sector ? ' · ' + esc(x.sector) : ''}</small></div></div></td><td>${tm(x.time)}</td><td class="num">${cap(x.mcap)}</td><td class="num">${x.eps != null ? '$' + x.eps.toFixed(2) : '—'}</td><td class="num hide-m">${x.lastEps != null ? '$' + x.lastEps.toFixed(2) : '—'}</td><td class="num hide-m">${x.rev ? '$' + fmtBig(x.rev) : '—'}</td><td class="num hide-m">${esc(x.fq || '')}</td></tr>`).join('')}</table><p class="note">장전 = 미국 정규장 시작 전(한국 시간 밤), 장후 = 미국 장 마감 후(한국 시간 새벽) 발표. ★ = 관심·인기 종목</p>`
+    $('#earnBody').innerHTML = rows.length ? `<table class="etable"><tr><th>기업</th><th>발표</th><th class="num hide-m">시가총액</th><th class="num">예상 EPS</th><th class="num hide-m">작년 EPS</th><th class="num hide-m">예상 매출</th><th class="num hide-m">분기</th></tr>${rows.map((x) => `<tr data-open-co="US|${esc(x.t)}|${esc(x.n || '')}"><td><div class="co">${logoHTML('US', x.t, x.n, 'sm')}<div><b>${esc(x.ko || x.n || x.t)}${popSet.has(x.t) ? '<span class="hl">★</span>' : ''}</b><small><span class="mono">${esc(x.t)}</span>${x.sector ? ' · ' + esc(x.sector) : ''}</small></div></div></td><td>${tm(x.time)}</td><td class="num hide-m">${cap(x.mcap)}</td><td class="num">${x.eps != null ? '$' + x.eps.toFixed(2) : '—'}</td><td class="num hide-m">${x.lastEps != null ? '$' + x.lastEps.toFixed(2) : '—'}</td><td class="num hide-m">${x.rev ? '$' + fmtBig(x.rev) : '—'}</td><td class="num hide-m">${esc(x.fq || '')}</td></tr>`).join('')}</table><p class="note">장전 = 미국 정규장 시작 전(한국 시간 밤), 장후 = 미국 장 마감 후(한국 시간 새벽) 발표. ★ = 관심·인기 종목</p>`
       : `<div class="empty">${day ? '이 조건에 맞는 실적 발표 기업이 없습니다. 위에서 "전체"를 눌러 보세요.' : '일정이 없습니다.'}</div>`;
   }
 
@@ -1014,31 +1014,53 @@
     const first = days[0].date, last = days[days.length - 1].date;
     const wd0 = new Date(first + 'T12:00:00Z').getUTCDay();
     let cur = addD(first, -(wd0 === 0 ? 6 : wd0 - 1)); // 그 주 월요일부터
-    const today = days[0].date;
+    const today = first;
+    const counts = days.map((d) => d.us.filter(pass).length);
+    const max = Math.max(1, ...counts);
+    const total = counts.reduce((a, c) => a + c, 0);
     const m1 = Number(first.slice(5, 7)), m2 = Number(last.slice(5, 7));
-    const cells = [];
+    const weeks = []; let wk = [];
     while (cur <= last) {
       const wd = new Date(cur + 'T12:00:00Z').getUTCDay();
       if (wd >= 1 && wd <= 5) {
         const i = byDate.get(cur);
         const dnum = Number(cur.slice(8, 10)), mon = Number(cur.slice(5, 7));
-        const label = dnum === 1 || cur === first ? `${mon}월 ${dnum}일` : `${dnum}`;
-        if (i == null) cells.push(`<div class="ec-cell past"><span class="ec-d">${label}</span></div>`);
+        const mtag = dnum === 1 || cur === first ? `<em class="ec-mon">${mon}월</em>` : '';
+        if (i == null) wk.push(`<div class="ec-cell past"><div class="ec-h"><span class="ec-d">${mtag}${dnum}</span></div></div>`);
         else {
           const list = days[i].us.filter(pass);
-          const top = list.slice(0, 4);
-          const heat = list.length >= 40 ? 'h3' : list.length >= 15 ? 'h2' : list.length ? 'h1' : '';
-          cells.push(`<button data-eday="${i}" class="ec-cell ${heat} ${i === S.earnDay ? 'on' : ''} ${cur === today ? 'today' : ''}">
-            <span class="ec-d">${label}${cur === today ? '<i>오늘</i>' : ''}</span>
-            <b class="ec-n">${list.length}<small>곳</small></b>
-            <span class="ec-cos">${top.map((x) => `<span class="ec-co${popSet.has(x.t) ? ' star' : ''}">${logoHTML('US', x.t, x.n, 'xs')}<em>${esc(x.ko || x.t)}</em></span>`).join('')}${list.length > top.length ? `<span class="ec-more">+${list.length - top.length}</span>` : ''}</span>
+          const n = list.length, r = n / max;
+          const lvl = !n ? 0 : r > .66 ? 3 : r > .33 ? 2 : 1;
+          const stars = list.filter((x) => popSet.has(x.t)).length;
+          const top = list.slice(0, 3);
+          const pre = list.filter((x) => x.time === '장전').length, post = list.filter((x) => x.time === '장후').length;
+          wk.push(`<button data-eday="${i}" class="ec-cell lv${lvl}${i === S.earnDay ? ' on' : ''}${cur === today ? ' today' : ''}" style="--r:${r.toFixed(2)}">
+            <div class="ec-h"><span class="ec-d">${mtag}${dnum}</span>${cur === today ? '<i class="ec-today">오늘</i>' : stars ? `<i class="ec-star">★${stars}</i>` : ''}</div>
+            <div class="ec-n">${n}<small>개 기업</small></div>
+            <div class="ec-bar"><span style="width:${Math.max(n ? 6 : 0, Math.round(r * 100))}%"></span></div>
+            ${n ? `<div class="ec-tops">${top.map((x) => `<div class="ec-co${popSet.has(x.t) ? ' star' : ''}">${logoHTML('US', x.t, x.n, 'xs')}<b>${esc(x.ko || x.n || x.t)}</b><span class="mono">${esc(x.t)}</span></div>`).join('')}</div>
+            <div class="ec-stack">${top.map((x) => logoHTML('US', x.t, x.n, 'xs')).join('')}</div>
+            <div class="ec-foot">${pre ? `<span class="pre">장전 ${pre}</span>` : ''}${post ? `<span class="post">장후 ${post}</span>` : ''}${n > 3 ? `<span class="more">+${n - 3}</span>` : ''}</div>` : '<div class="ec-none">발표 없음</div>'}
           </button>`);
         }
+        if (wd === 5) { weeks.push(wk); wk = []; }
       }
       cur = addD(cur, 1);
     }
-    return `<div class="ec-top"><b>${first.slice(0, 4)}년 ${m1}월${m2 !== m1 ? ` ~ ${m2}월` : ''}</b><span class="muted sm">날짜를 누르면 아래에 기업 목록이 나옵니다 · 미국 동부 기준</span></div>
-      <div class="ec-grid">${['월', '화', '수', '목', '금'].map((w) => `<div class="ec-wd">${w}</div>`).join('')}${cells.join('')}</div>`;
+    if (wk.length) { while (wk.length < 5) wk.push('<div class="ec-cell past"></div>'); weeks.push(wk); }
+    const wkName = ['이번 주', '다음 주', '2주 후', '3주 후', '4주 후'];
+    const sel = days[S.earnDay];
+    const sdt = sel ? new Date(sel.date + 'T12:00:00Z') : null;
+    return `<div class="ec-card">
+      <div class="ec-top">
+        <div><span class="ec-kicker">EARNINGS CALENDAR</span><b class="ec-title">${first.slice(0, 4)}년 ${m1}월${m2 !== m1 ? ` – ${m2}월` : ''}</b></div>
+        <div class="ec-sum"><span><b>${total}</b>개 기업 발표 예정</span><span class="ec-legend"><i class="l1"></i><i class="l2"></i><i class="l3"></i>발표 많음</span></div>
+      </div>
+      <div class="ec-grid"><div class="ec-wl"></div>${['월', '화', '수', '목', '금'].map((w) => `<div class="ec-wd">${w}</div>`).join('')}
+        ${weeks.map((w, k) => `<div class="ec-wl"><span>${wkName[k] || ''}</span></div>${w.join('')}`).join('')}
+      </div>
+    </div>
+    ${sel ? `<div class="ec-selhead"><b>${Number(sel.date.slice(5, 7))}월 ${Number(sel.date.slice(8, 10))}일 (${WD[sdt.getUTCDay()]})</b><span>${counts[S.earnDay]}개 기업 · 미국 동부 기준</span></div>` : ''}`;
   }
 
   // ───────────────────────── 모달 ─────────────────────────
@@ -1816,7 +1838,7 @@
     $('#sortSel').addEventListener('change', (e) => { S.sort = e.target.value; renderFeed(); });
     $('#earnSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.earnMk = b.dataset.em; renderEarnings(); });
     $('#earnCap').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.earnCap = b.dataset.cap; renderEarnings(); });
-    $('#earnDays').addEventListener('click', (e) => { const b = e.target.closest('[data-eday]'); if (!b) return; S.earnDay = Number(b.dataset.eday); renderEarnings(); if (innerWidth <= 720) $('#earnBody').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    $('#earnDays').addEventListener('click', (e) => { const b = e.target.closest('[data-eday]'); if (!b) return; S.earnDay = Number(b.dataset.eday); renderEarnings(); if (innerWidth <= 720) $('.ec-selhead')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     $('#digestMore').addEventListener('click', openDigestModal);
     $('#digestSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-dmk]'); if (b) setDigestMk(b.dataset.dmk); });
     $('#popSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.popTab = b.dataset.pop; save('gk_poptab', S.popTab); renderPopular(); });
