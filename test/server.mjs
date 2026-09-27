@@ -125,6 +125,18 @@ globalThis.fetch = async (url, opts = {}) => {
   }
   if (/globenewswire\.com\/news-release|prnewswire\.com\/news-releases|newswire\.co\.kr\/newsRead/.test(url)) return new Response('<html><body><article><p>This is the body of the press release, which describes the announcement in detail for investors and customers alike.</p><p>The company expects the agreement to contribute meaningfully to revenue growth over the next three years according to management.</p></article></body></html>');
 
+  // ── 네이버 증권 JSON ──
+  if (url.includes('m.stock.naver.com/api/stocks/searchTop')) return J({ stocks: [['005930', '삼성전자', '285,500', '9,000', '3.25', '2', '1,705조 2,113억'], ['000660', 'SK하이닉스', '612,000', '12,000', '2.00', '2', '445조'], ['247540', '에코프로비엠', '98,700', '4,300', '-4.18', '5', '9조 6,500억'], ['068270', '셀트리온', '201,500', '1,500', '0.75', '2', '43조'], ['005380', '현대차', '233,000', '3,500', '-1.48', '5', '48조'], ['035420', 'NAVER', '221,000', '0', '0.00', '3', '35조'], ['042700', '한미반도체', '154,300', '7,100', '4.82', '2', '14조'], ['034020', '두산에너빌리티', '71,200', '900', '1.28', '2', '45조'], ['012450', '한화에어로스페이스', '1,012,000', '21,000', '-2.03', '5', '51조'], ['373220', 'LG에너지솔루션', '402,500', '2,500', '0.63', '2', '94조']].map(([itemCode, stockName, closePrice, cmp, fluctuationsRatio, code, marketValueHangeul]) => ({ stockType: 'domestic', itemCode, stockName, closePrice, closePriceRaw: closePrice.replace(/,/g, ''), compareToPreviousClosePrice: cmp, compareToPreviousPrice: { code }, fluctuationsRatio: fluctuationsRatio.replace('-', ''), marketValueHangeul })) });
+  if (url.includes('stock.naver.com/api/domestic/market/searchTop')) return J(['NVDA.O', 'TSLA.O', 'PLTR.O', 'AAPL.O', 'SOUN.O', 'OKLO.N', 'RGTI.O', 'HOOD.O', 'AVGO.O', 'CPNG.N'].map((reutersCode) => ({ nationType: 'USA', reutersCode })));
+  if (url.includes('polling.finance.naver.com/api/realtime/worldstock/stock/')) {
+    const KO = { NVDA: '엔비디아', TSLA: '테슬라', PLTR: '팔란티어', AAPL: '애플', SOUN: '사운드하운드 AI', OKLO: '오클로', RGTI: '리게티 컴퓨팅', HOOD: '로빈후드', AVGO: '브로드컴', CPNG: '쿠팡' };
+    const codes = decodeURIComponent(url.split('/stock/')[1].split('?')[0]).split(',');
+    return J({ datas: codes.map((rc) => { const t = rc.split('.')[0]; const h = [...t].reduce((a, c) => a + c.charCodeAt(0), 0); const pct = ((h % 13) - 6) * 0.91; return { reutersCode: rc, symbolCode: t, stockName: KO[t] || t, closePrice: (50 + h % 400).toFixed(2), compareToPreviousClosePrice: Math.abs(pct).toFixed(2), fluctuationsRatio: Math.abs(pct).toFixed(2), compareToPreviousPrice: { code: pct < 0 ? '5' : pct > 0 ? '2' : '3' } }; }) });
+  }
+  if (url.includes('polling.finance.naver.com/api/realtime/domestic/stock/')) {
+    const codes = decodeURIComponent(url.split('/stock/')[1].split('?')[0]).split(',');
+    return J({ datas: codes.map((c) => { const h = [...c].reduce((a, x) => a + x.charCodeAt(0) * 7, 0); const pct = ((h % 15) - 7) * 0.87; return { itemCode: c, stockName: c, closePrice: String(10000 + h * 13), closePriceRaw: String(10000 + h * 13), fluctuationsRatio: Math.abs(pct).toFixed(2), compareToPreviousPrice: { code: pct < 0 ? '5' : '2' } }; }) });
+  }
   // ── 인기 종목·섹터 ──
   if (url.includes('finance.naver.com/sise/lastsearch2')) {
     const rows = [['005930', '삼성전자', '12.3%', '285,500', '9,000', '+3.25%'], ['000660', 'SK하이닉스', '8.1%', '612,000', '12,000', '+2.00%'], ['247540', '에코프로비엠', '5.2%', '98,700', '4,300', '-4.18%'], ['068270', '셀트리온', '4.0%', '201,500', '1,500', '+0.75%'], ['005380', '현대차', '3.1%', '233,000', '3,500', '-1.48%'], ['035420', 'NAVER', '2.9%', '221,000', '0', '0.00%'], ['042700', '한미반도체', '2.5%', '154,300', '7,100', '+4.82%'], ['034020', '두산에너빌리티', '2.2%', '71,200', '900', '+1.28%'], ['012450', '한화에어로스페이스', '2.0%', '1,012,000', '21,000', '-2.03%'], ['373220', 'LG에너지솔루션', '1.8%', '402,500', '2,500', '+0.63%']];
@@ -145,7 +157,8 @@ globalThis.fetch = async (url, opts = {}) => {
   if (url.includes('generativelanguage.googleapis.com')) {
     const prompt = JSON.parse(opts.body).contents[0].parts[0].text;
     let text;
-    if (prompt.includes('"positive"')) text = JSON.stringify({ summary: ['핵심 내용: 회사가 발표한 주요 사항을 요약한 첫 번째 줄', '매출·이익 등 숫자가 포함된 두 번째 줄 (+56%)', '계약 금액과 기간을 설명하는 세 번째 줄', '향후 일정과 조건을 설명하는 네 번째 줄', '투자자가 유의할 점을 정리한 다섯 번째 줄'], positive: ['사상 최대 매출로 성장세 확인', '신규 계약으로 향후 매출 가시성 확보'], negative: ['높은 기대치로 차익 실현 가능성', '거시 경기 둔화 리스크'], verdict: '긍정', overview: '이 회사는 반도체·AI 솔루션을 만드는 글로벌 기술 기업입니다.' });
+    if (prompt.includes('[[0]]')) { const ps = [...prompt.matchAll(/\[\[(\d+)\]\] (.*)/g)]; text = ps.map((m) => `[[${m[1]}]] (번역) ${m[2].length > 40 ? '이 문단은 영어 원문을 한국어로 옮긴 번역문입니다. 회사는 투자자와 고객에게 이번 발표 내용을 자세히 설명했습니다.' : m[2]}`).join('\n'); }
+    else if (prompt.includes('"positive"')) text = JSON.stringify({ summary: ['핵심 내용: 회사가 발표한 주요 사항을 요약한 첫 번째 줄', '매출·이익 등 숫자가 포함된 두 번째 줄 (+56%)', '계약 금액과 기간을 설명하는 세 번째 줄', '향후 일정과 조건을 설명하는 네 번째 줄', '투자자가 유의할 점을 정리한 다섯 번째 줄'], positive: ['사상 최대 매출로 성장세 확인', '신규 계약으로 향후 매출 가시성 확보'], negative: ['높은 기대치로 차익 실현 가능성', '거시 경기 둔화 리스크'], verdict: '긍정', overview: '이 회사는 반도체·AI 솔루션을 만드는 글로벌 기술 기업입니다.' });
     else if (prompt.includes('"ko"')) { const ids = [...prompt.matchAll(/"id":"((?:PR|NEWS)-[a-z0-9]+)","title":"([^"]+)"/g)]; text = JSON.stringify(ids.map((m) => ({ id: m[1], ko: '[번역] ' + m[2].slice(0, 30) }))); }
     else if (prompt.includes('"headline"')) { const ids = [...prompt.matchAll(/"id":"([A-Z]+-[a-z0-9\-]+)"/g)].slice(0, 5).map((m) => m[1]); text = JSON.stringify({ headline: '반도체 실적 호조와 바이오 허가 소식이 오늘 시장을 이끌었습니다', items: ids.map((id, i) => ({ id, title: '핵심 공시 ' + (i + 1), why: '매출과 이익에 직접 영향', verdict: i % 3 === 2 ? '부정' : '긍정' })) }); }
     else { const ids = [...prompt.matchAll(/"id":"(SEC-[^"]+)"/g)].map((m) => m[1]); text = JSON.stringify(ids.map((id) => ({ id, title: '2분기 매출 467억달러(+56%)·사상 최대', sub: '' }))); }
@@ -169,7 +182,7 @@ const { setJSON } = await import('../src/lib/store.mjs');
 await setJSON('kr/names', { at: Date.now(), list: [{ n: 'SK하이닉스', c: '000660', k: '00164779' }, { n: '에코프로비엠', c: '247540', k: '01160363' }, { n: '삼성전자', c: '005930', k: '00126380' }, { n: '셀트리온', c: '068270', k: '00413046' }, { n: '현대차', c: '005380', k: '00164742' }].sort((a, b) => b.n.length - a.n.length) });
 const nw = (await import('../src/functions/news-watch.mjs')).default;
 await nw();
-for (const f of ['sec', 'dart', 'market', 'flows', 'stock', 'views', 'health', 'logo', 'company', 'doc', 'analyze', 'news', 'quote', 'digest', 'search', 'popular', 'sectors', 'translate', 'earnings']) fns['/api/' + f] = (await import(`../src/functions/${f}.mjs`)).default;
+for (const f of ['sec', 'dart', 'market', 'flows', 'stock', 'views', 'health', 'logo', 'company', 'doc', 'analyze', 'news', 'quote', 'digest', 'search', 'popular', 'sectors', 'translate', 'translate-doc', 'earnings']) fns['/api/' + f] = (await import(`../src/functions/${f}.mjs`)).default;
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');

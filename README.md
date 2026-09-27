@@ -11,7 +11,7 @@ gkstock-cf/
 ├─ package.json
 ├─ public/                화면 (index.html, app.js, styles.css, img/)
 ├─ src/
-│   ├─ worker.mjs         진입점: /api/* 연결 + 10분마다 수집 + 캐시
+│   ├─ worker.mjs         진입점: /api/* 연결 + 2~3분마다 수집(한가한 시간 10분) + 캐시
 │   ├─ functions/         API와 수집기 (sec-watch, dart-watch, news-watch)
 │   └─ lib/               공통 코드 (store.mjs = D1 저장소)
 └─ test/                  로컬 테스트 (배포와 무관)

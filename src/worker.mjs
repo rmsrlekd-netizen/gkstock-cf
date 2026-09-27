@@ -18,6 +18,7 @@ import * as popular from './functions/popular.mjs';
 import * as sectors from './functions/sectors.mjs';
 import * as quote from './functions/quote.mjs';
 import * as translate from './functions/translate.mjs';
+import * as translateDoc from './functions/translate-doc.mjs';
 import * as earnings from './functions/earnings.mjs';
 import * as search from './functions/search.mjs';
 import * as sec from './functions/sec.mjs';
@@ -28,7 +29,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, earnings, search, sec, stock, views]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -69,6 +70,18 @@ async function cached(req, ctx, run) {
   return res;
 }
 
+// 공시가 몰리는 시간인지 (SEC: 미국 동부 평일 4:00~20:30 / DART: 한국 평일 7:00~20:30 / 뉴스: 두 시간대 중 하나)
+function zoned(now, tz) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(now).map((x) => [x.type, x.value]));
+  return { wd: p.weekday, m: Number(p.hour) * 60 + Number(p.minute) };
+}
+function busy(kind, now) {
+  const us = zoned(now, 'America/New_York'); const kr = zoned(now, 'Asia/Seoul');
+  const usB = !['Sat', 'Sun'].includes(us.wd) && us.m >= 240 && us.m <= 1230;
+  const krB = !['Sat', 'Sun'].includes(kr.wd) && kr.m >= 420 && kr.m <= 1230;
+  return kind === 'sec' ? usB : kind === 'dart' ? krB : usB || krB;
+}
+
 export default {
   async fetch(req, env, ctx) {
     init(env);
@@ -90,7 +103,10 @@ export default {
   async scheduled(event, env, ctx) {
     init(env);
     const cron = event.cron || '';
-    const job = cron.startsWith('3-') ? dartWatch : cron.startsWith('6-') ? newsWatch : secWatch;
+    const kind = cron.startsWith('1-') ? 'dart' : cron.startsWith('*/3') ? 'news' : cron.startsWith('3-') ? 'dart' : cron.startsWith('6-') ? 'news' : 'sec';
+    const now = new Date(event.scheduledTime || Date.now());
+    if (!busy(kind, now) && now.getUTCMinutes() % 10 > (kind === 'news' ? 2 : 1)) return; // 한가한 시간엔 10분에 한 번
+    const job = kind === 'dart' ? dartWatch : kind === 'news' ? newsWatch : secWatch;
     ctx.waitUntil(job());
   },
 };

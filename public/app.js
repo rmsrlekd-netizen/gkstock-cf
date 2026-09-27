@@ -38,7 +38,7 @@
     flowTab: load('gk_flowtab', 'usInsider'), flowSide: 'buy', insiderSide: 'all',
     watch: load('gk_watch2', []),
     sound: load('gk_sound', false), notify: load('gk_notify', false), fs: load('gk_fs', 'fs-l'),
-    bell: [], booted: false, fresh: new Set(), tr: {}, trPending: new Set(), digest: null, earn: null, earnMk: 'US', earnDay: 0, earnCap: '10',
+    bell: [], booted: false, fresh: new Set(), tr: {}, trPending: new Set(), trdoc: new Map(), docLang: 'ko', aTab: 'fin', digest: null, earn: null, earnMk: 'US', earnDay: 0, earnCap: '10',
   };
   document.documentElement.className = 'notranslate ' + S.fs;
   const wkey = (m, t) => `${m}:${String(t || '').toUpperCase()}`;
@@ -292,12 +292,13 @@
   }
   // 화면에 보이는 영어 제목을 모아 한국어 번역 요청 (결과는 서버에 저장되어 모두가 재사용)
   let trTimer = null;
+  const trTries = new Map();
   function queueTranslate(list) {
-    for (const n of list) if (n && !hasKo(n.head) && !n.raw.tx && !S.tr[n.id] && !S.trPending.has(n.id) && (n.kind !== 'FILING' || n.src === 'SEC')) S.trPending.add(n.id);
+    for (const n of list) if (n && !hasKo(n.head) && !n.raw.tx && !S.tr[n.id] && !S.trPending.has(n.id) && (trTries.get(n.id) || 0) < 3 && (n.kind !== 'FILING' || n.src === 'SEC')) S.trPending.add(n.id);
     if (!S.trPending.size || trTimer) return;
     trTimer = setTimeout(async () => {
-      trTimer = null;
       const ids = [...S.trPending].slice(0, 40);
+      ids.forEach((id) => trTries.set(id, (trTries.get(id) || 0) + 1));
       try {
         const j = await getJSON('/api/translate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) });
         Object.assign(S.tr, j.tr || {});
@@ -307,7 +308,9 @@
         if (changed && S.view === 'item' && S.sel && S.tr[S.sel] && $('#aHead')) $('#aHead').textContent = S.items.get(S.sel).head;
       } catch {}
       ids.forEach((id) => S.trPending.delete(id));
-      // 번역 안 된 것 남아 있으면 다음 번에 다시 (실패 무한 반복 방지: 한 번만)
+      trTimer = null;
+      // 남은 제목이 있으면 이어서 번역 (항목당 최대 3번 시도)
+      if (S.trPending.size) queueTranslate([]);
     }, 400);
   }
   function rebuild() {
@@ -402,7 +405,7 @@
       ${logoHTML(n.market, n.ticker, news ? n.source : n.name, '', news)}
       ${metersHTML(n)}
       <div class="r-main">
-        <div class="r-top"><span class="r-time" title="${esc(tm.title)}">${esc(tm.t)}<small>${rel(n.ms)}</small></span>${idLine(n)}<span class="src">${SRC_BADGE[n.src]}${n.kind === 'FILING' ? ' · ' + esc(n.kindLabel || '') : n.source ? ' · ' + esc(n.source) : ''}</span></div>
+        <div class="r-top"><span class="r-time" title="${esc(tm.title)}">${esc(tm.t)}<small>${rel(n.ms)}</small></span>${idLine(n)}${qchip(n)}<span class="src">${SRC_BADGE[n.src]}${n.kind === 'FILING' ? ' · ' + esc(n.kindLabel || '') : n.source ? ' · ' + esc(n.source) : ''}</span></div>
         <div class="r-head ${n.cls}">${esc(n.head)}</div>
         ${n.sub ? `<div class="r-sub">${esc(n.sub)}</div>` : ''}
       </div>
@@ -422,10 +425,11 @@
         ? '<div class="empty">관심종목이 없습니다.<br>목록의 ☆ 또는 상세 창의 ☆를 눌러 추가하세요.</div>'
         : `<div class="empty">조건에 맞는 항목이 없습니다.${errs.length ? `<br><small>${esc(errs.join(' / '))}</small>` : ''}</div>`;
     } else {
-      queueTranslate(arr.slice(0, 40));
+      queueTranslate(arr.slice(0, S.limit));
       list.innerHTML = arr.slice(0, S.limit).map(rowHTML).join('') + (arr.length > S.limit ? `<button class="btn more-btn" id="moreRows">더 보기 (${fmtInt(arr.length - S.limit)}건 남음)</button>` : '');
     }
     renderCounts();
+    setTimeout(refreshChips, 50);
     const u = ['sec', 'dart', 'news'].map((k) => S.updated[k]).filter(Boolean).map((t) => Date.parse(t)).sort().pop();
     $('#feedUpd').textContent = u ? `업데이트 ${fmtDT(new Date(u)).hm}:${fmtDT(new Date(u)).s}` : '';
   }
@@ -476,7 +480,7 @@
     for (const n of arr) { const k = wkey(n.market, n.ticker); if (seen.has(k)) continue; seen.add(k); pick.push(n); if (pick.length >= 10) break; }
     if (pick.length < 4) for (const n of pool.filter((x) => x.ticker).sort((a, b) => b.ms - a.ms)) { if (pick.length >= 8) break; if (!pick.includes(n)) pick.push(n); }
     queueTranslate(pick);
-    box.innerHTML = pick.map((n) => `<button class="tcard" data-id="${esc(n.id)}"><div class="t-top">${logoHTML(n.market, n.ticker, n.name, 'sm')}<span class="t-tk">${esc(n.market === 'KR' ? n.name : n.ticker)}</span><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><span style="margin-left:auto">${rel(n.ms)}</span></div><div class="t-h">${esc(n.head)}</div><div class="t-f">${tagsHTML(n, 3, true)}</div></button>`).join('') || '<div class="empty">아직 표시할 항목이 없습니다.</div>';
+    box.innerHTML = pick.map((n) => `<button class="tcard" data-id="${esc(n.id)}"><div class="t-top">${logoHTML(n.market, n.ticker, n.name, 'sm')}<span class="t-tk">${esc(n.market === 'KR' ? n.name : n.ticker)}</span><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><span style="margin-left:auto">${rel(n.ms)}</span></div><div class="t-h">${esc(n.head)}</div><div class="t-f">${tagsHTML(n, 2, true)}${qchip(n)}</div></button>`).join('') || '<div class="empty">아직 표시할 항목이 없습니다.</div>';
   }
   function syncControls() {
     $$('#mkSeg button').forEach((b) => b.classList.toggle('on', b.dataset.mk === S.mk));
@@ -504,7 +508,7 @@
 
   // ───────────────────────── 현재가 ─────────────────────────
   async function fetchQuotes(keys) {
-    const need = [...new Set(keys)].filter((k) => { const q = S.quotes.get(k); return !q || Date.now() - q._at > 60e3; }).slice(0, 10);
+    const need = [...new Set(keys)].filter((k) => { const q = S.quotes.get(k); return !q || Date.now() - q._at > 55e3; }).slice(0, 40);
     if (!need.length) return false;
     need.forEach((k) => S.quotes.set(k, { ...(S.quotes.get(k) || {}), _at: Date.now() }));
     try {
@@ -514,6 +518,26 @@
     } catch { return false; }
   }
   const quoteOf = (m, t) => { const q = S.quotes.get(wkey(m, t)); return q && q.price !== undefined ? q : null; };
+  // 실시간 등락 칩: 공시가 나온 뒤 지금 이 종목이 얼마나 움직이고 있는지 목록에서 바로 보여줌
+  function qchipInner(m, t) {
+    const q = quoteOf(m, t);
+    if (!q || q.pct === null || q.pct === undefined) return '';
+    const big = Math.abs(q.pct) >= 5 ? ' big' : '';
+    return `<span class="${dirCls(q.pct)}${big}">${q.pct > 0 ? '▲' : q.pct < 0 ? '▼' : ''}${Math.abs(q.pct).toFixed(2)}%</span>`;
+  }
+  const qchip = (n) => (n.ticker ? `<span class="qchip" data-q="${esc(wkey(n.market, n.ticker))}" title="현재 주가 등락률 (1분마다 갱신)">${qchipInner(n.market, n.ticker)}</span>` : '');
+  function paintChips() {
+    $$('.qchip[data-q]').forEach((el) => { const [m, ...r] = el.dataset.q.split(':'); const h = qchipInner(m, r.join(':')); if (el.innerHTML !== h) el.innerHTML = h; });
+  }
+  let chipBusy = false;
+  async function refreshChips() {
+    if (chipBusy || document.hidden) return;
+    const keys = [...new Set($$('.qchip[data-q]').map((el) => el.dataset.q))].slice(0, 80);
+    if (!keys.length) return;
+    chipBusy = true;
+    try { for (let i = 0; i < keys.length; i += 40) await fetchQuotes(keys.slice(i, i + 40)); } finally { chipBusy = false; }
+    paintChips();
+  }
 
   // ───────────────────────── 실시간 인기 종목 ─────────────────────────
   function rankRow(x, i, big) {
@@ -816,7 +840,9 @@
       return;
     }
     S.sel = id;
+    S.aTab = 'fin';
     $('#itemBody').innerHTML = articleHTML(n);
+    queueTranslate([n]);
     window.scrollTo({ top: 0 });
     document.title = `${n.head} | GK의 공시레이더`;
     if (n.ticker) { trackView(n.market, n.ticker, n.name); loadQuoteHead(n); }
@@ -854,8 +880,8 @@
       <div class="article">
         <section class="a-sec"><h3>AI 애널리스트 분석 <small>섹터 전문 애널리스트 관점의 5줄 요약 · 호재/악재 · 체크포인트</small></h3><div id="aAI">${aiPane(n)}</div></section>
         ${extraCards(n) ? `<section class="a-sec">${extraCards(n)}</section>` : ''}
-        ${n.ticker ? `<section class="a-sec a-fin"><h3>기업 정보 · 핵심 재무제표 <small>${n.market === 'KR' ? 'DART' : 'Nasdaq'} 기준</small></h3><div id="aCo">${coPane(n, null, { chart: false })}</div></section>
-        <section class="a-sec"><h3>공매도 잔고 · 내부자 거래 · 기관 보유</h3><div class="a-flow" id="aFlow">${stockHTML(n.market, null)}</div></section>
+        ${n.ticker ? `<section class="a-sec a-fin"><h3>기업 정보 <small>${n.market === 'KR' ? 'DART' : 'Nasdaq'} 기준</small></h3><div id="aCo">${coPane(n, null, { chart: false, metrics: false })}</div>
+          <div class="box ftabs-box"><div class="ftabs" id="aTabs" role="tablist">${finTabs(n).map(([k, l]) => `<button role="tab" data-ftab="${k}" class="${(S.aTab || 'fin') === k ? 'on' : ''}">${l}</button>`).join('')}</div><div id="aTab">${finTabBody(n)}</div></div></section>
         <section class="a-sec a-two"><div class="box"><h4>차트 <small>${n.market === 'KR' ? '네이버 증권 일봉' : 'TradingView'}</small></h4>${chartHTML(n.market, n.ticker, n.exchange)}</div><div><div class="box" id="aRel"></div><button class="btn block" style="margin-top:.7rem" data-open-co="${esc(n.market)}|${esc(n.ticker)}|${esc(n.name || '')}">기업 분석 페이지로 →</button></div></section>` : ''}
         <section class="a-sec"><div id="aDoc">${docPane(n, null)}</div></section>
         ${n.ticker ? '' : '<section class="a-sec"><div class="box" id="aRel"></div></section>'}
@@ -884,14 +910,13 @@
     if (!a) return `<div class="box"><h4>AI 분석</h4><div class="loading"><span class="spin"></span>애널리스트 AI가 원문을 읽고 분석하는 중… (처음 여는 항목은 5~20초)</div></div>`;
     if (a.error) return `<div class="box"><h4>AI 분석</h4><p class="err">분석하지 못했습니다: ${esc(a.error)}</p><button class="btn sm" data-ai-retry>다시 시도</button></div>`;
     const li = (arr) => (arr && arr.length ? arr.map((x) => `<li>${esc(x)}</li>`).join('') : '<li class="muted">뚜렷한 요인 없음</li>');
-    return `<div class="a-ai">
-        <div>
-          <div class="box"><h4>${a.fallback ? '핵심 내용 (자동 요약)' : '핵심 요약 5줄'} <span class="verdict ${verdictCls(a.verdict)}">주가 영향: ${esc(a.verdict || '중립')}</span></h4>
-            <ol class="sum5">${(a.summary || []).slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>
-          ${a.analyst ? `<div class="box analyst" style="margin-top:.8rem"><h4>애널리스트 코멘트 ${a.sector ? `<small>${esc(a.sector)} 섹터</small>` : ''}</h4><p>${esc(a.analyst)}</p>${a.watch?.length ? `<h4 style="margin:.9rem 0 0">앞으로 체크할 포인트</h4><ul class="watch">${a.watch.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>` : ''}
-        </div>
-        <div class="pn"><div class="pos"><h5>▲ 긍정적 요인</h5><ul>${li(a.positive)}</ul></div><div class="neg"><h5>▼ 부정적 요인</h5><ul>${li(a.negative)}</ul></div></div>
+    return `<div class="box a-sum"><h4>${a.fallback ? '핵심 내용 (자동 요약)' : 'AI 핵심 요약'} <span class="verdict ${verdictCls(a.verdict)}">주가 영향: ${esc(a.verdict || '중립')}</span></h4>
+        <ol class="sum5">${(a.summary || []).slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>
+      <div class="pn-big">
+        <div class="pos"><h5><i>▲</i>긍정적 요인</h5><ul>${li(a.positive)}</ul></div>
+        <div class="neg"><h5><i>▼</i>부정적 요인</h5><ul>${li(a.negative)}</ul></div>
       </div>
+      ${a.analyst ? `<div class="box analyst"><h4>애널리스트 코멘트 ${a.sector ? `<small>${esc(a.sector)} 섹터</small>` : ''}</h4><p>${esc(a.analyst)}</p>${a.watch?.length ? `<h4 style="margin:.9rem 0 0">앞으로 체크할 포인트</h4><ul class="watch">${a.watch.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>` : ''}
       ${a.fallback ? `<p class="note">AI 분석이 잠시 준비되지 않아 원문의 핵심 문장과 키워드로 자동 정리했습니다. <button class="link" data-ai-retry>AI로 다시 분석</button></p>`
         : `<p class="note">${esc(a.provider || 'AI')}가 ${a.basis ? esc(a.basis) : '원문'}을 읽고 작성한 참고용 분석입니다. 투자 판단 전 원문을 확인하세요.</p>`}`;
   }
@@ -910,7 +935,7 @@
     $('#aHead').textContent = n.head;
     $('#aTags').innerHTML = tagsHTML(n, 6, true);
     $('#aMeters').innerHTML = metersHTML(n, true).replace('<div class="meters">', '').replace(/<\/div>$/, '');
-    if (a.overview) { const d = coOf(n); if (d && !d.overviewKo) { d.overviewKo = a.overview; $('#aCo').innerHTML = coPane(n, d, { chart: false, compact: true }); } }
+    if (a.overview) { const d = coOf(n); if (d && !d.overviewKo) { d.overviewKo = a.overview; $('#aCo').innerHTML = coPane(n, d, { chart: false, compact: true, metrics: false }); } }
   }
   async function loadQuoteHead(n) {
     await fetchQuotes([wkey(n.market, n.ticker)]);
@@ -965,7 +990,7 @@
     const url = `https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol(t, ex))}&interval=D&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=12153a&theme=dark&style=1&timezone=Asia%2FSeoul&withdateranges=1&locale=kr`;
     return `<div class="chart"><iframe src="${url}" loading="lazy" title="차트"></iframe></div>`;
   }
-  function coPane(n, d, { chart = true, compact = false } = {}) {
+  function coPane(n, d, { chart = true, compact = false, metrics = true } = {}) {
     if (!n.ticker) return '<div class="box"><p class="muted" style="margin:0">이 항목은 연결된 상장 종목이 없어 기업 정보를 표시할 수 없습니다.</p></div>';
     if (n.market === 'KR' && !n.corpCode) return '<div class="box"><p class="muted" style="margin:0">DART 고유번호를 찾지 못해 기업 정보를 표시할 수 없습니다.</p></div>';
     if (!d) return '<div class="box"><div class="loading"><span class="spin"></span>기업 정보·재무 불러오는 중…</div></div>';
@@ -975,7 +1000,7 @@
     return `<div class="box"><h4>${esc(d.name || n.name || n.ticker)} <small>${esc(d.products ? '주요 제품: ' + d.products : '')}</small></h4>
       <p class="ov">${ov ? esc(ov.length > 600 ? ov.slice(0, 598) + '…' : ov) : '사업 개요 정보를 찾지 못했습니다.'}${!d.overviewKo && d.overviewRaw && d.src === 'US' ? ' <small class="muted">(영문 원문 · AI 분석 후 한국어로 바뀝니다)</small>' : ''}</p>
       <div class="co-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join('')}${d.homepage ? `<a class="link" href="${esc(d.homepage)}" target="_blank" rel="noopener">홈페이지 ↗</a>` : ''}</div></div>
-      <div class="box"><h4>핵심 재무·투자지표</h4>${metricsHTML(d)}</div>
+      ${metrics ? `<div class="box"><h4>핵심 재무·투자지표</h4>${metricsHTML(d)}</div>` : ''}
       ${chart ? `<div class="box"><h4>차트 <small>${n.market === 'KR' ? '네이버 증권 일봉' : 'TradingView'}</small></h4>${chartHTML(n.market, n.ticker, n.exchange)}</div>` : ''}`;
   }
   // 공매도·수급
@@ -991,60 +1016,126 @@
     if (d.error) return `<div class="box"><p class="err">불러오지 못했습니다: ${esc(d.error)}</p></div>`;
     return m === 'KR' ? krStockHTML(d) : usStockHTML(d);
   }
-  function usStockHTML(d) {
-    let h = '';
-    if (d.short?.length) {
-      const s0 = d.short[0], s1 = d.short[1];
-      const chg = s1 && s1.interest ? ((s0.interest - s1.interest) / s1.interest) * 100 : null;
-      h += `<div class="box"><h4>공매도 잔고 <small>FINRA · ${esc(s0.date)} 결제일 기준</small></h4><div class="mini-stats"><div><span>공매도 잔고</span><b>${fmtBig(s0.interest)}주</b></div><div><span>직전 대비</span><b class="${dirCls(chg)}">${fmtPct(chg)}</b></div><div><span>숏커버 소요일</span><b>${s0.days !== null && s0.days !== undefined ? s0.days.toFixed(1) + '일' : '—'}</b></div></div>
-        <table class="tbl"><tr><th>결제일</th><th>잔고</th><th>일평균 거래량</th><th>커버일</th></tr>${d.short.map((r) => `<tr><td>${esc(r.date)}</td><td>${fmtInt(r.interest)}</td><td>${fmtInt(r.avgVol)}</td><td>${r.days !== null && r.days !== undefined ? r.days.toFixed(2) : '—'}</td></tr>`).join('')}</table></div>`;
-    } else h += `<div class="box"><h4>공매도 잔고</h4>${note(d.errors?.short || '데이터 없음')}</div>`;
-    if (d.insider) {
-      const i = d.insider;
-      h += `<div class="box"><h4>내부자 거래 <small>최근 3개월 매수 ${i.buys3m ?? 0}건 · 매도 ${i.sells3m ?? 0}건</small></h4><div class="mini-stats"><div><span>3개월 순매매</span><b class="${dirCls(i.net3m)}">${signedInt(i.net3m)}주</b></div><div><span>12개월 순매매</span><b class="${dirCls(i.net12m)}">${signedInt(i.net12m)}주</b></div><div><span>거래 건수</span><b>${fmtInt((i.rows || []).length)}건</b></div></div>
-        <table class="tbl"><tr><th>내부자</th><th>일자</th><th>거래</th><th>수량</th><th>가격</th></tr>${(i.rows || []).slice(0, 12).map((r) => `<tr><td class="t">${esc(titleCase(r.who))}<br><small>${esc(r.relation || '')}</small></td><td>${esc(r.date)}</td><td class="t ${/Buy/i.test(r.type) ? 'buy' : /Sell/i.test(r.type) ? 'sell' : ''}">${esc(r.type)}</td><td>${fmtInt(r.shares)}</td><td>${r.price ? '$' + fmtPx(r.price) : '—'}</td></tr>`).join('')}</table></div>`;
-    } else h += `<div class="box"><h4>내부자 거래</h4>${note(d.errors?.insider || '데이터 없음')}</div>`;
-    if (d.inst) {
-      const s = d.inst;
-      h += `<div class="box"><h4>기관 보유 <small>13F · 분기 단위</small></h4><div class="metrics"><div><span>기관 보유율</span><b>${esc(s.pct || '—')}</b></div><div><span>비중 확대</span><b class="up">${fmtInt(s.increased?.holders)}곳</b></div><div><span>비중 축소</span><b class="down">${fmtInt(s.decreased?.holders)}곳</b></div><div><span>신규 / 청산</span><b>${fmtInt(s.newPos?.holders)} / ${fmtInt(s.soldOut?.holders)}</b></div></div>
-        <table class="tbl" style="margin-top:.7rem"><tr><th>기관</th><th>기준일</th><th>보유 주식</th><th>변동</th></tr>${(s.top || []).slice(0, 12).map((r) => `<tr><td class="t">${esc(r.name)}</td><td>${esc(r.date)}</td><td>${fmtBig(r.shares)}</td><td class="${dirCls(r.change)}">${signedInt(r.change)}<br><small>${esc(r.changePct || '')}</small></td></tr>`).join('')}</table></div>`;
-    } else h += `<div class="box"><h4>기관 보유</h4>${note(d.errors?.inst || '데이터 없음')}</div>`;
-    return h;
+  function usShortHTML(d) {
+    if (!d.short?.length) return `<h4>공매도 잔고</h4>${note(d.errors?.short || '데이터 없음')}`;
+    const s0 = d.short[0], s1 = d.short[1];
+    const chg = s1 && s1.interest ? ((s0.interest - s1.interest) / s1.interest) * 100 : null;
+    return `<h4>공매도 잔고 <small>FINRA · ${esc(s0.date)} 결제일 기준 · 월 2회 발표</small></h4><div class="mini-stats"><div><span>공매도 잔고</span><b>${fmtBig(s0.interest)}주</b></div><div><span>직전 대비</span><b class="${dirCls(chg)}">${fmtPct(chg)}</b></div><div><span>숏커버 소요일</span><b>${s0.days !== null && s0.days !== undefined ? s0.days.toFixed(1) + '일' : '—'}</b></div></div>
+      <table class="tbl"><tr><th>결제일</th><th>잔고</th><th>일평균 거래량</th><th>커버일</th></tr>${d.short.map((r) => `<tr><td>${esc(r.date)}</td><td>${fmtInt(r.interest)}</td><td>${fmtInt(r.avgVol)}</td><td>${r.days !== null && r.days !== undefined ? r.days.toFixed(2) : '—'}</td></tr>`).join('')}</table>`;
   }
-  function krStockHTML(d) {
-    let h = '';
-    const ymd = (s) => (s && s.length === 8 ? `${s.slice(4, 6)}.${s.slice(6, 8)}` : esc(s || ''));
-    const kisMsg = (e) => (e === 'KIS_APP_KEY 미설정' ? '한국투자증권 API 키(KIS_APP_KEY·KIS_APP_SECRET)를 등록하면 표시됩니다.' : e || '데이터 없음');
-    if (d.investors?.length) h += `<div class="box"><h4>투자자별 순매수 <small>최근 ${d.investors.length}거래일 · 주</small></h4><table class="tbl"><tr><th>일자</th><th>종가</th><th>개인</th><th>외국인</th><th>기관</th></tr>${d.investors.map((r) => `<tr><td>${ymd(r.date)}</td><td>${fmtInt(r.close)}</td><td class="${dirCls(r.person)}">${signedInt(r.person)}</td><td class="${dirCls(r.foreign)}">${signedInt(r.foreign)}</td><td class="${dirCls(r.inst)}">${signedInt(r.inst)}</td></tr>`).join('')}</table></div>`;
-    else h += `<div class="box"><h4>투자자별 순매수 (기관·외국인)</h4>${note(kisMsg(d.errors?.investors))}</div>`;
-    if (d.short?.length) h += `<div class="box"><h4>공매도 거래 <small>일별 · 잔고는 KRX 로그인 전용</small></h4><table class="tbl"><tr><th>일자</th><th>종가</th><th>공매도 수량</th><th>거래 비중</th></tr>${d.short.map((r) => `<tr><td>${ymd(r.date)}</td><td>${fmtInt(r.close)}</td><td>${fmtInt(r.qty)}</td><td>${r.ratio !== null && r.ratio !== undefined ? r.ratio.toFixed(2) + '%' : '—'}</td></tr>`).join('')}</table></div>`;
-    else h += `<div class="box"><h4>공매도</h4>${note(kisMsg(d.errors?.short))}</div>`;
-    if (d.insider?.length) h += `<div class="box"><h4>임원·주요주주 지분 변동 <small>DART · 내부자 거래</small></h4><table class="tbl"><tr><th>보고자</th><th>보고일</th><th>증감</th><th>보유</th><th>비율</th></tr>${d.insider.map((r) => `<tr><td class="t">${esc(r.who)}<br><small>${esc(r.role || '')}</small></td><td>${esc(r.date)}</td><td class="${dirCls(r.change)}">${signedInt(r.change)}</td><td>${fmtInt(r.shares)}</td><td>${r.rate ?? '—'}%</td></tr>`).join('')}</table></div>`;
-    if (d.major?.length) h += `<div class="box"><h4>5% 이상 대량보유 <small>DART · 기관 지분</small></h4><table class="tbl"><tr><th>보고자</th><th>보고일</th><th>증감</th><th>지분율</th></tr>${d.major.map((r) => `<tr><td class="t">${esc(r.who)}<br><small>${esc(r.reason || r.type || '')}</small></td><td>${esc(r.date)}</td><td class="${dirCls(r.change)}">${signedInt(r.change)}</td><td>${r.rate ?? '—'}% <small class="${dirCls(r.rateChange)}">(${r.rateChange > 0 ? '+' : ''}${r.rateChange ?? 0})</small></td></tr>`).join('')}</table></div>`;
-    if (!d.insider?.length && !d.major?.length) h += `<div class="box"><h4>임원·5% 지분 변동</h4>${note(d.errors?.insider || '최근 보고 없음')}</div>`;
-    return h;
+  function usInsiderHTML(d) {
+    const i = d.insider;
+    if (!i) return `<h4>내부자 거래</h4>${note(d.errors?.insider || '데이터 없음')}`;
+    return `<h4>내부자 거래 <small>최근 3개월 매수 ${i.buys3m ?? 0}건 · 매도 ${i.sells3m ?? 0}건</small></h4><div class="mini-stats"><div><span>3개월 순매매</span><b class="${dirCls(i.net3m)}">${signedInt(i.net3m)}주</b></div><div><span>12개월 순매매</span><b class="${dirCls(i.net12m)}">${signedInt(i.net12m)}주</b></div><div><span>거래 건수</span><b>${fmtInt((i.rows || []).length)}건</b></div></div>
+      <table class="tbl"><tr><th>내부자</th><th>일자</th><th>거래</th><th>수량</th><th>가격</th></tr>${(i.rows || []).slice(0, 15).map((r) => `<tr><td class="t">${esc(titleCase(r.who))}<br><small>${esc(r.relation || '')}</small></td><td>${esc(r.date)}</td><td class="t ${/Buy/i.test(r.type) ? 'buy' : /Sell/i.test(r.type) ? 'sell' : ''}">${esc(r.type)}</td><td>${fmtInt(r.shares)}</td><td>${r.price ? '$' + fmtPx(r.price) : '—'}</td></tr>`).join('')}</table>`;
+  }
+  function usInstHTML(d) {
+    const s = d.inst;
+    if (!s) return `<h4>기관 보유</h4>${note(d.errors?.inst || '데이터 없음')}`;
+    return `<h4>기관 보유 <small>13F · 분기 단위</small></h4><div class="metrics"><div><span>기관 보유율</span><b>${esc(s.pct || '—')}</b></div><div><span>비중 확대</span><b class="up">${fmtInt(s.increased?.holders)}곳</b></div><div><span>비중 축소</span><b class="down">${fmtInt(s.decreased?.holders)}곳</b></div><div><span>신규 / 청산</span><b>${fmtInt(s.newPos?.holders)} / ${fmtInt(s.soldOut?.holders)}</b></div></div>
+      <table class="tbl" style="margin-top:.7rem"><tr><th>기관</th><th>기준일</th><th>보유 주식</th><th>변동</th></tr>${(s.top || []).slice(0, 15).map((r) => `<tr><td class="t">${esc(r.name)}</td><td>${esc(r.date)}</td><td>${fmtBig(r.shares)}</td><td class="${dirCls(r.change)}">${signedInt(r.change)}<br><small>${esc(r.changePct || '')}</small></td></tr>`).join('')}</table>`;
+  }
+  function usStockHTML(d) { return [usShortHTML, usInsiderHTML, usInstHTML].map((f) => `<div class="box">${f(d)}</div>`).join(''); }
+  const krYmd = (s) => (s && s.length === 8 ? `${s.slice(4, 6)}.${s.slice(6, 8)}` : esc(s || ''));
+  const kisMsg = (e) => (e === 'KIS_APP_KEY 미설정' ? '한국투자증권 API 키(KIS_APP_KEY·KIS_APP_SECRET)를 등록하면 표시됩니다.' : e || '데이터 없음');
+  function krInvHTML(d) {
+    if (!d.investors?.length) return `<h4>투자자별 순매수 (기관·외국인)</h4>${note(kisMsg(d.errors?.investors))}`;
+    const sum = (k) => d.investors.slice(0, 5).reduce((a, r) => a + (r[k] || 0), 0);
+    return `<h4>투자자별 순매수 <small>최근 ${d.investors.length}거래일 · 주</small></h4><div class="mini-stats"><div><span>외국인 5일 누적</span><b class="${dirCls(sum('foreign'))}">${signedInt(sum('foreign'))}주</b></div><div><span>기관 5일 누적</span><b class="${dirCls(sum('inst'))}">${signedInt(sum('inst'))}주</b></div><div><span>개인 5일 누적</span><b class="${dirCls(sum('person'))}">${signedInt(sum('person'))}주</b></div></div>
+      <table class="tbl"><tr><th>일자</th><th>종가</th><th>개인</th><th>외국인</th><th>기관</th></tr>${d.investors.map((r) => `<tr><td>${krYmd(r.date)}</td><td>${fmtInt(r.close)}</td><td class="${dirCls(r.person)}">${signedInt(r.person)}</td><td class="${dirCls(r.foreign)}">${signedInt(r.foreign)}</td><td class="${dirCls(r.inst)}">${signedInt(r.inst)}</td></tr>`).join('')}</table>`;
+  }
+  function krShortHTML(d) {
+    if (!d.short?.length) return `<h4>공매도</h4>${note(kisMsg(d.errors?.short))}`;
+    return `<h4>공매도 거래 <small>일별 · 잔고는 KRX 로그인 전용</small></h4><table class="tbl"><tr><th>일자</th><th>종가</th><th>공매도 수량</th><th>거래 비중</th></tr>${d.short.map((r) => `<tr><td>${krYmd(r.date)}</td><td>${fmtInt(r.close)}</td><td>${fmtInt(r.qty)}</td><td>${r.ratio !== null && r.ratio !== undefined ? r.ratio.toFixed(2) + '%' : '—'}</td></tr>`).join('')}</table>`;
+  }
+  function krInsHTML(d) {
+    if (!d.insider?.length) return `<h4>임원·주요주주 지분 변동</h4>${note(d.errors?.insider || '최근 보고 없음')}`;
+    return `<h4>임원·주요주주 지분 변동 <small>DART · 내부자 거래</small></h4><table class="tbl"><tr><th>보고자</th><th>보고일</th><th>증감</th><th>보유</th><th>비율</th></tr>${d.insider.map((r) => `<tr><td class="t">${esc(r.who)}<br><small>${esc(r.role || '')}</small></td><td>${esc(r.date)}</td><td class="${dirCls(r.change)}">${signedInt(r.change)}</td><td>${fmtInt(r.shares)}</td><td>${r.rate ?? '—'}%</td></tr>`).join('')}</table>`;
+  }
+  function krMajorHTML(d) {
+    if (!d.major?.length) return `<h4>5% 이상 대량보유</h4>${note(d.errors?.major || '최근 보고 없음')}`;
+    return `<h4>5% 이상 대량보유 <small>DART · 기관 지분</small></h4><table class="tbl"><tr><th>보고자</th><th>보고일</th><th>증감</th><th>지분율</th></tr>${d.major.map((r) => `<tr><td class="t">${esc(r.who)}<br><small>${esc(r.reason || r.type || '')}</small></td><td>${esc(r.date)}</td><td class="${dirCls(r.change)}">${signedInt(r.change)}</td><td>${r.rate ?? '—'}% <small class="${dirCls(r.rateChange)}">(${r.rateChange > 0 ? '+' : ''}${r.rateChange ?? 0})</small></td></tr>`).join('')}</table>`;
+  }
+  function krStockHTML(d) { return [krInvHTML, krShortHTML, krInsHTML, krMajorHTML].map((f) => `<div class="box">${f(d)}</div>`).join(''); }
+
+  // 상세 페이지의 재무/수급 탭 (한 번에 하나만 보여줌)
+  const finTabs = (n) => (n.market === 'KR'
+    ? [['fin', '핵심 재무제표'], ['inv', '투자자별 수급'], ['short', '공매도'], ['ins', '임원·주요주주'], ['major', '5% 대량보유']]
+    : [['fin', '핵심 재무제표'], ['short', '공매도 잔고'], ['ins', '내부자 거래'], ['inst', '기관 보유']]);
+  function finTabBody(n) {
+    const tab = finTabs(n).some(([k]) => k === S.aTab) ? S.aTab : 'fin';
+    if (tab === 'fin') {
+      if (!hasCo(n)) return note(n.market === 'KR' ? 'DART 고유번호를 찾지 못해 재무제표를 표시할 수 없습니다.' : '재무 정보를 표시할 수 없는 종목입니다.');
+      const d = coOf(n);
+      if (!d) return '<div class="loading"><span class="spin"></span>핵심 재무제표 불러오는 중…</div>';
+      if (d.error) return `<p class="err">재무 정보를 불러오지 못했습니다: ${esc(d.error)}</p>`;
+      return metricsHTML(d);
+    }
+    const d = S.stock.get(stockUrl(n.market, n.ticker, n.corpCode));
+    if (!d) return '<div class="loading"><span class="spin"></span>데이터 불러오는 중…</div>';
+    if (d.error) return `<p class="err">불러오지 못했습니다: ${esc(d.error)}</p>`;
+    const f = n.market === 'KR' ? { inv: krInvHTML, short: krShortHTML, ins: krInsHTML, major: krMajorHTML }[tab] : { short: usShortHTML, ins: usInsiderHTML, inst: usInstHTML }[tab];
+    return f(d);
+  }
+  function paintFinTab(n) {
+    if (S.sel !== n.id || !$('#aTab')) return;
+    $('#aTab').innerHTML = finTabBody(n);
+    $$('#aTabs button').forEach((b) => b.classList.toggle('on', b.dataset.ftab === (finTabs(n).some(([k]) => k === S.aTab) ? S.aTab : 'fin')));
   }
   // 원문
   async function loadDoc(n) {
     if (S.doc.has(n.id)) return S.doc.get(n.id);
-    try { const d = await getJSON(`/api/doc?id=${encodeURIComponent(n.id)}`, {}); S.doc.set(n.id, d); return d; } catch (e) { return { error: e.message }; }
+    try { const d = await getJSON(`/api/doc?id=${encodeURIComponent(n.id)}`, {}); S.doc.set(n.id, d); return d; } catch (e) { const d = { error: e.message }; S.doc.set(n.id, d); setTimeout(() => S.doc.get(n.id) === d && S.doc.delete(n.id), 30000); return d; }
+  }
+  const koRatio = (txt) => { const t = String(txt || '').replace(/\s/g, '').slice(0, 4000); return t ? (t.match(/[가-힣]/g) || []).length / t.length : 0; };
+  const isEnglishDoc = (d) => !!d && !d.error && (d.lines || []).length > 0 && koRatio((d.lines || []).join(' ')) < 0.08;
+  function docBody(n, d, full) {
+    return d.html ? `<div class="doc html${full ? ' full' : ''}">${d.html}</div>` : `<div class="doc${full ? ' full' : ''}">${esc((d.lines || []).join('\n')) || '<span class="muted">내용이 없습니다.</span>'}</div>`;
+  }
+  function trBody(n, full) {
+    const t = S.trdoc.get(n.id);
+    if (!t || t.pending) return `<div class="loading tr-wait"><span class="spin"></span>AI가 원문 전체를 한국어로 번역하고 있습니다… (길이에 따라 10~40초, 한 번 번역된 문서는 바로 열립니다)</div>`;
+    if (t.error) return `<p class="err">번역하지 못했습니다: ${esc(t.error)}</p><button class="btn sm" data-tr-retry>다시 번역</button> <button class="btn sm" data-doclang="en">영어 원문 보기</button>`;
+    return `<div class="doc ko${full ? ' full' : ''}">${(t.lines || []).map((l) => `<p>${esc(l)}</p>`).join('')}</div>${t.cut ? '<p class="note">문서가 매우 길어 앞부분(약 15,000자)만 번역했습니다. 나머지는 영어 원문 탭에서 볼 수 있습니다.</p>' : ''}${t.partial ? '<p class="note">일부 문단은 번역에 실패해 영어로 남아 있습니다. <button class="link" data-tr-retry>다시 번역</button></p>' : ''}`;
   }
   function docPane(n, d, full) {
-    if (!d) return `<div class="box"><h4>${n.kind === 'FILING' ? '공시 원문' : '본문 전문'}</h4><div class="loading"><span class="spin"></span>원문 불러오는 중…</div></div>`;
+    const title = n.kind === 'FILING' ? '공시 원문' : n.kind === 'PR' ? '보도자료 전문' : '기사 본문';
+    if (!d) return `<div class="box"><h4>${title}</h4><div class="loading"><span class="spin"></span>원문 불러오는 중…</div></div>`;
     const link = `<a class="link" href="${esc(d.url || n.url || '#')}" target="_blank" rel="noopener">원문 사이트 ↗</a>`;
     if (d.error) return `<div class="box"><h4>원문 ${link}</h4><p class="err">원문을 불러오지 못했습니다: ${esc(d.error)}</p></div>`;
-    const body = d.html ? `<div class="doc html${full ? ' full' : ''}">${d.html}</div>` : `<div class="doc${full ? ' full' : ''}">${esc((d.lines || []).join('\n')) || '<span class="muted">내용이 없습니다.</span>'}</div>`;
-    return `<div class="box"><h4>${n.kind === 'FILING' ? '공시 원문' : n.kind === 'PR' ? '보도자료 전문' : '기사 본문'} <small>${esc(n.source || (n.src === 'SEC' ? 'SEC EDGAR' : n.src === 'DART' ? 'DART' : ''))}</small></h4>${d.note ? `<p class="note" style="margin-top:0">${esc(d.note)}</p>` : ''}${body}</div>`;
+    const en = isEnglishDoc(d);
+    const lang = en ? S.docLang || 'ko' : 'orig';
+    const tabs = en ? `<div class="ftabs doc-tabs"><button data-doclang="ko" class="${lang === 'ko' ? 'on' : ''}">한국어 번역</button><button data-doclang="en" class="${lang === 'en' ? 'on' : ''}">영어 원문</button></div>` : '';
+    return `<div class="box"><h4>${title} <small>${esc(n.source || (n.src === 'SEC' ? 'SEC EDGAR' : n.src === 'DART' ? 'DART' : ''))}</small> <span style="margin-left:auto">${link}</span></h4>${tabs}${d.note ? `<p class="note" style="margin-top:0">${esc(d.note)}</p>` : ''}${lang === 'ko' ? trBody(n, full) : docBody(n, d, full)}</div>`;
+  }
+  function paintDoc(n) {
+    if (S.sel !== n.id || S.view !== 'item' || !$('#aDoc')) return;
+    $('#aDoc').innerHTML = docPane(n, S.doc.get(n.id), true);
+  }
+  async function loadTrDoc(n, force) {
+    const c = S.trdoc.get(n.id);
+    if (c && !c.error && !force) return;
+    S.trdoc.set(n.id, { pending: true });
+    paintDoc(n);
+    let t;
+    try { t = await getJSON(`/api/translate-doc?id=${encodeURIComponent(n.id)}${force ? '&r=' + Date.now() : ''}`, force ? { cache: 'no-store' } : {}); if (!t.lines?.length) t = { error: t.error || '번역 결과가 비어 있습니다' }; }
+    catch (e) { t = { error: e.message }; }
+    S.trdoc.set(n.id, t);
+    paintDoc(n);
   }
   async function loadArticleDoc(n) {
     const d = await loadDoc(n);
-    if (S.sel === n.id && S.view === 'item' && $('#aDoc')) $('#aDoc').innerHTML = docPane(n, d, true);
+    if (S.sel !== n.id || S.view !== 'item') return;
+    paintDoc(n);
+    if (isEnglishDoc(d)) loadTrDoc(n);
   }
   async function loadArticleSide(n) {
     renderRelated(n);
     if (!n.ticker) return;
-    if (hasCo(n)) fetchCo(coUrl(n.market, n.ticker, n.corpCode, n.exchange)).then((d) => { if (S.sel === n.id && $('#aCo')) $('#aCo').innerHTML = coPane(n, d, { chart: false, compact: true }); });
-    fetchStock(stockUrl(n.market, n.ticker, n.corpCode)).then((d) => { if (S.sel === n.id && $('#aFlow')) $('#aFlow').innerHTML = stockHTML(n.market, d); });
+    if (hasCo(n)) fetchCo(coUrl(n.market, n.ticker, n.corpCode, n.exchange)).then((d) => { if (S.sel === n.id && $('#aCo')) { $('#aCo').innerHTML = coPane(n, d, { chart: false, compact: true, metrics: false }); paintFinTab(n); } });
+    else paintFinTab(n);
+    const su = stockUrl(n.market, n.ticker, n.corpCode);
+    fetchStock(su).then((d) => { if (!S.stock.has(su)) S.stock.set(su, d); paintFinTab(n); });
   }
   function renderRelated(n) {
     const box = $('#aRel');
@@ -1335,6 +1426,9 @@
       if (t.closest('#moreRows')) { S.limit += 80; renderFeed(); return; }
       const kw = t.closest('[data-kw]');
       if (kw) { applyKeyword(kw.dataset.kw); $('#suggest').hidden = true; return; }
+      if (t.closest('[data-ftab]')) { S.aTab = t.closest('[data-ftab]').dataset.ftab; const n = S.items.get(S.sel); if (n) paintFinTab(n); return; }
+      if (t.closest('[data-doclang]')) { S.docLang = t.closest('[data-doclang]').dataset.doclang; const n = S.items.get(S.sel); if (n) paintDoc(n); return; }
+      if (t.closest('[data-tr-retry]')) { const n = S.items.get(S.sel); if (n) { S.trdoc.delete(n.id); loadTrDoc(n, true); } return; }
       if (t.closest('[data-ai-retry]')) { const n = S.items.get(S.sel); if (n) loadAI(n, true); return; }
       const mo = t.closest('[data-modal]');
       if (mo) { openDigestModal(); return; }
@@ -1370,6 +1464,7 @@
   every(60000, () => poll('news'));
   every(60000, pollMarket);
   every(60000, pollPopular);
+  setInterval(refreshChips, 60000);
   every(15 * 60000, loadDigest);
   every(120000, pollViews);
   setInterval(() => { if (S.view === 'flows' && !document.hidden) pollFlows(); }, 180000);

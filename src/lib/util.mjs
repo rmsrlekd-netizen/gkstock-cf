@@ -17,7 +17,7 @@ export function json(data, { cdnSeconds = 20, swr = 60, status = 200 } = {}) {
 }
 
 // Cloudflare 서버 접속을 막는 사이트(DART·KRX·네이버·GlobeNewswire)와 Gemini(지역 제한): KR_RELAY_URL(중계 서버, 서울)을 거쳐 요청
-const KR_HOSTS = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com|globenewswire\.com|generativelanguage\.googleapis\.com)$/i;
+const KR_HOSTS = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com|globenewswire\.com)$/i;
 export async function fetchWithTimeout(url, opts = {}, ms = 9000) {
   const ctrl = new AbortController();
   let u = String(url);
@@ -28,7 +28,7 @@ export async function fetchWithTimeout(url, opts = {}, ms = 9000) {
   if (env.KR_RELAY_URL) {
     let host = '';
     try { host = new URL(u).hostname; } catch {}
-    if (KR_HOSTS.test(host)) {
+    if (opts.relay || KR_HOSTS.test(host)) {
       h.set('x-relay-token', env.KR_RELAY_TOKEN || '');
       u = env.KR_RELAY_URL.replace(/\/+$/, '') + '?u=' + encodeURIComponent(u);
       ms += 4000;
@@ -36,7 +36,8 @@ export async function fetchWithTimeout(url, opts = {}, ms = 9000) {
   }
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    return await fetch(u, { ...opts, headers: h, signal: ctrl.signal });
+    const { relay, ...rest } = opts;
+    return await fetch(u, { ...rest, headers: h, signal: ctrl.signal });
   } finally {
     clearTimeout(t);
   }

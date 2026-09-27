@@ -9,24 +9,33 @@ const claudeKey = () => (process.env.ANTHROPIC_API_KEY && !isGoogle(process.env.
 export const aiProvider = () => (googleKey() ? 'Gemini' : claudeKey() ? 'Claude' : null);
 export const hasAI = () => !!aiProvider();
 
+// Gemini가 일부 지역(Cloudflare 서버 위치)을 거절하면 서울 중계 서버로 우회
+let geminiViaRelay = false;
 async function gemini(prompt, { maxTokens, timeout, json = true }) {
   const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'].filter(Boolean))];
   const until = Date.now() + timeout;
   let lastErr;
   for (const model of models) {
     for (const thinking of [true, false]) {
-      const left = until - Date.now();
-      if (left < 2500) break;
+      if (until - Date.now() < 2500) break;
       const cfg = { maxOutputTokens: maxTokens, temperature: 0.2 };
       if (json) cfg.responseMimeType = 'application/json';
       if (thinking) cfg.thinkingConfig = { thinkingBudget: 0 };
       // 새 형식(AQ.) 키와 기존(AIza) 키 모두 x-goog-api-key 헤더로 전달
-      const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      const call = () => fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': googleKey() },
+        relay: geminiViaRelay,
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: cfg }),
-      }, left);
-      const body = await r.text();
+      }, Math.max(2500, until - Date.now()));
+      let r = await call();
+      let body = await r.text();
+      // 직접 호출이 '지역 미지원'으로 거절되면 이후 호출은 서울 중계 서버로
+      if (r.status === 400 && /location is not supported/i.test(body) && !geminiViaRelay && process.env.KR_RELAY_URL) {
+        geminiViaRelay = true;
+        r = await call();
+        body = await r.text();
+      }
       if (r.ok) {
         const j = JSON.parse(body);
         const text = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
@@ -176,4 +185,26 @@ export async function dailyDigest(items) {
     headline: String(j.headline || '').slice(0, 120),
     items: (Array.isArray(j.items) ? j.items : []).slice(0, 8).map((x) => ({ id: String(x.id || ''), title: String(x.title || '').slice(0, 100), why: String(x.why || '').slice(0, 140), verdict: ['긍정', '중립', '부정'].includes(x.verdict) ? x.verdict : '중립' })),
   };
+}
+
+/** 영어 원문 한 덩어리(여러 문단) → 한국어 문단 배열 */
+export async function translateParagraphs(paras, { timeout = 40000 } = {}) {
+  const prompt = `다음은 미국 기업의 공시·보도자료·기사 원문 일부입니다. 한국 개인투자자가 읽기 쉬운 자연스러운 한국어로 전부 번역하세요.
+규칙:
+- 요약하거나 빼먹지 말고 모든 문장을 번역 (표의 숫자·금액·날짜·% 는 그대로 유지, 단위는 필요하면 괄호로 한국어 병기)
+- 회사명·제품명·사람 이름은 원문 표기 유지 가능, 직함은 한국어로
+- 입력의 각 문단은 "[[숫자]]" 로 시작합니다. 출력도 같은 번호를 붙여 같은 순서로, 문단마다 한 줄씩만 쓰세요
+- 번역문 외 다른 설명은 쓰지 마세요
+
+${paras.map((p, i) => `[[${i}]] ${p}`).join('\n')}`;
+  const text = await claude(prompt, { maxTokens: 8000, timeout, json: false });
+  const out = new Array(paras.length).fill(null);
+  const re = /\[\[(\d+)\]\]\s*([\s\S]*?)(?=\n?\[\[\d+\]\]|$)/g;
+  let m;
+  while ((m = re.exec(text))) { const i = Number(m[1]); if (i < paras.length) out[i] = m[2].trim(); }
+  if (out.every((x) => !x)) { // 번호를 안 붙였으면 줄 단위로
+    const ls = text.split('\n').map((x) => x.trim()).filter(Boolean);
+    return ls;
+  }
+  return out.map((x, i) => x || paras[i]);
 }

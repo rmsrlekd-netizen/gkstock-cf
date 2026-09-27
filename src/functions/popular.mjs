@@ -4,6 +4,7 @@
 import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { us as usQuote } from './quote.mjs';
+import { naverKrTop, naverUsTop } from '../lib/naver.mjs';
 
 const n0 = (s) => { const x = Number(String(s ?? '').replace(/[,%+\s]/g, '')); return Number.isFinite(x) ? x : null; };
 
@@ -48,24 +49,29 @@ async function nasdaqActive() {
 }
 
 export default async () => {
-  const cached = await getJSON('popular/v1');
+  const cached = await getJSON('popular/v2');
   if (cached && Date.now() - cached.at < 60e3) return json({ ok: true, ...cached }, { cdnSeconds: 60, swr: 120 });
   const errors = [];
   let kr = [], krSrc = '네이버 증권 검색 상위';
-  try { kr = await naverTop(); } catch (e) { errors.push('KR: ' + e.message); kr = cached?.kr || []; krSrc = cached?.krSrc || krSrc; }
-  let usList = [], usSrc = 'StockTwits 실시간 트렌딩';
-  try { usList = await stocktwitsTop(); } catch (e) {
-    errors.push('US: ' + e.message);
-    try { usList = await nasdaqActive(); usSrc = 'Nasdaq 거래량 상위'; } catch (e2) { errors.push('US2: ' + e2.message); usList = cached?.us || []; usSrc = cached?.usSrc || usSrc; }
+  try { kr = await naverKrTop(10); } catch (e) {
+    errors.push('KR: ' + e.message);
+    try { kr = await naverTop(); } catch (e2) { errors.push('KR2: ' + e2.message); kr = cached?.kr || []; }
   }
-  // 미국 종목 현재가 (없는 것만)
+  let usList = [], usSrc = '네이버 증권 해외 인기 (최근 1시간)';
+  try { usList = await naverUsTop(10); } catch (e) {
+    errors.push('US: ' + e.message);
+    try { usList = await stocktwitsTop(); usSrc = 'StockTwits 실시간 트렌딩'; } catch (e2) {
+      errors.push('US2: ' + e2.message);
+      try { usList = await nasdaqActive(); usSrc = 'Nasdaq 거래량 상위'; } catch (e3) { errors.push('US3: ' + e3.message); usList = cached?.us || []; usSrc = cached?.usSrc || usSrc; }
+    }
+  }
   await Promise.all(usList.map(async (x) => {
     if (x.price != null && x.pct != null) return;
     const q = await usQuote(x.ticker).catch(() => null);
     if (q) { x.price = q.price; x.pct = q.pct; }
   }));
   const out = { at: Date.now(), kr, us: usList, krSrc, usSrc, errors };
-  if (kr.length || usList.length) await setJSON('popular/v1', out).catch(() => {});
+  if (kr.length || usList.length) await setJSON('popular/v2', out).catch(() => {});
   return json({ ok: true, ...out }, { cdnSeconds: 60, swr: 120 });
 };
 
