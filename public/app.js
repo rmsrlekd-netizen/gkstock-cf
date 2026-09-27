@@ -38,7 +38,7 @@
     flowTab: load('gk_flowtab', 'usInsider'), flowSide: 'buy', insiderSide: 'all',
     watch: load('gk_watch2', []),
     sound: load('gk_sound', false), notify: load('gk_notify', false), fs: load('gk_fs', 'fs-l'),
-    bell: [], booted: false, fresh: new Set(), tr: {}, trPending: new Set(), real: {}, hiddenPoll: {}, olderDone: {}, olderBusy: false, watchAlert: load('gk_watchAlert', true), extra: new Map(), extraTried: new Map(), admin: load('gk_admin', ''), trdoc: new Map(), docLang: 'ko', aTab: 'fin', digests: {}, digestMk: load('gk_dmk', 'ALL'), earn: null, earnMk: 'US', earnDay: 0, earnCap: '10',
+    bell: [], booted: false, fresh: new Set(), tr: {}, trPending: new Set(), real: {}, hiddenPoll: {}, olderDone: {}, olderBusy: false, watchAlert: load('gk_watchAlert', true), extra: new Map(), extraTried: new Map(), admin: load('gk_admin', ''), trdoc: new Map(), docLang: 'ko', aTab: 'fin', digests: {}, digestMk: load('gk_dmk', 'ALL'), earn: null, earnMk: 'US', earnDay: 0, earnCap: '0',
   };
   document.documentElement.className = 'js notranslate ' + S.fs;
   const wkey = (m, t) => `${m}:${String(t || '').toUpperCase()}`;
@@ -974,7 +974,7 @@
   async function loadEarnings() {
     if (S.earn && Date.now() - S.earn._at < 30 * 60e3) { renderEarnings(); return; }
     $('#earnBody').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
-    try { S.earn = await getJSON('/api/earnings?days=14', {}); S.earn._at = Date.now(); } catch (e) { S.earn = { error: e.message, days: [], kr: [], _at: 0 }; }
+    try { S.earn = await getJSON('/api/earnings?days=20', {}); S.earn._at = Date.now(); } catch (e) { S.earn = { error: e.message, days: [], kr: [], _at: 0 }; }
     renderEarnings();
   }
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
@@ -997,13 +997,48 @@
     if (S.earnDay >= days.length) S.earnDay = 0;
     const popSet = new Set([...(S.popular?.us || []).map((x) => x.ticker), ...S.watch.filter((w) => w.m === 'US').map((w) => w.t), ...(S.views?.top || []).filter((x) => x.src === 'US').map((x) => x.ticker)]);
     const pass = (x) => (S.earnCap === 'w' ? popSet.has(x.t) : (x.mcap || 0) >= Number(S.earnCap) * 1e9);
-    $('#earnDays').innerHTML = days.map((d, i) => { const dt = new Date(d.date + 'T12:00:00Z'); const c = d.us.filter(pass).length; return `<button data-eday="${i}" class="${i === S.earnDay ? 'on' : ''}"><span>${d.date.slice(5).replace('-', '.')} (${WD[dt.getUTCDay()]})</span><b>${c}</b><em>${d.us.length}개 기업</em></button>`; }).join('');
+    $('#earnDays').innerHTML = earnCalHTML(days, pass, popSet);
     const day = days[S.earnDay];
     const rows = day ? day.us.filter(pass) : [];
     const cap = (v) => (v ? '$' + fmtBig(v) : '—');
     const tm = (t) => `<span class="tm ${t === '장전' ? 'pre' : t === '장후' ? 'post' : 'na'}">${esc(t)}</span>`;
     $('#earnBody').innerHTML = rows.length ? `<table class="etable"><tr><th>기업 (미국 동부 ${esc(day.date)})</th><th>발표</th><th class="num">시가총액</th><th class="num">예상 EPS</th><th class="num hide-m">작년 EPS</th><th class="num hide-m">예상 매출</th><th class="num hide-m">분기</th></tr>${rows.map((x) => `<tr data-open-co="US|${esc(x.t)}|${esc(x.n || '')}"><td><div class="co">${logoHTML('US', x.t, x.n, 'sm')}<div><b>${esc(x.ko || x.n || x.t)}${popSet.has(x.t) ? '<span class="hl">★</span>' : ''}</b><small><span class="mono">${esc(x.t)}</span>${x.sector ? ' · ' + esc(x.sector) : ''}</small></div></div></td><td>${tm(x.time)}</td><td class="num">${cap(x.mcap)}</td><td class="num">${x.eps != null ? '$' + x.eps.toFixed(2) : '—'}</td><td class="num hide-m">${x.lastEps != null ? '$' + x.lastEps.toFixed(2) : '—'}</td><td class="num hide-m">${x.rev ? '$' + fmtBig(x.rev) : '—'}</td><td class="num hide-m">${esc(x.fq || '')}</td></tr>`).join('')}</table><p class="note">장전 = 미국 정규장 시작 전(한국 시간 밤), 장후 = 미국 장 마감 후(한국 시간 새벽) 발표. ★ = 관심·인기 종목</p>`
       : `<div class="empty">${day ? '이 조건에 맞는 실적 발표 기업이 없습니다. 위에서 "전체"를 눌러 보세요.' : '일정이 없습니다.'}</div>`;
+  }
+
+  // 실적 캘린더 — 달력(월~금) 형태
+  function earnCalHTML(days, pass, popSet) {
+    if (!days.length) return '';
+    const byDate = new Map(days.map((d, i) => [d.date, i]));
+    const addD = (iso, n) => { const t = new Date(iso + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+    const first = days[0].date, last = days[days.length - 1].date;
+    const wd0 = new Date(first + 'T12:00:00Z').getUTCDay();
+    let cur = addD(first, -(wd0 === 0 ? 6 : wd0 - 1)); // 그 주 월요일부터
+    const today = days[0].date;
+    const m1 = Number(first.slice(5, 7)), m2 = Number(last.slice(5, 7));
+    const cells = [];
+    while (cur <= last) {
+      const wd = new Date(cur + 'T12:00:00Z').getUTCDay();
+      if (wd >= 1 && wd <= 5) {
+        const i = byDate.get(cur);
+        const dnum = Number(cur.slice(8, 10)), mon = Number(cur.slice(5, 7));
+        const label = dnum === 1 || cur === first ? `${mon}월 ${dnum}일` : `${dnum}`;
+        if (i == null) cells.push(`<div class="ec-cell past"><span class="ec-d">${label}</span></div>`);
+        else {
+          const list = days[i].us.filter(pass);
+          const top = list.slice(0, 4);
+          const heat = list.length >= 40 ? 'h3' : list.length >= 15 ? 'h2' : list.length ? 'h1' : '';
+          cells.push(`<button data-eday="${i}" class="ec-cell ${heat} ${i === S.earnDay ? 'on' : ''} ${cur === today ? 'today' : ''}">
+            <span class="ec-d">${label}${cur === today ? '<i>오늘</i>' : ''}</span>
+            <b class="ec-n">${list.length}<small>곳</small></b>
+            <span class="ec-cos">${top.map((x) => `<span class="ec-co${popSet.has(x.t) ? ' star' : ''}">${logoHTML('US', x.t, x.n, 'xs')}<em>${esc(x.ko || x.t)}</em></span>`).join('')}${list.length > top.length ? `<span class="ec-more">+${list.length - top.length}</span>` : ''}</span>
+          </button>`);
+        }
+      }
+      cur = addD(cur, 1);
+    }
+    return `<div class="ec-top"><b>${first.slice(0, 4)}년 ${m1}월${m2 !== m1 ? ` ~ ${m2}월` : ''}</b><span class="muted sm">날짜를 누르면 아래에 기업 목록이 나옵니다 · 미국 동부 기준</span></div>
+      <div class="ec-grid">${['월', '화', '수', '목', '금'].map((w) => `<div class="ec-wd">${w}</div>`).join('')}${cells.join('')}</div>`;
   }
 
   // ───────────────────────── 모달 ─────────────────────────
@@ -1781,7 +1816,7 @@
     $('#sortSel').addEventListener('change', (e) => { S.sort = e.target.value; renderFeed(); });
     $('#earnSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.earnMk = b.dataset.em; renderEarnings(); });
     $('#earnCap').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.earnCap = b.dataset.cap; renderEarnings(); });
-    $('#earnDays').addEventListener('click', (e) => { const b = e.target.closest('[data-eday]'); if (!b) return; S.earnDay = Number(b.dataset.eday); renderEarnings(); });
+    $('#earnDays').addEventListener('click', (e) => { const b = e.target.closest('[data-eday]'); if (!b) return; S.earnDay = Number(b.dataset.eday); renderEarnings(); if (innerWidth <= 720) $('#earnBody').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     $('#digestMore').addEventListener('click', openDigestModal);
     $('#digestSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-dmk]'); if (b) setDigestMk(b.dataset.dmk); });
     $('#popSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.popTab = b.dataset.pop; save('gk_poptab', S.popTab); renderPopular(); });
