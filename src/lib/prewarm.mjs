@@ -42,7 +42,8 @@ export async function prewarm(items, { max = 3, budgetMs = 45000 } = {}) {
   return todo.length;
 }
 
-const recent = (ms, h = 6) => Date.now() - ms < h * 3600e3;
-export const pickSec = (items) => (items || []).filter((x) => x.ticker && x.impact >= 4 && !/^(4|144|13F)/.test(x.form || '') && recent(Date.parse(x.time))).slice(0, 12);
-export const pickDart = (items) => (items || []).filter((x) => x.ticker && x.impact >= 4 && (x.seenAt ? recent(Date.parse(x.seenAt)) : x.date === kstDate(0))).slice(0, 12);
-export const pickPR = (items) => (items || []).filter((x) => x.src === 'PR' && x.market === 'US' && x.ticker && recent(Date.parse(x.time))).slice(0, 12);
+// 최근 48시간 안의 중요한 공시·보도자료 중 아직 AI 분석이 없는 것 (AI가 멈췄던 동안 밀린 것도 자동으로 채움)
+const recent = (ms, h = 48) => Date.now() - ms < h * 3600e3;
+export const pickSec = (items) => (items || []).filter((x) => x.ticker && x.impact >= 4 && !/^(4|144|13F)/.test(x.form || '') && recent(Date.parse(x.time))).slice(0, 80);
+export const pickDart = (items) => (items || []).filter((x) => x.ticker && x.impact >= 4 && (x.seenAt ? recent(Date.parse(x.seenAt)) : x.date >= kstDate(-2))).slice(0, 80);
+export const pickPR = (items) => (items || []).filter((x) => x.src === 'PR' && x.market === 'US' && x.ticker && recent(Date.parse(x.time))).slice(0, 80);

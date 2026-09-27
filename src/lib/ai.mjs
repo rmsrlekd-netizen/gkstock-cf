@@ -11,11 +11,14 @@ async function aiPausedUntil() {
   }
   return pauseMem.until > Date.now() ? pauseMem.until : 0;
 }
+const BILLING_RE = /spending cap|spend cap|prepayment|credits are depleted|billing/i;
 async function pauseAI(body) {
+  const billing = BILLING_RE.test(body);
   const daily = /PerDay|per day|daily/i.test(body);
   const m = body.match(/"retryDelay":\s*"(\d+)s"/);
-  const ms = daily ? 30 * 60e3 : Math.min(10 * 60e3, Math.max(60e3, (Number(m?.[1]) || 60) * 1000));
-  pauseMem = { until: Date.now() + ms, checked: Date.now(), reason: daily ? '하루 한도 초과' : '분당 한도 초과' };
+  const ms = billing ? 30 * 60e3 : daily ? 30 * 60e3 : Math.min(10 * 60e3, Math.max(60e3, (Number(m?.[1]) || 60) * 1000));
+  const reason = billing ? (/spend/i.test(body) ? 'Gemini 월 지출 한도(spend cap) 초과 — AI Studio에서 한도를 올려야 함' : 'Gemini 선불 크레딧 소진 — AI Studio에서 충전 필요') : daily ? '하루 한도 초과' : '분당 한도 초과';
+  pauseMem = { until: Date.now() + ms, checked: Date.now(), reason };
   await setJSON('ai/pause', { until: pauseMem.until, reason: pauseMem.reason, at: Date.now() }).catch(() => {});
 }
 export async function aiPauseInfo() { const u = await aiPausedUntil(); return u ? { until: u, reason: pauseMem.reason } : null; }
@@ -63,6 +66,8 @@ async function gemini(prompt, { maxTokens, timeout, json = true, think = 0 }) {
         continue;
       }
       lastErr = new Error(`Gemini API HTTP ${r.status} (${model}) ${body.slice(0, 250)}`);
+      // 결제 문제(크레딧 소진·월 지출 한도)는 다른 모델도 똑같이 막힘 → 30분 쉬고 관리자 화면에 이유 표시
+      if (r.status === 402 || (r.status === 429 && BILLING_RE.test(body))) { await pauseAI(body); throw lastErr; }
       if (r.status === 429) { n429++; body429 = body; } else nOther++;
       if (r.status === 400 && /thinking|invalid argument/i.test(body) && thinking) continue; // 생각 설정을 빼고 같은 모델 재시도
       if ([404, 429, 500, 502, 503, 504].includes(r.status) || (r.status === 400 && /model|not found|not supported|invalid argument/i.test(body))) break; // 다음 모델
@@ -99,7 +104,7 @@ async function anthropic(prompt, { maxTokens, timeout }) {
 /** 프롬프트 → AI 응답 텍스트 */
 export async function claude(prompt, { maxTokens = 1200, timeout = 9000, json = true, think = 0 } = {}) {
   const paused = googleKey() ? await aiPausedUntil() : 0;
-  if (paused) throw new Error(`AI 사용 한도 초과로 잠시 쉬는 중 (${new Date(paused + 9 * 3600e3).toISOString().slice(11, 16)} KST 이후 다시 시도)`);
+  if (paused) throw new Error(`AI 잠시 쉬는 중: ${pauseMem.reason || '사용 한도 초과'} (${new Date(paused + 9 * 3600e3).toISOString().slice(11, 16)} KST 이후 다시 시도)`);
   if (googleKey()) return gemini(prompt, { maxTokens, timeout, json, think });
   if (claudeKey()) return anthropic(prompt, { maxTokens, timeout });
   throw new Error('AI 키 미설정');
