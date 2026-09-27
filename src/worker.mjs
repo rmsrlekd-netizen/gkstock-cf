@@ -129,7 +129,10 @@ export default {
     if (busy('sec', now) || min % 10 === 0) jobs.push(secWatch({ backfillMs: min % 2 === 0 ? 12000 : 0 }));
     if (busy('dart', now) || min % 10 === 1) jobs.push(dartWatch({ backfillMs: min % 2 === 1 ? 12000 : 0 }));
     // 보도자료: 매분 가장 빠른 전체 목록, 5분마다 주제·업종별 목록까지 (한가한 시간엔 5분에 한 번)
-    if (busy('news', now) || min % 5 === 0) jobs.push(newsWatch({ mode: 'pr', full: min % 5 === 0 }));
+    // 한국시간 평일 저녁 7:00~10:30 (미국 장 시작 전, 보도자료가 몰리는 시간)에는 PR Newswire 웹페이지를 매분 직접 확인
+    const kr = zoned(now, 'Asia/Seoul');
+    const direct = !['Sat', 'Sun'].includes(kr.wd) && kr.m >= 19 * 60 && kr.m <= 22 * 60 + 30;
+    if (busy('news', now) || direct || min % 5 === 0) jobs.push(newsWatch({ mode: 'pr', full: min % 5 === 0, direct }));
     if (jobs.length) ctx.waitUntil(Promise.allSettled(jobs));
   },
 };

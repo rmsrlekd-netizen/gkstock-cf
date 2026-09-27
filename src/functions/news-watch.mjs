@@ -11,14 +11,14 @@ import { capturePx0 } from '../lib/px0.mjs';
 import { archiveItems } from '../lib/archive.mjs';
 import { runMonitor } from '../lib/monitor.mjs';
 
-export default async ({ mode = 'all', full = true } = {}) => {
+export default async ({ mode = 'all', full = true, direct = false } = {}) => {
   const started = Date.now();
   try {
     if (mode === 'pr' || mode === 'all') {
-      const feed = await collectNews({ full });
+      const feed = await collectNews({ full, direct });
       await capturePx0(feed.items).catch((e) => console.warn('px0', e.message));
       await archiveItems(feed.items.filter((x) => x.src === 'PR')).catch((e) => console.warn('archive', e.message)); // 보도자료 영구 보관
-      console.log('pr-watch', feed.items.length, full ? 'full' : 'light', Date.now() - started + 'ms');
+      console.log('pr-watch', feed.items.length, full ? 'full' : 'light', direct ? 'direct' : '', Date.now() - started + 'ms');
     }
     if (mode === 'maint' || mode === 'all') {
       await getKrNames({ allowFetch: true });

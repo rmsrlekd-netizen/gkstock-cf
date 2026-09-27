@@ -142,6 +142,61 @@ async function businessWire(idx) {
   return out;
 }
 
+// ── PR Newswire 웹페이지 직접 확인 (RSS보다 빠름) — 한국시간 저녁 7시~10시 30분(미국 장 시작 전 보도자료 몰리는 시간)에만
+function etIsoFrom(label) {
+  // "05:00 ET" (오늘) 또는 "Sep 26, 2026, 17:02 ET"
+  const now = new Date();
+  const et = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).reduce((o, x) => ((o[x.type] = x.value), o), {});
+  const m = String(label).match(/(?:([A-Z][a-z]{2}) (\d{1,2}), (\d{4}), )?(\d{1,2}):(\d{2}) ET/);
+  if (!m) return null;
+  let y = Number(et.year), mo = Number(et.month), d = Number(et.day);
+  if (m[1]) { y = Number(m[3]); mo = 'JanFebMarAprMayJunJulAugSepOctNovDec'.indexOf(m[1]) / 3 + 1; d = Number(m[2]); }
+  const hh = Number(m[4]), mm = Number(m[5]);
+  if (!m[1] && hh * 60 + mm > Number(et.hour) * 60 + Number(et.minute) + 5) { const t = new Date(Date.UTC(y, mo - 1, d) - 86400e3); y = t.getUTCFullYear(); mo = t.getUTCMonth() + 1; d = t.getUTCDate(); } // 어제 글
+  const probe = new Date(Date.UTC(y, mo - 1, d, 12));
+  const off = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'shortOffset' }).formatToParts(probe).find((x) => x.type === 'timeZoneName')?.value || 'GMT-4';
+  const oh = Number((off.match(/GMT([+-]\d+)/) || [])[1] || -4);
+  return new Date(Date.UTC(y, mo - 1, d, hh - oh, mm)).toISOString();
+}
+export async function prnDirect(idx) {
+  const r = await fetchWithTimeout('https://www.prnewswire.com/news-releases/news-releases-list/?page=1&pagesize=50', { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' } }, 9000);
+  if (!r.ok) throw new Error('PRN 페이지 HTTP ' + r.status);
+  const html = (await r.text()).slice(0, 900000);
+  const seen = (await getJSON('prn/seen')) || {};
+  const out = [];
+  let fetched = 0;
+  for (const part of html.split('newsreleaseconsolidatelink').slice(1)) {
+    const href = (part.match(/href="(\/news-releases\/[^"]+\.html)"/) || [])[1];
+    if (!href) continue;
+    const url = 'https://www.prnewswire.com' + href;
+    const id = 'PR-' + hash(url);
+    const when = strip((part.match(/<small>([^<]+)<\/small>/) || [])[1]);
+    const title = strip((part.match(/<\/small>([\s\S]*?)<\/h3>/) || [])[1]);
+    const desc = strip((part.match(/<p class="remove-outline">([\s\S]*?)<\/p>/) || [])[1]);
+    if (!title) continue;
+    let ticker = seen[id] === undefined ? tickerOf(desc + ' ' + title, null, idx) : seen[id] || null;
+    let company = null;
+    if (seen[id] === undefined && !ticker && fetched < 12) {
+      // 목록에 티커가 안 보이면 본문 앞부분을 읽어 확인 (한 번만)
+      fetched++;
+      try {
+        const pr = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' } }, 7000);
+        const ph = (await pr.text()).slice(0, 400000);
+        company = (ph.match(/<meta name="author" content="([^"]+)"/) || [])[1] || null;
+        const bodyText = strip((ph.split(/release-body|class="col-lg-10/)[1] || ph).slice(0, 60000));
+        ticker = tickerOf(bodyText, company ? company.split(';')[0] : null, idx);
+      } catch {}
+    }
+    if (seen[id] === undefined) seen[id] = ticker || 0;
+    if (!ticker) continue;
+    out.push({ id, src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url, time: etIsoFrom(when) || new Date().toISOString(), source: 'PR Newswire', company, ticker, direct: true });
+  }
+  const keys = Object.keys(seen);
+  if (keys.length > 3000) for (const k of keys.slice(0, keys.length - 3000)) delete seen[k];
+  await setJSON('prn/seen', seen).catch(() => {});
+  return out;
+}
+
 // ACCESS Newswire (소형 상장사 보도자료가 많음)
 async function accessWire(idx) {
   const items = await rss('https://www.accesswire.com/rssfeed.aspx', 8000);
@@ -256,9 +311,10 @@ async function finnhubNews() {
 /** 전체 수집 → 기존 저장분과 병합 */
 // 보도자료 수집 (뉴스는 원문을 가져올 수 없어 수집하지 않음)
 //  full=false: 가장 빠른 전체 최신 목록만 (1분마다) / full=true: 주제·업종별 목록까지 (5분마다)
-export async function collectNews({ full = true } = {}) {
+export async function collectNews({ full = true, direct = false } = {}) {
   const idx = await companyIndex();
   const jobs = {
+    ...(direct ? { prnd: prnDirect(idx) } : {}),
     gnw: globeNewswire(idx, full), prn: prNewswire(idx, full), bw: businessWire(idx), aw: accessWire(idx),
     nw: newswireUs(idx), // 뉴스와이어는 미국 상장사 보도자료만 (한국 기업 보도자료는 수집 안 함 — 한국은 DART 공시가 그 역할)
   };
