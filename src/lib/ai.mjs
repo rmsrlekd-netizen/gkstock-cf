@@ -83,10 +83,37 @@ export async function claude(prompt, { maxTokens = 1200, timeout = 9000, json = 
 }
 export const askAI = claude;
 
+// AI가 가끔 JSON을 조금 틀리게 쓰는 경우(문장 속 따옴표, 끝에 남은 쉼표, 줄바꿈 등)를 고쳐서 읽기
+function repairJSON(t) {
+  let out = '', inStr = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) {
+      if (c === '\\') { out += c + (t[i + 1] ?? ''); i++; continue; }
+      if (c === '\n') { out += '\\n'; continue; }
+      if (c === '"') {
+        // 뒤에 , } ] : 가 오면 진짜 문자열 끝, 아니면 문장 속 따옴표 → 이스케이프
+        let j = i + 1;
+        while (j < t.length && /\s/.test(t[j])) j++;
+        if (j >= t.length || /[,}\]:]/.test(t[j])) { inStr = false; out += c; } else out += '\\"';
+        continue;
+      }
+      out += c;
+    } else {
+      if (c === '"') inStr = true;
+      out += c;
+    }
+  }
+  return out.replace(/,\s*([}\]])/g, '$1');
+}
 export function parseJSON(text, open = '{', close = '}') {
-  const a = text.indexOf(open), b = text.lastIndexOf(close);
+  const cleaned = String(text || '').replace(/```(?:json)?/gi, '').replace(/[“”]/g, '"');
+  const a = cleaned.indexOf(open), b = cleaned.lastIndexOf(close);
   if (a < 0 || b < a) throw new Error('AI 응답 형식 오류');
-  return JSON.parse(text.slice(a, b + 1));
+  const raw = cleaned.slice(a, b + 1);
+  try { return JSON.parse(raw); } catch (e1) {
+    try { return JSON.parse(repairJSON(raw)); } catch { throw e1; }
+  }
 }
 
 /** 미국 공시 목록용 한국어 한 줄 제목 (수집기에서 사용) */
@@ -169,7 +196,13 @@ ${lens.map((x) => '- ' + x).join('\n')}
   "overview": ${overviewRaw ? '"이 회사가 무엇을 하는 회사인지 2~3문장 한국어 요약"' : 'null'}
 }
 매수·매도 추천이나 목표주가는 쓰지 마세요.`;
-  const j = parseJSON(await claude(prompt, { maxTokens: 8000, timeout: 55000, think: 2048 }));
+  let j;
+  try { j = parseJSON(await claude(prompt, { maxTokens: 8000, timeout: 55000, think: 2048 })); }
+  catch (e) {
+    // 형식이 깨졌으면 한 번 더 요청 (이번엔 빠르게)
+    console.warn('analyze JSON retry', e.message);
+    j = parseJSON(await claude(prompt + '\n\n주의: 반드시 올바른 JSON만 출력하세요. 문장 안에서 큰따옴표(")는 쓰지 말고 작은따옴표(\')를 쓰세요.', { maxTokens: 6000, timeout: 40000, think: 0 }));
+  }
   const arr = (v, n, len = 160) => (Array.isArray(v) ? v.filter(Boolean).map((s) => String(s).slice(0, len)).slice(0, n) : []);
   const im = j.impact || {};
   return {
