@@ -738,3 +738,35 @@ main { padding: 1.3rem 1.5rem 2rem; max-width: 1640px; margin: 0 auto; }
 .pn-big li { color: var(--text) !important; font-weight: 400; font-size: .96rem; line-height: 1.75; }
 .pn-big li.muted { color: var(--text2) !important; }
 .pn-big h5 { color: var(--text) !important; font-size: .95rem; }
+
+/* ── v13: 스크롤 성능 (특히 휴대폰) ──
+   1) 배경 고정(background-attachment: fixed)은 휴대폰에서 스크롤할 때마다 배경을 다시 그려 버벅임
+      → 화면에 고정된 별도 층으로 옮김
+   2) 카드·헤더의 흐림(blur) 효과는 스크롤할 때마다 계산이 많아 끊김 → 제거하고 불투명 배경 사용
+   3) 가로로 삐져나오는 요소 때문에 화면이 좌우로 흔들리지 않게 가로 넘침 차단 */
+html { overflow-x: clip; }
+body { background: #080a1c !important; overflow-x: clip; min-height: 100dvh; }
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(900px 520px at 85% -120px, rgba(139, 108, 255, .22), transparent 70%), radial-gradient(800px 480px at -10% 0, rgba(62, 166, 255, .12), transparent 70%), linear-gradient(180deg, #0b0d24 0%, var(--bg) 40%, #07081a 100%);
+  transform: translateZ(0);
+}
+.card { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(20, 23, 54, .92); }
+.hdr { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(8, 10, 28, .97); transform: translateZ(0); }
+.tape-track { will-change: transform; transform: translate3d(0, 0, 0); }
+@keyframes tape-move { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
+.row, .tcard, .dcard { contain: layout paint; }
+.qchip { display: inline-block; min-width: 3.9rem; } /* 등락 칩 자리를 미리 확보 → 숫자가 들어올 때 줄이 밀리지 않음 */
+.qchip:empty { display: inline-block; }
+@media (max-width: 720px) {
+  .tape-in { -webkit-mask-image: none; mask-image: none; }
+  .row { transition: none; }
+  .row:hover { transform: none; }
+  .scrim, .dp-bar { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+.hdr { background: #080a1c; }
+@media (max-width: 720px) {
+  /* 휴대폰: 키가 큰 헤더(검색·메뉴·지수)가 화면 위에 붙어 있으면 스크롤이 무겁고 화면이 좁아짐 → 페이지와 함께 올라가게 */
+  .hdr { position: relative; transform: none; }
+  html { scroll-padding-top: 1rem; }
+}

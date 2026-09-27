@@ -440,6 +440,42 @@
 
   // ───────────────────────── 렌더: 피드·통계·트렌딩 ─────────────────────────
   const anyLoaded = () => S.loaded.sec || S.loaded.dart || S.loaded.news;
+  // 목록을 통째로 다시 그리지 않고 바뀐 줄만 교체 → 스크롤 중에 화면이 튀거나 흔들리지 않음
+  function patchList(list, items, moreLabel) {
+    if (list.firstElementChild && !list.firstElementChild.matches('.row, .more-btn')) list.innerHTML = '';
+    const old = new Map();
+    for (const el of list.querySelectorAll(':scope > .row')) old.set(el.dataset.id, el);
+    const tpl = document.createElement('template');
+    let prev = null;
+    for (const n of items) {
+      const r = rel(n.ms);
+      chipKeyMode = true; const key = rowHTML(n).replace(r, ''); chipKeyMode = false;
+      let h = null;
+      let el = old.get(n.id);
+      if (el && el.dataset.k === key) {
+        const sm = el.querySelector('.r-time small');
+        if (sm && sm.textContent !== r) sm.textContent = r; // 시간 글자만 갱신
+      } else {
+        h = rowHTML(n);
+        tpl.innerHTML = h.trim();
+        const fresh = tpl.content.firstElementChild;
+        fresh.dataset.k = key;
+        if (el) el.replaceWith(fresh);
+        el = fresh;
+      }
+      old.delete(n.id);
+      const want = prev ? prev.nextElementSibling : list.firstElementChild;
+      if (want !== el) list.insertBefore(el, want);
+      prev = el;
+    }
+    for (const el of old.values()) el.remove();
+    let more = list.querySelector(':scope > .more-btn');
+    if (moreLabel) {
+      if (!more) { more = document.createElement('button'); more.className = 'btn more-btn'; more.id = 'moreRows'; }
+      more.textContent = moreLabel;
+      list.appendChild(more);
+    } else if (more) more.remove();
+  }
   function renderFeed() {
     const list = $('#list');
     if (!anyLoaded()) { list.innerHTML = Array.from({ length: 7 }, () => '<div class="skel"></div>').join(''); return; }
@@ -451,7 +487,7 @@
         : `<div class="empty">조건에 맞는 항목이 없습니다.${errs.length ? `<br><small>${esc(errs.join(' / '))}</small>` : ''}</div>`;
     } else {
       queueTranslate(arr.slice(0, S.limit));
-      list.innerHTML = arr.slice(0, S.limit).map(rowHTML).join('') + (arr.length > S.limit ? `<button class="btn more-btn" id="moreRows">더 보기 (${fmtInt(arr.length - S.limit)}건 남음)</button>` : '');
+      patchList(list, arr.slice(0, S.limit), arr.length > S.limit ? `더 보기 (${fmtInt(arr.length - S.limit)}건 남음)` : '');
     }
     renderCounts();
     setTimeout(refreshChips, 50);
@@ -557,7 +593,8 @@
     const big = Math.abs(q.pct) >= 5 ? ' big' : '';
     return `<span class="${dirCls(q.pct)}${big}">${q.pct > 0 ? '▲' : q.pct < 0 ? '▼' : ''}${Math.abs(q.pct).toFixed(2)}%</span>`;
   }
-  const qchip = (n) => (n.ticker ? `<span class="qchip" data-q="${esc(wkey(n.market, n.ticker))}" title="현재 주가 등락률 (1분마다 갱신)">${qchipInner(n.market, n.ticker)}</span>` : '');
+  let chipKeyMode = false; // 목록 비교용 키를 만들 때는 등락 숫자를 빼서, 숫자만 바뀐 줄은 다시 그리지 않음
+  const qchip = (n) => (n.ticker ? `<span class="qchip" data-q="${esc(wkey(n.market, n.ticker))}" title="현재 주가 등락률 (1분마다 갱신)">${chipKeyMode ? '' : qchipInner(n.market, n.ticker)}</span>` : '');
   function paintChips() {
     $$('.qchip[data-q]').forEach((el) => { const [m, ...r] = el.dataset.q.split(':'); const h = qchipInner(m, r.join(':')); if (el.innerHTML !== h) el.innerHTML = h; });
   }
