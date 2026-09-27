@@ -50,23 +50,51 @@ async function rss(url, ms = 7000, opts = {}) {
 }
 
 // ───────── 보도자료 ─────────
-async function globeNewswire() {
-  const url = 'https://www.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies';
-  let items;
-  try { items = await rss(url, 9000); } catch (e) { if (!process.env.KR_RELAY_URL) throw e; items = await rss(url, 10000, { relay: true }); } // 직접 → 실패하면 중계 서버
-  return items.map((x) => {
-    const cats = [...x.matchAll(/<category[^>]*domain="[^"]*\/rss\/stock"[^>]*>([^<]+)<\/category>/g)].map((m) => m[1].trim());
-    const us = cats.map((c) => c.split(':')).find(([ex]) => US_EX.test(ex.trim()));
-    const desc = strip(tag(x, 'description'));
-    const ticker = us ? us[1].trim() : (desc.match(TICK_RE) || [])[1] || null;
-    const link = strip(tag(x, 'link'));
-    return { id: 'PR-' + hash(link), src: 'PR', market: 'US', title: strip(tag(x, 'title')), desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: 'GlobeNewswire', company: strip(tag(x, 'dc:contributor')) || null, ticker, subject: strip(tag(x, 'dc:subject')) || null };
-  }).filter((x) => x.ticker);
+// GlobeNewswire: 상장사 전체 + 주제별(실적·M&A·배당·IPO·규제공시) + 업종별(바이오·은행·에너지)
+const GNW_FEEDS = [
+  'orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies',
+  'subjectcode/13-Earnings%20Releases%20and%20Operating%20Results',
+  'subjectcode/27-Mergers%20and%20Acquisitions',
+  'subjectcode/12-Dividend%20Reports%20and%20Estimates',
+  'subjectcode/21-Initial%20Public%20Offerings',
+  'subjectcode/10-Company%20Regulatory%20Filings',
+  'industry/4573-Biotechnology',
+  'industry/8355-Banks',
+  'industry/1-Energy',
+].map((f) => 'https://www.globenewswire.com/RssFeed/' + f);
+let gnwViaRelay = false; // 직접 접속이 막히면 이후엔 서울 중계 서버로
+async function gnwRss(url) {
+  if (!gnwViaRelay) {
+    try { return await rss(url, 8000); } catch (e) { if (!process.env.KR_RELAY_URL) throw e; gnwViaRelay = true; }
+  }
+  return rss(url, 10000, { relay: true });
+}
+async function globeNewswire(idx) {
+  const first = await Promise.allSettled([gnwRss(GNW_FEEDS[0])]);
+  const rest = await Promise.allSettled(GNW_FEEDS.slice(1).map(gnwRss));
+  const all = [...first, ...rest];
+  if (all.every((r) => r.status === 'rejected')) throw all[0].reason;
+  const out = [];
+  for (const r of all) {
+    if (r.status !== 'fulfilled') continue;
+    for (const x of r.value) {
+      const cats = [...x.matchAll(/<category[^>]*domain="[^"]*\/rss\/stock"[^>]*>([^<]+)<\/category>/g)].map((m) => m[1].trim());
+      const us = cats.map((c) => c.split(':')).find(([ex]) => US_EX.test(ex.trim()));
+      const desc = strip(tag(x, 'description'));
+      const company = strip(tag(x, 'dc:contributor')) || null;
+      const title = strip(tag(x, 'title'));
+      const ticker = us ? us[1].trim() : tickerOf(desc + ' ' + title, company, idx);
+      if (!ticker) continue;
+      const link = strip(tag(x, 'link'));
+      out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: 'GlobeNewswire', company, ticker, subject: strip(tag(x, 'dc:subject')) || null });
+    }
+  }
+  return out;
 }
 
 const PRN_FEEDS = [
   'https://www.prnewswire.com/rss/news-releases-list.rss', // 전체 최신
-  ...['financial-services', 'technology', 'health', 'energy', 'auto-transportation', 'consumer-technology', 'general-business', 'consumer-products-retail', 'heavy-industry-manufacturing', 'telecommunications'].map((c) => `https://www.prnewswire.com/rss/${c}-latest-news/${c}-latest-news-list.rss`),
+  ...['financial-services', 'technology', 'business-technology', 'health', 'energy', 'auto-transportation', 'consumer-technology', 'general-business', 'consumer-products-retail', 'heavy-industry-manufacturing', 'telecommunications', 'entertainment-media', 'environment', 'policy-public-interest', 'travel'].map((c) => `https://www.prnewswire.com/rss/${c}-latest-news/${c}-latest-news-list.rss`),
 ];
 async function prNewswire(idx) {
   const all = await Promise.allSettled(PRN_FEEDS.map((u) => rss(u)));
@@ -101,6 +129,65 @@ async function businessWire(idx) {
     out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: 'Business Wire', company, ticker });
   }
   return out;
+}
+
+// ACCESS Newswire (소형 상장사 보도자료가 많음)
+async function accessWire(idx) {
+  const items = await rss('https://www.accesswire.com/rssfeed.aspx', 8000);
+  const out = [];
+  for (const x of items) {
+    const desc = strip(tag(x, 'description'));
+    const title = strip(tag(x, 'title'));
+    const company = strip(tag(x, 'dc:creator')) || strip(tag(x, 'author')) || null;
+    const ticker = tickerOf(desc + ' ' + title, company, idx);
+    if (!ticker) continue;
+    const link = strip(tag(x, 'link'));
+    out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: 'ACCESS Newswire', company, ticker });
+  }
+  return out;
+}
+
+// 뉴스와이어(한국어): 미국 상장사 보도자료의 한국어판만 사용 (나스닥·뉴욕 티커가 확인된 것만, 한국·비상장 기업은 제외)
+const KO_TICK_RE = /(?:나스닥|뉴욕증권거래소|뉴욕증시|NYSE American|NYSE|NASDAQ|Nasdaq)\s*(?:GS|GM|CM|글로벌\s*셀렉트\s*마켓)?\s*[:：]\s*([A-Z][A-Z.]{0,5})\b/;
+async function newswireUs(idx) {
+  const items = await rss('https://api.newswire.co.kr/rss/all');
+  const out = [];
+  for (const x of items) {
+    const title = strip(tag(x, 'title'));
+    if (!/[가-힣]/.test(title)) continue;
+    const desc = strip(tag(x, 'description'));
+    let ticker = ((desc + ' ' + title).match(KO_TICK_RE) || [])[1] || null;
+    let company = null;
+    if (!ticker) {
+      // "심포니AI(SymphonyAI)" 처럼 괄호 안 영문 회사명 → 미국 상장사 목록과 일치하면 연결
+      for (const m of desc.slice(0, 300).matchAll(/\(([A-Z][A-Za-z0-9&.,' -]{2,60})\)/g)) {
+        const t = idx.get(normCo(m[1]));
+        if (t) { ticker = t; company = m[1]; break; }
+      }
+    }
+    if (!ticker) continue;
+    const link = strip(tag(x, 'link')).replace(/&sourceType=rss/, '');
+    out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: '뉴스와이어', company, ticker, ko: true });
+  }
+  return out;
+}
+
+// 같은 보도자료의 영문판·한국어판이 둘 다 있으면 한국어판만 남김
+// (같은 티커, 72시간 이내, 제목·요약의 숫자·영문 고유명사가 2개 이상 겹치면 같은 발표로 봄)
+const COMMON = new Set(['inc', 'corp', 'nasdaq', 'nyse', 'the', 'and', 'with', 'for', 'business', 'wire', 'globe', 'newswire', 'news', 'announces', 'today', 'company', 'from']);
+const marks = (x) => new Set(((x.title + ' ' + (x.desc || '').slice(0, 200)).match(/[A-Za-z][A-Za-z0-9-]{3,}|\d[\d.,]*\d%?|\d{2,}/g) || []).map((w) => w.toLowerCase()).filter((w) => !COMMON.has(w)));
+function markDupes(items) {
+  const ko = items.filter((x) => x.src === 'PR' && x.source === '뉴스와이어' && x.ticker);
+  for (const k of ko) {
+    const km = marks(k);
+    for (const e of items) {
+      if (e === k || e.src !== 'PR' || e.source === '뉴스와이어' || e.ticker !== k.ticker || e.dupOf) continue;
+      if (Math.abs(Date.parse(e.time) - Date.parse(k.time)) > 72 * 3600e3) continue;
+      let n = 0;
+      for (const w of marks(e)) if (km.has(w)) n++;
+      if (n >= 2) e.dupOf = k.id;
+    }
+  }
 }
 
 // ───────── 뉴스 ─────────
@@ -157,7 +244,8 @@ async function finnhubNews() {
 export async function collectNews() {
   const [names, idx] = await Promise.all([getKrNames({ allowFetch: false }), companyIndex()]);
   const jobs = {
-    gnw: globeNewswire(), prn: prNewswire(idx), bw: businessWire(idx), // 한국 보도자료(뉴스와이어)는 수집하지 않음 — 한국은 DART 공시가 보도자료 역할
+    gnw: globeNewswire(idx), prn: prNewswire(idx), bw: businessWire(idx), aw: accessWire(idx),
+    nw: newswireUs(idx), // 뉴스와이어는 미국 상장사 한국어 보도자료만 (한국 기업 보도자료는 수집 안 함 — 한국은 DART 공시가 그 역할)
     krnews: googleNews(KR_QUERIES, 'KR', names), usnews: googleNews(US_QUERIES, 'US', names), fh: finnhubNews(),
   };
   const errors = [];
@@ -166,8 +254,8 @@ export async function collectNews() {
     try { fresh.push(...(await p)); } catch (e) { errors.push(`${k}: ${e.message}`); }
   }));
   const prev = (await getJSON('news/feed')) || { items: [] };
-  // 예전에 저장된 한국 보도자료(뉴스와이어)도 모두 제거
-  const isKrPR = (x) => x.src === 'PR' && (x.market === 'KR' || x.source === '뉴스와이어');
+  // 한국 보도자료는 저장하지 않음 (예전 저장분도 제거). 뉴스와이어는 미국 티커가 확인된 것만 남김
+  const isKrPR = (x) => x.src === 'PR' && (x.market === 'KR' || (x.source === '뉴스와이어' && !x.ko));
   const byId = new Map(prev.items.filter((x) => !isKrPR(x)).map((x) => [x.id, x]));
   for (const it of fresh) {
     if (isKrPR(it)) continue;
@@ -176,6 +264,8 @@ export async function collectNews() {
   }
   const cutoff = Date.now() - 3 * 86400e3;
   const items = [...byId.values()].filter((x) => Date.parse(x.time) > cutoff).sort((a, b) => Date.parse(b.time) - Date.parse(a.time)).slice(0, 1500);
+  for (const x of items) delete x.dupOf;
+  markDupes(items);
   const feed = { updatedAt: new Date().toISOString(), errors, items };
   await setJSON('news/feed', feed).catch(() => {});
   return feed;

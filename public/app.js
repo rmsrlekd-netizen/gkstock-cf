@@ -333,7 +333,7 @@
     const prev = S.items, next = new Map();
     for (const r of S.raw.sec) next.set(r.id, normSec(r));
     for (const r of S.raw.dart) next.set(r.id, normDart(r));
-    for (const r of S.raw.news) if (!next.has(r.id) && !(r.src === 'PR' && (r.market === 'KR' || r.source === '뉴스와이어'))) next.set(r.id, normNews(r)); // 한국 보도자료 제외
+    for (const r of S.raw.news) if (!next.has(r.id) && !r.dupOf && !(r.src === 'PR' && (r.market === 'KR' || (r.source === '뉴스와이어' && !r.ko)))) next.set(r.id, normNews(r)); // 한국 보도자료 제외 (뉴스와이어의 미국 상장사 한국어판은 표시)
     next.forEach((n) => { applyTr(n); applyAI(n); });
     // 같은 보도자료가 통신사(PR Newswire 등)에도 있으면 SEC 첨부본은 보도자료 탭에서 빼기
     const wire = new Map();
