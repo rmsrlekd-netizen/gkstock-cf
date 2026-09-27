@@ -113,6 +113,7 @@ export async function backfillStep(which, { budgetMs = 20000 } = {}) {
   let saved = 0;
   if (which === 'sec') {
     const s = st.sec || { day: kstDate(-3) };
+    if (s.done && s.day >= limitDay) s.done = false; // BACKFILL_DAYS를 늘리면 이어서 더 과거로
     const tmap = await getTickerMap();
     // 1) 8-K 항목·시각 보강 (먼저 쌓인 것부터)
     const todo = await needEnrich(12);
@@ -143,6 +144,7 @@ export async function backfillStep(which, { budgetMs = 20000 } = {}) {
     const key = process.env.DART_API_KEY;
     if (!key) return 0;
     const s = st.dart || { day: kstDate(-3), page: 1 };
+    if (s.done && s.day >= limitDay) s.done = false; // BACKFILL_DAYS를 늘리면 이어서 더 과거로
     while (!s.done && Date.now() < until - 3000) {
       if (s.day < limitDay) { s.done = true; break; }
       const r = await dartDay(key, s.day.replace(/-/g, ''), s.page);
