@@ -27,7 +27,10 @@ async function checks() {
   add('dart', '한국 DART 공시 수집', age(dart) < dartLimit && !(dart?.errors || []).length, `마지막 수집 ${ago(age(dart))}${(dart?.errors || []).length ? ' · 오류: ' + dart.errors.join(' / ').slice(0, 160) : ''}`);
   const nErr = news?.errors || [];
   const prDay = (news?.items || []).filter((x) => x.src === 'PR' && now - Date.parse(x.time) < 24 * 3600e3).length;
-  add('news', '보도자료·뉴스 수집', age(news) < 20 * MIN && (prDay > 0 || !weekday(us)), `마지막 수집 ${ago(age(news))} · 24시간 보도자료 ${prDay}건${nErr.length ? ' · 실패한 출처: ' + nErr.map((e) => e.split(':')[0]).join(', ') : ''}`);
+  // 보도자료 지연 = 우리가 처음 가져온 시각 - 원래 발표 시각 (최근 24시간 중앙값)
+  const lags = (news?.items || []).filter((x) => x.src === 'PR' && x.seenAt && now - Date.parse(x.time) < 24 * 3600e3).map((x) => (Date.parse(x.seenAt) - Date.parse(x.time)) / 60e3).filter((v) => v > -5 && v < 600).sort((a, b) => a - b);
+  const lagMed = lags.length ? lags[Math.floor(lags.length / 2)] : null;
+  add('news', '보도자료 수집', age(news) < 15 * MIN && (prDay > 0 || !weekday(us)), `마지막 수집 ${ago(age(news))} · 24시간 보도자료 ${prDay}건${lagMed != null ? ` · 발표 후 평균 지연 약 ${Math.max(0, lagMed).toFixed(1)}분` : ''}${nErr.length ? ' · 실패한 출처: ' + nErr.map((e) => e.split(':')[0]).join(', ') : ''}`);
   const mAge = market?.at ? now - market.at : Infinity;
   const idxOk = (market?.body?.indices || []).filter((x) => !x.error).length;
   add('market', '시장 지표', mAge < 30 * MIN && idxOk >= 6, `마지막 갱신 ${ago(mAge)} · 지수 ${idxOk}개 정상${market?.body?.night?.ok === false ? ' · 야간선물 실패: ' + (market.body.night.reason || '') : ''}`);

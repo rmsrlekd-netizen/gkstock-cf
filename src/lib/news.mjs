@@ -42,11 +42,22 @@ function tickerOf(text, company, idx) {
   return (k && idx.get(k)) || null;
 }
 
-async function rss(url, ms = 7000, opts = {}) {
+// RSS 읽기: 너무 큰 피드는 앞부분(최신 글)만 읽어 속도 확보
+async function rss(url, ms = 7000, opts = {}, maxBytes = 900000) {
   const r = await fetchWithTimeout(url, { headers: H, ...opts }, ms);
   if (!r.ok) throw new Error(`${new URL(url).host} HTTP ${r.status}`);
-  const xml = await r.text();
-  return xml.split(/<item[\s>]/).slice(1).map((s) => s.split('</item>')[0]);
+  let xml = '';
+  if (r.body?.getReader) {
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    const stop = Date.now() + ms;
+    while (xml.length < maxBytes && Date.now() < stop) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      xml += dec.decode(value, { stream: true });
+    }
+    reader.cancel().catch(() => {});
+  } else xml = await r.text();
+  return xml.split(/<item[\s>]/).slice(1).map((x) => x.split('</item>')[0]).filter((x) => x.includes('</title>'));
 }
 
 // ───────── 보도자료 ─────────
@@ -65,13 +76,13 @@ const GNW_FEEDS = [
 let gnwViaRelay = false; // 직접 접속이 막히면 이후엔 서울 중계 서버로
 async function gnwRss(url) {
   if (!gnwViaRelay) {
-    try { return await rss(url, 8000); } catch (e) { if (!process.env.KR_RELAY_URL) throw e; gnwViaRelay = true; }
+    try { return await rss(url, 15000); } catch (e) { if (!process.env.KR_RELAY_URL) throw e; gnwViaRelay = true; setTimeout(() => { gnwViaRelay = false; }, 30 * 60e3); }
   }
-  return rss(url, 10000, { relay: true });
+  return rss(url, 20000, { relay: true });
 }
-async function globeNewswire(idx) {
+async function globeNewswire(idx, full) {
   const first = await Promise.allSettled([gnwRss(GNW_FEEDS[0])]);
-  const rest = await Promise.allSettled(GNW_FEEDS.slice(1).map(gnwRss));
+  const rest = full ? await Promise.allSettled(GNW_FEEDS.slice(1).map(gnwRss)) : [];
   const all = [...first, ...rest];
   if (all.every((r) => r.status === 'rejected')) throw all[0].reason;
   const out = [];
@@ -96,8 +107,8 @@ const PRN_FEEDS = [
   'https://www.prnewswire.com/rss/news-releases-list.rss', // 전체 최신
   ...['financial-services', 'technology', 'business-technology', 'health', 'energy', 'auto-transportation', 'consumer-technology', 'general-business', 'consumer-products-retail', 'heavy-industry-manufacturing', 'telecommunications', 'entertainment-media', 'environment', 'policy-public-interest', 'travel'].map((c) => `https://www.prnewswire.com/rss/${c}-latest-news/${c}-latest-news-list.rss`),
 ];
-async function prNewswire(idx) {
-  const all = await Promise.allSettled(PRN_FEEDS.map((u) => rss(u)));
+async function prNewswire(idx, full) {
+  const all = await Promise.allSettled((full ? PRN_FEEDS : PRN_FEEDS.slice(0, 1)).map((u) => rss(u, 9000)));
   if (all.every((r) => r.status === 'rejected')) throw all[0].reason;
   const out = [];
   for (const r of all) {
@@ -243,12 +254,13 @@ async function finnhubNews() {
 }
 
 /** 전체 수집 → 기존 저장분과 병합 */
-export async function collectNews() {
-  const [names, idx] = await Promise.all([getKrNames({ allowFetch: false }), companyIndex()]);
+// 보도자료 수집 (뉴스는 원문을 가져올 수 없어 수집하지 않음)
+//  full=false: 가장 빠른 전체 최신 목록만 (1분마다) / full=true: 주제·업종별 목록까지 (5분마다)
+export async function collectNews({ full = true } = {}) {
+  const idx = await companyIndex();
   const jobs = {
-    gnw: globeNewswire(idx), prn: prNewswire(idx), bw: businessWire(idx), aw: accessWire(idx),
-    nw: newswireUs(idx), // 뉴스와이어는 미국 상장사 한국어 보도자료만 (한국 기업 보도자료는 수집 안 함 — 한국은 DART 공시가 그 역할)
-    krnews: googleNews(KR_QUERIES, 'KR', names), usnews: googleNews(US_QUERIES, 'US', names), fh: finnhubNews(),
+    gnw: globeNewswire(idx, full), prn: prNewswire(idx, full), bw: businessWire(idx), aw: accessWire(idx),
+    nw: newswireUs(idx), // 뉴스와이어는 미국 상장사 보도자료만 (한국 기업 보도자료는 수집 안 함 — 한국은 DART 공시가 그 역할)
   };
   const errors = [];
   const fresh = [];
@@ -257,12 +269,14 @@ export async function collectNews() {
   }));
   const prev = (await getJSON('news/feed')) || { items: [] };
   // 한국 보도자료는 저장하지 않음 (예전 저장분도 제거). 뉴스와이어는 미국 티커가 확인된 것만 남김
-  const isKrPR = (x) => x.src === 'PR' && (x.market === 'KR' || (x.source === '뉴스와이어' && !x.usOk && !x.ko));
+  const isKrPR = (x) => x.src !== 'PR' || x.market === 'KR' || (x.source === '뉴스와이어' && !x.usOk && !x.ko); // 뉴스·한국 보도자료 제외
   const byId = new Map(prev.items.filter((x) => !isKrPR(x)).map((x) => [x.id, x]));
+  const tr = (await getJSON('tr/map')) || {};
   for (const it of fresh) {
     if (isKrPR(it)) continue;
+    if (!it.titleKo && tr[it.id]) it.titleKo = tr[it.id];
     const old = byId.get(it.id);
-    byId.set(it.id, old ? { ...it, titleKo: old.titleKo, koTries: old.koTries, seenAt: old.seenAt } : { ...it, seenAt: new Date().toISOString() });
+    byId.set(it.id, old ? { ...it, titleKo: old.titleKo || it.titleKo, koTries: old.koTries, seenAt: old.seenAt } : { ...it, seenAt: new Date().toISOString() });
   }
   const cutoff = Date.now() - 3 * 86400e3;
   const items = [...byId.values()].filter((x) => Date.parse(x.time) > cutoff).sort((a, b) => Date.parse(b.time) - Date.parse(a.time)).slice(0, 1500);

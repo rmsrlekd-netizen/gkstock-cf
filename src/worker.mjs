@@ -120,7 +120,7 @@ export default {
     const now = new Date(event.scheduledTime || Date.now());
     const min = now.getUTCMinutes();
     if (cron.startsWith('*/3')) {
-      if (busy('news', now) || min % 10 <= 2) ctx.waitUntil(newsWatch());
+      if (busy('news', now) || min % 10 <= 2) ctx.waitUntil(newsWatch({ mode: 'maint' })); // 번역·AI·고장 감시
       return;
     }
     // 매분: SEC·DART를 함께 (한가한 시간엔 각각 10분에 한 번)
@@ -128,6 +128,8 @@ export default {
     const jobs = [];
     if (busy('sec', now) || min % 10 === 0) jobs.push(secWatch({ backfillMs: min % 2 === 0 ? 12000 : 0 }));
     if (busy('dart', now) || min % 10 === 1) jobs.push(dartWatch({ backfillMs: min % 2 === 1 ? 12000 : 0 }));
+    // 보도자료: 매분 가장 빠른 전체 목록, 5분마다 주제·업종별 목록까지 (한가한 시간엔 5분에 한 번)
+    if (busy('news', now) || min % 5 === 0) jobs.push(newsWatch({ mode: 'pr', full: min % 5 === 0 }));
     if (jobs.length) ctx.waitUntil(Promise.allSettled(jobs));
   },
 };

@@ -335,8 +335,8 @@
     const prev = S.items, next = new Map();
     for (const r of S.raw.sec) next.set(r.id, normSec(r));
     for (const r of S.raw.dart) next.set(r.id, normDart(r));
-    for (const r of S.raw.news) if (!next.has(r.id) && !r.dupOf && !(r.src === 'PR' && (r.market === 'KR' || (r.source === '뉴스와이어' && !r.usOk && !r.ko)))) next.set(r.id, normNews(r)); // 한국 보도자료 제외 (뉴스와이어의 미국 상장사 한국어판은 표시)
-    for (const [id, r] of S.extra) if (!next.has(id)) next.set(id, normRaw(r)); // 공유 링크로 연 오래된 항목 유지
+    for (const r of S.raw.news) if (r.src === 'PR' && !next.has(r.id) && !r.dupOf && !(r.src === 'PR' && (r.market === 'KR' || (r.source === '뉴스와이어' && !r.usOk && !r.ko)))) next.set(r.id, normNews(r)); // 한국 보도자료 제외 (뉴스와이어의 미국 상장사 한국어판은 표시)
+    for (const [id, r] of S.extra) if (!next.has(id) && r.src !== 'NEWS') next.set(id, normRaw(r)); // 공유 링크로 연 오래된 항목 유지
     next.forEach((n) => { applyTr(n); applyAI(n); });
     // 같은 보도자료가 통신사(PR Newswire 등)에도 있으면 SEC 첨부본은 보도자료 탭에서 빼기
     const wire = new Map();
@@ -530,9 +530,9 @@
     $('#feedUpd').textContent = u ? `업데이트 ${fmtDT(new Date(u)).hm}:${fmtDT(new Date(u)).s}` : '';
   }
   function renderCounts() {
-    const c = { ALL: 0, FILING: 0, PR: 0, NEWS: 0 };
+    const c = { ALL: 0, FILING: 0, PR: 0 };
     for (const n of S.items.values()) if (baseFilter(n, { ignoreType: true })) { c.ALL++; c[n.kind]++; if (n.prLike) c.PR++; }
-    for (const k in c) $('#c' + k).textContent = fmtInt(c[k]);
+    for (const k in c) { const el = $('#c' + k); if (el) el.textContent = fmtInt(c[k]); }
     const T = [['major', '중요'], ['pos', '호재'], ['neg', '악재'], ['earnings', '실적'], ['bio', '임상·FDA'], ['deal', '계약·M&A'], ['offering', '증자·희석'], ['insider', '내부자'], ['inst', '기관·5%'], ['pr', '보도자료']];
     const tc = {};
     for (const n of S.items.values()) {
@@ -546,21 +546,24 @@
   }
   function renderStats() {
     const today = kstDay(), hourAgo = Date.now() - 3600e3;
-    const c = { SEC: [0, 0], DART: [0, 0], PR: [0, 0], NEWS: [0, 0] };
+    const c = { SEC: [0, 0], DART: [0, 0], PR: [0, 0], WATCH: [0, 0] };
     for (const n of S.items.values()) {
-      const k = n.src;
-      if (fmtDT(new Date(n.ms)).date === today || (n.src === 'DART' && (n.raw.date || '').replace(/-/g, '.') === today)) c[k][0]++;
-      if (n.ms > hourAgo) c[k][1]++;
+      const isToday = fmtDT(new Date(n.ms)).date === today || (n.src === 'DART' && (n.raw.date || '').replace(/-/g, '.') === today);
+      const keys = [n.src];
+      if (n.ticker && inWatch(n.market, n.ticker)) keys.push('WATCH');
+      for (const k of keys) { if (!c[k]) continue; if (isToday) c[k][0]++; if (n.ms > hourAgo) c[k][1]++; }
     }
     for (const k in c) {
       const src = k === 'SEC' ? 'sec' : k === 'DART' ? 'dart' : 'news';
-      $('#st' + k).textContent = S.loaded[src] ? fmtInt(c[k][0]) : '–';
-      $('#st' + k + 'd').textContent = c[k][1] ? `1시간 +${c[k][1]}` : '';
+      const el = $('#st' + k); if (!el) continue;
+      el.textContent = k === 'WATCH' ? (S.watch.length ? fmtInt(c[k][0]) : '☆') : S.loaded[src] ? fmtInt(c[k][0]) : '–';
+      $('#st' + k + 'd').textContent = k === 'WATCH' && !S.watch.length ? '관심종목 추가하기' : c[k][1] ? `1시간 +${c[k][1]}` : '';
     }
     $('#statUpd').textContent = kstDay().slice(5) + ' 기준';
     $$('.stats4 button').forEach((b) => b.classList.toggle('on', statActive(b.dataset.stat)));
   }
   function statActive(k) {
+    if (k === 'WATCH') return S.view === 'watch';
     if (k === 'SEC') return S.type === 'FILING' && S.mk === 'US';
     if (k === 'DART') return S.type === 'FILING' && S.mk === 'KR';
     return S.type === k && S.mk === 'ALL';
@@ -583,6 +586,7 @@
     if (S.mk === 'KR' && S.type === 'PR') {
       if (S.view === 'home') { S.type = 'FILING'; S.prAuto = true; } else S.mk = 'ALL';
     } else if (S.mk !== 'KR' && S.prAuto && S.view === 'home' && S.type === 'FILING') { S.type = 'PR'; S.prAuto = false; }
+    if (S.type === 'NEWS') S.type = 'PR'; // 뉴스 탭 없어짐
     if (S.type !== 'FILING') S.prAuto = false;
     const prBtn = $('#tabs [data-type="PR"]');
     if (prBtn) prBtn.hidden = S.mk === 'KR';
@@ -590,7 +594,7 @@
     $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.type === S.type));
     $$('#themeChips button').forEach((b) => b.classList.toggle('on', b.dataset.theme === S.theme));
     $('#sortSel').value = S.sort;
-    const t = { ALL: '실시간 공시 · 보도자료 · 뉴스', FILING: '실시간 공시', PR: '실시간 기업 보도자료', NEWS: '주요 뉴스' }[S.type];
+    const t = { ALL: '실시간 공시 · 보도자료', FILING: '실시간 공시', PR: '실시간 기업 보도자료', NEWS: '주요 뉴스' }[S.type];
     $('#feedTitle').textContent = S.view === 'watch' ? '관심종목 피드' : S.q ? `"${S.q}" 검색 결과` : t;
     renderWatchbar();
   }
@@ -1535,7 +1539,7 @@
   }
 
   // ───────────────────────── 화면 전환 ─────────────────────────
-  const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', news: 'NEWS', watch: 'ALL' };
+  const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
   const PAGES = { admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
   function setView(v, hash) {
     S.view = v;
@@ -1545,7 +1549,7 @@
     $$('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
     if (hash !== false) { const u = '/' + (hash || '#' + v); if (location.pathname !== '/') history.pushState(null, '', u); else history.replaceState(null, '', u); }
     if (feed) { S.type = v === 'home' ? S.homeType || 'PR' : FEED_VIEWS[v]; S.limit = 80; renderAll(); }
-    if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 한·미 실시간 공시·뉴스'; }
+    if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 미국·한국 실시간 공시·보도자료'; }
     if (v === 'market') renderMarket();
     if (v === 'earnings') loadEarnings();
     if (v === 'admin') renderAdmin();
@@ -1570,7 +1574,7 @@
     const m = h.match(/^company\/(US|KR)\/([A-Z0-9.\-]+)/i);
     if (m) { openCompany(m[1].toUpperCase(), m[2]); return; }
     if (/^item\//.test(h)) { showItem(h.slice(5)); return; }
-    setView(h in FEED_VIEWS || h in PAGES ? h : 'home', false);
+    setView(h in FEED_VIEWS || h in PAGES ? h : 'home', false); // (#news 등 없어진 메뉴는 홈으로)
   }
 
   // ───────────────────────── 검색 ─────────────────────────
@@ -1783,6 +1787,7 @@
     $('#btnRefresh').addEventListener('click', async (e) => { const svg = e.currentTarget.querySelector('svg'); svg.style.animation = 'spin .8s linear infinite'; await Promise.all([poll('sec'), poll('dart'), poll('news'), pollPopular()]); svg.style.animation = ''; toast('새로고침 완료'); });
     $$('.stats4 button').forEach((b) => b.addEventListener('click', () => {
       const k = b.dataset.stat;
+      if (k === 'WATCH') { setView(S.view === 'watch' ? 'home' : 'watch'); return; }
       if (statActive(k)) { S.type = 'ALL'; S.mk = 'ALL'; }
       else if (k === 'SEC' || k === 'DART') { S.type = 'FILING'; S.mk = k === 'SEC' ? 'US' : 'KR'; }
       else { S.type = k; S.mk = 'ALL'; }
