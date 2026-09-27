@@ -48,13 +48,13 @@ async function secLines(it) {
 
 /** 원문 줄 배열 (캐시) */
 export async function getFilingDoc(it) {
-  const key = `doc/${it.id}`;
+  const key = `doc2/${it.id}`;
   const cached = await getJSON(key);
   if (cached) return cached;
   let res;
   if (it.src === 'NEWS' || it.src === 'PR') {
     const a = await fetchArticleLines(it);
-    res = { lines: a.lines, url: it.url, note: a.note || null };
+    res = { lines: a.lines, html: a.html || null, url: it.url, note: a.note || null };
   } else if (it.src === 'DART') {
     const html = await fetchDartHtml(it.seq);
     res = { lines: htmlToLines(html), html: sanitizeHtml(html), url: it.url };
@@ -64,7 +64,7 @@ export async function getFilingDoc(it) {
   // 저장 용량 제한: 앞부분 약 3만 자
   let total = 0;
   const lines = [];
-  for (const l of res.lines) { if (total > 30000) { lines.push('… (이하 생략 — 원문 링크에서 전체 보기)'); break; } lines.push(l); total += l.length; }
+  for (const l of res.lines) { if (total > 40000) { lines.push('… (이하 생략 — 원문 링크에서 전체 보기)'); break; } lines.push(l); total += l.length; }
   const out = { lines, html: res.html || null, url: res.url, note: res.note || null, at: Date.now() };
   await setJSON(key, out).catch(() => {});
   return out;

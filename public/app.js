@@ -443,11 +443,12 @@
     const box = $('#trend');
     if (!anyLoaded()) { box.innerHTML = Array.from({ length: 6 }, () => '<div class="skel"></div>').join(''); return; }
     const since = Date.now() - 36 * 3600e3;
-    const arr = [...S.items.values()].filter((n) => n.ms > since && n.ticker && n.impact >= 4)
+    const pool = [...S.items.values()].filter((n) => (S.mk === 'ALL' || n.market === S.mk) && (S.type === 'ALL' || n.kind === S.type));
+    const arr = pool.filter((n) => n.ms > since && n.ticker && n.impact >= 3)
       .sort((a, b) => b.impact - a.impact || (b.sent === 'pos') - (a.sent === 'pos') || b.ms - a.ms);
     const seen = new Set(), pick = [];
     for (const n of arr) { const k = wkey(n.market, n.ticker); if (seen.has(k)) continue; seen.add(k); pick.push(n); if (pick.length >= 10) break; }
-    if (pick.length < 4) for (const n of [...S.items.values()].filter((x) => x.ticker).sort((a, b) => b.ms - a.ms)) { if (pick.length >= 8) break; if (!pick.includes(n)) pick.push(n); }
+    if (pick.length < 4) for (const n of pool.filter((x) => x.ticker).sort((a, b) => b.ms - a.ms)) { if (pick.length >= 8) break; if (!pick.includes(n)) pick.push(n); }
     box.innerHTML = pick.map((n) => `<button class="tcard" data-id="${esc(n.id)}"><div class="t-top">${logoHTML(n.market, n.ticker, n.name, 'sm')}<span class="t-tk">${esc(n.market === 'KR' ? n.name : n.ticker)}</span><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><span style="margin-left:auto">${rel(n.ms)}</span></div><div class="t-h">${esc(n.head)}</div><div class="t-f">${tagsHTML(n, 3, true)}</div></button>`).join('') || '<div class="empty">아직 표시할 항목이 없습니다.</div>';
   }
   function syncControls() {
@@ -455,7 +456,7 @@
     $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.type === S.type));
     $$('#themeChips button').forEach((b) => b.classList.toggle('on', b.dataset.theme === S.theme));
     $('#sortSel').value = S.sort;
-    const t = { ALL: '실시간 공시 · 뉴스 피드', FILING: '실시간 공시', PR: '기업 보도자료', NEWS: '주요 뉴스' }[S.type];
+    const t = { ALL: '실시간 공시 · 보도자료 · 뉴스', FILING: '실시간 공시', PR: '실시간 기업 보도자료', NEWS: '주요 뉴스' }[S.type];
     $('#feedTitle').textContent = S.view === 'watch' ? '관심종목 피드' : S.q ? `"${S.q}" 검색 결과` : t;
     renderWatchbar();
   }
@@ -537,7 +538,7 @@
     if (!S.booted && S.loaded.sec && S.loaded.dart && S.loaded.news) {
       S.booted = true;
       const m = location.hash.match(/^#item\/(.+)$/);
-      if (m && S.items.has(decodeURIComponent(m[1]))) openItem(decodeURIComponent(m[1]));
+      if (m) showItem(decodeURIComponent(m[1]));
     }
   }
 
@@ -661,7 +662,7 @@
 
   // ───────────────────────── 모달 ─────────────────────────
   function openModal(html) { $('#modalBody').innerHTML = html; $('#modal').hidden = false; document.body.style.overflow = 'hidden'; }
-  function closeModal() { $('#modal').hidden = true; if (!$('#drawer').classList.contains('open')) document.body.style.overflow = ''; }
+  function closeModal() { $('#modal').hidden = true; document.body.style.overflow = ''; }
   async function openDigestModal() {
     openModal('<h2>AI가 고른 오늘의 핵심 공시</h2><div class="loading"><span class="spin"></span>AI가 오늘의 공시·보도자료를 살펴보는 중… (최대 10초)</div>');
     let d;
@@ -699,27 +700,38 @@
       <p class="note">설정과 관심종목은 이 브라우저에만 저장됩니다.</p>`);
   }
 
-  // ───────────────────────── 상세 창 ─────────────────────────
+  // ───────────────────────── 상세 페이지 (공시·보도자료·뉴스를 누르면 전체 화면으로) ─────────────────────────
   const verdictCls = (v) => (v === '긍정' ? 'pos' : v === '부정' ? 'neg' : 'neu');
-  function openDrawer() { $('#drawer').classList.add('open'); $('#drawer').setAttribute('aria-hidden', 'false'); $('#scrim').hidden = false; document.body.style.overflow = 'hidden'; $('#drawer').scrollTop = 0; }
-  function closeDrawer() {
-    $('#drawer').classList.remove('open'); $('#drawer').setAttribute('aria-hidden', 'true'); $('#scrim').hidden = true; document.body.style.overflow = '';
-    S.sel = null; $$('#list .row.sel').forEach((r) => r.classList.remove('sel'));
-    if (/^#item\//.test(location.hash)) history.replaceState(null, '', '#' + S.view);
-  }
   function openItem(id) {
+    if (!S.items.has(id)) return;
+    if (S.view !== 'item') { S.listScroll = window.scrollY; S.returnHash = location.hash && !/^#item\//.test(location.hash) ? location.hash : '#' + (S.view || 'home'); S.fromList = true; }
+    const h = '#item/' + encodeURIComponent(id);
+    if (location.hash === h) showItem(id); else location.hash = h;
+  }
+  function backToList() {
+    if (S.fromList) { S.fromList = false; history.back(); return; }
+    location.hash = S.returnHash || '#home';
+  }
+  function showItem(id) {
+    S.view = 'item';
+    $('#viewFeed').hidden = true;
+    for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== 'item';
+    $$('#nav button').forEach((b) => b.classList.remove('on'));
     const n = S.items.get(id);
-    if (!n) return;
-    S.sel = id; S.dTab = 'ai';
-    $$('#list .row').forEach((r) => r.classList.toggle('sel', r.dataset.id === id));
-    $('#drawerIn').innerHTML = detailHTML(n);
-    openDrawer();
-    history.replaceState(null, '', '#item/' + encodeURIComponent(id));
+    if (!n) {
+      $('#itemBody').innerHTML = S.booted ? `<div class="empty-big">이 항목을 찾을 수 없습니다. (최근 3~4일 안의 항목만 볼 수 있습니다)<div class="chips center"><button data-go="home">목록으로</button></div></div>` : '<div class="empty-big"><span class="spin"></span>불러오는 중…</div>';
+      return;
+    }
+    S.sel = id;
+    $('#itemBody').innerHTML = articleHTML(n);
+    window.scrollTo({ top: 0 });
+    document.title = `${n.head} | GK의 공시레이더`;
     if (n.ticker) { trackView(n.market, n.ticker, n.name); loadQuoteHead(n); }
     loadAI(n);
-    if (hasCo(n)) fetchCo(coUrl(n.market, n.ticker, n.corpCode, n.exchange));
+    loadArticleDoc(n);
+    loadArticleSide(n);
   }
-  function detailHTML(n) {
+  function articleHTML(n) {
     let when;
     if (n.src === 'DART' && n.when) {
       when = n.when.official ? `DART 접수 ${n.when.official.replace(/-/g, '.')}` : n.raw.date;
@@ -731,25 +743,36 @@
     const on = n.ticker && inWatch(n.market, n.ticker);
     const sec = sectorOf(n.market, n.ticker);
     const news = n.kind === 'NEWS' && !n.ticker;
-    return `<div class="dp-bar">
-        ${logoHTML(n.market, n.ticker, news ? n.source : n.name, 'md', news)}
-        <div class="dp-co"><div class="t1"><b>${esc(n.market === 'KR' ? n.name || n.ticker || '' : n.name || n.ticker || n.source || '')}</b>${n.ticker ? `<span class="tk">${esc(n.ticker)}</span>` : ''}</div>
-          <div class="t2"><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span>${n.exchange ? `<span>${esc(exShort(n.exchange))}</span>` : ''}${sec ? `<span class="sector">${esc(sec)}</span>` : ''}${n.ticker ? `<button class="link" data-star="${esc(n.market)}|${esc(n.ticker)}|${esc(n.name || '')}">${on ? '★ 관심종목' : '☆ 관심종목 추가'}</button>` : ''}</div></div>
-        <div class="dp-px" id="dpPx"></div>
-        <button class="ico sm" data-close-drawer aria-label="닫기">✕</button>
-      </div>
-      <div class="dp">
-        <div class="dp-meta"><span class="src">${SRC_BADGE[n.src]}${n.form && n.kind === 'FILING' ? ' · ' + esc(n.form) : ''}</span>${n.source && n.kind !== 'FILING' ? `<span>${esc(n.source)}</span>` : ''}<span class="mono">${esc(when)}</span></div>
-        <h2 class="${n.cls}" id="dpHead">${esc(n.head)}</h2>
-        <div class="dp-meta" id="dpTags">${tagsHTML(n, 6, true)}</div>
+    const kindKo = n.kind === 'FILING' ? '공시' : n.kind === 'PR' ? '보도자료' : '뉴스';
+    return `<div class="a-top"><button class="btn sm" data-back>← 목록으로</button><span class="crumb">${kindKo} · ${n.market === 'KR' ? '한국' : '미국'}${n.ticker ? ' · ' + esc(n.market === 'KR' ? n.name : n.ticker) : ''}</span></div>
+      <header class="a-head card">
+        <div class="a-co">
+          ${logoHTML(n.market, n.ticker, news ? n.source : n.name, 'lg', news)}
+          <div class="dp-co"><div class="t1"><b>${esc(n.market === 'KR' ? n.name || n.ticker || '' : n.name || n.ticker || n.source || '')}</b>${n.ticker ? `<span class="tk">${esc(n.ticker)}</span>` : ''}</div>
+            <div class="t2"><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span>${n.exchange ? `<span>${esc(exShort(n.exchange))}</span>` : ''}${sec ? `<span class="sector">${esc(sec)}</span>` : ''}${n.ticker ? `<button class="link" data-star="${esc(n.market)}|${esc(n.ticker)}|${esc(n.name || '')}">${on ? '★ 관심종목' : '☆ 관심종목 추가'}</button>` : ''}</div></div>
+          <div class="dp-px" id="aPx"></div>
+        </div>
+        <div class="dp-meta" style="margin-top:1rem"><span class="src">${SRC_BADGE[n.src]}${n.form && n.kind === 'FILING' ? ' · ' + esc(n.form) : ''}</span>${n.source && n.kind !== 'FILING' ? `<span>${esc(n.source)}</span>` : ''}<span class="mono">${esc(when)}</span></div>
+        <h1 class="a-title ${n.cls}" id="aHead">${esc(n.head)}</h1>
+        <div class="dp-meta" id="aTags">${tagsHTML(n, 6, true)}</div>
         ${n.orig ? `<div class="orig">원문 제목: ${esc(n.orig)}</div>` : ''}
-        ${n.sub && n.sub !== n.orig ? `<p class="lead">${esc(n.sub)}</p>` : ''}
-        <div class="dp-meters" id="dpMeters">${metersHTML(n, true).replace('<div class="meters">', '').replace(/<\/div>$/, '')}</div>
-        <div class="dtabs" id="dTabs"><button data-dtab="ai" class="on">AI 분석</button><button data-dtab="fin">기업·재무</button><button data-dtab="flow">공매도·수급</button><button data-dtab="doc">원문 보기</button></div>
-        <div id="dpTab">${aiPane(n)}${extraCards(n)}</div>
-        <div class="links">${n.url ? `<a class="btn primary" href="${esc(n.url)}" target="_blank" rel="noopener">${n.kind === 'FILING' ? '공시 원문 사이트 ↗' : '기사 원문 ↗'}</a>` : ''}${n.ticker ? `<button class="btn" data-open-co="${esc(n.market)}|${esc(n.ticker)}|${esc(n.name || '')}">기업 상세보기 →</button>` : ''}</div>
+        <div class="dp-meters" id="aMeters">${metersHTML(n, true).replace('<div class="meters">', '').replace(/<\/div>$/, '')}</div>
+      </header>
+      <div class="article">
+        <div class="a-main">
+          <section id="aAI">${aiPane(n)}</section>
+          ${extraCards(n)}
+          <section id="aDoc">${docPane(n, null)}</section>
+        </div>
+        <aside class="a-side">
+          <section id="aCo">${n.ticker ? coPane(n, hasCo(n) ? null : undefined, { chart: false, compact: true }) : '<div class="box"><h4>관련 종목</h4><p class="muted" style="margin:0;font-size:.88rem">이 뉴스와 연결된 상장 종목이 없습니다.</p></div>'}</section>
+          ${n.ticker ? `<section id="aFlow">${stockHTML(n.market, null)}</section><div class="box"><h4>차트 <small>${n.market === 'KR' ? '네이버 증권 일봉' : 'TradingView'}</small></h4>${chartHTML(n.market, n.ticker, n.exchange)}</div>` : ''}
+          <section class="box" id="aRel"></section>
+          ${n.ticker ? `<button class="btn block" data-open-co="${esc(n.market)}|${esc(n.ticker)}|${esc(n.name || '')}">기업 분석 페이지로 →</button>` : ''}
+        </aside>
       </div>`;
   }
+
   function extraCards(n) {
     const r = n.raw;
     if (r.tx?.main) {
@@ -775,32 +798,32 @@
     return `<div class="box"><h4>${a.fallback ? '핵심 내용 (자동 요약)' : 'AI 5줄 요약'} <span class="verdict ${verdictCls(a.verdict)}">주가 영향: ${esc(a.verdict || '중립')}</span></h4>
         <ol class="sum5">${(a.summary || []).slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>
       <div class="pn"><div class="pos"><h5>▲ 긍정적 요인</h5><ul>${li(a.positive)}</ul></div><div class="neg"><h5>▼ 부정적 요인</h5><ul>${li(a.negative)}</ul></div></div>
-      ${a.fallback ? `<div class="box"><p class="err" style="margin:0 0 .5rem">AI 키가 없거나 AI가 응답하지 않아 원문 문장과 키워드로 자동 정리했습니다.${a.aiError ? `<br><small>원인: ${esc(a.aiError)}</small>` : ''}</p>${aiKeyHelp(!!a.aiError && !/설정되지/.test(a.aiError))}<button class="btn sm" data-ai-retry style="margin-top:.7rem">AI로 다시 분석</button></div>`
+      ${a.fallback ? `<p class="note">AI 분석이 잠시 준비되지 않아 원문의 핵심 문장과 키워드로 자동 정리했습니다. <button class="link" data-ai-retry>AI로 다시 분석</button></p>`
         : `<p class="note">${esc(a.provider || 'AI')}가 ${a.basis ? esc(a.basis) : '원문'}을 읽고 작성한 참고용 요약입니다. 투자 판단 전 원문을 확인하세요.</p>`}`;
   }
   async function loadAI(n, force) {
-    if (S.ai.has(n.id) && !force && !S.ai.get(n.id).error) return;
+    if (S.ai.has(n.id) && !force && !S.ai.get(n.id).error) { if (S.sel === n.id && $('#aAI')) $('#aAI').innerHTML = aiPane(n); return; }
     S.ai.delete(n.id);
-    if (S.sel === n.id && S.dTab === 'ai') $('#dpTab').innerHTML = aiPane(n) + extraCards(n);
+    if (S.sel === n.id && $('#aAI')) $('#aAI').innerHTML = aiPane(n);
     let a;
     try { a = await getJSON(`/api/analyze?id=${encodeURIComponent(n.id)}${force ? '&r=' + Date.now() : ''}`, force ? { cache: 'no-store' } : {}); }
     catch (e) { a = { error: e.message }; }
     S.ai.set(n.id, a);
     applyAI(n);
-    const row = $(`#list .row[data-id="${CSS.escape(n.id)}"]`);
-    if (row) row.outerHTML = rowHTML(n);
-    if (S.sel !== n.id) return;
-    if (S.dTab === 'ai') $('#dpTab').innerHTML = aiPane(n) + extraCards(n);
-    $('#dpHead').textContent = n.head;
-    $('#dpTags').innerHTML = tagsHTML(n, 6, true);
-    $('#dpMeters').innerHTML = metersHTML(n, true).replace('<div class="meters">', '').replace(/<\/div>$/, '');
+    if (S.sel !== n.id || S.view !== 'item') return;
+    $('#aAI').innerHTML = aiPane(n);
+    $('#aHead').textContent = n.head;
+    $('#aTags').innerHTML = tagsHTML(n, 6, true);
+    $('#aMeters').innerHTML = metersHTML(n, true).replace('<div class="meters">', '').replace(/<\/div>$/, '');
+    if (a.overview) { const d = coOf(n); if (d && !d.overviewKo) { d.overviewKo = a.overview; $('#aCo').innerHTML = coPane(n, d, { chart: false, compact: true }); } }
   }
   async function loadQuoteHead(n) {
     await fetchQuotes([wkey(n.market, n.ticker)]);
     const q = quoteOf(n.market, n.ticker);
-    if (S.sel !== n.id || !$('#dpPx')) return;
-    $('#dpPx').innerHTML = q ? `<b>${pxStr({ ...q, market: n.market })}</b><em class="${dirCls(q.pct)}">${q.pct > 0 ? '▲' : q.pct < 0 ? '▼' : ''} ${fmtPct(q.pct)}</em>` : '';
+    if (S.sel !== n.id || !$('#aPx')) return;
+    $('#aPx').innerHTML = q ? `<b>${pxStr({ ...q, market: n.market })}</b><em class="${dirCls(q.pct)}">${q.pct > 0 ? '▲' : q.pct < 0 ? '▼' : ''} ${fmtPct(q.pct)}</em>` : '';
   }
+
   // 기업·재무
   const hasCo = (n) => !!n.ticker && (n.market !== 'KR' || !!n.corpCode) && !/^13F/i.test(n.form || '');
   function coUrl(m, t, corp, ex) {
@@ -847,7 +870,7 @@
     const url = `https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol(t, ex))}&interval=D&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=12153a&theme=dark&style=1&timezone=Asia%2FSeoul&withdateranges=1&locale=kr`;
     return `<div class="chart"><iframe src="${url}" loading="lazy" title="차트"></iframe></div>`;
   }
-  function coPane(n, d, { chart = true } = {}) {
+  function coPane(n, d, { chart = true, compact = false } = {}) {
     if (!n.ticker) return '<div class="box"><p class="muted" style="margin:0">이 항목은 연결된 상장 종목이 없어 기업 정보를 표시할 수 없습니다.</p></div>';
     if (n.market === 'KR' && !n.corpCode) return '<div class="box"><p class="muted" style="margin:0">DART 고유번호를 찾지 못해 기업 정보를 표시할 수 없습니다.</p></div>';
     if (!d) return '<div class="box"><div class="loading"><span class="spin"></span>기업 정보·재무 불러오는 중…</div></div>';
@@ -911,40 +934,31 @@
     if (S.doc.has(n.id)) return S.doc.get(n.id);
     try { const d = await getJSON(`/api/doc?id=${encodeURIComponent(n.id)}`, {}); S.doc.set(n.id, d); return d; } catch (e) { return { error: e.message }; }
   }
-  function docPane(n, d) {
-    if (!d) return '<div class="box"><div class="loading"><span class="spin"></span>원문 불러오는 중…</div></div>';
+  function docPane(n, d, full) {
+    if (!d) return `<div class="box"><h4>${n.kind === 'FILING' ? '공시 원문' : '본문 전문'}</h4><div class="loading"><span class="spin"></span>원문 불러오는 중…</div></div>`;
     const link = `<a class="link" href="${esc(d.url || n.url || '#')}" target="_blank" rel="noopener">원문 사이트 ↗</a>`;
     if (d.error) return `<div class="box"><h4>원문 ${link}</h4><p class="err">원문을 불러오지 못했습니다: ${esc(d.error)}</p></div>`;
-    const body = d.html ? `<div class="doc html">${d.html}</div>` : `<div class="doc">${esc((d.lines || []).join('\n')) || '<span class="muted">내용이 없습니다.</span>'}</div>`;
-    return `<div class="box"><h4>${n.kind === 'FILING' ? '공시 원문' : '기사·보도자료 본문'} ${link}</h4>${d.note ? `<p class="note" style="margin-top:0">${esc(d.note)}</p>` : ''}${body}</div>`;
+    const body = d.html ? `<div class="doc html${full ? ' full' : ''}">${d.html}</div>` : `<div class="doc${full ? ' full' : ''}">${esc((d.lines || []).join('\n')) || '<span class="muted">내용이 없습니다.</span>'}</div>`;
+    return `<div class="box"><h4>${n.kind === 'FILING' ? '공시 원문' : n.kind === 'PR' ? '보도자료 전문' : '기사 본문'} <small>${esc(n.source || (n.src === 'SEC' ? 'SEC EDGAR' : n.src === 'DART' ? 'DART' : ''))}</small></h4>${d.note ? `<p class="note" style="margin-top:0">${esc(d.note)}</p>` : ''}${body}</div>`;
   }
-  async function switchDTab(tab) {
-    const n = S.items.get(S.sel);
-    if (!n) return;
-    S.dTab = tab;
-    $$('#dTabs button').forEach((b) => b.classList.toggle('on', b.dataset.dtab === tab));
-    const box = $('#dpTab');
-    if (tab === 'ai') { box.innerHTML = aiPane(n) + extraCards(n); return; }
-    if (tab === 'fin') {
-      if (!hasCo(n)) { box.innerHTML = coPane(n, null); return; }
-      const url = coUrl(n.market, n.ticker, n.corpCode, n.exchange);
-      box.innerHTML = coPane(n, S.co.get(url));
-      const d = await fetchCo(url);
-      if (S.sel === n.id && S.dTab === 'fin') box.innerHTML = coPane(n, d);
-      return;
-    }
-    if (tab === 'flow') {
-      if (!n.ticker) { box.innerHTML = '<div class="box"><p class="muted" style="margin:0">연결된 종목이 없어 수급 정보를 표시할 수 없습니다.</p></div>'; return; }
-      const url = stockUrl(n.market, n.ticker, n.corpCode);
-      box.innerHTML = stockHTML(n.market, S.stock.get(url));
-      const d = await fetchStock(url);
-      if (S.sel === n.id && S.dTab === 'flow') box.innerHTML = stockHTML(n.market, d);
-      return;
-    }
-    box.innerHTML = docPane(n, S.doc.get(n.id));
+  async function loadArticleDoc(n) {
     const d = await loadDoc(n);
-    if (S.sel === n.id && S.dTab === 'doc') box.innerHTML = docPane(n, d);
+    if (S.sel === n.id && S.view === 'item' && $('#aDoc')) $('#aDoc').innerHTML = docPane(n, d, true);
   }
+  async function loadArticleSide(n) {
+    renderRelated(n);
+    if (!n.ticker) return;
+    if (hasCo(n)) fetchCo(coUrl(n.market, n.ticker, n.corpCode, n.exchange)).then((d) => { if (S.sel === n.id && $('#aCo')) $('#aCo').innerHTML = coPane(n, d, { chart: false, compact: true }); });
+    fetchStock(stockUrl(n.market, n.ticker, n.corpCode)).then((d) => { if (S.sel === n.id && $('#aFlow')) $('#aFlow').innerHTML = stockHTML(n.market, d); });
+  }
+  function renderRelated(n) {
+    const box = $('#aRel');
+    if (!box) return;
+    const arr = n.ticker ? [...S.items.values()].filter((x) => x.id !== n.id && x.market === n.market && x.ticker === n.ticker).sort((a, b) => b.ms - a.ms).slice(0, 6) : [];
+    const more = arr.length ? arr : [...S.items.values()].filter((x) => x.id !== n.id && x.kind === n.kind && x.market === n.market).sort((a, b) => b.ms - a.ms).slice(0, 6);
+    box.innerHTML = `<h4>${arr.length ? '이 종목의 다른 소식' : '최신 ' + (n.kind === 'FILING' ? '공시' : n.kind === 'PR' ? '보도자료' : '뉴스')}</h4>${more.map((x) => `<div class="rel" data-id="${esc(x.id)}"><span class="mono">${fmtDT(new Date(x.ms)).md} ${fmtDT(new Date(x.ms)).hm}</span><b>${esc(x.market === 'KR' ? x.name || '' : x.ticker || x.name || '')}</b><p>${esc(x.head)}</p></div>`).join('') || '<p class="muted" style="margin:0">없음</p>'}`;
+  }
+
 
   // ───────────────────────── 기업 분석 화면 ─────────────────────────
   function findCorp(m, t) {
@@ -961,7 +975,7 @@
       try { const j = await getJSON(`/api/search?q=${encodeURIComponent(t)}`, {}); const x = (j.items || []).find((y) => y.market === 'KR' && y.ticker === t); if (x) { c.corpCode = x.corpCode; c.name = name || x.name; } } catch {}
     }
     S.coCur = c;
-    closeDrawer(); closeModal();
+    closeModal();
     setView('company', `#company/${m}/${t}`);
     trackView(m, t, c.name);
     const on = inWatch(m, t), sec = sectorOf(m, t);
@@ -1051,8 +1065,8 @@
   }
 
   // ───────────────────────── 화면 전환 ─────────────────────────
-  const FEED_VIEWS = { home: 'ALL', filings: 'FILING', pr: 'PR', news: 'NEWS', watch: 'ALL' };
-  const PAGES = { popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
+  const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', news: 'NEWS', watch: 'ALL' };
+  const PAGES = { item: '#viewItem', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
@@ -1060,12 +1074,13 @@
     for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== v;
     $$('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
     if (hash !== false) history.replaceState(null, '', hash || '#' + v);
-    if (feed) { S.type = FEED_VIEWS[v]; S.limit = 80; renderAll(); }
+    if (feed) { S.type = v === 'home' ? S.homeType || 'PR' : FEED_VIEWS[v]; S.limit = 80; renderAll(); }
+    if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 한·미 실시간 공시·뉴스'; }
     if (v === 'market') renderMarket();
     if (v === 'popular') { renderPopularPage(); pollViews(); }
     if (v === 'flows') { renderFlows(); if (!S.flows || Date.now() - (S.flowsAt || 0) > 180e3) { S.flowsAt = Date.now(); pollFlows(); } }
     if (v === 'company' && !S.coCur) renderCoQuick();
-    window.scrollTo({ top: 0 });
+    if (feed && S.listScroll != null) { const y = S.listScroll; S.listScroll = null; requestAnimationFrame(() => window.scrollTo({ top: y })); } else window.scrollTo({ top: 0 });
   }
   function renderCoQuick() {
     const base = (S.popular?.kr || []).slice(0, 4).map((x) => [x.market, x.ticker, x.name]).concat((S.popular?.us || []).slice(0, 4).map((x) => [x.market, x.ticker, x.name]));
@@ -1076,7 +1091,7 @@
     const h = decodeURIComponent(location.hash.slice(1));
     const m = h.match(/^company\/(US|KR)\/([A-Z0-9.\-]+)/i);
     if (m) { openCompany(m[1].toUpperCase(), m[2]); return; }
-    if (/^item\//.test(h)) { setView('home', false); return; }
+    if (/^item\//.test(h)) { showItem(h.slice(5)); return; }
     setView(h in FEED_VIEWS || h in PAGES ? h : 'home', false);
   }
 
@@ -1171,7 +1186,7 @@
   // ───────────────────────── 이벤트 ─────────────────────────
   function bind() {
     $('#mkSeg').addEventListener('click', (e) => { const b = e.target.closest('button[data-mk]'); if (!b) return; S.mk = b.dataset.mk; S.limit = 80; renderAll(); });
-    $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.type = b.dataset.type; S.limit = 80; renderAll(); });
+    $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.type = b.dataset.type; if (S.view === 'home') S.homeType = S.type; S.limit = 80; renderAll(); });
     $('#themeChips').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.theme = S.theme === b.dataset.theme ? null : b.dataset.theme; S.limit = 80; renderAll(); });
     $('#themes').addEventListener('click', (e) => { const li = e.target.closest('li'); if (!li) return; S.theme = S.theme === li.dataset.theme ? null : li.dataset.theme; S.limit = 80; renderAll(); $('.feed-wrap').scrollIntoView({ behavior: 'smooth' }); });
     $('#sortSel').addEventListener('change', (e) => { S.sort = e.target.value; renderFeed(); });
@@ -1204,7 +1219,6 @@
         if (v === 'company') { S.coCur = null; $('#coBody').innerHTML = CO_EMPTY; }
         if (v === 'home' && go.classList.contains('brand')) { S.q = ''; S.theme = null; S.mk = 'ALL'; $('#search').value = ''; }
         if (S.q && !(v in FEED_VIEWS)) { S.q = ''; $('#search').value = ''; }
-        closeDrawer();
         setView(v);
         return;
       }
@@ -1215,14 +1229,12 @@
       if (t.closest('[data-clear-q]')) { S.q = ''; $('#search').value = ''; renderAll(); return; }
       if (t.closest('[data-close-bell]')) { $('#bellPanel').hidden = true; return; }
       if (t.closest('[data-close-modal]') || t.id === 'modal') { closeModal(); return; }
-      if (t.closest('[data-close-drawer]') || t.id === 'scrim') { closeDrawer(); return; }
+      if (t.closest('[data-back]')) { backToList(); return; }
       const fs = t.closest('[data-fs]');
       if (fs) { S.fs = fs.dataset.fs; save('gk_fs', S.fs); document.documentElement.className = 'notranslate ' + S.fs; $$('#fsSeg button').forEach((b) => b.classList.toggle('on', b === fs)); return; }
       if (t.closest('#moreRows')) { S.limit += 80; renderFeed(); return; }
       const kw = t.closest('[data-kw]');
       if (kw) { applyKeyword(kw.dataset.kw); $('#suggest').hidden = true; return; }
-      const dt = t.closest('[data-dtab]');
-      if (dt) { switchDTab(dt.dataset.dtab); return; }
       if (t.closest('[data-ai-retry]')) { const n = S.items.get(S.sel); if (n) loadAI(n, true); return; }
       const mo = t.closest('[data-modal]');
       if (mo) { openDigestModal(); return; }
@@ -1237,11 +1249,11 @@
       }
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { closeModal(); closeDrawer(); $('#bellPanel').hidden = true; }
+      if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (S.view === 'item') backToList(); $('#bellPanel').hidden = true; }
       if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('#search').focus(); }
     });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll('sec'); poll('dart'); poll('news'); pollMarket(); pollPopular(); } });
-    window.addEventListener('hashchange', () => { if (!/^#item\//.test(location.hash)) route(); });
+    window.addEventListener('hashchange', route);
   }
   const CO_EMPTY = document.getElementById('coBody').innerHTML;
 

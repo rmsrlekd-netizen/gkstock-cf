@@ -433,3 +433,43 @@ main { padding: 1.3rem 1.5rem 2rem; max-width: 1640px; margin: 0 auto; }
   .pop-panel { right: .5rem; left: .5rem; width: auto; }
   .dtabs button { font-size: .8rem; }
 }
+
+/* ── 상세 페이지 ── */
+.a-top { display: flex; align-items: center; gap: .8rem; margin-bottom: .9rem; }
+.crumb { font-size: .84rem; color: var(--muted); }
+.a-head { padding: 1.4rem 1.6rem; margin-bottom: 1.2rem; }
+.a-co { display: flex; align-items: center; gap: .9rem; }
+.a-co .dp-co .t1 b { font-size: 1.2rem; }
+.a-title { font-size: 1.75rem; line-height: 1.4; letter-spacing: -.02em; margin: .6rem 0 .7rem; font-weight: 800; }
+.a-title.buy { color: #ff9aa4; } .a-title.sell { color: #8cbcff; }
+.a-head .orig { font-size: .86rem; color: var(--muted); margin-top: .5rem; }
+.a-head .dp-meters { margin-bottom: 0; }
+.article { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 1.2rem; align-items: start; }
+.a-main .box:first-child, .a-side .box:first-child { margin-top: 0; }
+.a-main .box, .a-side .box { background: var(--card); }
+.a-main .sum5 li { font-size: 1.02rem; }
+.a-main .pn ul { font-size: .95rem; }
+.a-side { display: flex; flex-direction: column; gap: .75rem; }
+.a-side .box { margin-top: 0; }
+.a-side .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.a-side .tbl { font-size: .78rem; }
+.a-side .mini-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.a-side .ov { font-size: .88rem; }
+.a-side .chart { height: 300px; }
+.doc.full { max-height: none; overflow: visible; font-size: .98rem; line-height: 1.85; color: var(--text); }
+.doc.full p { margin: .55rem 0; }
+.rel { padding: .6rem .2rem; border-bottom: 1px solid var(--line); cursor: pointer; }
+.rel:last-child { border-bottom: 0; }
+.rel:hover p { color: #fff; }
+.rel span { font-size: .72rem; color: var(--faint); margin-right: .4rem; }
+.rel b { font-size: .8rem; color: var(--blue); }
+.rel p { margin: .15rem 0 0; font-size: .86rem; color: var(--text2); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 1100px) {
+  .article { grid-template-columns: minmax(0, 1fr); }
+  .a-side { position: static; }
+}
+@media (max-width: 720px) {
+  .a-head { padding: 1rem; }
+  .a-title { font-size: 1.3rem; }
+  .a-co { flex-wrap: wrap; }
+}

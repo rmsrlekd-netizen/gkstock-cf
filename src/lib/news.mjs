@@ -1,7 +1,8 @@
 // 뉴스·보도자료 수집 (미국·한국)
 //  보도자료: GlobeNewswire(티커 포함), PR Newswire, 뉴스와이어(한국)
 //  뉴스: 구글 뉴스 RSS(한국어), Finnhub(키가 있으면)
-import { fetchWithTimeout, BROWSER_UA, decodeEntities } from './util.mjs';
+import { fetchWithTimeout, BROWSER_UA, decodeEntities, decodeText } from './util.mjs';
+import { sanitizeHtml } from './dart-doc.mjs';
 import { getJSON, setJSON } from './store.mjs';
 import { getKrNames, matchKr, matchUsKo } from './krnames.mjs';
 
@@ -71,6 +72,17 @@ const GN = (q) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}
 const KR_QUERIES = ['특징주 when:1d', '공시 주가 when:1d', '코스피 코스닥 마감 when:1d', '실적 발표 주가 when:1d'];
 const US_QUERIES = ['뉴욕증시 when:1d', '미국 주식 특징주 when:1d', '나스닥 급등 when:1d'];
 
+// 구글 뉴스 링크 안에 실제 기사 주소가 들어 있으면 꺼내기 (구형 형식만 가능)
+function gnRealUrl(link) {
+  try {
+    const id = (String(link).match(/\/articles\/([^?]+)/) || [])[1];
+    if (!id) return null;
+    const bin = atob(id.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((id.length + 3) % 4));
+    const m = bin.match(/https?:\/\/[\x21-\x7e]+/);
+    return m ? m[0].replace(/[\x00-\x1f].*$/, '') : null;
+  } catch { return null; }
+}
+
 async function googleNews(queries, market, names) {
   const all = await Promise.allSettled(queries.map((q) => rss(GN(q))));
   const out = [];
@@ -87,7 +99,8 @@ async function googleNews(queries, market, names) {
       const kr = market === 'KR' || !us ? matchKr(title, names) : null;
       if (kr && (market === 'KR' || !us)) { ticker = kr.c; company = kr.n; corpCode = kr.k; mk = 'KR'; }
       else if (us) { ticker = us.tk; company = us.n; mk = 'US'; }
-      out.push({ id: 'NEWS-' + hash(title), src: 'NEWS', market: mk, title, desc: '', url: link, time: iso(strip(tag(x, 'pubDate'))), source, ticker, company, corpCode, viaGoogle: true });
+      const real = gnRealUrl(link);
+      out.push({ id: 'NEWS-' + hash(title), src: 'NEWS', market: mk, title, desc: '', url: real || link, time: iso(strip(tag(x, 'pubDate'))), source, ticker, company, corpCode, viaGoogle: !real });
     }
   }
   return out;
@@ -129,15 +142,49 @@ export async function collectNews() {
   return feed;
 }
 
-/** 기사·보도자료 본문 텍스트 (AI 분석·원문 보기용) */
+// 보도자료 사이트별 본문 영역
+const BODY_MARKERS = [
+  /<div[^>]*id="main-body-container"[^>]*>/i, // GlobeNewswire
+  /<section[^>]*class="[^"]*release-body[^"]*"[^>]*>/i, // PR Newswire
+  /<section[^>]*class="[^"]*article_column[^"]*"[^>]*>/i, // 뉴스와이어
+  /<div[^>]*class="[^"]*release-body2[^"]*"[^>]*>/i,
+  /<[a-z]+[^>]*itemprop="articleBody"[^>]*>/i,
+  /<article[^>]*>/i,
+];
+/** 여는 태그 위치에서 같은 태그의 짝이 맞는 닫는 태그까지 잘라내기 */
+function block(html, re) {
+  const m = html.match(re);
+  if (!m) return null;
+  const tag = m[0].match(/^<([a-z0-9]+)/i)[1].toLowerCase();
+  const open = new RegExp(`<${tag}[\\s>]`, 'gi'), close = new RegExp(`</${tag}>`, 'gi');
+  let depth = 1, i = m.index + m[0].length;
+  while (depth > 0) {
+    open.lastIndex = i; close.lastIndex = i;
+    const o = open.exec(html), c = close.exec(html);
+    if (!c) return html.slice(m.index + m[0].length);
+    if (o && o.index < c.index) { depth++; i = o.index + 1; } else { depth--; i = c.index + c[0].length; if (!depth) return html.slice(m.index + m[0].length, c.index); }
+  }
+  return null;
+}
+const JUNK = /cookie|subscribe|javascript|all rights reserved|©|Sign up|로그인|구독하기|무단전재|재배포 금지|이 기사를|관련 기사|SOURCE /i;
+
+/** 기사·보도자료 본문 (AI 분석·원문 보기용): 줄 배열 + 정리된 HTML */
 export async function fetchArticleLines(it) {
   const base = [it.title, it.desc].filter(Boolean);
-  if (it.viaGoogle || !it.url) return { lines: base, note: '뉴스 제목·요약 기반' };
-  const r = await fetchWithTimeout(it.url, { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' } }, 7000);
-  if (!r.ok) return { lines: base, note: '본문을 불러오지 못해 제목·요약 기반' };
-  const html = await r.text();
-  const body = html.replace(/[\r\n\t]+/g, ' ').replace(/<head[\s\S]*?<\/head>/i, '').replace(/<(script|style|nav|header|footer|aside|form)[\s\S]*?<\/\1>/gi, '');
-  const lines = decodeEntities(body.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h\d|tr)>/gi, '\n').replace(/<[^>]+>/g, ' '))
-    .split('\n').map((s) => s.replace(/\s+/g, ' ').trim()).filter((s) => s.length > 40 && !/cookie|subscribe|javascript|copyright|all rights reserved|©/i.test(s));
-  return { lines: lines.length ? [it.title, ...lines.slice(0, 80)] : base };
+  if (it.viaGoogle || !it.url) return { lines: base, note: '뉴스 원문은 언론사 사이트 정책상 제목·요약만 제공됩니다.' };
+  let r;
+  try { r = await fetchWithTimeout(it.url, { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html', 'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8' } }, 8000); } catch { r = null; }
+  if (!r || !r.ok) return { lines: base, note: '본문을 불러오지 못해 제목·요약만 표시합니다.' };
+  const buf = await r.arrayBuffer();
+  const ct = r.headers.get('content-type') || '';
+  let html = decodeText(buf, /euc-kr|ks_c|ms949/i.test(ct) ? 'euc-kr' : 'utf-8');
+  html = html.replace(/[\r\n\t]+/g, ' ').replace(/<(script|style|noscript|iframe|svg|form|nav|header|footer|aside|button)[\s\S]*?<\/\1>/gi, '');
+  let body = null;
+  for (const re of BODY_MARKERS) { body = block(html, re); if (body && body.replace(/<[^>]+>/g, '').trim().length > 200) break; body = null; }
+  if (!body) body = (html.match(/<p[\s>][\s\S]*?<\/p>/gi) || []).join('');
+  body = body.replace(/<img[^>]*>/gi, '');
+  const lines = decodeEntities(body.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h\d|tr|table|section)>/gi, '\n').replace(/<\/t[dh]>/gi, ' | ').replace(/<[^>]+>/g, ' '))
+    .split('\n').map((x) => x.replace(/\s+/g, ' ').replace(/(\s\|\s*)+$/, '').trim()).filter((x) => x.length > 1 && !JUNK.test(x));
+  if (lines.join(' ').length < 120) return { lines: base, note: '본문을 찾지 못해 제목·요약만 표시합니다.' };
+  return { lines: [it.title, ...lines.slice(0, 400)], html: sanitizeHtml(body, 120000) };
 }

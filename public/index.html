@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4" />
 </head>
 <body>
   <!-- ───────── 헤더 ───────── -->
@@ -69,7 +69,7 @@
         <section class="feed-wrap">
           <div class="feed-top">
             <div class="feed-title">
-              <h1 id="feedTitle">실시간 공시 · 뉴스 피드</h1>
+              <h1 id="feedTitle">실시간 기업 보도자료</h1>
               <span class="live"><i></i>LIVE</span>
               <span class="upd" id="feedUpd"></span>
             </div>
@@ -80,10 +80,10 @@
             </div>
           </div>
           <div class="tabs" id="tabs">
-            <button data-type="ALL" class="on">전체 <i id="cALL">0</i></button>
+            <button data-type="PR" class="on">보도자료 <i id="cPR">0</i></button>
             <button data-type="FILING">공시 <i id="cFILING">0</i></button>
-            <button data-type="PR">보도자료 <i id="cPR">0</i></button>
             <button data-type="NEWS">뉴스 <i id="cNEWS">0</i></button>
+            <button data-type="ALL">전체 보기 <i id="cALL">0</i></button>
           </div>
           <div class="chips" id="themeChips">
             <button data-theme="major">중요</button><button data-theme="pos">호재</button><button data-theme="neg">악재</button>
@@ -129,6 +129,9 @@
         </aside>
       </div>
     </section>
+
+    <!-- ───────── 상세 페이지 ───────── -->
+    <section id="viewItem" class="page" hidden><div id="itemBody"></div></section>
 
     <!-- ───────── 인기 종목 ───────── -->
     <section id="viewPopular" class="page" hidden>
@@ -197,11 +200,9 @@
   </footer>
 
   <!-- 상세 창 / 모달 / 알림 -->
-  <div class="scrim" id="scrim" hidden></div>
-  <aside class="drawer" id="drawer" aria-hidden="true"><div id="drawerIn"></div></aside>
   <div class="modal" id="modal" hidden><div class="modal-card"><button class="ico sm m-close" data-close-modal aria-label="닫기">✕</button><div id="modalBody"></div></div></div>
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
-  <script src="app.js?v=3" defer></script>
+  <script src="app.js?v=4" defer></script>
 </body>
 </html>
