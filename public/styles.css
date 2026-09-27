@@ -692,3 +692,24 @@ main { padding: 1.3rem 1.5rem 2rem; max-width: 1640px; margin: 0 auto; }
   .tape-set[aria-hidden] { display: none; }
 }
 @media (max-width: 720px) { .tape-in { padding: .42rem 0; } }
+
+/* ── v9: 긍정/부정 요인 — 작고 차분하게 ── */
+.pn-big { gap: .8rem; margin: .8rem 0; }
+.pn-big > div { padding: .85rem 1rem .9rem; border-radius: 14px; background: rgba(255,255,255,.025) !important; border: 1px solid var(--line) !important; }
+.pn-big > div::before { top: 0; bottom: 0; left: 0; right: auto; width: 3px; height: auto; }
+.pn-big .pos::before { background: #34d399; } .pn-big .neg::before { background: #fb7185; }
+.pn-big h5 { justify-content: flex-start; font-size: .92rem; margin: 0 0 .55rem; gap: .45rem; color: var(--text) !important; }
+.pn-big h5 i { width: .5rem; height: .5rem; border-radius: 50%; background: none; }
+.pn-big .pos h5 i { background: #34d399 !important; box-shadow: 0 0 0 3px rgba(52,211,153,.15); }
+.pn-big .neg h5 i { background: #fb7185 !important; box-shadow: 0 0 0 3px rgba(251,113,133,.15); }
+.pn-big h5 em { font-style: normal; font-size: .72rem; font-weight: 700; color: var(--muted); padding: .05rem .4rem; border-radius: 6px; background: rgba(255,255,255,.06); }
+.pn-big ul { gap: .35rem; }
+.pn-big li { background: none; padding: .15rem 0 .15rem 1rem; font-size: .9rem; line-height: 1.6; color: var(--text2); border-radius: 0; }
+.pn-big li::before { left: 0; top: .15rem; font-weight: 800; }
+.pn-big .pos li::before { color: #34d399; } .pn-big .neg li::before { color: #fb7185; }
+.pn-big li.muted { text-align: left; padding-left: 0; }
+
+/* ── v9: AI가 고른 핵심 공시 번호 — 눈에 띄게 ── */
+.dcard .dn { background: linear-gradient(135deg, #ffd54a, #ff9f1c); color: #1b1300; font-size: 1.05rem; box-shadow: 0 4px 14px rgba(255,170,40,.35), inset 0 1px 0 rgba(255,255,255,.5); }
+.dcard:nth-child(1) .dn { background: linear-gradient(135deg, #fff176, #ffb300); box-shadow: 0 0 0 2px rgba(255,213,74,.35), 0 6px 18px rgba(255,179,0,.45); }
+.dcard:hover .dn { transform: scale(1.06); transition: transform .15s; }

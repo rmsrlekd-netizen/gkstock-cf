@@ -333,7 +333,7 @@
     const prev = S.items, next = new Map();
     for (const r of S.raw.sec) next.set(r.id, normSec(r));
     for (const r of S.raw.dart) next.set(r.id, normDart(r));
-    for (const r of S.raw.news) if (!next.has(r.id) && !r.dupOf && !(r.src === 'PR' && (r.market === 'KR' || (r.source === '뉴스와이어' && !r.ko)))) next.set(r.id, normNews(r)); // 한국 보도자료 제외 (뉴스와이어의 미국 상장사 한국어판은 표시)
+    for (const r of S.raw.news) if (!next.has(r.id) && !r.dupOf && !(r.src === 'PR' && (r.market === 'KR' || (r.source === '뉴스와이어' && !r.usOk && !r.ko)))) next.set(r.id, normNews(r)); // 한국 보도자료 제외 (뉴스와이어의 미국 상장사 한국어판은 표시)
     next.forEach((n) => { applyTr(n); applyAI(n); });
     // 같은 보도자료가 통신사(PR Newswire 등)에도 있으면 SEC 첨부본은 보도자료 탭에서 빼기
     const wire = new Map();
@@ -956,7 +956,7 @@
         <div class="dp-meters" id="aMeters">${metersHTML(n, true)}</div>
       </header>
       <div class="article">
-        <section class="a-sec"><h3>AI 애널리스트 분석 <small>섹터 전문 애널리스트 관점의 5줄 요약 · 호재/악재 · 체크포인트</small></h3><div id="aAI">${aiPane(n)}</div></section>
+        <section class="a-sec"><h3>AI 애널리스트 분석 <small>섹터 전문 애널리스트 관점의 핵심 요약 · 호재/악재 · 체크포인트</small></h3><div id="aAI">${aiPane(n)}</div></section>
         ${extraCards(n) ? `<section class="a-sec">${extraCards(n)}</section>` : ''}
         ${n.ticker ? `<section class="a-sec a-fin"><h3>기업 정보 <small>${n.market === 'KR' ? 'DART' : 'Nasdaq'} 기준</small></h3><div id="aCo">${coPane(n, null, { chart: false, metrics: false })}</div>
           <div class="box ftabs-box"><div class="ftabs" id="aTabs" role="tablist">${finTabs(n).map(([k, l]) => `<button role="tab" data-ftab="${k}" class="${(S.aTab || 'fin') === k ? 'on' : ''}">${l}</button>`).join('')}</div><div id="aTab">${finTabBody(n)}</div></div></section>
@@ -991,8 +991,8 @@
     return `<div class="box a-sum"><h4>${a.fallback ? '핵심 내용 (자동 요약)' : 'AI 핵심 요약'} <span class="verdict ${verdictCls(a.verdict)}">주가 영향: ${esc(a.verdict || '중립')}</span></h4>
         <ol class="sum5">${(a.summary || []).slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>
       <div class="pn-big">
-        <div class="pos"><h5><i>▲</i>긍정적 요인</h5><ul>${li(a.positive)}</ul></div>
-        <div class="neg"><h5><i>▼</i>부정적 요인</h5><ul>${li(a.negative)}</ul></div>
+        <div class="pos"><h5><i></i>긍정적 요인<em>${(a.positive || []).length}</em></h5><ul>${li(a.positive)}</ul></div>
+        <div class="neg"><h5><i></i>부정적 요인<em>${(a.negative || []).length}</em></h5><ul>${li(a.negative)}</ul></div>
       </div>
       ${a.analyst ? `<div class="box analyst"><h4>애널리스트 코멘트 ${a.sector ? `<small>${esc(a.sector)} 섹터</small>` : ''}</h4><p>${esc(a.analyst)}</p>${a.watch?.length ? `<h4 style="margin:.9rem 0 0">앞으로 체크할 포인트</h4><ul class="watch">${a.watch.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>` : ''}
       ${a.fallback ? `<p class="note">AI 분석이 잠시 준비되지 않아 원문의 핵심 문장과 키워드로 자동 정리했습니다. <button class="link" data-ai-retry>AI로 다시 분석</button></p>`

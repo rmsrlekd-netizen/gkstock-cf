@@ -115,6 +115,8 @@ globalThis.fetch = async (url, opts = {}) => {
   if (url.includes('newswire.co.kr/rss')) return rssOf([
     { t: 'SK하이닉스, 차세대 HBM4E 샘플 공급 개시', l: 'https://www.newswire.co.kr/newsRead.php?no=1', d: 'SK하이닉스가 주요 고객사에 HBM4E 샘플 공급을 시작했다고 밝혔다.', m: 12 },
     { t: 'SK hynix begins HBM4E sampling', l: 'https://www.newswire.co.kr/newsRead.php?no=2', d: 'English version', m: 12 },
+    { t: 'Oklo Announces Pricing of $400 Million Public Offering of Class A Common Stock', l: 'https://www.newswire.co.kr/newsRead.php?no=6', d: 'Oklo Inc. (NYSE: OKLO) announced the pricing.', m: 50 },
+    { t: 'YY Group Reports First Half 2026 Results', l: 'https://www.newswire.co.kr/newsRead.php?no=7', d: 'SINGAPORE--(BUSINESS WIRE)--YY Group Holding Limited (NASDAQ: YYGH) reported revenue up 26.8%.', m: 55 },
     { t: '셀트리온, 유럽서 신규 바이오시밀러 품목허가 획득', l: 'https://www.newswire.co.kr/newsRead.php?no=3', d: '셀트리온이 유럽 집행위원회로부터 품목허가를 받았다.', m: 40 },
     { t: '로빈후드, 9월 사상 최대 운영 지표 발표', l: 'https://www.newswire.co.kr/newsRead.php?no=4', d: '멘로파크--(Business Wire/뉴스와이어)--로빈후드 마켓(Robinhood Markets, Inc.)(나스닥: HOOD)가 Record September Operating Data 를 발표했다.', m: 20 },
     { t: '심포니AI, 에이전트 기반 리스크 관리 플랫폼 출시', l: 'https://www.newswire.co.kr/newsRead.php?no=5', d: '팔로 알토--(Business Wire/뉴스와이어)--심포니AI(SymphonyAI)는 새 플랫폼을 출시했다.', m: 22 },

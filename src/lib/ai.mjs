@@ -129,9 +129,9 @@ ${text.slice(0, 10000)}
 다음 JSON 하나만 출력하세요(설명 문장 없이, 모두 한국어):
 {
   "headline": "핵심 내용 한국어 한 줄 제목 (45자 이내, 숫자 포함, 회사명 제외)",
-  "summary": ["핵심 내용 5줄, 각 줄 70자 이내, 숫자·날짜 포함"],
-  "positive": ["주가에 긍정적인 요인 2~4개, 각 90자 이내"],
-  "negative": ["주가에 부정적인 요인·리스크 2~4개, 각 90자 이내"],
+  "summary": ["핵심 내용 3~5줄, 각 줄 70자 이내, 숫자·날짜 포함. 내용이 많고 중요하면 5줄, 짧거나 단순한 발표면 3줄 (억지로 채우지 말 것)"],
+  "positive": ["주가에 긍정적인 요인 1~3개, 각 70자 이내, 핵심만 간결하게"],
+  "negative": ["주가에 부정적인 요인·리스크 1~3개, 각 70자 이내, 핵심만 간결하게"],
   "analyst": "애널리스트 코멘트 2~3문장: 이번 발표의 의미와 주가 영향에 대한 종합 판단 (200자 이내)",
   "watch": ["앞으로 확인해야 할 체크포인트 2~3개, 각 60자 이내"],
   "verdict": "긍정" 또는 "중립" 또는 "부정",
@@ -143,8 +143,8 @@ ${text.slice(0, 10000)}
   return {
     headline: j.headline ? String(j.headline).slice(0, 80) : null,
     summary: arr(j.summary, 5),
-    positive: arr(j.positive, 4),
-    negative: arr(j.negative, 4),
+    positive: arr(j.positive, 3),
+    negative: arr(j.negative, 3),
     analyst: j.analyst ? String(j.analyst).slice(0, 400) : null,
     watch: arr(j.watch, 3, 120),
     verdict: ['긍정', '중립', '부정'].includes(j.verdict) ? j.verdict : '중립',

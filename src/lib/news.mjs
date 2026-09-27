@@ -147,14 +147,13 @@ async function accessWire(idx) {
   return out;
 }
 
-// 뉴스와이어(한국어): 미국 상장사 보도자료의 한국어판만 사용 (나스닥·뉴욕 티커가 확인된 것만, 한국·비상장 기업은 제외)
+// 뉴스와이어: 미국 상장사 보도자료 (영문·한국어 모두, 나스닥·뉴욕 티커가 확인된 것만. 한국·비상장 기업은 제외)
 const KO_TICK_RE = /(?:나스닥|뉴욕증권거래소|뉴욕증시|NYSE American|NYSE|NASDAQ|Nasdaq)\s*(?:GS|GM|CM|글로벌\s*셀렉트\s*마켓)?\s*[:：]\s*([A-Z][A-Z.]{0,5})\b/;
 async function newswireUs(idx) {
   const items = await rss('https://api.newswire.co.kr/rss/all');
   const out = [];
   for (const x of items) {
     const title = strip(tag(x, 'title'));
-    if (!/[가-힣]/.test(title)) continue;
     const desc = strip(tag(x, 'description'));
     let ticker = ((desc + ' ' + title).match(KO_TICK_RE) || [])[1] || null;
     let company = null;
@@ -167,25 +166,28 @@ async function newswireUs(idx) {
     }
     if (!ticker) continue;
     const link = strip(tag(x, 'link')).replace(/&sourceType=rss/, '');
-    out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: '뉴스와이어', company, ticker, ko: true });
+    out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: '뉴스와이어', company, ticker, usOk: true, ko: /[가-힣]/.test(title) });
   }
   return out;
 }
 
-// 같은 보도자료의 영문판·한국어판이 둘 다 있으면 한국어판만 남김
-// (같은 티커, 72시간 이내, 제목·요약의 숫자·영문 고유명사가 2개 이상 겹치면 같은 발표로 봄)
+// 같은 보도자료가 여러 곳에 올라오면 하나만 남김 (영문판 우선)
+//  · 영문끼리: 같은 티커 + 제목이 같으면 원 배포처(Business Wire 등)만 남기고 뉴스와이어 사본은 숨김
+//  · 한국어판: 같은 티커, 72시간 이내 영문판과 숫자·영문 고유명사가 2개 이상 겹치면 한국어판 숨김
 const COMMON = new Set(['inc', 'corp', 'nasdaq', 'nyse', 'the', 'and', 'with', 'for', 'business', 'wire', 'globe', 'newswire', 'news', 'announces', 'today', 'company', 'from']);
 const marks = (x) => new Set(((x.title + ' ' + (x.desc || '').slice(0, 200)).match(/[A-Za-z][A-Za-z0-9-]{3,}|\d[\d.,]*\d%?|\d{2,}/g) || []).map((w) => w.toLowerCase()).filter((w) => !COMMON.has(w)));
+const normT = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9가-힣]+/g, ' ').trim();
 function markDupes(items) {
-  const ko = items.filter((x) => x.src === 'PR' && x.source === '뉴스와이어' && x.ticker);
-  for (const k of ko) {
-    const km = marks(k);
+  const nw = items.filter((x) => x.src === 'PR' && x.source === '뉴스와이어' && x.ticker);
+  for (const k of nw) {
+    const km = k.ko ? marks(k) : null;
     for (const e of items) {
-      if (e === k || e.src !== 'PR' || e.source === '뉴스와이어' || e.ticker !== k.ticker || e.dupOf) continue;
+      if (e === k || e.src !== 'PR' || e.source === '뉴스와이어' || e.ticker !== k.ticker) continue;
       if (Math.abs(Date.parse(e.time) - Date.parse(k.time)) > 72 * 3600e3) continue;
+      if (!k.ko) { if (normT(e.title) === normT(k.title)) { k.dupOf = e.id; break; } continue; }
       let n = 0;
       for (const w of marks(e)) if (km.has(w)) n++;
-      if (n >= 2) e.dupOf = k.id;
+      if (n >= 2) { k.dupOf = e.id; break; }
     }
   }
 }
@@ -255,7 +257,7 @@ export async function collectNews() {
   }));
   const prev = (await getJSON('news/feed')) || { items: [] };
   // 한국 보도자료는 저장하지 않음 (예전 저장분도 제거). 뉴스와이어는 미국 티커가 확인된 것만 남김
-  const isKrPR = (x) => x.src === 'PR' && (x.market === 'KR' || (x.source === '뉴스와이어' && !x.ko));
+  const isKrPR = (x) => x.src === 'PR' && (x.market === 'KR' || (x.source === '뉴스와이어' && !x.usOk && !x.ko));
   const byId = new Map(prev.items.filter((x) => !isKrPR(x)).map((x) => [x.id, x]));
   for (const it of fresh) {
     if (isKrPR(it)) continue;
