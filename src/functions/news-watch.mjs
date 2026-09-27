@@ -13,7 +13,7 @@ export default async () => {
     const feed = await collectNews();
     if (hasAI()) {
       const need = feed.items.filter((x) => x.market === 'US' && !x.titleKo && !/[가-힣]/.test(x.title) && (x.koTries || 0) < 2).slice(0, 25);
-      if (need.length && Date.now() - started < 12000) {
+      if (need.length && Date.now() - started < 60000) {
         const cur = await getJSON('news/feed');
         try {
           const ko = await translateTitles(need);

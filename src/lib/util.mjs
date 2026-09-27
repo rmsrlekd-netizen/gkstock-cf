@@ -16,8 +16,8 @@ export function json(data, { cdnSeconds = 20, swr = 60, status = 200 } = {}) {
   });
 }
 
-// 한국 사이트(DART·KRX)가 Cloudflare 서버 접속을 막을 때: KR_RELAY_URL(중계 서버)을 거쳐 요청
-const KR_HOSTS = /(^|\.)(fss\.or\.kr|krx\.co\.kr)$/i;
+// Cloudflare 서버 접속을 막는 사이트(DART·KRX·네이버·GlobeNewswire): KR_RELAY_URL(중계 서버, 서울)을 거쳐 요청
+const KR_HOSTS = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com|globenewswire\.com)$/i;
 export async function fetchWithTimeout(url, opts = {}, ms = 9000) {
   const ctrl = new AbortController();
   let u = String(url);
