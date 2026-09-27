@@ -22,7 +22,7 @@ async function checks() {
 
   const age = (f) => (f?.updatedAt ? now - Date.parse(f.updatedAt) : Infinity);
   const secLimit = usBusy ? 20 * MIN : 75 * MIN;
-  add('sec', '미국 SEC 공시 수집', age(sec) < secLimit && !(sec?.errors || []).length, `마지막 수집 ${ago(age(sec))}${(sec?.errors || []).length ? ' · 오류: ' + sec.errors.join(' / ').slice(0, 160) : ''}`);
+  add('sec', '미국 SEC 공시 수집', age(sec) < secLimit && !(sec?.errors || []).length, `마지막 수집 ${ago(age(sec))}${(sec?.errors || []).length ? ' · 오류: ' + sec.errors.join(' / ').slice(0, 160) : ''}${(sec?.skipped || []).length ? ' · SEC 응답이 느려 드문 서식(' + sec.skipped.join(', ') + ')은 다음 회차에 먼저 수집' : ''}`);
   const dartLimit = krBusy ? 20 * MIN : 75 * MIN;
   // DART 지연 = 우리가 처음 발견한 시각 - DART 공식 접수 시각(분 단위) (최근 24시간 중앙값)
   const dl = (dart?.items || []).filter((x) => x.seenLive && x.seenAt && x.timeMin && x.timeMin !== 'na' && now - Date.parse(x.seenAt) < 24 * 3600e3)

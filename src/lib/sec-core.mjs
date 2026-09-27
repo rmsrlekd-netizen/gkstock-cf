@@ -44,17 +44,21 @@ async function getCurrent(type, count) {
 const FAST_TYPES = ['8-K', '4', '6-K', 'SCHEDULE 13', '424B', '144'];
 const SLOW_TYPES = ['10-Q', '10-K', '20-F', 'S-1', 'F-1', 'S-3', '13F-HR', '25', 'SC 13'];
 
-export async function collectSec({ spacing = 120, all = false, budget = 12000, fastOnly = false } = {}) {
+export async function collectSec({ spacing = 120, all = false, budget = 12000, fastOnly = false, first = [] } = {}) {
   const map = await getTickerMap();
   const raw = [];
   const errors = [];
   const minute = Math.floor(Date.now() / 60e3);
-  const types = fastOnly ? FAST_TYPES : all ? [...FAST_TYPES, ...SLOW_TYPES] : [...FAST_TYPES, ...SLOW_TYPES.filter((_, i) => (minute + i) % 3 === 0)];
+  let slow = fastOnly ? [] : all ? [...SLOW_TYPES] : SLOW_TYPES.filter((_, i) => (minute + i) % 3 === 0);
+  // 지난번에 시간이 모자라 못 본 서식을 먼저 조회
+  if (first.length) slow = [...first.filter((t) => slow.includes(t)), ...slow.filter((t) => !first.includes(t))];
+  const types = [...FAST_TYPES, ...slow];
   const until = Date.now() + budget;
-  // 동시에 여러 개를 보내면 SEC가 느려지므로 두 개씩 나눠서 조회
-  for (let i = 0; i < types.length; i += 2) {
-    if (Date.now() > until) { errors.push('시간 초과로 일부 서식 생략: ' + types.slice(i).join(', ')); break; }
-    await Promise.all(types.slice(i, i + 2).map(async (t) => {
+  let skipped = [];
+  // 세 개씩 나눠서 조회 (SEC 초당 10회 제한 안)
+  for (let i = 0; i < types.length; i += 3) {
+    if (Date.now() > until) { skipped = types.slice(i); break; }
+    await Promise.all(types.slice(i, i + 3).map(async (t) => {
       try {
         raw.push(...(await getCurrent(t, t === '4' ? 100 : 60)));
       } catch (e) {
@@ -64,7 +68,7 @@ export async function collectSec({ spacing = 120, all = false, budget = 12000, f
     await sleep(spacing);
   }
   if (!raw.length && errors.length) throw new Error(errors.join(' / '));
-  return { items: buildFeed(raw, map), errors };
+  return { items: buildFeed(raw, map), errors, skipped };
 }
 
 /** Form 4 원문을 읽어 매수/매도 수량·금액을 붙임 */
@@ -152,12 +156,14 @@ export function mergeFeed(prev = [], next = []) {
 export async function runSecWatch() {
   const started = Date.now();
   const prev = (await getJSON('sec/feed')) || { items: [] };
-  const { items, errors } = await collectSec({ all: true, budget: 14000 });
+  const first = (await getJSON('sec/skipped'))?.types || [];
+  const { items, errors, skipped } = await collectSec({ all: true, budget: 14000, first });
+  await setJSON('sec/skipped', { types: skipped, at: Date.now() }).catch(() => {});
   const merged = mergeFeed(prev.items, items);
   const enriched = await enrichForm4(merged, { max: 20, deadline: started + 15000 });
   const docs = await enrichDocs(merged, { max: 14, deadline: started + 20000 });
   const aiError = merged._aiError || null;
   delete merged._aiError;
-  await setJSON('sec/feed', { updatedAt: new Date().toISOString(), errors, aiError, items: merged });
+  await setJSON('sec/feed', { updatedAt: new Date().toISOString(), errors, skipped, aiError, items: merged });
   return { count: merged.length, fresh: items.length, enriched, docs, errors, ms: Date.now() - started };
 }
