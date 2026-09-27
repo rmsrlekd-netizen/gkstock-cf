@@ -116,7 +116,9 @@ async function handle(id) {
   let aiError = hasAI() ? null : 'AI 키(GEMINI_API_KEY 또는 ANTHROPIC_API_KEY)가 설정되지 않았습니다';
   // 같은 공시가 방금(15분 안) AI 분석에 실패했으면 다시 부르지 않고 자동 요약으로 (한도 절약)
   const failed = await getJSON(`aifail/${id}`);
-  const recentFail = failed && Date.now() - failed.at < 15 * 60e3;
+  // AI가 그 뒤에 한 번이라도 성공했으면(한도·결제 문제 해결) 바로 다시 시도
+  const lastOk = failed ? await getJSON('ai/lastOk') : null;
+  const recentFail = failed && Date.now() - failed.at < 15 * 60e3 && !(lastOk?.at > failed.at);
   if (recentFail) aiError = failed.error;
   if (hasAI() && text.length >= 15 && !recentFail) {
     try {

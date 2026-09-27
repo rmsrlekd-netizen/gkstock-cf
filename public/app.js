@@ -1217,7 +1217,7 @@
     const a = S.ai.get(n.id);
     if (!a) return `<div class="box"><h4>AI 분석</h4><div class="loading"><span class="spin"></span>섹터 애널리스트 AI가 원문과 재무·최근 공시 흐름을 함께 검토하는 중… (처음 여는 항목은 20~40초, 한 번 분석하면 바로 열립니다)</div></div>`;
     if (a.error) return `<div class="box"><h4>AI 분석</h4><p class="err">분석하지 못했습니다: ${esc(a.error)}</p><button class="btn sm" data-ai-retry>다시 시도</button></div>`;
-    const li = (arr) => (arr && arr.length ? arr.map((x) => `<li>${esc(x)}</li>`).join('') : '<li class="muted">뚜렷한 요인 없음</li>');
+    const li = (arr) => (arr && arr.length ? arr.map((x) => `<li>${esc(x)}</li>`).join('') : `<li class="muted">${a.fallback ? 'AI 분석이 끝나면 표시됩니다' : '뚜렷한 요인 없음'}</li>`);
     return `<div class="box a-sum"><h4>${a.fallback ? '핵심 내용 (자동 요약)' : 'AI 핵심 요약'} <span class="verdict ${verdictCls(a.verdict)}">주가 영향: ${esc(a.verdict || '중립')}</span></h4>
         <ol class="sum5">${(a.summary || []).slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>
       <div class="pn-big">
@@ -1253,16 +1253,19 @@
   document.addEventListener('touchstart', (e) => { const el = e.target.closest?.('[data-id]'); if (el) prefetchItem(el.dataset.id); }, { passive: true });
 
   async function loadAI(n, force) {
-    if (S.ai.has(n.id) && !force && !S.ai.get(n.id).error) { if (S.sel === n.id && $('#aAI')) $('#aAI').innerHTML = aiPane(n); return; }
+    const had = S.ai.get(n.id);
+    if (had && !force && !had.error && !had.fallback) { if (S.sel === n.id && $('#aAI')) $('#aAI').innerHTML = aiPane(n); return; }
     S.ai.delete(n.id);
     if (S.sel === n.id && $('#aAI')) $('#aAI').innerHTML = aiPane(n);
     let a;
     const pre = !force && aiPending.get(n.id);
-    try { a = pre ? await pre : await getJSON(`/api/analyze?id=${encodeURIComponent(n.id)}${force ? '&r=' + Date.now() : ''}`, force ? { cache: 'no-store' } : {}); }
+    const fresh = force || had?.fallback; // 자동 요약이었으면 AI로 다시 요청
+    try { a = pre && !fresh ? await pre : await getJSON(`/api/analyze?id=${encodeURIComponent(n.id)}${fresh ? '&r=' + Date.now() : ''}`, fresh ? { cache: 'no-store' } : {}); }
     catch (e) { a = { error: e.message }; }
     aiPending.delete(n.id);
     S.ai.set(n.id, a);
     applyAI(n);
+    if (a.fallback && !force && !n._aiAuto) { n._aiAuto = true; setTimeout(() => { if (S.sel === n.id && S.view === 'item' && S.ai.get(n.id)?.fallback) loadAI(n, true); }, 20000); }
     if (S.sel !== n.id || S.view !== 'item') return;
     $('#aAI').innerHTML = aiPane(n);
     $('#aHead').textContent = n.head;
