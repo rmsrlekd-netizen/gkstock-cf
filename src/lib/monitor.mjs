@@ -24,7 +24,11 @@ async function checks() {
   const secLimit = usBusy ? 20 * MIN : 75 * MIN;
   add('sec', '미국 SEC 공시 수집', age(sec) < secLimit && !(sec?.errors || []).length, `마지막 수집 ${ago(age(sec))}${(sec?.errors || []).length ? ' · 오류: ' + sec.errors.join(' / ').slice(0, 160) : ''}`);
   const dartLimit = krBusy ? 20 * MIN : 75 * MIN;
-  add('dart', '한국 DART 공시 수집', age(dart) < dartLimit && !(dart?.errors || []).length, `마지막 수집 ${ago(age(dart))}${(dart?.errors || []).length ? ' · 오류: ' + dart.errors.join(' / ').slice(0, 160) : ''}`);
+  // DART 지연 = 우리가 처음 발견한 시각 - DART 공식 접수 시각(분 단위) (최근 24시간 중앙값)
+  const dl = (dart?.items || []).filter((x) => x.seenLive && x.seenAt && x.timeMin && x.timeMin !== 'na' && now - Date.parse(x.seenAt) < 24 * 3600e3)
+    .map((x) => (Date.parse(x.seenAt) - Date.parse(x.timeMin.replace(' ', 'T') + ':00+09:00')) / 60e3 - 0.5).filter((v) => v > -2 && v < 600).sort((a, b) => a - b);
+  const dMed = dl.length ? dl[Math.floor(dl.length / 2)] : null;
+  add('dart', '한국 DART 공시 수집', age(dart) < dartLimit && !(dart?.errors || []).length, `마지막 수집 ${ago(age(dart))}${dMed != null ? ` · 접수 후 평균 지연 약 ${Math.max(0, dMed).toFixed(1)}분 (${dl.length}건)` : ''}${(dart?.errors || []).length ? ' · 오류: ' + dart.errors.join(' / ').slice(0, 160) : ''}`);
   const nErr = news?.errors || [];
   const prDay = (news?.items || []).filter((x) => x.src === 'PR' && now - Date.parse(x.time) < 24 * 3600e3).length;
   // 보도자료 지연 = 우리가 처음 가져온 시각 - 원래 발표 시각 (최근 24시간 중앙값)
