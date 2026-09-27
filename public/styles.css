@@ -727,3 +727,8 @@ main { padding: 1.3rem 1.5rem 2rem; max-width: 1640px; margin: 0 auto; }
 .apoints h6 { margin: 0 0 .35rem; font-size: .8rem; color: #c4b5fd; font-weight: 800; letter-spacing: .01em; }
 .apoints p { margin: 0; font-size: .9rem; line-height: 1.65; color: var(--text2); }
 @media (max-width: 720px) { .apoints { grid-template-columns: 1fr; } }
+
+/* ── v11: 긍정/부정 요인 글씨를 진한 흰색으로 ── */
+.pn-big li { color: #ffffff !important; font-weight: 600; font-size: .94rem; }
+.pn-big li.muted { color: var(--text2) !important; font-weight: 500; }
+.pn-big h5 { color: #ffffff !important; font-size: .98rem; }
