@@ -1,7 +1,7 @@
 // 미리 분석: 새로 들어온 중요한 공시·보도자료를 수집 직후 AI로 미리 분석하고 기업 정보도 미리 받아둠
 // → 방문자가 눌렀을 때 기다림 없이 바로 표시 (결과는 저장되어 모두가 재사용)
 import { getJSON, setJSON } from './store.mjs';
-import { hasAI } from './ai.mjs';
+import { hasAI, aiPauseInfo } from './ai.mjs';
 import { kstDate } from './util.mjs';
 
 const DAILY_MAX = Number(process.env.PREWARM_DAILY_MAX || 500); // AI 미리 분석 하루 최대 건수 (요금·한도 보호)
@@ -22,6 +22,7 @@ async function runOne(it) {
 /** items: 후보 목록(최신순). max: 이번에 분석할 최대 건수. budgetMs: 시간 제한 */
 export async function prewarm(items, { max = 3, budgetMs = 45000 } = {}) {
   if (!hasAI() || !items.length) return 0;
+  if (await aiPauseInfo()) return 0; // 한도 초과로 쉬는 중이면 미리 분석도 쉼
   const dayKey = `prewarm/count/${kstDate(0)}`;
   const cnt = (await getJSON(dayKey))?.n || 0;
   if (cnt >= DAILY_MAX) return 0;

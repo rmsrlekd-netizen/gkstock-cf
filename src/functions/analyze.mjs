@@ -114,7 +114,11 @@ async function handle(id) {
   }
   const text = (doc.lines || []).join('\n');
   let aiError = hasAI() ? null : 'AI 키(GEMINI_API_KEY 또는 ANTHROPIC_API_KEY)가 설정되지 않았습니다';
-  if (hasAI() && text.length >= 15) {
+  // 같은 공시가 방금(15분 안) AI 분석에 실패했으면 다시 부르지 않고 자동 요약으로 (한도 절약)
+  const failed = await getJSON(`aifail/${id}`);
+  const recentFail = failed && Date.now() - failed.at < 15 * 60e3;
+  if (recentFail) aiError = failed.error;
+  if (hasAI() && text.length >= 15 && !recentFail) {
     try {
       const src = it.src === 'DART' || it.market === 'KR' ? 'KR' : 'US';
       const ck = src === 'KR' ? it.corpCode : (it.ticker || '').toUpperCase();
@@ -134,7 +138,8 @@ async function handle(id) {
       return json({ ok: true, ...out }, { cdnSeconds: 86400, swr: 86400 });
     } catch (e) {
       aiError = String(e.message || e).slice(0, 300);
-      await setJSON('ai/lastError', { at: Date.now(), id, error: aiError }).catch(() => {});
+      await setJSON(`aifail/${id}`, { at: Date.now(), error: aiError }).catch(() => {});
+      if (!/잠시 쉬는 중/.test(aiError)) await setJSON('ai/lastError', { at: Date.now(), id, error: aiError }).catch(() => {});
     }
   } else if (text.length < 15) aiError = aiError || '원문 내용이 비어 있습니다';
   // AI 실패 → 규칙 기반 요약 (저장하지 않음: 다음에 AI 재시도)

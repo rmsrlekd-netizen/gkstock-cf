@@ -1691,6 +1691,36 @@
     } catch (e) { msg(e.message); }
   }
 
+  // ───────────────────────── 앱 설치 (홈 화면·바탕화면에 추가) ─────────────────────────
+  function setupInstall() {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    const btn = $('#btnInstall');
+    if (!btn) return;
+    const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    if (standalone) return; // 이미 앱으로 실행 중
+    const ua = navigator.userAgent;
+    const ios = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    let deferred = null;
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferred = e; btn.hidden = false; });
+    window.addEventListener('appinstalled', () => { btn.hidden = true; deferred = null; toast('앱으로 설치되었습니다'); });
+    if (ios) btn.hidden = false; // 아이폰은 설치 창이 없어서 방법 안내
+    btn.addEventListener('click', async () => {
+      if (deferred) {
+        deferred.prompt();
+        const r = await deferred.userChoice.catch(() => null);
+        if (r?.outcome === 'accepted') btn.hidden = true;
+        deferred = null;
+        return;
+      }
+      const inApp = /KAKAOTALK|NAVER\(|Instagram|FBAN|FBAV|Line\//i.test(ua);
+      openModal(`<h2>앱으로 설치하기</h2>
+        ${inApp ? '<p class="note">지금은 카카오톡·네이버 등 앱 안의 브라우저라 설치가 안 됩니다. 오른쪽 위 메뉴에서 <b>"다른 브라우저로 열기"</b>를 누른 뒤 아래 방법으로 설치하세요.</p>' : ''}
+        ${ios ? `<ol class="inst-steps"><li><b>사파리</b>로 gk-stock.com 을 엽니다</li><li>아래쪽(또는 위쪽)의 <b>공유 버튼</b> <span class="ib">⬆︎</span> 을 누릅니다</li><li><b>"홈 화면에 추가"</b>를 누릅니다</li><li>오른쪽 위 <b>"추가"</b>를 누르면 끝</li></ol>`
+        : `<ol class="inst-steps"><li><b>크롬</b>으로 gk-stock.com 을 엽니다</li><li>주소창 오른쪽의 <b>설치 아이콘</b> 또는 <b>⋮ 메뉴 → "앱 설치" / "홈 화면에 추가"</b>를 누릅니다</li><li><b>"설치"</b>를 누르면 바탕화면·홈 화면에 아이콘이 생깁니다</li></ol>`}
+        <p class="note">설치하면 주소창 없이 앱처럼 바로 열리고, 관심종목 알림도 받을 수 있습니다.</p>`);
+    });
+  }
+
   // ───────────────────────── 이벤트 ─────────────────────────
   function bind() {
     $('#mkSeg').addEventListener('click', (e) => { const b = e.target.closest('button[data-mk]'); if (!b) return; S.mk = b.dataset.mk; S.limit = 80; renderAll(); });
@@ -1797,6 +1827,7 @@
   window.addEventListener('resize', fitSide);
   if (window.ResizeObserver && $('.side')) new ResizeObserver(fitSide).observe($('.side'));
   document.getElementById('ssr')?.remove(); // 검색엔진용 미리보기 글은 앱이 뜨면 치움
+  setupInstall();
   bind();
   loadSnap();
   trackPV();

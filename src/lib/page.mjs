@@ -41,6 +41,10 @@ export async function renderItemPage(env, req, id) {
     .replace(/<meta property="og:description" content="[^"]*" \/>/, `<meta property="og:description" content="${esc(desc)}" />`)
     .replace(/<meta name="twitter:title" content="[^"]*" \/>/, `<meta name="twitter:title" content="${esc(t.slice(0, 70))}" />`)
     .replace(/<meta name="twitter:description" content="[^"]*" \/>/, `<meta name="twitter:description" content="${esc(desc)}" />`)
+    // 공유 미리보기 이미지: 로고 대신 이 공시 카드 (제목·AI 요약)
+    .replace(/<meta property="og:image" content="[^"]*" \/>/, `<meta property="og:image" content="${ORIGIN}/og/${id}.png${ai ? '?v=a' : ''}" />\n  <meta property="og:image:width" content="1200" />\n  <meta property="og:image:height" content="630" />`)
+    .replace(/<meta name="twitter:card" content="[^"]*" \/>/, '<meta name="twitter:card" content="summary_large_image" />')
+    .replace(/<meta name="twitter:image" content="[^"]*" \/>/, `<meta name="twitter:image" content="${ORIGIN}/og/${id}.png${ai ? '?v=a' : ''}" />`)
     .replace('</head>', `<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>\n</head>`)
     .replace(/<noscript>[\s\S]*?<\/noscript>/, body);
   return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=120', 'x-gk-edge-ttl': '300' } });

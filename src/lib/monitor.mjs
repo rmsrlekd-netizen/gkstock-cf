@@ -16,7 +16,7 @@ async function checks() {
   const us = zoned('America/New_York'), kr = zoned('Asia/Seoul');
   const usBusy = weekday(us) && us.m >= 240 && us.m <= 1230;
   const krBusy = weekday(kr) && kr.m >= 420 && kr.m <= 1230;
-  const [sec, dart, news, market, popular, aiErr, aiOk] = await Promise.all(['sec/feed', 'dart/feed', 'news/feed', 'market/v1', 'popular/v2', 'ai/lastError', 'ai/lastOk'].map((k) => getJSON(k)));
+  const [sec, dart, news, market, popular, aiErr, aiOk, aiPause] = await Promise.all(['sec/feed', 'dart/feed', 'news/feed', 'market/v1', 'popular/v2', 'ai/lastError', 'ai/lastOk', 'ai/pause'].map((k) => getJSON(k)));
   const out = [];
   const add = (key, name, ok, msg) => out.push({ key, name, ok, msg });
 
@@ -34,7 +34,8 @@ async function checks() {
   const pAge = popular?.at ? now - popular.at : Infinity;
   add('popular', '실시간 인기 종목', pAge < 30 * MIN && (popular?.kr || []).length > 0 && (popular?.us || []).length > 0, `마지막 갱신 ${ago(pAge)} · 국내 ${(popular?.kr || []).length}개 · 미국 ${(popular?.us || []).length}개`);
   const errRecent = aiErr?.at && now - aiErr.at < 60 * MIN && (!aiOk?.at || aiErr.at > aiOk.at);
-  add('ai', 'AI 분석 (Gemini)', !errRecent, errRecent ? `최근 실패 ${ago(now - aiErr.at)}: ${String(aiErr.error).slice(0, 180)}` : `마지막 성공 ${aiOk?.at ? ago(now - aiOk.at) : '기록 없음'}`);
+  const paused = aiPause?.until > now;
+  add('ai', 'AI 분석 (Gemini)', !errRecent && !paused, paused ? `${aiPause.reason || '한도 초과'} → ${Math.ceil((aiPause.until - now) / 60e3)}분 동안 AI 호출 중지 (그동안은 자동 요약). 반복되면 Gemini 결제(유료 전환) 필요` : errRecent ? `최근 실패 ${ago(now - aiErr.at)}: ${String(aiErr.error).slice(0, 180)}` : `마지막 성공 ${aiOk?.at ? ago(now - aiOk.at) : '기록 없음'}`);
   return out;
 }
 

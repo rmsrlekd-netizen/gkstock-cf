@@ -28,6 +28,7 @@ import * as track from './functions/track.mjs';
 import * as admin from './functions/admin.mjs';
 import * as item from './functions/item.mjs';
 import { renderItemPage, sitemap } from './lib/page.mjs';
+import { renderOgImage } from './lib/og.mjs';
 import secWatch from './functions/sec-watch.mjs';
 import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
@@ -93,6 +94,8 @@ export default {
     // 공시별 고유 주소 페이지 (/p/SEC-…, /p/DART-…, /p/PR-…) · 사이트맵
     const pm = url.pathname.match(/^\/p\/((?:SEC|DART)-[\d-]+|(?:NEWS|PR)-[a-z0-9]+)\/?$/);
     if (pm && req.method === 'GET') return cached(req, ctx, () => renderItemPage(env, req, pm[1]));
+    const om = url.pathname.match(/^\/og\/((?:SEC|DART)-[\d-]+|(?:NEWS|PR)-[a-z0-9]+)\.png$/);
+    if (om && req.method === 'GET') return cached(req, ctx, () => renderOgImage(ctx, om[1]).catch((e) => { console.error('og', e); return env.ASSETS.fetch(new Request(new URL('/img/icon-512.png', req.url))); }));
     if (url.pathname === '/sitemap-pages.xml') return cached(req, ctx, () => sitemap());
     // www 주소로 들어오면 대표 주소로
     if (url.hostname === 'www.gk-stock.com') return Response.redirect('https://gk-stock.com' + url.pathname + url.search, 301);

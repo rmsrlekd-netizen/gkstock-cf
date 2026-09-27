@@ -822,3 +822,20 @@ body::before {
 @media (max-width: 900px) { .adm-kpis, .adm-grid { grid-template-columns: 1fr; } }
 .adm-mon td, .adm-mon th { text-align: left !important; font-family: var(--sans) !important; }
 .adm-mon td:last-child { color: var(--text2); }
+
+/* ── v15: 앱 설치 버튼 ── */
+.btn-install { display: inline-flex; align-items: center; gap: .35rem; height: 2.4rem; padding: 0 .85rem; border-radius: 11px; font-weight: 800; font-size: .82rem; color: #fff; background: linear-gradient(135deg, var(--purple), #4f7dff); box-shadow: 0 4px 14px rgba(139,108,255,.35); white-space: nowrap; flex: none; }
+.btn-install svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.btn-install:hover { filter: brightness(1.1); }
+.btn-install[hidden] { display: none; }
+.inst-steps { padding-left: 1.2rem; display: grid; gap: .55rem; font-size: .98rem; line-height: 1.6; }
+.inst-steps .ib { display: inline-block; padding: 0 .35rem; border-radius: 6px; background: rgba(255,255,255,.1); }
+@media (max-width: 720px) {
+  .btn-install { height: 2.3rem; padding: 0 .55rem; font-size: .75rem; gap: .2rem; }
+}
+@media (max-width: 720px) {
+  .hdr-right { min-width: 0; }
+  .hdr-right .search { flex: 1 1 auto; min-width: 0; width: auto; }
+  .hdr-right .search kbd { display: none; }
+  .hdr-right .ico, .btn-install { flex: none; }
+}
