@@ -1,0 +1,14 @@
+{
+  "name": "gkstock",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node test/parse.test.mjs && node test/dart-doc.test.mjs && node test/gfin.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.141.0"
+  }
+}

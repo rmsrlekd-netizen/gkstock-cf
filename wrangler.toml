@@ -1,0 +1,26 @@
+# GK 공시레이더 — Cloudflare Workers 설정
+name = "gkstock"
+main = "src/worker.mjs"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 대시보드에서 넣은 변수를 배포 때 지우지 않도록
+keep_vars = true
+
+# 화면 파일 (index.html, app.js, styles.css, img/)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# 저장소: D1 데이터베이스 (처음 배포할 때 자동으로 만들어짐 — database_id 입력 불필요)
+[[d1_databases]]
+binding = "DB"
+database_name = "gkstock-db"
+
+# 수집기: 10분마다 (SEC → 3분 뒤 DART → 3분 뒤 뉴스)
+[triggers]
+crons = ["*/10 * * * *", "3-59/10 * * * *", "6-59/10 * * * *"]
+
+# 로그 보기 (Cloudflare 대시보드 → Workers → gkstock → Logs)
+[observability]
+enabled = true

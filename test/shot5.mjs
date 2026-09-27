@@ -1,0 +1,14 @@
+import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch(); const errs = [];
+const p = await b.newPage({ viewport: { width: 1440, height: 950 } });
+p.on('pageerror', (e) => errs.push('P ' + e.message));
+await p.goto('http://localhost:8788/'); await p.waitForTimeout(3000);
+await p.click('.row[data-id^="PR"]'); await p.waitForTimeout(2000);
+await p.screenshot({ path: '/tmp/f1.png' });
+await p.click('.row[data-id^="SEC"] .star'); await p.click('[data-view="watch"]'); await p.waitForTimeout(1200);
+await p.screenshot({ path: '/tmp/f2.png', clip: { x: 0, y: 0, width: 1440, height: 700 } });
+await p.click('#btnUser'); await p.waitForTimeout(300); await p.click('[data-fs="fs-xl"]'); await p.waitForTimeout(300);
+await p.screenshot({ path: '/tmp/f3.png' });
+await p.click('[data-close-modal]'); await p.click('#moreBtn'); await p.click('#moreMenu [data-view="flows"]'); await p.waitForTimeout(800);
+await p.screenshot({ path: '/tmp/f4.png', clip: { x: 0, y: 0, width: 1440, height: 700 } });
+console.log('ERR', errs); await b.close();

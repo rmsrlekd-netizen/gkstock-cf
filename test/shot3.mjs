@@ -1,0 +1,18 @@
+import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch(); const errs=[];
+const p = await b.newPage({ viewport: { width: 1480, height: 1000 } });
+p.on('pageerror', (e) => errs.push(e.message));
+await p.goto('http://localhost:8787/'); await p.waitForTimeout(2500);
+await p.screenshot({ path: '/tmp/e1.png', clip:{x:0,y:0,width:1480,height:280} });
+await p.click('.row[data-id="DART-20260926800100"]'); await p.waitForTimeout(2500);
+await p.screenshot({ path: '/tmp/e2.png' });
+await p.evaluate(() => document.querySelector('#drawer').scrollTo(0, 700)); await p.waitForTimeout(300);
+await p.screenshot({ path: '/tmp/e3.png' });
+await p.keyboard.press('Escape');
+await p.click('.row[data-id^="SEC-0000000234"]'); await p.waitForTimeout(2500);
+await p.screenshot({ path: '/tmp/e4.png' });
+const m = await b.newPage({ viewport: { width: 390, height: 844 } });
+await m.goto('http://localhost:8787/'); await m.waitForTimeout(2000);
+await m.click('.row[data-id="DART-20260926800100"]'); await m.waitForTimeout(2500);
+await m.screenshot({ path: '/tmp/e5.png' });
+console.log('ERR', errs); await b.close();

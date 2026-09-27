@@ -1,0 +1,10 @@
+import fs from 'fs';
+import { parseAtom, buildFeed, buildTickerMap } from '../src/lib/sec-parse.mjs';
+const raw = parseAtom(fs.readFileSync(new URL('./sample.atom', import.meta.url), 'utf8'));
+const map = buildTickerMap({ fields: ['cik','name','ticker','exchange'], data: [[320193,'Apple Inc.','AAPL','Nasdaq']] });
+const feed = buildFeed(raw, map);
+console.log(JSON.stringify(feed, null, 1));
+if (feed.length !== 2) throw new Error('expected 2');
+if (feed[0].party !== 'Cook Timothy D' || feed[0].ticker !== 'AAPL') throw new Error('form4 merge');
+if (feed[1].category !== 'earnings' || feed[1].impact !== 5) throw new Error('8-K');
+console.log('PASS');
