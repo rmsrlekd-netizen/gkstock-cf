@@ -44,6 +44,7 @@ gkstock-cf/
 | `ADMIN_KEY` | 관리자 화면(gk-stock.com/#admin) 비밀번호 — 방문 통계·게시물 조회수·고장 감시 | 권장 |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | 고장 감시 텔레그램 알림 | 선택 |
 | `PREWARM_DAILY_MAX` | AI 미리 분석 하루 최대 건수 (기본 500) | 선택 |
+| `BACKFILL_DAYS` | 과거 공시를 며칠 전까지 채울지 (기본 90, 최대 365) | 선택 |
 
 ## 점검
 

@@ -12,8 +12,9 @@ export async function findFiling(id) {
   const feed = await getJSON(key);
   const hit = (feed?.items || []).find((x) => x.id === id);
   if (hit) return hit;
-  // 피드에서 빠진 오래된 항목은 저장해 둔 사본으로 (공시별 고유 주소 페이지용)
-  return (await getJSON(`pg/${id}`))?.item || null;
+  // 피드에서 빠진 오래된 항목은 영구 보관소 → 예전 저장본 순서로
+  const { getArchived } = await import('./archive.mjs');
+  return (await getArchived(id).catch(() => null)) || (await getJSON(`pg/${id}`))?.item || null;
 }
 
 /** 공시별 페이지용 사본 저장 (없을 때만) */

@@ -27,6 +27,7 @@ import * as views from './functions/views.mjs';
 import * as track from './functions/track.mjs';
 import * as admin from './functions/admin.mjs';
 import * as item from './functions/item.mjs';
+import * as archive from './functions/archive.mjs';
 import { renderItemPage, sitemap } from './lib/page.mjs';
 import { renderOgImage } from './lib/og.mjs';
 import secWatch from './functions/sec-watch.mjs';
@@ -34,7 +35,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive]) {
   ROUTES[m.config.path] = m.default;
 }
 

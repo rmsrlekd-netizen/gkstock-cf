@@ -2,6 +2,8 @@
 import { runSecWatch } from '../lib/sec-core.mjs';
 import { getJSON } from '../lib/store.mjs';
 import { capturePx0 } from '../lib/px0.mjs';
+import { archiveItems } from '../lib/archive.mjs';
+import { backfillStep } from '../lib/backfill.mjs';
 import { prewarm, pickSec } from '../lib/prewarm.mjs';
 
 export default async () => {
@@ -10,9 +12,13 @@ export default async () => {
     console.log('sec-watch', JSON.stringify(r));
     const feedNow = (await getJSON('sec/feed'))?.items;
     await capturePx0(feedNow).catch((e) => console.warn('px0', e.message)); // 발표 시점 주가 기록
+    await archiveItems(feedNow).catch((e) => console.warn('archive', e.message)); // 영구 보관 (지우지 않음)
     // 새 중요 공시는 AI 분석·기업 정보를 미리 준비
     const n = await prewarm(pickSec((await getJSON('sec/feed'))?.items), { max: 3 }).catch((e) => console.warn('prewarm', e.message));
     if (n) console.log('sec prewarm', n);
+    // 남는 시간에 과거 공시 채우기 (하루치씩 거슬러 올라감)
+    const b = await backfillStep('sec', { budgetMs: 20000 }).catch((e) => console.warn('backfill', e.message));
+    if (b) console.log('sec backfill', b);
   } catch (e) {
     console.error('sec-watch failed', e);
   }

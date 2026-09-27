@@ -6,6 +6,7 @@ import { getJSON } from '../lib/store.mjs';
 import { report, itemViews } from '../lib/stats.mjs';
 import { runMonitor, telegram } from '../lib/monitor.mjs';
 import { fetchWithTimeout } from '../lib/util.mjs';
+import { archiveStats } from '../lib/archive.mjs';
 
 const J = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 
@@ -39,7 +40,8 @@ export default async (req) => {
     return { title: x.ko?.title || x.summary?.title || x.titleKo || x.pr?.headline || x.title || x.titleClean || x.formKo || id, name: x.name || x.company || '', ticker: x.ticker || '', market: x.market || (x.src === 'DART' ? 'KR' : 'US') };
   };
   rep.topItems = await Promise.all(rep.topItems.map(async (x) => ({ ...x, ...(await titleOf(x.id)) })));
-  return J({ ok: true, ...rep, monitor: mon, telegram: { token: !!process.env.TELEGRAM_BOT_TOKEN, chat: !!process.env.TELEGRAM_CHAT_ID } });
+  const [arch, bf] = await Promise.all([archiveStats().catch((e) => ({ error: e.message })), getJSON('backfill/state')]);
+  return J({ ok: true, ...rep, archive: arch, backfill: bf, monitor: mon, telegram: { token: !!process.env.TELEGRAM_BOT_TOKEN, chat: !!process.env.TELEGRAM_CHAT_ID } });
 };
 
 export const config = { path: '/api/admin' };

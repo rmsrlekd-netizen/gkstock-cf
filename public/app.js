@@ -38,7 +38,7 @@
     flowTab: load('gk_flowtab', 'usInsider'), flowSide: 'buy', insiderSide: 'all',
     watch: load('gk_watch2', []),
     sound: load('gk_sound', false), notify: load('gk_notify', false), fs: load('gk_fs', 'fs-l'),
-    bell: [], booted: false, fresh: new Set(), tr: {}, trPending: new Set(), real: {}, hiddenPoll: {}, watchAlert: load('gk_watchAlert', true), extra: new Map(), extraTried: new Map(), admin: load('gk_admin', ''), trdoc: new Map(), docLang: 'ko', aTab: 'fin', digests: {}, digestMk: load('gk_dmk', 'ALL'), earn: null, earnMk: 'US', earnDay: 0, earnCap: '10',
+    bell: [], booted: false, fresh: new Set(), tr: {}, trPending: new Set(), real: {}, hiddenPoll: {}, olderDone: {}, olderBusy: false, watchAlert: load('gk_watchAlert', true), extra: new Map(), extraTried: new Map(), admin: load('gk_admin', ''), trdoc: new Map(), docLang: 'ko', aTab: 'fin', digests: {}, digestMk: load('gk_dmk', 'ALL'), earn: null, earnMk: 'US', earnDay: 0, earnCap: '10',
   };
   document.documentElement.className = 'js notranslate ' + S.fs;
   const wkey = (m, t) => `${m}:${String(t || '').toUpperCase()}`;
@@ -210,6 +210,7 @@
       return { ms, official: it.timeMin, seen: it.seenLive ? seen : null };
     }
     if (it.seenLive && seen) return { ms: seen, seen };
+    if (it.approxMs) return { ms: it.approxMs, dateOnly: true };
     return { ms: Date.parse(`${it.date}T18:00:00+09:00`) || 0, dateOnly: true };
   }
 
@@ -442,6 +443,37 @@
 
   // ───────────────────────── 렌더: 피드·통계·트렌딩 ─────────────────────────
   const anyLoaded = () => S.loaded.sec || S.loaded.dart || S.loaded.news;
+  // ── 지난 공시 불러오기 (서버 영구 보관소) ──
+  const olderKey = () => `${S.type}|${S.mk}|${S.q || ''}|${S.view === 'watch' ? 'w' : ''}`;
+  function addArchived(items) {
+    let added = 0;
+    for (const r of items || []) {
+      if (S.items.has(r.id) && !S.extra.has(r.id)) continue;
+      if (!S.extra.has(r.id)) added++;
+      S.extra.set(r.id, r);
+    }
+    if (added) rebuild();
+    return added;
+  }
+  async function loadOlder() {
+    if (S.olderBusy) return;
+    S.olderBusy = true; renderFeed();
+    const arr = visible();
+    const before = arr.length ? arr[arr.length - 1].ms : Date.now();
+    const kind = S.type === 'ALL' ? 'ALL' : S.type;
+    const qs = new URLSearchParams({ kind, mk: S.mk, before: String(Math.floor(before)), limit: '100' });
+    if (S.q) qs.set('q', S.q);
+    let n = 0;
+    try {
+      const j = await getJSON('/api/archive?' + qs.toString(), {});
+      n = addArchived(j.items);
+      if (!j.items?.length) { S.olderDone[olderKey()] = true; toast('더 이전 기록이 없습니다'); }
+    } catch (e) { toast('불러오지 못했습니다: ' + e.message); }
+    S.olderBusy = false;
+    S.limit = Math.max(S.limit, Math.min(visible().length, S.limit + Math.max(n, 1)));
+    renderFeed();
+  }
+
   // 목록을 통째로 다시 그리지 않고 바뀐 줄만 교체 → 스크롤 중에 화면이 튀거나 흔들리지 않음
   function patchList(list, items, moreLabel) {
     if (list.firstElementChild && !list.firstElementChild.matches('.row, .more-btn')) list.innerHTML = '';
@@ -489,7 +521,8 @@
         : `<div class="empty">조건에 맞는 항목이 없습니다.${errs.length ? `<br><small>${esc(errs.join(' / '))}</small>` : ''}</div>`;
     } else {
       queueTranslate(arr.slice(0, S.limit));
-      patchList(list, arr.slice(0, S.limit), arr.length > S.limit ? `더 보기 (${fmtInt(arr.length - S.limit)}건 남음)` : '');
+      const canOlder = S.type !== 'NEWS' && !S.olderDone[olderKey()];
+      patchList(list, arr.slice(0, S.limit), arr.length > S.limit ? `더 보기 (${fmtInt(arr.length - S.limit)}건 남음)` : canOlder ? (S.olderBusy ? '불러오는 중…' : '⏷ 이전 공시·보도자료 더 보기') : '');
     }
     renderCounts();
     setTimeout(refreshChips, 50);
@@ -1408,7 +1441,7 @@
     const on = inWatch(m, t), sec = sectorOf(m, t);
     const n = { market: m, ticker: t, corpCode: c.corpCode, name: c.name, exchange: c.exchange };
     $('#coBody').innerHTML = `<div class="co-hero">${logoHTML(m, t, c.name, 'lg')}<div><h3>${esc(c.name)}</h3><div class="dp-meta"><span class="mk ${m === 'KR' ? 'kr' : 'us'}">${m === 'KR' ? '한국' : '미국'}</span><span class="mono">${esc(t)}</span>${c.exchange ? `<span>${esc(exShort(c.exchange))}</span>` : ''}${sec ? `<span class="sector">${esc(sec)}</span>` : ''}<button class="link" data-star="${esc(m)}|${esc(t)}|${esc(c.name)}">${on ? '★ 관심종목' : '☆ 관심종목 추가'}</button></div></div><div class="px" id="coPx"></div></div>
-      <div class="co-grid"><div><div id="coInfo">${coPane(n, null)}</div><div class="box"><h4>최근 공시·보도자료·뉴스 <small id="coRecentN"></small></h4><div id="coRecent"></div></div></div>
+      <div class="co-grid"><div><div id="coInfo">${coPane(n, null)}</div><div class="box"><h4>공시·보도자료 전체 기록 <small id="coRecentN"></small></h4><div id="coRecent"></div></div></div>
       <div><div id="coFlows">${stockHTML(m, null)}</div><div class="links">${coLinks(c)}</div></div></div>`;
     renderCoRecent();
     fetchQuotes([wkey(m, t)]).then(() => { const q = quoteOf(m, t); if (S.coCur === c && $('#coPx')) $('#coPx').innerHTML = q ? `<b>${pxStr({ ...q, market: m })}</b><span class="${dirCls(q.pct)} mono">${q.pct > 0 ? '▲' : q.pct < 0 ? '▼' : ''} ${fmtPct(q.pct)}</span>` : ''; });
@@ -1424,9 +1457,19 @@
   function renderCoRecent() {
     const c = S.coCur;
     if (!c || !$('#coRecent')) return;
-    const arr = [...S.items.values()].filter((n) => n.market === c.m && n.ticker && n.ticker.toUpperCase() === c.t).sort((a, b) => b.ms - a.ms).slice(0, 15);
-    $('#coRecentN').textContent = arr.length ? `${arr.length}건` : '';
-    $('#coRecent').innerHTML = arr.length ? arr.map(rowHTML).join('') : '<p class="muted" style="margin:0">최근 3일간 수집된 목록에 이 종목 항목이 없습니다.</p>';
+    const all = [...S.items.values()].filter((n) => n.market === c.m && n.ticker && n.ticker.toUpperCase() === c.t && n.kind !== 'NEWS').sort((a, b) => b.ms - a.ms);
+    const shown = all.slice(0, c.recentLimit || 20);
+    $('#coRecentN').textContent = all.length ? `${fmtInt(all.length)}건${c.histLoading ? ' · 과거 공시 불러오는 중…' : ''}` : '';
+    $('#coRecent').innerHTML = shown.length ? shown.map(rowHTML).join('') + (all.length > shown.length ? `<button class="btn more-btn" data-co-more>더 보기 (${fmtInt(all.length - shown.length)}건 남음)</button>` : '')
+      : `<p class="muted" style="margin:0">${c.histLoading ? '<span class="spin"></span> 과거 공시를 불러오는 중…' : '보관된 공시가 없습니다.'}</p>`;
+    // 이 회사의 과거 공시 전체를 서버 보관소에서 (처음 한 번)
+    if (!c.histLoaded && !c.histLoading) {
+      c.histLoading = true;
+      const qs = new URLSearchParams({ ticker: c.t, mk: c.m, limit: '200', deep: '1' });
+      if (c.corpCode) qs.set('corp', c.corpCode);
+      getJSON('/api/archive?' + qs.toString(), {}).then((j) => addArchived(j.items)).catch(() => {}).finally(() => { c.histLoading = false; c.histLoaded = true; if (S.coCur === c) renderCoRecent(); });
+      setTimeout(() => { if (S.coCur === c) renderCoRecent(); }, 0);
+    }
   }
 
   // ───────────────────────── 수급 레이더 ─────────────────────────
@@ -1675,6 +1718,9 @@
         <div class="card"><h3>많이 본 게시물 (최근 7일)</h3><ol class="adm-list">${d.topItems.map((x) => `<li data-id="${esc(x.id)}" data-adm-open="${esc(x.id)}"><b>${fmtInt(x.n)}</b><span>${x.ticker ? `<em>${esc(x.market === 'KR' ? x.name || x.ticker : x.ticker)}</em>` : ''}${esc(x.title)}</span></li>`).join('') || '<li class="muted">아직 기록이 없습니다.</li>'}</ol></div>
         <div class="card"><h3>유입 경로 (최근 7일)</h3><ol class="adm-list">${d.refs.map((x) => `<li><b>${fmtInt(x.n)}</b><span>${esc(x.r)}</span></li>`).join('') || '<li class="muted">아직 기록이 없습니다.</li>'}</ol></div>
       </div>
+      <div class="card" style="margin-bottom:.8rem"><h3>공시 보관소 <small class="muted">지우지 않고 계속 쌓임</small></h3>
+        <div class="adm-kpis" style="grid-template-columns:repeat(4,1fr);margin:0">${[['전체', d.archive?.total], ['미국 공시', d.archive?.bySrc?.SEC], ['한국 공시', d.archive?.bySrc?.DART], ['보도자료', d.archive?.bySrc?.PR]].map(([l, v]) => `<div class="card" style="display:block"><span>${l}</span><div><b>${fmtInt(v || 0)}</b><small>건</small></div></div>`).join('')}</div>
+        <p class="note">가장 오래된 기록: ${d.archive?.oldest ? fmtDT(new Date(d.archive.oldest)).date : '—'} · 8-K 항목 보강 대기 ${fmtInt(d.archive?.pendingEnrich || 0)}건<br>과거 채우기 — 미국: ${d.backfill?.sec ? (d.backfill.sec.done ? '완료' : esc(d.backfill.sec.day) + ' 진행 중') + (d.backfill.sec.log ? ' (' + esc(d.backfill.sec.log) + ')' : '') : '대기'} · 한국: ${d.backfill?.dart ? (d.backfill.dart.done ? '완료' : esc(d.backfill.dart.day) + ' 진행 중') + (d.backfill.dart.log ? ' (' + esc(d.backfill.dart.log) + ')' : '') : '대기'}</p></div>
       <div class="card"><h3>고장 자동 감시 <small class="muted">${d.monitor?.at ? fmtDT(new Date(d.monitor.at)).full + ' 점검 · 약 9분마다 자동 점검' : '아직 점검 기록 없음'}</small></h3>
         <table class="tbl adm-mon"><tr><th>항목</th><th>상태</th><th>내용</th></tr>${mon.map((c) => `<tr><td>${esc(c.name)}</td><td><span class="mon ${c.ok ? 'ok' : c.fails >= 2 ? 'bad' : 'warn'}">${c.ok ? '정상' : c.fails >= 2 ? '이상' : '확인 중'}</span></td><td>${esc(c.msg)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">점검 기록이 없습니다. 아래 "지금 점검"을 눌러보세요.</td></tr>'}</table>
         <div class="chips" style="margin-top:.8rem"><button class="btn sm" data-admin-act="monitor">지금 점검</button><button class="btn sm" data-admin-act="tgfind">텔레그램 채팅 ID 찾기</button><button class="btn sm" data-admin-act="tgtest">텔레그램 테스트 알림</button></div>
@@ -1775,7 +1821,8 @@
       if (t.closest('[data-back]')) { backToList(); return; }
       const fs = t.closest('[data-fs]');
       if (fs) { S.fs = fs.dataset.fs; save('gk_fs', S.fs); document.documentElement.className = 'js notranslate ' + S.fs; $$('#fsSeg button').forEach((b) => b.classList.toggle('on', b === fs)); return; }
-      if (t.closest('#moreRows')) { S.limit += 80; renderFeed(); return; }
+      if (t.closest('[data-co-more]')) { if (S.coCur) { S.coCur.recentLimit = (S.coCur.recentLimit || 20) + 40; renderCoRecent(); } return; }
+      if (t.closest('#moreRows')) { if (visible().length > S.limit) { S.limit += 80; renderFeed(); } else loadOlder(); return; }
       const kw = t.closest('[data-kw]');
       if (kw) { applyKeyword(kw.dataset.kw); $('#suggest').hidden = true; return; }
       if (t.closest('[data-share]')) {

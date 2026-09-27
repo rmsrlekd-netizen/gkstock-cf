@@ -52,14 +52,13 @@ export async function renderItemPage(env, req, id) {
 
 /** /sitemap-pages.xml (public/sitemap.xml 색인이 가리킴) — 첫 화면 + 최근 공시·보도자료 페이지 */
 export async function sitemap() {
-  const [sec, dart, news] = await Promise.all([getJSON('sec/feed'), getJSON('dart/feed'), getJSON('news/feed')]);
-  const pick = [
-    ...(sec?.items || []).filter((x) => x.ticker && !/^(4|144|13F)/.test(x.form || '')),
-    ...(dart?.items || []).filter((x) => x.ticker),
-    ...(news?.items || []).filter((x) => x.src === 'PR' && x.market === 'US' && x.ticker && !x.dupOf),
-  ].map((x) => ({ id: x.id, t: x.time || x.seenAt || (x.date ? x.date + 'T09:00:00+09:00' : null) }))
-    .sort((a, b) => String(b.t).localeCompare(String(a.t))).slice(0, 2000);
+  const { sitemapRows } = await import('./archive.mjs');
+  let rows = await sitemapRows(5000).catch(() => []);
+  if (!rows.length) {
+    const [sec, dart, news] = await Promise.all([getJSON('sec/feed'), getJSON('dart/feed'), getJSON('news/feed')]);
+    rows = [...(sec?.items || []), ...(dart?.items || []), ...(news?.items || []).filter((x) => x.src === 'PR')].filter((x) => x.ticker).map((x) => ({ id: x.id, ms: Date.parse(x.time || x.seenAt || '') || 0 }));
+  }
   const urls = [`<url><loc>${ORIGIN}/</loc><changefreq>always</changefreq><priority>1.0</priority></url>`,
-    ...pick.map((x) => `<url><loc>${ORIGIN}/p/${x.id}</loc>${x.t && !isNaN(Date.parse(x.t)) ? `<lastmod>${new Date(Date.parse(x.t)).toISOString()}</lastmod>` : ''}<changefreq>daily</changefreq><priority>0.7</priority></url>`)];
-  return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=600', 'x-gk-edge-ttl': '600' } });
+    ...rows.map((x) => `<url><loc>${ORIGIN}/p/${x.id}</loc>${x.ms ? `<lastmod>${new Date(x.ms).toISOString()}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.6</priority></url>`)];
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=1800', 'x-gk-edge-ttl': '1800' } });
 }

@@ -6,6 +6,7 @@ import { hasAI, translateTitles } from '../lib/ai.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { prewarm, pickPR } from '../lib/prewarm.mjs';
 import { capturePx0 } from '../lib/px0.mjs';
+import { archiveItems } from '../lib/archive.mjs';
 import { runMonitor } from '../lib/monitor.mjs';
 
 export default async () => {
@@ -30,7 +31,9 @@ export default async () => {
         await setJSON('news/feed', cur);
       }
     }
-    await capturePx0((await getJSON('news/feed'))?.items).catch((e) => console.warn('px0', e.message));
+    const nf = (await getJSON('news/feed'))?.items;
+    await capturePx0(nf).catch((e) => console.warn('px0', e.message));
+    await archiveItems((nf || []).filter((x) => x.src === 'PR')).catch((e) => console.warn('archive', e.message)); // 보도자료 영구 보관
     // 고장 자동 감시 (약 9분마다)
     const ms = await getJSON('monitor/state');
     if (!ms || Date.now() - ms.at > 8 * 60e3) await runMonitor().catch((e) => console.warn('monitor', e.message));
