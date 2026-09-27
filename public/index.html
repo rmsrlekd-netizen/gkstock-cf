@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
 </head>
 <body>
   <!-- ───────── 헤더 ───────── -->
@@ -64,7 +64,7 @@
       <section class="digest card" id="digestBox">
         <div class="digest-h">
           <div><span class="ai-pill">AI</span><h2>AI가 고른 오늘의 핵심 공시</h2><span class="muted sm" id="digestMeta">공시·보도자료 중 주가 영향이 큰 항목</span></div>
-          <button class="btn sm" id="digestMore">전체 보기 →</button>
+          <div class="digest-ctl"><div class="seg xs dseg" id="digestSeg"><button data-dmk="ALL" class="on">전체</button><button data-dmk="KR" class="kr">국내</button><button data-dmk="US" class="us">미국</button></div><button class="btn sm" id="digestMore">전체 보기 →</button></div>
         </div>
         <p class="digest-head" id="digestHead"></p>
         <div class="digest-list" id="digestList"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
@@ -226,6 +226,6 @@
   <div class="modal" id="modal" hidden><div class="modal-card"><button class="ico sm m-close" data-close-modal aria-label="닫기">✕</button><div id="modalBody"></div></div></div>
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
-  <script src="app.js?v=6" defer></script>
+  <script src="app.js?v=7" defer></script>
 </body>
 </html>

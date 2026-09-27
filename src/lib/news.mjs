@@ -5,6 +5,7 @@ import { fetchWithTimeout, BROWSER_UA, decodeEntities, decodeText } from './util
 import { sanitizeHtml } from './dart-doc.mjs';
 import { getJSON, setJSON } from './store.mjs';
 import { getKrNames, matchKr, matchUsKo } from './krnames.mjs';
+import { getTickerMap } from './sec-core.mjs';
 
 const H = { 'User-Agent': BROWSER_UA, Accept: 'application/rss+xml, application/xml, text/xml, */*' };
 
@@ -13,10 +14,36 @@ const strip = (s) => decodeEntities(String(s || '').replace(/<!\[CDATA\[|\]\]>/g
 const tag = (x, n) => { const m = x.match(new RegExp(`<${n}(?:\\s[^>]*)?>([\\s\\S]*?)</${n}>`)); return m ? m[1] : ''; };
 const iso = (d) => { const t = Date.parse(d); return Number.isFinite(t) ? new Date(t).toISOString() : new Date().toISOString(); };
 const US_EX = /^(nasdaq|nyse|nyse american|nyse arca|nyse mkt|amex|otcqx|otcqb|otc|cboe)$/i;
-const TICK_RE = /\((?:NYSE American|NYSE Arca|NYSE|NASDAQ|Nasdaq|OTCQX|OTCQB|OTC Markets|CBOE|Cboe)\s*(?:GS|GM|CM)?\s*:\s*([A-Z][A-Z.]{0,5})\)/;
+// "(NASDAQ: ABCD)", "NYSE: XYZ", "(Nasdaq: AB, CD)", "(TSX: X, NYSE American: Y)" 등
+const TICK_RE = /(?:NYSE American|NYSE Arca|NYSE MKT|NYSE|NASDAQ|Nasdaq|CBOE|Cboe)\s*(?:GS|GM|CM|Global Select|Capital Market|Global Market)?\s*:\s*"?([A-Z][A-Z.]{0,5})\b/;
 
-async function rss(url, ms = 7000) {
-  const r = await fetchWithTimeout(url, { headers: H }, ms);
+// 회사명 → 티커 (SEC 상장사 목록, 나스닥·뉴욕만). 보도자료에 티커가 안 적혀 있어도 회사명으로 연결
+const SUFFIX = /\b(the|inc|incorporated|corp|corporation|co|company|ltd|limited|plc|llc|lp|l p|holdings?|group|n v|nv|s a|sa|ag|se|class [a-z]|common stock|ordinary shares|ads)\b/g;
+const normCo = (s) => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9 ]+/g, ' ').replace(SUFFIX, ' ').replace(/\s+/g, ' ').trim();
+let coIdx = null;
+async function companyIndex() {
+  if (coIdx && Date.now() - coIdx.at < 12 * 3600e3) return coIdx.map;
+  const map = new Map();
+  try {
+    const tm = await getTickerMap();
+    for (const v of tm.values()) {
+      if (!v.ticker || !/nasdaq|nyse|cboe/i.test(v.exchange || '')) continue;
+      const k = normCo(v.name);
+      if (k.length >= 4 && !map.has(k)) map.set(k, v.ticker);
+    }
+  } catch {}
+  coIdx = { at: Date.now(), map };
+  return map;
+}
+function tickerOf(text, company, idx) {
+  const m = String(text || '').match(TICK_RE);
+  if (m) return m[1].replace(/\.$/, '');
+  const k = normCo(company);
+  return (k && idx.get(k)) || null;
+}
+
+async function rss(url, ms = 7000, opts = {}) {
+  const r = await fetchWithTimeout(url, { headers: H, ...opts }, ms);
   if (!r.ok) throw new Error(`${new URL(url).host} HTTP ${r.status}`);
   const xml = await r.text();
   return xml.split(/<item[\s>]/).slice(1).map((s) => s.split('</item>')[0]);
@@ -24,7 +51,9 @@ async function rss(url, ms = 7000) {
 
 // ───────── 보도자료 ─────────
 async function globeNewswire() {
-  const items = await rss('https://www.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies');
+  const url = 'https://www.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies';
+  let items;
+  try { items = await rss(url, 9000); } catch (e) { if (!process.env.KR_RELAY_URL) throw e; items = await rss(url, 10000, { relay: true }); } // 직접 → 실패하면 중계 서버
   return items.map((x) => {
     const cats = [...x.matchAll(/<category[^>]*domain="[^"]*\/rss\/stock"[^>]*>([^<]+)<\/category>/g)].map((m) => m[1].trim());
     const us = cats.map((c) => c.split(':')).find(([ex]) => US_EX.test(ex.trim()));
@@ -35,19 +64,41 @@ async function globeNewswire() {
   }).filter((x) => x.ticker);
 }
 
-const PRN_FEEDS = ['financial-services', 'technology', 'health', 'energy', 'auto-transportation'].map((c) => `https://www.prnewswire.com/rss/${c}-latest-news/${c}-latest-news-list.rss`);
-async function prNewswire() {
+const PRN_FEEDS = [
+  'https://www.prnewswire.com/rss/news-releases-list.rss', // 전체 최신
+  ...['financial-services', 'technology', 'health', 'energy', 'auto-transportation', 'consumer-technology', 'general-business', 'consumer-products-retail', 'heavy-industry-manufacturing', 'telecommunications'].map((c) => `https://www.prnewswire.com/rss/${c}-latest-news/${c}-latest-news-list.rss`),
+];
+async function prNewswire(idx) {
   const all = await Promise.allSettled(PRN_FEEDS.map((u) => rss(u)));
+  if (all.every((r) => r.status === 'rejected')) throw all[0].reason;
   const out = [];
   for (const r of all) {
     if (r.status !== 'fulfilled') continue;
     for (const x of r.value) {
       const desc = strip(tag(x, 'description'));
-      const ticker = (desc.match(TICK_RE) || [])[1];
+      const company = strip(tag(x, 'dc:contributor')) || null;
+      const title = strip(tag(x, 'title'));
+      const ticker = tickerOf(desc + ' ' + title, company, idx);
       if (!ticker) continue;
       const link = strip(tag(x, 'link'));
-      out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title: strip(tag(x, 'title')), desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: 'PR Newswire', company: null, ticker });
+      out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: 'PR Newswire', company, ticker });
     }
+  }
+  return out;
+}
+
+// Business Wire 전체 뉴스
+async function businessWire(idx) {
+  const items = await rss('https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==', 8000);
+  const out = [];
+  for (const x of items) {
+    const desc = strip(tag(x, 'description'));
+    const title = strip(tag(x, 'title'));
+    const company = strip(tag(x, 'dc:creator')) || strip(tag(x, 'author')) || null;
+    const ticker = tickerOf(desc + ' ' + title, company, idx);
+    if (!ticker) continue;
+    const link = strip(tag(x, 'link'));
+    out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: 'Business Wire', company, ticker });
   }
   return out;
 }
@@ -109,7 +160,7 @@ async function googleNews(queries, market, names) {
 async function finnhubNews() {
   const key = process.env.FINNHUB_API_KEY;
   if (!key) return [];
-  const r = await fetchWithTimeout(`https://finnhub.io/api/v1/news?category=general&token=${key}`, {}, 6000);
+  const r = await fetchWithTimeout(`https://finnhub.io/api/v1/news?category=general&token=${key}`, {}, 9000);
   if (!r.ok) throw new Error('Finnhub HTTP ' + r.status);
   const arr = await r.json();
   return (Array.isArray(arr) ? arr : []).slice(0, 60).map((n) => ({
@@ -119,9 +170,9 @@ async function finnhubNews() {
 
 /** 전체 수집 → 기존 저장분과 병합 */
 export async function collectNews() {
-  const names = await getKrNames({ allowFetch: false });
+  const [names, idx] = await Promise.all([getKrNames({ allowFetch: false }), companyIndex()]);
   const jobs = {
-    gnw: globeNewswire(), prn: prNewswire(), nwkr: newswireKr(names),
+    gnw: globeNewswire(), prn: prNewswire(idx), bw: businessWire(idx), nwkr: newswireKr(names),
     krnews: googleNews(KR_QUERIES, 'KR', names), usnews: googleNews(US_QUERIES, 'US', names), fh: finnhubNews(),
   };
   const errors = [];

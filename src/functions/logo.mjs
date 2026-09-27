@@ -4,7 +4,15 @@
 import { fetchWithTimeout, BROWSER_UA } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 
-export function logoCandidates(m, t) {
+// 회사명 → TradingView 로고 이름 (예: "Rocket Lab USA, Inc." → rocket-lab-usa, rocket-lab, rocket)
+function tvSlugs(name) {
+  const base = String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/\b(inc|corp|corporation|co|company|ltd|limited|plc|llc|holdings?|group|n\.?v|s\.?a|ag|se|class [a-z])\b\.?/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!base) return [];
+  const w = base.split(' ');
+  return [...new Set([w.join('-'), w.slice(0, 2).join('-')])].filter((x) => x.length >= 3);
+}
+
+export function logoCandidates(m, t, name) {
   if (m === 'KR') {
     return [
       `https://static.toss.im/png-icons/securities/icn-sec-fill-${t}.png`,
@@ -18,6 +26,9 @@ export function logoCandidates(m, t) {
     `https://assets.parqet.com/logos/symbol/${encodeURIComponent(t)}?format=png`,
     `https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/${dash}.png`,
     `https://financialmodelingprep.com/image-stock/${dash}.png`,
+    `https://ssl.pstatic.net/imgstock/fn/real/logo/stock/Stock${t}.O.svg`,
+    `https://ssl.pstatic.net/imgstock/fn/real/logo/stock/Stock${t}.N.svg`,
+    ...tvSlugs(name).map((s) => `https://s3-symbol-logo.tradingview.com/${s}.svg`),
   ];
 }
 
@@ -52,7 +63,8 @@ export default async (req) => {
   const m = u.searchParams.get('m') === 'KR' ? 'KR' : 'US';
   const t = String(u.searchParams.get('t') || '').trim().toUpperCase();
   if (m === 'KR' ? !/^[0-9A-Z]{6}$/.test(t) : !/^[A-Z0-9.\-/]{1,10}$/.test(t)) return miss();
-  const key = `logo/${m}/${t.replace(/[^A-Z0-9]/g, '_')}`;
+  const name = (u.searchParams.get('n') || '').slice(0, 60);
+  const key = `logo2/${m}/${t.replace(/[^A-Z0-9]/g, '_')}`;
   const cached = await getJSON(key);
   if (cached) {
     const age = Date.now() - (cached.at || 0);
@@ -60,7 +72,7 @@ export default async (req) => {
     if (cached.miss && age < 3 * 86400e3) return miss();
   }
   // 후보를 동시에 확인하고, 우선순위가 가장 높은 성공 주소를 사용
-  const cands = logoCandidates(m, t);
+  const cands = logoCandidates(m, t, name);
   const ok = await Promise.all(cands.map(works));
   const url = cands.find((_, i) => ok[i]);
   await setJSON(key, url ? { url, at: Date.now() } : { miss: true, at: Date.now() }).catch(() => {});

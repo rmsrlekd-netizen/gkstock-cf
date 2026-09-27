@@ -1,0 +1,12 @@
+import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch();
+const m = await b.newPage({ viewport: { width: 390, height: 844 } });
+await m.goto('http://localhost:8791/'); await m.waitForTimeout(3500);
+await m.evaluate(() => document.querySelector('#list').scrollIntoView()); await m.waitForTimeout(300);
+await m.screenshot({ path: '/tmp/s6.png' });
+const p = await b.newPage({ viewport: { width: 1300, height: 900 } });
+await p.goto('http://localhost:8791/'); await p.waitForTimeout(3000);
+await p.evaluate(() => (document.querySelector('.row[data-id^="PR"]')).click()); await p.waitForTimeout(2500);
+await p.screenshot({ path: '/tmp/s7.png', clip: { x: 0, y: 300, width: 1300, height: 250 } });
+console.log(await p.evaluate(() => [...document.querySelectorAll('.logo-b.gen .mm')].map((x) => x.textContent)));
+await b.close();

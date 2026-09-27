@@ -1,0 +1,25 @@
+import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch(); const errs = [];
+const ctx = await b.newContext({ viewport: { width: 1500, height: 1000 } });
+const p = await ctx.newPage();
+p.on('pageerror', (e) => errs.push('P ' + e.message));
+await p.goto('http://localhost:8791/'); await p.waitForTimeout(4500);
+await p.screenshot({ path: '/tmp/s1.png' });
+await p.click('#digestSeg [data-dmk="US"]'); await p.waitForTimeout(1500);
+await p.evaluate(() => window.scrollTo(0, 560)); await p.waitForTimeout(300);
+await p.screenshot({ path: '/tmp/s2.png' });
+// 두 번째 방문: 즉시 표시되는지
+const p2 = await ctx.newPage();
+await p2.route('**/api/{sec,dart,news}', async (r) => { await new Promise((z) => setTimeout(z, 4000)); r.continue(); });
+await p2.goto('http://localhost:8791/'); await p2.waitForTimeout(700);
+console.log('rows after 0.7s:', await p2.$$eval('.row', (x) => x.length));
+await p2.evaluate(() => (document.querySelector('.row[data-id^="PR"]') || document.querySelector('.row')).click()); await p2.waitForTimeout(3000);
+await p2.screenshot({ path: '/tmp/s3.png' });
+await p2.click('#nav [data-go="earnings"]'); await p2.waitForTimeout(2500);
+await p2.screenshot({ path: '/tmp/s4.png' });
+const m = await b.newPage({ viewport: { width: 390, height: 844 } });
+m.on('pageerror', (e) => errs.push('M ' + e.message));
+await m.goto('http://localhost:8791/'); await m.waitForTimeout(3500);
+await m.evaluate(() => window.scrollTo(0, 900)); await m.waitForTimeout(300);
+await m.screenshot({ path: '/tmp/s5.png' });
+console.log('ERR', errs); await b.close();

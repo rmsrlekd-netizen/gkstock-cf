@@ -17,7 +17,7 @@ export function json(data, { cdnSeconds = 20, swr = 60, status = 200 } = {}) {
 }
 
 // Cloudflare 서버 접속을 막는 사이트(DART·KRX·네이버·GlobeNewswire)와 Gemini(지역 제한): KR_RELAY_URL(중계 서버, 서울)을 거쳐 요청
-const KR_HOSTS = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com|globenewswire\.com)$/i;
+const KR_HOSTS = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com)$/i;
 export async function fetchWithTimeout(url, opts = {}, ms = 9000) {
   const ctrl = new AbortController();
   let u = String(url);
@@ -107,4 +107,15 @@ export async function fetchTextCapped(url, opts = {}, ms = 8000, maxBytes = 6000
 /** 문자 인코딩 변환 (EUC-KR 미지원 환경이면 UTF-8로) */
 export function decodeText(buf, enc = 'utf-8') {
   try { return new TextDecoder(enc).decode(buf); } catch { return new TextDecoder('utf-8').decode(buf); }
+}
+
+// 방문자를 기다리게 하지 않는 백그라운드 갱신: 저장된 데이터를 바로 응답하고, 오래됐으면 응답 뒤에 새로 수집
+const bgRunning = new Map();
+export function refreshInBackground(ctx, name, job) {
+  const last = bgRunning.get(name);
+  if (last && Date.now() - last < 60e3) return false; // 같은 서버에서 1분 안에 중복 실행 방지
+  bgRunning.set(name, Date.now());
+  const p = Promise.resolve().then(job).catch((e) => console.warn('bg ' + name, e?.message || e)).finally(() => bgRunning.set(name, Date.now()));
+  if (ctx?.waitUntil) ctx.waitUntil(p);
+  return true;
 }

@@ -67,7 +67,16 @@ export function matchKr(title, list) {
       if (/[가-힣]/.test(next) && !/[은는이가을를의도와과]/.test(next)) continue;
       return x;
     }
-    if (t.includes(x.n)) return x;
+    // 영문·숫자로 시작/끝나는 이름(SG, KT, DB 등)은 앞뒤가 영문·숫자가 아닐 때만 (예: "ESG"의 SG 오탐 방지)
+    let from = 0, i;
+    while ((i = t.indexOf(x.n, from)) >= 0) {
+      from = i + 1;
+      const prev = t[i - 1] || ' ', next = t[i + x.n.length] || ' ';
+      if (/^[A-Za-z0-9]/.test(x.n) && /[A-Za-z0-9]/.test(prev)) continue;
+      if (/[A-Za-z0-9]$/.test(x.n) && /[A-Za-z0-9]/.test(next)) continue;
+      if (x.n.length <= 3 && /[A-Za-z]/.test(x.n) && /[가-힣]/.test(prev)) continue; // "하늘ESG" 같은 붙은 말
+      return x;
+    }
   }
   return null;
 }

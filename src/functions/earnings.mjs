@@ -4,6 +4,7 @@
 import { json, fetchWithTimeout, BROWSER_UA } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { getSectors } from '../lib/sectors.mjs';
+import { usKoNames } from '../lib/usko.mjs';
 
 const NQ_H = { 'User-Agent': BROWSER_UA, Accept: 'application/json, text/plain, */*', Origin: 'https://www.nasdaq.com', Referer: 'https://www.nasdaq.com/' };
 const money = (s) => { const m = String(s || '').replace(/[$,]/g, ''); const neg = /^\(.*\)$/.test(m); const n = Number(m.replace(/[()]/g, '')); return m && Number.isFinite(n) ? (neg ? -n : n) : null; };
@@ -62,11 +63,14 @@ export default async (req) => {
     getSectors({ allowFetch: false }).catch(() => null),
     getJSON('dart/feed'),
   ]);
+  // 한국어 이름: 시가총액 큰 순으로 (처음 한 번만 조회, 이후 저장분 사용)
+  const byCap = lists.flat().filter((x) => (x.mcap || 0) >= 3e8).sort((a, b) => (b.mcap || 0) - (a.mcap || 0)).map((x) => x.t);
+  const ko = await Promise.race([usKoNames(byCap, { max: 320 }), new Promise((r) => setTimeout(() => r(null), 12000))]).catch(() => null) || {};
   const out = dates.map((date, i) => ({
     date,
     us: lists[i].map((x) => {
       const f = fh[`${x.t}|${date}`];
-      return { ...x, sector: sm?.us?.[x.t] || null, rev: f?.rev ?? null };
+      return { ...x, ko: ko[x.t] || null, sector: sm?.us?.[x.t] || null, rev: f?.rev ?? null };
     }).sort((a, b) => (b.mcap || 0) - (a.mcap || 0)),
   }));
   // 한국: IR·실적 발표 예고 공시 (최근 2주)
