@@ -39,7 +39,8 @@ async function krFinancials(corp) {
     const ni = pickAcct(list, ['당기순이익', '당기순이익(손실)', '연결당기순이익']);
     const assets = pickAcct(list, ['자산총계']);
     const equity = pickAcct(list, ['자본총계']);
-    return { year, basis: (rev || ni)?.fs === 'OFS' ? '별도' : '연결', rev, op, ni, assets, equity };
+    const liab = pickAcct(list, ['부채총계']);
+    return { year, basis: (rev || ni)?.fs === 'OFS' ? '별도' : '연결', rev, op, ni, assets, equity, liab };
   }
   return null;
 }
@@ -76,7 +77,7 @@ async function krPrice(ticker, exchange) {
   if (hasKis()) {
     try {
       const o = (await kisGet('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: ticker })).output || {};
-      return { price: n0(o.stck_prpr), per: n0(o.per), pbr: n0(o.pbr), mcap: n0(o.hts_avls) !== null ? n0(o.hts_avls) * 1e8 : null, sector: o.bstp_kor_isnm || null, src: 'KIS' };
+      return { price: n0(o.stck_prpr), per: n0(o.per), pbr: n0(o.pbr), eps: n0(o.eps), bps: n0(o.bps), mcap: n0(o.hts_avls) !== null ? n0(o.hts_avls) * 1e8 : null, sector: o.bstp_kor_isnm || null, src: 'KIS' };
     } catch {}
   }
   const ex = /KOSDAQ/i.test(exchange || '') ? 'KOSDAQ' : 'KRX';
@@ -98,6 +99,7 @@ export async function krCompany(ticker, corp, exchange) {
   const shares = fin ? await krShares(corp, fin.year).catch(() => null) : null;
   const mcap = px?.mcap ?? (px?.price && shares ? px.price * shares : null);
   const niV = fin?.ni?.cur ?? null, eqV = fin?.equity?.cur ?? null, asV = fin?.assets?.cur ?? null;
+  const liV = fin?.liab?.cur ?? (asV !== null && eqV !== null ? asV - eqV : null);
   return {
     src: 'KR',
     name: info?.corp_name || null,
@@ -123,6 +125,9 @@ export async function krCompany(ticker, corp, exchange) {
       pbr: px?.pbr ?? (mcap && eqV > 0 ? mcap / eqV : null),
       roe: ratio(niV, eqV),
       roa: ratio(niV, asV),
+      debt: eqV > 0 ? ratio(liV, eqV) : null,
+      eps: px?.eps ?? (niV !== null && shares ? niV / shares : null),
+      bps: px?.bps ?? (eqV !== null && shares ? eqV / shares : null),
       basis: px?.per != null ? '현재가 기준 (한국투자증권)' : `시가총액 ÷ ${fin?.year ?? ''}년 실적`,
     },
   };
@@ -162,6 +167,10 @@ export async function usCompany(ticker) {
   const ttmOp = sum4(rowVals(qInc, 'Operating Income'));
   const eq = rowVals(qBal, 'Total Equity')[0] ?? rowVals(bal, 'Total Equity')[0] ?? null;
   const assets = rowVals(qBal, 'Total Assets')[0] ?? rowVals(bal, 'Total Assets')[0] ?? null;
+  const liab = rowVals(qBal, 'Total Liabilities')[0] ?? rowVals(bal, 'Total Liabilities')[0] ?? (assets !== null && eq !== null ? assets - eq : null);
+  const prevClose = num(String(sd.PreviousClose?.value || '').replace('$', ''));
+  const shares = mcap && prevClose ? mcap / prevClose : null;
+  const epsSd = num(String(sd.EarningsPerShare?.value || '').replace(/[$()]/g, (c) => (c === '(' ? '-' : '')));
   const aRev = rowVals(inc, 'Total Revenue'), aOp = rowVals(inc, 'Operating Income'), aNI = rowVals(inc, 'Net Income');
   const fyEnd = inc?.headers?.value2 || null;
   const useTTM = ttmRev !== null;
@@ -175,6 +184,7 @@ export async function usCompany(ticker) {
     overviewRaw: pd('CompanyDescription'),
     homepage: pd('CompanyUrl'),
     currency: 'USD',
+    price: prevClose,
     marketCap: mcap,
     fin: {
       period: fyEnd ? `최근 회계연도 (${fyEnd} 결산)` : '최근 회계연도',
@@ -188,6 +198,9 @@ export async function usCompany(ticker) {
       pbr: fh?.pbQuarterly ?? fh?.pbAnnual ?? (mcap && eq > 0 ? mcap / eq : null),
       roe: fh?.roeTTM ?? ratio(ni, eq),
       roa: fh?.roaTTM ?? ratio(ni, assets),
+      debt: eq > 0 ? ratio(liab, eq) : null,
+      eps: fh?.epsTTM ?? epsSd ?? (ni !== null && shares ? ni / shares : null),
+      bps: fh?.bookValuePerShareQuarterly ?? (eq !== null && shares ? eq / shares : null),
       basis: fh ? 'Finnhub 지표' : useTTM ? '시가총액 ÷ 최근 4분기(TTM) 실적' : '시가총액 ÷ 최근 회계연도 실적',
     },
   };

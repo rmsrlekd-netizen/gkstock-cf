@@ -4,6 +4,7 @@ import { json } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { hasAI, analyzeFiling, aiProvider } from '../lib/ai.mjs';
 import { findFiling, getFilingDoc } from '../lib/filing-doc.mjs';
+import { koHeadline } from '../lib/sec-ko.mjs';
 
 const POS = [
   [/흑자\s?전환|turn(ed)? profitable/i, '흑자 전환'], [/YoY \+|전년\s?대비\s?\+|up \d+% (from|year)/i, '전년 대비 증가'], [/(매출|영업이익|순이익)[^.\n]{0,20}(증가|성장)|record (revenue|quarter)|revenue (grew|increased|rose)/i, '실적 성장'],
@@ -57,12 +58,12 @@ export default async (req) => {
     try {
       const src = it.src === 'DART' || it.market === 'KR' ? 'KR' : 'US';
       const ck = src === 'KR' ? it.corpCode : (it.ticker || '').toUpperCase();
-      const comp = ck ? await getJSON(`company/${src}/${ck}`) : null;
+      const comp = ck ? await getJSON(`company2/${src}/${ck}`) : null;
       const hasOv = ck ? await getJSON(`aiov/${src}/${ck}`) : null;
       const a = await analyzeFiling({ company: it.name || it.company || '', ticker: it.ticker, market: src, kind: it.src, title, form: it.form || it.source || '', text, overviewRaw: !hasOv && comp?.overviewRaw ? comp.overviewRaw : null });
       if (!a.summary.length) throw new Error('AI 응답에 요약이 없습니다');
       if (a.overview && ck) await setJSON(`aiov/${src}/${ck}`, { text: a.overview, at: Date.now() }).catch(() => {});
-      const out = { id, provider: aiProvider(), basis: doc.note || null, summary: a.summary, positive: a.positive, negative: a.negative, verdict: a.verdict, overview: a.overview || hasOv?.text || null, at: Date.now() };
+      const out = { id, provider: aiProvider(), basis: doc.note || null, headline: a.headline || null, summary: a.summary, positive: a.positive, negative: a.negative, verdict: a.verdict, overview: a.overview || hasOv?.text || null, at: Date.now() };
       await setJSON(`ai/${id}`, out).catch(() => {});
       return json({ ok: true, ...out }, { cdnSeconds: 86400, swr: 86400 });
     } catch (e) {
@@ -73,6 +74,8 @@ export default async (req) => {
   // AI 실패 → 규칙 기반 요약 (저장하지 않음: 다음에 AI 재시도)
   const sub = it.summary?.sub || it.ko?.sub || it.pr?.deck || it.desc || '';
   const f = fallback(title, sub, doc.lines || []);
+  const rk = it.src === 'SEC' ? koHeadline({ ...it, _excerpt: (doc.lines || []).slice(0, 40).join(' ') }) : null;
+  if (rk) f.headline = rk.title;
   return json({ ok: true, id, fallback: true, provider: null, aiError, basis: doc.note || null, ...f, overview: null, at: Date.now() }, { cdnSeconds: 120 });
 };
 

@@ -2,6 +2,7 @@
 import { json } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { krCompany, usCompany } from '../lib/company.mjs';
+import { getSectors } from '../lib/sectors.mjs';
 
 export default async (req) => {
   const u = new URL(req.url);
@@ -10,7 +11,7 @@ export default async (req) => {
   const corp = u.searchParams.get('corp') || '';
   const ex = u.searchParams.get('ex') || '';
   if (src === 'US' ? !/^[A-Z0-9.\-]{1,10}$/.test(t) : !/^\d{8}$/.test(corp)) return json({ ok: false, error: '종목 정보가 부족합니다' }, { status: 400, cdnSeconds: 60 });
-  const key = `company/${src}/${src === 'KR' ? corp : t}`;
+  const key = `company2/${src}/${src === 'KR' ? corp : t}`;
   try {
     let d = await getJSON(key);
     if (!d || Date.now() - (d.at || 0) > 12 * 3600e3) {
@@ -18,6 +19,9 @@ export default async (req) => {
       d.at = Date.now();
       await setJSON(key, d).catch(() => {});
     }
+    const sm = await getSectors({ allowFetch: false }).catch(() => null);
+    const sraw = sm ? (src === 'KR' ? sm.kr?.[t] : sm.us?.[t]) : null;
+    if (sraw) { const [ind, prod] = sraw.split('|'); d = { ...d, sectorKo: ind, products: prod || d.products || null }; }
     const ov = await getJSON(`aiov/${src}/${src === 'KR' ? corp : t}`);
     return json({ ok: true, ...d, overviewKo: ov?.text || null }, { cdnSeconds: 1800, swr: 3600 });
   } catch (e) {

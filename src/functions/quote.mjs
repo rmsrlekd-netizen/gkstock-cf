@@ -4,7 +4,7 @@ import { hasKis, kisGet } from '../lib/kis.mjs';
 import { googleQuote } from '../lib/gfin.mjs';
 
 const NQ_H = { 'User-Agent': BROWSER_UA, Accept: 'application/json', Origin: 'https://www.nasdaq.com', Referer: 'https://www.nasdaq.com/' };
-async function us(t) {
+export async function us(t) {
   for (const cls of ['stocks', 'etf']) {
     try {
       const r = await fetchWithTimeout(`https://api.nasdaq.com/api/quote/${encodeURIComponent(t.replace('.', '/'))}/info?assetclass=${cls}`, { headers: NQ_H }, 5000);
@@ -14,7 +14,7 @@ async function us(t) {
   }
   return null;
 }
-async function kr(t) {
+export async function kr(t) {
   if (hasKis()) {
     try {
       const o = (await kisGet('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: t })).output || {};

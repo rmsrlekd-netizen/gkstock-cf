@@ -109,6 +109,7 @@ ${text.slice(0, 9000)}
 
 다음 JSON 하나만 출력하세요(설명 문장 없이):
 {
+  "headline": "이 공시·기사의 핵심 내용을 한국어 한 줄 제목으로 (45자 이내, 숫자 포함, 회사명 제외)",
   "summary": ["핵심 내용 요약, 최대 5줄, 각 줄 60자 이내, 숫자·날짜 포함"],
   "positive": ["주가에 긍정적으로 작용할 수 있는 요인 1~3개, 각 70자 이내"],
   "negative": ["주가에 부정적으로 작용할 수 있는 요인·리스크 1~3개, 각 70자 이내"],
@@ -119,6 +120,7 @@ ${text.slice(0, 9000)}
   const j = parseJSON(await claude(prompt, { maxTokens: 1400, timeout: 9000 }));
   const arr = (v, n) => (Array.isArray(v) ? v.filter(Boolean).map((s) => String(s).slice(0, 140)).slice(0, n) : []);
   return {
+    headline: j.headline ? String(j.headline).slice(0, 80) : null,
     summary: arr(j.summary, 5),
     positive: arr(j.positive, 4),
     negative: arr(j.negative, 4),

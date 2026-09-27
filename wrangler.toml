@@ -1,5 +1,5 @@
 # GK 공시레이더 — Cloudflare Workers 설정
-name = "gkstock"
+name = "gkstock-cf"
 main = "src/worker.mjs"
 compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat"]

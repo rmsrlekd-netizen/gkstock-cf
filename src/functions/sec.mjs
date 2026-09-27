@@ -2,6 +2,7 @@
 import { json } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { collectSec, mergeFeed, enrichForm4 } from '../lib/sec-core.mjs';
+import { koHeadline } from '../lib/sec-ko.mjs';
 
 export default async () => {
   try {
@@ -16,7 +17,11 @@ export default async () => {
       feed = { ...(feed || {}), updatedAt: new Date().toISOString(), errors, items: merged };
       await setJSON('sec/feed', feed).catch(() => {});
     }
-    const items = feed.items.slice(0, 600).map(({ _excerpt, txTries, docTries, aiTries, ...x }) => x);
+    const items = feed.items.slice(0, 600).map((it) => {
+      const { _excerpt, txTries, docTries, aiTries, ...x } = it;
+      const rk = koHeadline(it);
+      return rk ? { ...x, rk } : x;
+    });
     return json({ ok: true, source: 'SEC EDGAR', mode, updatedAt: feed.updatedAt, errors: feed.errors || [], count: items.length, items }, { cdnSeconds: 15, swr: 30 });
   } catch (e) {
     return json({ ok: false, error: String(e.message || e), items: [] }, { cdnSeconds: 5, swr: 10, status: 502 });

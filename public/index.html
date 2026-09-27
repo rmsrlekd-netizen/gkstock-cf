@@ -1,110 +1,81 @@
 <!doctype html>
-<html lang="ko" class="fs-l">
+<html lang="ko" translate="no" class="notranslate fs-l">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GK 공시레이더 | GK의 미국 주식</title>
+  <meta name="google" content="notranslate" />
+  <title>GK의 공시레이더 | 한·미 실시간 공시·뉴스</title>
   <meta name="description" content="한국·미국 기업 공시, 보도자료, 뉴스를 실시간으로 모으고 AI가 5줄 요약과 호재·악재를 분석합니다. GK의 미국 주식이 만든 공시 터미널." />
-  <meta name="theme-color" content="#070b16" />
-  <meta property="og:title" content="GK 공시레이더 | GK의 미국 주식" />
+  <meta name="theme-color" content="#0a0b1e" />
+  <meta property="og:title" content="GK의 공시레이더" />
   <meta property="og:description" content="한·미 실시간 공시·보도자료·뉴스 + AI 요약" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070b16'/%3E%3Ctext x='32' y='42' font-family='Arial' font-weight='900' font-size='28' fill='%234f8cff' text-anchor='middle'%3EGK%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="img/gk-channel.svg" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&display=swap" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
   <!-- ───────── 헤더 ───────── -->
   <header class="hdr">
-    <a class="logo" href="#home" data-view="home">
-      <span class="logo-mark">GK</span>
-      <span class="logo-text"><b>공시레이더</b><small>Global Disclosure Radar</small></span>
-    </a>
-    <nav class="nav" id="nav">
-      <button data-view="home" class="on">홈</button>
-      <button data-view="filings">실시간 공시</button>
-      <button data-view="pr">보도자료</button>
-      <button data-view="news">뉴스</button>
-      <button data-view="company">기업분석</button>
-      <button data-view="watch">관심종목</button>
-      <div class="more">
-        <button id="moreBtn">더보기 <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
-        <div class="menu" id="moreMenu" hidden>
-          <button data-view="flows">수급 레이더 <small>공매도·내부자·기관</small></button>
-          <button data-view="market">시장 지표 <small>공포탐욕·야간선물·지수</small></button>
-          <button data-open-modal="popular">오늘의 인기 종목</button>
-          <button data-open-modal="digest">AI 오늘의 핵심 공시</button>
-          <button data-view="guide">이용 안내</button>
+    <div class="hdr-in">
+      <a class="brand" href="#home" data-go="home" aria-label="GK의 공시레이더 홈">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9b7bff"/><stop offset="1" stop-color="#3ea6ff"/></linearGradient></defs><rect width="40" height="40" rx="11" fill="url(#bm)"/><circle cx="20" cy="20" r="11" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1.6"/><circle cx="20" cy="20" r="5.5" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.6"/><path d="M20 20 L29 12" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="20" cy="20" r="2.2" fill="#fff"/></svg>
+        </span>
+        <span class="brand-txt"><b>GK의 공시레이더</b><small>REAL-TIME DISCLOSURE RADAR</small></span>
+      </a>
+      <nav class="nav" id="nav">
+        <button data-go="home" class="on">라이브 피드</button>
+        <button data-go="filings">공시</button>
+        <button data-go="pr">보도자료</button>
+        <button data-go="news">뉴스</button>
+        <button data-go="popular">인기 종목</button>
+        <button data-go="flows">수급</button>
+        <button data-go="market">시장 지표</button>
+        <button data-go="company">기업 분석</button>
+        <button data-go="watch">관심종목</button>
+      </nav>
+      <div class="hdr-right">
+        <div class="search">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search" type="search" placeholder="종목명·티커·키워드 검색" autocomplete="off" />
+          <kbd>/</kbd>
+          <div class="suggest" id="suggest" hidden></div>
         </div>
+        <a class="yt" href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener" title="GK의 미국 주식 유튜브">
+          <img src="img/gk-channel.svg" width="28" height="28" alt="" /><span><b>GK의 미국 주식</b><small>YouTube</small></span>
+        </a>
+        <button class="ico" id="btnBell" title="알림"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><i class="dot" id="bellDot" hidden></i></button>
+        <button class="ico" id="btnUser" title="설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
       </div>
-    </nav>
-    <a class="yt" href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener" title="GK의 미국 주식 유튜브 채널">
-      <img src="img/gk-channel.svg" width="30" height="30" alt="" /><span><b>GK의 미국 주식</b><small>YouTube</small></span>
-    </a>
-    <div class="search">
-      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="search" type="search" placeholder="종목명, 티커, 키워드 검색" autocomplete="off" />
-      <div class="suggest" id="suggest" hidden></div>
     </div>
-    <button class="ico" id="btnBell" title="알림"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><i class="dot" id="bellDot" hidden></i></button>
-    <button class="ico" id="btnUser" title="설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
+    <!-- 시장 지표 띠 -->
+    <div class="tape"><div class="tape-in" id="tapeIn"></div></div>
   </header>
 
-  <!-- ───────── 시장 지표 띠 ───────── -->
-  <div class="tape" id="tape"><div class="tape-in" id="tapeIn"></div></div>
-
   <main id="app">
-    <!-- ───────── 피드 화면 (홈·공시·보도자료·뉴스·관심종목) ───────── -->
+    <!-- ───────── 라이브 피드 (홈·공시·보도자료·뉴스·관심종목) ───────── -->
     <section id="viewFeed">
-      <section class="hero">
-        <div class="hero-txt">
-          <h1><span class="gk">GK</span> LIVE INTELLIGENCE <em class="live">● LIVE</em></h1>
-          <p id="heroDesc">지금, 한국과 미국 시장에서 가장 중요한 공시와 보도자료·뉴스를 실시간으로 확인하세요.</p>
-        </div>
-        <button class="stat" data-stat="SEC"><span class="st-ico us">🇺🇸</span><span class="st-t">미국 SEC 공시</span><b id="stSEC">–</b><small>오늘 수집된 공시</small><em id="stSECd"></em></button>
-        <button class="stat" data-stat="DART"><span class="st-ico kr">🇰🇷</span><span class="st-t">한국 DART 공시</span><b id="stDART">–</b><small>오늘 수집된 공시</small><em id="stDARTd"></em></button>
-        <button class="stat" data-stat="PR"><span class="st-ico pr">📄</span><span class="st-t">기업 보도자료</span><b id="stPR">–</b><small>오늘 수집된 보도자료</small><em id="stPRd"></em></button>
-        <button class="stat" data-stat="NEWS"><span class="st-ico nw">📰</span><span class="st-t">주요 뉴스</span><b id="stNEWS">–</b><small>오늘 수집된 뉴스</small><em id="stNEWSd"></em></button>
-      </section>
-
-      <div class="filterbar">
-        <div class="seg" id="mkSeg"><button data-mk="ALL" class="on">전체</button><button data-mk="US">🇺🇸 미국</button><button data-mk="KR">🇰🇷 한국</button></div>
-        <div class="chips" id="typeChips"><button data-type="FILING">공시</button><button data-type="PR">보도자료</button><button data-type="NEWS">뉴스</button></div>
-        <div class="chips" id="themeChips">
-          <button data-theme="earnings">실적</button><button data-theme="bio">임상/FDA</button><button data-theme="deal">계약/M&amp;A</button>
-          <button data-theme="offering">증자/희석</button><button data-theme="insider">내부자</button><button data-theme="inst">기관</button><button data-theme="other">기타</button>
-        </div>
+      <div class="trend-head">
+        <h2 class="sec-title">트렌딩 <span>오늘 가장 주목받는 공시·뉴스</span></h2>
+        <div class="trend-nav"><button class="ico sm" data-trend="-1" aria-label="이전">‹</button><button class="ico sm" data-trend="1" aria-label="다음">›</button></div>
       </div>
+      <div class="trend" id="trend"></div>
 
-      <div class="grid3">
-        <aside class="side">
-          <div class="box">
-            <h3>시장 구분</h3>
-            <div class="seg wide" id="mkSeg2"><button data-mk="ALL" class="on">전체</button><button data-mk="US">미국</button><button data-mk="KR">한국</button></div>
-          </div>
-          <div class="box">
-            <h3>🔥 주요 테마</h3>
-            <ul class="themes" id="themes"></ul>
-          </div>
-          <div class="box">
-            <h3>인기 종목 <button class="link" data-open-modal="popular">더보기 ›</button></h3>
-            <ol class="pop" id="pop"><li class="muted">불러오는 중…</li></ol>
-          </div>
-          <div class="box ai-promo">
-            <b>AI가 분석하는<br />오늘의 핵심 공시</b>
-            <p>오늘 나온 공시·보도자료 중 주가 영향이 큰 5~7건을 AI가 골라 요약합니다.</p>
-            <button class="btn primary block" data-open-modal="digest">AI 분석 바로가기 →</button>
-          </div>
-        </aside>
-
-        <section class="feedcol">
-          <div class="feed-head">
-            <h2><span class="live-dot"></span><span id="feedTitle">실시간 공시 &amp; 뉴스</span></h2>
-            <div class="fh-right">
-              <select id="sortSel" class="select"><option value="time">최신순</option><option value="impact">중요도순</option></select>
+      <div class="layout">
+        <section class="feed-wrap">
+          <div class="feed-top">
+            <div class="feed-title">
+              <h1 id="feedTitle">실시간 공시 · 뉴스 피드</h1>
+              <span class="live"><i></i>LIVE</span>
+              <span class="upd" id="feedUpd"></span>
+            </div>
+            <div class="feed-tools">
+              <div class="seg" id="mkSeg"><button data-mk="ALL" class="on">전체</button><button data-mk="US">미국</button><button data-mk="KR">한국</button></div>
+              <select id="sortSel" class="select" aria-label="정렬"><option value="time">최신순</option><option value="impact">중요도순</option></select>
               <button class="ico sm" id="btnRefresh" title="새로고침"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
             </div>
           </div>
@@ -114,37 +85,79 @@
             <button data-type="PR">보도자료 <i id="cPR">0</i></button>
             <button data-type="NEWS">뉴스 <i id="cNEWS">0</i></button>
           </div>
+          <div class="chips" id="themeChips">
+            <button data-theme="major">중요</button><button data-theme="pos">호재</button><button data-theme="neg">악재</button>
+            <button data-theme="earnings">실적</button><button data-theme="bio">임상·FDA</button><button data-theme="deal">계약·M&amp;A</button>
+            <button data-theme="offering">증자·희석</button><button data-theme="insider">내부자</button><button data-theme="inst">기관·5%</button>
+          </div>
           <div class="watchbar" id="watchbar" hidden></div>
+          <div class="feed-head-row" aria-hidden="true"><span></span><span>영향 · 심리</span><span>시각 · 종목 · 헤드라인</span><span></span></div>
           <div class="list" id="list"></div>
         </section>
 
-        <aside class="detail" id="detail">
-          <div class="d-empty">
-            <svg viewBox="0 0 24 24"><path d="M9 12h6M9 16h6M9 8h2"/><rect x="4" y="3" width="16" height="18" rx="2"/></svg>
-            <p>왼쪽 목록에서 공시·보도자료·뉴스를 선택하면<br />AI 5줄 요약과 호재·악재 분석이 여기에 표시됩니다.</p>
+        <aside class="side">
+          <div class="card pop-card">
+            <div class="card-h">
+              <h3>실시간 인기 종목 <b>TOP 10</b></h3>
+              <div class="seg xs" id="popSeg"><button data-pop="KR" class="on">국내</button><button data-pop="US">미국</button></div>
+            </div>
+            <ol class="rank" id="popList"><li class="muted">불러오는 중…</li></ol>
+            <div class="card-f" id="popSrc"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>오늘의 수집 현황</h3><span class="muted sm" id="statUpd"></span></div>
+            <div class="stats4">
+              <button data-stat="SEC"><span>미국 SEC 공시</span><b id="stSEC">–</b><em id="stSECd"></em></button>
+              <button data-stat="DART"><span>한국 DART 공시</span><b id="stDART">–</b><em id="stDARTd"></em></button>
+              <button data-stat="PR"><span>기업 보도자료</span><b id="stPR">–</b><em id="stPRd"></em></button>
+              <button data-stat="NEWS"><span>주요 뉴스</span><b id="stNEWS">–</b><em id="stNEWSd"></em></button>
+            </div>
+          </div>
+
+          <div class="card ai-card">
+            <div class="ai-badge">AI</div>
+            <b>AI가 고른 오늘의 핵심 공시</b>
+            <p>오늘 나온 공시·보도자료 중 주가 영향이 큰 5~7건을 AI가 골라 요약합니다.</p>
+            <button class="btn primary block" data-modal="digest">AI 분석 보기 →</button>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>주요 테마</h3></div>
+            <ul class="themes" id="themes"></ul>
           </div>
         </aside>
       </div>
     </section>
 
-    <!-- ───────── 기업분석 ───────── -->
+    <!-- ───────── 인기 종목 ───────── -->
+    <section id="viewPopular" class="page" hidden>
+      <div class="page-head"><h2>실시간 인기 종목 TOP 10</h2><span class="muted" id="popMeta"></span></div>
+      <div class="pop-grid">
+        <div class="card"><div class="card-h"><h3>국내 인기 종목</h3><span class="muted sm">네이버 증권 검색 상위</span></div><ol class="rank big" id="popKR"></ol></div>
+        <div class="card"><div class="card-h"><h3>미국 인기 종목</h3><span class="muted sm" id="popUSsrc"></span></div><ol class="rank big" id="popUS"></ol></div>
+      </div>
+      <div class="card" style="margin-top:1rem"><div class="card-h"><h3>GK의 공시레이더 오늘 많이 본 종목</h3><span class="muted sm" id="viewsMeta"></span></div><ol class="rank big" id="popViews"></ol></div>
+    </section>
+
+    <!-- ───────── 기업 분석 ───────── -->
     <section id="viewCompany" class="page" hidden>
       <div class="page-head">
-        <h2>기업분석</h2>
-        <div class="search inline"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="coSearch" placeholder="종목명 또는 티커 입력 (예: 삼성전자, NVDA)" /><div class="suggest" id="coSuggest" hidden></div></div>
+        <h2>기업 분석</h2>
+        <div class="search inline"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="coSearch" placeholder="종목명 또는 티커 (예: 삼성전자, NVDA)" autocomplete="off" /><div class="suggest" id="coSuggest" hidden></div></div>
       </div>
       <div id="coBody"><div class="empty-big">분석할 종목을 검색하거나, 공시 상세 창의 <b>기업 상세보기</b>를 누르세요.<div class="chips center" id="coQuick"></div></div></div>
     </section>
 
-    <!-- ───────── 수급 레이더 ───────── -->
+    <!-- ───────── 수급 ───────── -->
     <section id="viewFlows" class="page" hidden>
       <div class="page-head"><h2>수급 레이더</h2><span class="muted" id="flowMeta"></span></div>
       <div class="tabs" id="flowTabs">
-        <button data-tab="usInsider" class="on">🇺🇸 내부자 매매</button><button data-tab="usInst">🇺🇸 기관·5% 지분</button>
-        <button data-tab="krInst">🇰🇷 기관</button><button data-tab="krFrgn">🇰🇷 외국인</button><button data-tab="krShort">🇰🇷 공매도</button><button data-tab="krInsider">🇰🇷 임원·5%</button>
+        <button data-tab="usInsider" class="on">미국 내부자 매매</button><button data-tab="usInst">미국 기관·5% 지분</button>
+        <button data-tab="krInst">국내 기관</button><button data-tab="krFrgn">국내 외국인</button><button data-tab="krShort">국내 공매도</button><button data-tab="krInsider">국내 임원·5%</button>
       </div>
       <div id="flowSub" class="subbar"></div>
-      <div class="panel"><div class="flows" id="flows"></div><div class="foot-note pad" id="flowFoot"></div></div>
+      <div class="card"><div class="flows" id="flows"></div><div class="foot-note" id="flowFoot"></div></div>
     </section>
 
     <!-- ───────── 시장 지표 ───────── -->
@@ -157,17 +170,18 @@
     <!-- ───────── 이용 안내 ───────── -->
     <section id="viewGuide" class="page" hidden>
       <div class="page-head"><h2>이용 안내</h2></div>
-      <div class="panel prose">
+      <div class="card prose">
         <h3>무엇을 보여주나요</h3>
         <ul>
-          <li><b>공시</b>: 미국 SEC EDGAR, 한국 DART 전자공시를 실시간으로 모읍니다. 한국 공시는 원문을 읽어 금액·비율 같은 핵심 숫자를 제목으로 만듭니다.</li>
+          <li><b>공시</b>: 미국 SEC EDGAR, 한국 DART 전자공시를 실시간으로 모읍니다. 원문을 읽어 금액·비율 같은 핵심 숫자로 한국어 제목을 만듭니다.</li>
           <li><b>보도자료</b>: GlobeNewswire·PR Newswire(미국), 뉴스와이어(한국)의 상장사 보도자료.</li>
-          <li><b>뉴스</b>: 한국어 증권 뉴스(구글 뉴스 검색)와, Finnhub 키가 있으면 미국 시장 뉴스.</li>
-          <li><b>AI 분석</b>: 항목을 누르면 AI가 원문을 읽고 5줄 요약, 주가에 긍정적·부정적인 요인을 정리합니다. 한 번 분석한 결과는 저장해 두고 재사용합니다.</li>
-          <li><b>호재·악재 표시</b>: AI 분석 전에는 공시 종류와 제목 키워드로 자동 분류한 값이며, AI 분석 후에는 AI 판단으로 바뀝니다.</li>
+          <li><b>뉴스</b>: 한국어 증권 뉴스(구글 뉴스 검색), Finnhub 키가 있으면 미국 시장 뉴스.</li>
+          <li><b>영향·심리 막대</b>: 영향(노란색)은 공시 종류와 내용으로 매긴 중요도 1~5, 심리는 호재(초록)·중립·악재(빨강). AI 분석이 끝나면 AI 판단으로 바뀝니다.</li>
+          <li><b>AI 분석</b>: 항목을 누르면 AI가 원문을 읽고 5줄 요약, 주가에 긍정적·부정적인 요인을 정리합니다.</li>
+          <li><b>인기 종목</b>: 국내는 네이버 증권 검색 상위, 미국은 StockTwits 실시간 트렌딩(실패 시 Nasdaq 거래량 상위).</li>
         </ul>
         <h3>시간 표시</h3>
-        <p>미국 공시는 SEC 접수 시각(초 단위)을 한국 시간으로 보여줍니다. DART는 공식 접수 시각이 분 단위까지만 공개되어, 초 단위는 수집기가 처음 감지한 시각입니다.</p>
+        <p>미국 공시는 SEC 접수 시각(초 단위)을 한국 시간으로 보여줍니다. DART는 공식 접수 시각이 분 단위까지만 공개됩니다.</p>
         <h3>주의</h3>
         <p>본 사이트의 정보와 AI 요약은 투자 참고용이며 투자 권유가 아닙니다. 투자 판단 전 반드시 공시 원문을 확인하세요.</p>
       </div>
@@ -175,16 +189,19 @@
   </main>
 
   <footer class="footer">
-    <p>데이터: SEC EDGAR · 금융감독원 DART · GlobeNewswire · PR Newswire · 뉴스와이어 · Google News · Nasdaq · CNN · Google Finance · 한국투자증권 Open API. 로고는 각 사 상표이며 식별 목적으로만 표시됩니다.</p>
-    <p>본 사이트의 정보와 AI 요약은 투자 참고용이며 투자 권유가 아닙니다. © GK의 미국 주식 · <a href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener">YouTube @GK_Stock</a></p>
+    <div class="footer-in">
+      <div class="f-brand"><b>GK의 공시레이더</b><span>by <a href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener">GK의 미국 주식</a></span></div>
+      <p>데이터: SEC EDGAR · 금융감독원 DART · GlobeNewswire · PR Newswire · 뉴스와이어 · Google News · 네이버 증권 · StockTwits · Nasdaq · CNN · Google Finance · 한국투자증권 Open API. 로고는 각 사 상표이며 식별 목적으로만 표시됩니다.</p>
+      <p>본 사이트의 정보와 AI 요약은 투자 참고용이며 투자 권유가 아닙니다. <button class="link" data-go="guide">이용 안내</button></p>
+    </div>
   </footer>
 
-  <!-- 모바일 상세 시트 / 모달 -->
+  <!-- 상세 창 / 모달 / 알림 -->
   <div class="scrim" id="scrim" hidden></div>
-  <div class="sheet" id="sheet" hidden><div class="sheet-in" id="sheetIn"></div></div>
-  <div class="modal" id="modal" hidden><div class="modal-card"><button class="ico sm m-close" data-close-modal>✕</button><div id="modalBody"></div></div></div>
+  <aside class="drawer" id="drawer" aria-hidden="true"><div id="drawerIn"></div></aside>
+  <div class="modal" id="modal" hidden><div class="modal-card"><button class="ico sm m-close" data-close-modal aria-label="닫기">✕</button><div id="modalBody"></div></div></div>
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=3" defer></script>
 </body>
 </html>

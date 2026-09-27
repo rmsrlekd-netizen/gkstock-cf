@@ -10,6 +10,7 @@ const dec = (s) => s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, c) => {
 export function htmlToText(html) {
   return dec(
     html
+      .replace(/[\r\n\t]+/g, ' ') // 원문 HTML의 줄바꿈은 문장 중간에도 있으므로 공백으로
       .replace(/<head[\s\S]*?<\/head>/i, '')
       .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
       .replace(/<br\s*\/?>/gi, '\n')

@@ -136,7 +136,7 @@ export async function fetchArticleLines(it) {
   const r = await fetchWithTimeout(it.url, { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' } }, 7000);
   if (!r.ok) return { lines: base, note: '본문을 불러오지 못해 제목·요약 기반' };
   const html = await r.text();
-  const body = html.replace(/<head[\s\S]*?<\/head>/i, '').replace(/<(script|style|nav|header|footer|aside|form)[\s\S]*?<\/\1>/gi, '');
+  const body = html.replace(/[\r\n\t]+/g, ' ').replace(/<head[\s\S]*?<\/head>/i, '').replace(/<(script|style|nav|header|footer|aside|form)[\s\S]*?<\/\1>/gi, '');
   const lines = decodeEntities(body.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h\d|tr)>/gi, '\n').replace(/<[^>]+>/g, ' '))
     .split('\n').map((s) => s.replace(/\s+/g, ' ').trim()).filter((s) => s.length > 40 && !/cookie|subscribe|javascript|copyright|all rights reserved|©/i.test(s));
   return { lines: lines.length ? [it.title, ...lines.slice(0, 80)] : base };

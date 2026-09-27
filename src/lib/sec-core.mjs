@@ -119,7 +119,7 @@ export async function enrichDocs(items, { max = 8, deadline = Date.now() + 12000
   }
   // 한국어 요약 (ANTHROPIC_API_KEY 있을 때만)
   if (hasAI() && Date.now() < deadline + 1500) {
-    const batch = items.filter((x) => x.pr && !x.ko && (x.aiTries || 0) < 2 && (x.pr.headline || x.pr.itemText)).slice(0, 6);
+    const batch = items.filter((x) => x.pr && !x.ko && (x.aiTries || 0) < 2 && (x.pr.headline || x.pr.itemText)).slice(0, 12);
     if (batch.length) {
       try {
         const res = await koreanHeadlines(batch.map((x) => ({ id: x.id, company: x.name, ticker: x.ticker, form: x.form, items: (x.items || []).map((i) => i.ko), headline: x.pr.headline || '', excerpt: x._excerpt || x.pr.itemText || '' })));
@@ -131,7 +131,6 @@ export async function enrichDocs(items, { max = 8, deadline = Date.now() + 12000
       }
     }
   }
-  if (!hasAI()) for (const x of items) delete x._excerpt;
   return n;
 }
 
@@ -156,7 +155,7 @@ export async function runSecWatch() {
   const { items, errors } = await collectSec({ all: true, budget: 14000 });
   const merged = mergeFeed(prev.items, items);
   const enriched = await enrichForm4(merged, { max: 20, deadline: started + 15000 });
-  const docs = await enrichDocs(merged, { max: 8, deadline: started + 16000 });
+  const docs = await enrichDocs(merged, { max: 14, deadline: started + 20000 });
   const aiError = merged._aiError || null;
   delete merged._aiError;
   await setJSON('sec/feed', { updatedAt: new Date().toISOString(), errors, aiError, items: merged });
