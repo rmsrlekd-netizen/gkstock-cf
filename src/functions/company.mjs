@@ -3,6 +3,7 @@ import { json } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { krCompany, usCompany } from '../lib/company.mjs';
 import { getSectors } from '../lib/sectors.mjs';
+import { hasAI, overviewKo } from '../lib/ai.mjs';
 
 export default async (req) => {
   const u = new URL(req.url);
@@ -27,8 +28,13 @@ export default async (req) => {
     const sm = await getSectors({ allowFetch: false }).catch(() => null);
     const sraw = sm ? (src === 'KR' ? sm.kr?.[t] : sm.us?.[t]) : null;
     if (sraw) { const [ind, prod] = sraw.split('|'); d = { ...d, sectorKo: ind, products: prod || d.products || null }; }
-    const ov = await getJSON(`aiov/${src}/${src === 'KR' ? corp : t}`);
-    return json({ ok: true, ...d, overviewKo: ov?.text || null }, { cdnSeconds: 1800, swr: 3600 });
+    const ovKey = `aiov/${src}/${src === 'KR' ? corp : t}`;
+    let ov = await getJSON(ovKey);
+    // 영문 기업 소개 → 한국어 (한 번 번역하면 저장해 재사용)
+    if (!ov && src === 'US' && d.overviewRaw && hasAI()) {
+      try { const text = await overviewKo(d.name || t, d.overviewRaw); if (text) { ov = { text, at: Date.now() }; await setJSON(ovKey, ov).catch(() => {}); } } catch (e) { console.warn('overviewKo', e.message); }
+    }
+    return json({ ok: true, ...d, overviewKo: ov?.text || null }, { cdnSeconds: ov ? 1800 : 60, swr: 3600 });
   } catch (e) {
     return json({ ok: false, error: String(e.message || e) }, { status: 502, cdnSeconds: 60 });
   }

@@ -17,6 +17,8 @@ import * as news from './functions/news.mjs';
 import * as popular from './functions/popular.mjs';
 import * as sectors from './functions/sectors.mjs';
 import * as quote from './functions/quote.mjs';
+import * as translate from './functions/translate.mjs';
+import * as earnings from './functions/earnings.mjs';
 import * as search from './functions/search.mjs';
 import * as sec from './functions/sec.mjs';
 import * as stock from './functions/stock.mjs';
@@ -26,7 +28,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, search, sec, stock, views]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, earnings, search, sec, stock, views]) {
   ROUTES[m.config.path] = m.default;
 }
 

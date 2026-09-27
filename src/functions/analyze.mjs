@@ -5,6 +5,7 @@ import { getJSON, setJSON } from '../lib/store.mjs';
 import { hasAI, analyzeFiling, aiProvider } from '../lib/ai.mjs';
 import { findFiling, getFilingDoc } from '../lib/filing-doc.mjs';
 import { koHeadline } from '../lib/sec-ko.mjs';
+import { getSectors } from '../lib/sectors.mjs';
 
 const POS = [
   [/흑자\s?전환|turn(ed)? profitable/i, '흑자 전환'], [/YoY \+|전년\s?대비\s?\+|up \d+% (from|year)/i, '전년 대비 증가'], [/(매출|영업이익|순이익)[^.\n]{0,20}(증가|성장)|record (revenue|quarter)|revenue (grew|increased|rose)/i, '실적 성장'],
@@ -41,7 +42,7 @@ function fallback(title, sub, lines) {
 export default async (req) => {
   const id = new URL(req.url).searchParams.get('id') || '';
   if (!/^(SEC|DART)-[\d-]+$|^(NEWS|PR)-[a-z0-9]+$/.test(id)) return json({ ok: false, error: '잘못된 공시 ID' }, { status: 400, cdnSeconds: 60 });
-  const cached = await getJSON(`ai/${id}`);
+  const cached = await getJSON(`ai2/${id}`);
   if (cached) return json({ ok: true, ...cached }, { cdnSeconds: 86400, swr: 86400 });
   let it, doc, title;
   try {
@@ -60,11 +61,16 @@ export default async (req) => {
       const ck = src === 'KR' ? it.corpCode : (it.ticker || '').toUpperCase();
       const comp = ck ? await getJSON(`company2/${src}/${ck}`) : null;
       const hasOv = ck ? await getJSON(`aiov/${src}/${ck}`) : null;
-      const a = await analyzeFiling({ company: it.name || it.company || '', ticker: it.ticker, market: src, kind: it.src, title, form: it.form || it.source || '', text, overviewRaw: !hasOv && comp?.overviewRaw ? comp.overviewRaw : null });
+      const sm = await getSectors({ allowFetch: false }).catch(() => null);
+      const sraw = it.ticker && sm ? (src === 'KR' ? sm.kr?.[it.ticker] : sm.us?.[String(it.ticker).toUpperCase()]) : null;
+      const sector = (sraw ? sraw.split('|')[0] : '') || comp?.sectorKo || [comp?.sector, comp?.industry].filter(Boolean).join(' · ') || '';
+      const r = comp?.ratios || {};
+      const val = [comp?.marketCap ? `시가총액 약 ${src === 'KR' ? Math.round(comp.marketCap / 1e8).toLocaleString('ko-KR') + '억원' : '$' + (comp.marketCap / 1e9).toFixed(1) + 'B'}` : '', r.per ? `PER ${r.per.toFixed(1)}배` : '', r.pbr ? `PBR ${r.pbr.toFixed(1)}배` : '', r.roe ? `ROE ${r.roe.toFixed(1)}%` : '', r.debt ? `부채비율 ${r.debt.toFixed(0)}%` : ''].filter(Boolean).join(', ');
+      const a = await analyzeFiling({ company: it.name || it.company || '', ticker: it.ticker, market: src, kind: it.src, title, form: it.form || it.source || '', text, overviewRaw: !hasOv && comp?.overviewRaw ? comp.overviewRaw : null, sector, valuation: val });
       if (!a.summary.length) throw new Error('AI 응답에 요약이 없습니다');
       if (a.overview && ck) await setJSON(`aiov/${src}/${ck}`, { text: a.overview, at: Date.now() }).catch(() => {});
-      const out = { id, provider: aiProvider(), basis: doc.note || null, headline: a.headline || null, summary: a.summary, positive: a.positive, negative: a.negative, verdict: a.verdict, overview: a.overview || hasOv?.text || null, at: Date.now() };
-      await setJSON(`ai/${id}`, out).catch(() => {});
+      const out = { id, provider: aiProvider(), basis: doc.note || null, headline: a.headline || null, summary: a.summary, positive: a.positive, negative: a.negative, analyst: a.analyst, watch: a.watch, sector: sector || null, verdict: a.verdict, overview: a.overview || hasOv?.text || null, at: Date.now() };
+      await setJSON(`ai2/${id}`, out).catch(() => {});
       return json({ ok: true, ...out }, { cdnSeconds: 86400, swr: 86400 });
     } catch (e) {
       aiError = String(e.message || e).slice(0, 300);

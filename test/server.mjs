@@ -138,6 +138,7 @@ globalThis.fetch = async (url, opts = {}) => {
     const html = '<table><tr><th>회사명</th><th>시장구분</th><th>종목코드</th><th>업종</th><th>주요제품</th></tr>' + rows.map((r) => `<tr><td>${r[0]}</td><td>유가</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join('') + '</table>';
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } });
   }
+  if (url.includes('api/calendar/earnings')) { const d = url.split('date=')[1]; const h = [...d].reduce((a, c) => a + c.charCodeAt(0), 0); return J({ data: { rows: [['NVDA', 'NVIDIA Corporation', '$4,600,000,000,000', '$1.05', 'time-after-hours'], ['CCL', 'Carnival Corporation', '$29,844,654,100', '$1.36', 'time-pre-market'], ['KMX', 'CarMax Inc', '$7,998,109,200', '$0.67', 'time-pre-market'], ['UEC', 'Uranium Energy Corp.', '$4,686,441,500', '($0.04)', 'time-pre-market'], ['TINY', 'Tiny Co', '$98,000,000', '', 'time-not-supplied']].slice(0, 2 + (h % 4)).map(([symbol, name, marketCap, epsForecast, time]) => ({ symbol, name, marketCap, epsForecast, time, noOfEsts: '5', lastYearEPS: '$1.00', fiscalQuarterEnding: 'Aug/2026' })) } }); }
   // ── 현재가 ──
   if (url.includes('/info?assetclass=')) { const t = url.split('/quote/')[1].split('/')[0]; const h = [...t].reduce((a, c) => a + c.charCodeAt(0), 0); return J({ data: { primaryData: { lastSalePrice: '$' + (50 + h % 400).toFixed(2), netChange: ((h % 7) - 3).toFixed(2), percentageChange: (((h % 9) - 4) * 0.83).toFixed(2) + '%' } } }); }
   // ── Gemini ──
@@ -168,7 +169,7 @@ const { setJSON } = await import('../src/lib/store.mjs');
 await setJSON('kr/names', { at: Date.now(), list: [{ n: 'SK하이닉스', c: '000660', k: '00164779' }, { n: '에코프로비엠', c: '247540', k: '01160363' }, { n: '삼성전자', c: '005930', k: '00126380' }, { n: '셀트리온', c: '068270', k: '00413046' }, { n: '현대차', c: '005380', k: '00164742' }].sort((a, b) => b.n.length - a.n.length) });
 const nw = (await import('../src/functions/news-watch.mjs')).default;
 await nw();
-for (const f of ['sec', 'dart', 'market', 'flows', 'stock', 'views', 'health', 'logo', 'company', 'doc', 'analyze', 'news', 'quote', 'digest', 'search', 'popular', 'sectors']) fns['/api/' + f] = (await import(`../src/functions/${f}.mjs`)).default;
+for (const f of ['sec', 'dart', 'market', 'flows', 'stock', 'views', 'health', 'logo', 'company', 'doc', 'analyze', 'news', 'quote', 'digest', 'search', 'popular', 'sectors', 'translate', 'earnings']) fns['/api/' + f] = (await import(`../src/functions/${f}.mjs`)).default;
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');

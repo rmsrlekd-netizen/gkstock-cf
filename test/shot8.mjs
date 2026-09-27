@@ -1,0 +1,17 @@
+import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch(); const errs = [];
+const p = await b.newPage({ viewport: { width: 1600, height: 1000 } });
+p.on('pageerror', (e) => errs.push('P ' + e.message));
+await p.goto('http://localhost:8791/'); await p.waitForTimeout(4000);
+await p.screenshot({ path: '/tmp/q1.png' });
+await p.evaluate(() => window.scrollTo(0, 650)); await p.waitForTimeout(300);
+await p.screenshot({ path: '/tmp/q2.png' });
+await p.evaluate(() => (document.querySelector('.row[data-id^="SEC"]') || document.querySelector('.row')).click()); await p.waitForTimeout(3500);
+await p.screenshot({ path: '/tmp/q3.png', fullPage: true });
+await p.click('#nav [data-go="earnings"]'); await p.waitForTimeout(2000);
+await p.screenshot({ path: '/tmp/q4.png' });
+const m = await b.newPage({ viewport: { width: 390, height: 844 } });
+m.on('pageerror', (e) => errs.push('M ' + e.message));
+await m.goto('http://localhost:8791/'); await m.waitForTimeout(3500);
+await m.screenshot({ path: '/tmp/q5.png' });
+console.log('ERR', errs); await b.close();

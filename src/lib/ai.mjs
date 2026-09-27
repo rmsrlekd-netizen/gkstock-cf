@@ -9,7 +9,7 @@ const claudeKey = () => (process.env.ANTHROPIC_API_KEY && !isGoogle(process.env.
 export const aiProvider = () => (googleKey() ? 'Gemini' : claudeKey() ? 'Claude' : null);
 export const hasAI = () => !!aiProvider();
 
-async function gemini(prompt, { maxTokens, timeout }) {
+async function gemini(prompt, { maxTokens, timeout, json = true }) {
   const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'].filter(Boolean))];
   const until = Date.now() + timeout;
   let lastErr;
@@ -17,7 +17,8 @@ async function gemini(prompt, { maxTokens, timeout }) {
     for (const thinking of [true, false]) {
       const left = until - Date.now();
       if (left < 2500) break;
-      const cfg = { maxOutputTokens: maxTokens, temperature: 0.2, responseMimeType: 'application/json' };
+      const cfg = { maxOutputTokens: maxTokens, temperature: 0.2 };
+      if (json) cfg.responseMimeType = 'application/json';
       if (thinking) cfg.thinkingConfig = { thinkingBudget: 0 };
       // 새 형식(AQ.) 키와 기존(AIza) 키 모두 x-goog-api-key 헤더로 전달
       const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -66,8 +67,8 @@ async function anthropic(prompt, { maxTokens, timeout }) {
 }
 
 /** 프롬프트 → AI 응답 텍스트 */
-export async function claude(prompt, { maxTokens = 1200, timeout = 9000 } = {}) {
-  if (googleKey()) return gemini(prompt, { maxTokens, timeout });
+export async function claude(prompt, { maxTokens = 1200, timeout = 9000, json = true } = {}) {
+  if (googleKey()) return gemini(prompt, { maxTokens, timeout, json });
   if (claudeKey()) return anthropic(prompt, { maxTokens, timeout });
   throw new Error('AI 키 미설정');
 }
@@ -98,37 +99,56 @@ ${JSON.stringify(input)}`;
   return out;
 }
 
-/** 공시 상세 분석: 5줄 요약 + 주가 긍정/부정 요인 (+ 기업 개요 한국어 요약) */
-export async function analyzeFiling({ company, ticker, market, kind, title, form, text, overviewRaw }) {
+/** 공시·보도자료 상세 분석: 섹터 전문 애널리스트 시각의 5줄 요약 + 긍정/부정 요인 + 코멘트 */
+export async function analyzeFiling({ company, ticker, market, kind, title, form, text, overviewRaw, sector, valuation }) {
   const what = kind === 'NEWS' ? `${market === 'KR' ? '한국' : '미국'} 기업 관련 뉴스` : kind === 'PR' ? `${market === 'KR' ? '한국' : '미국'} 기업 보도자료` : market === 'KR' ? '한국 DART 공시' : '미국 SEC 공시';
-  const prompt = `당신은 한국 개인투자자를 돕는 증권 애널리스트입니다. 아래 ${what}를 분석하세요.
+  const prompt = `당신은 ${sector ? `"${sector}" 섹터를 10년 이상 담당해 온` : '해당 업종을 오래 담당해 온'} 증권사 시니어 애널리스트입니다.
+한국 개인투자자에게 아래 ${what}가 주가에 어떤 의미인지 전문가 시각으로 분석해 주세요.
 
-회사: ${company}${ticker ? ` (${ticker})` : ''}
-제목: ${title}${form ? ` [${form}]` : ''}
+회사: ${company}${ticker ? ` (${ticker})` : ''}${sector ? ` / 섹터: ${sector}` : ''}
+${valuation ? `참고 지표: ${valuation}\n` : ''}제목: ${title}${form ? ` [${form}]` : ''}
 ${overviewRaw ? `\n회사 사업 설명(원문):\n${overviewRaw.slice(0, 1500)}\n` : ''}
 원문(일부):
-${text.slice(0, 9000)}
+${text.slice(0, 10000)}
 
-다음 JSON 하나만 출력하세요(설명 문장 없이):
+분석 방법:
+- 이 내용이 매출·이익률·현금흐름·재무구조·밸류에이션·지분 희석·경쟁 구도 중 무엇에 어떻게 영향을 주는지 따져보세요.
+- 같은 섹터에서 이런 발표가 보통 어떻게 받아들여지는지(업계 관행·비교 기준)를 반영하세요.
+- 숫자(금액, 증감률, 비율, 날짜)는 원문에 있는 그대로 인용하고, 없는 사실은 만들지 마세요.
+- 긍정·부정 요인은 "무엇이 → 왜 주가에 영향을 주는지"가 드러나게 한 문장으로 쓰세요.
+
+다음 JSON 하나만 출력하세요(설명 문장 없이, 모두 한국어):
 {
-  "headline": "이 공시·기사의 핵심 내용을 한국어 한 줄 제목으로 (45자 이내, 숫자 포함, 회사명 제외)",
-  "summary": ["핵심 내용 요약, 최대 5줄, 각 줄 60자 이내, 숫자·날짜 포함"],
-  "positive": ["주가에 긍정적으로 작용할 수 있는 요인 1~3개, 각 70자 이내"],
-  "negative": ["주가에 부정적으로 작용할 수 있는 요인·리스크 1~3개, 각 70자 이내"],
+  "headline": "핵심 내용 한국어 한 줄 제목 (45자 이내, 숫자 포함, 회사명 제외)",
+  "summary": ["핵심 내용 5줄, 각 줄 70자 이내, 숫자·날짜 포함"],
+  "positive": ["주가에 긍정적인 요인 2~4개, 각 90자 이내"],
+  "negative": ["주가에 부정적인 요인·리스크 2~4개, 각 90자 이내"],
+  "analyst": "애널리스트 코멘트 2~3문장: 이번 발표의 의미와 주가 영향에 대한 종합 판단 (200자 이내)",
+  "watch": ["앞으로 확인해야 할 체크포인트 2~3개, 각 60자 이내"],
   "verdict": "긍정" 또는 "중립" 또는 "부정",
   "overview": ${overviewRaw ? '"이 회사가 무엇을 하는 회사인지 2~3문장 한국어 요약"' : 'null'}
 }
-규칙: 원문에 있는 사실만 사용하고 추측하지 마세요. 해당 요인이 없으면 빈 배열. 투자 권유 표현 금지. 모두 한국어로.`;
-  const j = parseJSON(await claude(prompt, { maxTokens: 1600, timeout: 25000 }));
-  const arr = (v, n) => (Array.isArray(v) ? v.filter(Boolean).map((s) => String(s).slice(0, 140)).slice(0, n) : []);
+투자 권유 표현(매수·매도 추천)은 쓰지 마세요.`;
+  const j = parseJSON(await claude(prompt, { maxTokens: 2200, timeout: 28000 }));
+  const arr = (v, n, len = 160) => (Array.isArray(v) ? v.filter(Boolean).map((s) => String(s).slice(0, len)).slice(0, n) : []);
   return {
     headline: j.headline ? String(j.headline).slice(0, 80) : null,
     summary: arr(j.summary, 5),
     positive: arr(j.positive, 4),
     negative: arr(j.negative, 4),
+    analyst: j.analyst ? String(j.analyst).slice(0, 400) : null,
+    watch: arr(j.watch, 3, 120),
     verdict: ['긍정', '중립', '부정'].includes(j.verdict) ? j.verdict : '중립',
     overview: j.overview ? String(j.overview).slice(0, 400) : null,
   };
+}
+
+/** 영문 기업 소개 → 한국어 2~3문장 */
+export async function overviewKo(name, raw) {
+  const prompt = `다음은 ${name}의 영문 기업 소개입니다. 한국 개인투자자가 이해하기 쉽게 이 회사가 무엇을 하는 회사인지(주요 사업·제품·고객·시장) 한국어 3문장 이내로 설명하세요. 원문에 있는 사실만 쓰고, 설명 문장만 출력하세요.\n\n${String(raw).slice(0, 2500)}`;
+  const t = await claude(prompt, { maxTokens: 500, timeout: 20000, json: false });
+  const out = String(t).replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 450);
+  return /[가-힣]{4,}/.test(out) ? out : null;
 }
 
 /** 영문 보도자료·뉴스 제목 → 한국어 핵심 제목 (목록용) */

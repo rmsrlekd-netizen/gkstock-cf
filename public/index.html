@@ -9,29 +9,34 @@
   <meta name="theme-color" content="#0a0b1e" />
   <meta property="og:title" content="GK의 공시레이더" />
   <meta property="og:description" content="한·미 실시간 공시·보도자료·뉴스 + AI 요약" />
-  <link rel="icon" href="img/gk-channel.svg" />
+  <link rel="icon" href="img/gk-favicon.png" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
   <!-- ───────── 헤더 ───────── -->
   <header class="hdr">
     <div class="hdr-in">
-      <a class="brand" href="#home" data-go="home" aria-label="GK의 공시레이더 홈">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 40 40"><defs><linearGradient id="bm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9b7bff"/><stop offset="1" stop-color="#3ea6ff"/></linearGradient></defs><rect width="40" height="40" rx="11" fill="url(#bm)"/><circle cx="20" cy="20" r="11" fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1.6"/><circle cx="20" cy="20" r="5.5" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.6"/><path d="M20 20 L29 12" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="20" cy="20" r="2.2" fill="#fff"/></svg>
-        </span>
-        <span class="brand-txt"><b>GK의 공시레이더</b><small>REAL-TIME DISCLOSURE RADAR</small></span>
-      </a>
+      <div class="brand-wrap">
+        <a class="brand" href="#home" data-go="home" aria-label="GK의 공시레이더 홈">
+          <img class="brand-logo" src="img/gk-logo.png" width="44" height="44" alt="GK American Stocks" />
+          <span class="brand-txt"><b>GK의 <em>공시레이더</em></b><small>REAL-TIME DISCLOSURE RADAR</small></span>
+        </a>
+        <a class="yt" href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener" title="GK의 미국 주식 유튜브 채널 바로가기">
+          <svg class="yt-ico" viewBox="0 0 28 20" aria-hidden="true"><rect width="28" height="20" rx="5" fill="#ff0033" stroke="none"/><path d="M11 5.5v9l8-4.5z" fill="#fff" stroke="none"/></svg>
+          <span><b>GK의 미국 주식</b><small>유튜브 구독하기</small></span>
+        </a>
+      </div>
       <nav class="nav" id="nav">
         <button data-go="home" class="on">라이브 피드</button>
         <button data-go="filings">공시</button>
         <button data-go="pr">보도자료</button>
         <button data-go="news">뉴스</button>
+        <button data-go="earnings">실적 캘린더</button>
         <button data-go="popular">인기 종목</button>
         <button data-go="flows">수급</button>
         <button data-go="market">시장 지표</button>
@@ -45,9 +50,6 @@
           <kbd>/</kbd>
           <div class="suggest" id="suggest" hidden></div>
         </div>
-        <a class="yt" href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener" title="GK의 미국 주식 유튜브">
-          <img src="img/gk-channel.svg" width="28" height="28" alt="" /><span><b>GK의 미국 주식</b><small>YouTube</small></span>
-        </a>
         <button class="ico" id="btnBell" title="알림"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><i class="dot" id="bellDot" hidden></i></button>
         <button class="ico" id="btnUser" title="설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
       </div>
@@ -59,8 +61,17 @@
   <main id="app">
     <!-- ───────── 라이브 피드 (홈·공시·보도자료·뉴스·관심종목) ───────── -->
     <section id="viewFeed">
+      <section class="digest card" id="digestBox">
+        <div class="digest-h">
+          <div><span class="ai-pill">AI</span><h2>AI가 고른 오늘의 핵심 공시</h2><span class="muted sm" id="digestMeta">공시·보도자료 중 주가 영향이 큰 항목</span></div>
+          <button class="btn sm" id="digestMore">전체 보기 →</button>
+        </div>
+        <p class="digest-head" id="digestHead"></p>
+        <div class="digest-list" id="digestList"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+      </section>
+
       <div class="trend-head">
-        <h2 class="sec-title">트렌딩 <span>오늘 가장 주목받는 공시·뉴스</span></h2>
+        <h2 class="sec-title">트렌딩 <span>지금 가장 주목받는 소식</span></h2>
         <div class="trend-nav"><button class="ico sm" data-trend="-1" aria-label="이전">‹</button><button class="ico sm" data-trend="1" aria-label="다음">›</button></div>
       </div>
       <div class="trend" id="trend"></div>
@@ -74,9 +85,15 @@
               <span class="upd" id="feedUpd"></span>
             </div>
             <div class="feed-tools">
-              <div class="seg" id="mkSeg"><button data-mk="ALL" class="on">전체</button><button data-mk="US">미국</button><button data-mk="KR">한국</button></div>
               <select id="sortSel" class="select" aria-label="정렬"><option value="time">최신순</option><option value="impact">중요도순</option></select>
               <button class="ico sm" id="btnRefresh" title="새로고침"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+            </div>
+          </div>
+          <div class="filter-row">
+            <div class="mkseg" id="mkSeg" role="tablist" aria-label="시장 선택">
+              <button data-mk="ALL" class="on"><i>🌐</i>전체</button>
+              <button data-mk="KR" class="kr"><i>KR</i>한국</button>
+              <button data-mk="US" class="us"><i>US</i>미국</button>
             </div>
           </div>
           <div class="tabs" id="tabs">
@@ -115,12 +132,7 @@
             </div>
           </div>
 
-          <div class="card ai-card">
-            <div class="ai-badge">AI</div>
-            <b>AI가 고른 오늘의 핵심 공시</b>
-            <p>오늘 나온 공시·보도자료 중 주가 영향이 큰 5~7건을 AI가 골라 요약합니다.</p>
-            <button class="btn primary block" data-modal="digest">AI 분석 보기 →</button>
-          </div>
+
 
           <div class="card">
             <div class="card-h"><h3>주요 테마</h3></div>
@@ -132,6 +144,17 @@
 
     <!-- ───────── 상세 페이지 ───────── -->
     <section id="viewItem" class="page" hidden><div id="itemBody"></div></section>
+
+    <!-- ───────── 실적 캘린더 ───────── -->
+    <section id="viewEarnings" class="page" hidden>
+      <div class="page-head"><h2>실적 발표 캘린더</h2><span class="muted" id="earnMeta"></span></div>
+      <div class="filter-row">
+        <div class="mkseg" id="earnSeg"><button data-em="US" class="on us"><i>US</i>미국</button><button data-em="KR" class="kr"><i>KR</i>한국</button></div>
+        <div class="chips" id="earnCap" style="margin:0"><button data-cap="10" class="on">시총 100억$ 이상</button><button data-cap="1">10억$ 이상</button><button data-cap="0">전체</button><button data-cap="w">관심·인기 종목만</button></div>
+      </div>
+      <div class="earn-days" id="earnDays"></div>
+      <div id="earnBody"><div class="skel"></div><div class="skel"></div></div>
+    </section>
 
     <!-- ───────── 인기 종목 ───────── -->
     <section id="viewPopular" class="page" hidden>
@@ -203,6 +226,6 @@
   <div class="modal" id="modal" hidden><div class="modal-card"><button class="ico sm m-close" data-close-modal aria-label="닫기">✕</button><div id="modalBody"></div></div></div>
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
-  <script src="app.js?v=4" defer></script>
+  <script src="app.js?v=5" defer></script>
 </body>
 </html>
