@@ -1,4 +1,4 @@
-// 2분마다 실행되는 SEC 수집기 (Cloudflare Cron Trigger)
+// 1분마다 실행되는 SEC 수집기 (Cloudflare Cron Trigger)
 import { runSecWatch } from '../lib/sec-core.mjs';
 import { getJSON } from '../lib/store.mjs';
 import { capturePx0 } from '../lib/px0.mjs';
@@ -6,7 +6,7 @@ import { archiveItems } from '../lib/archive.mjs';
 import { backfillStep } from '../lib/backfill.mjs';
 import { prewarm, pickSec } from '../lib/prewarm.mjs';
 
-export default async () => {
+export default async ({ backfillMs = 12000 } = {}) => {
   try {
     const r = await runSecWatch();
     console.log('sec-watch', JSON.stringify(r));
@@ -17,7 +17,7 @@ export default async () => {
     const n = await prewarm(pickSec((await getJSON('sec/feed'))?.items), { max: 3 }).catch((e) => console.warn('prewarm', e.message));
     if (n) console.log('sec prewarm', n);
     // 남는 시간에 과거 공시 채우기 (하루치씩 거슬러 올라감)
-    const b = await backfillStep('sec', { budgetMs: 20000 }).catch((e) => console.warn('backfill', e.message));
+    const b = backfillMs ? await backfillStep('sec', { budgetMs: backfillMs }).catch((e) => console.warn('backfill', e.message)) : 0;
     if (b) console.log('sec backfill', b);
   } catch (e) {
     console.error('sec-watch failed', e);

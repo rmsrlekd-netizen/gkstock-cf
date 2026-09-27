@@ -9,7 +9,7 @@ export default async (req, ctx) => {
     let feed = await getJSON('dart/feed');
     let mode = 'watcher';
     if (!feed) { mode = 'live'; await runDartWatch({ docs: false, light: true }); feed = await getJSON('dart/feed'); }
-    else if (Date.now() - Date.parse(feed.updatedAt || 0) > 90e3 && refreshInBackground(ctx, 'dart', () => runDartWatch({ docs: false, light: true }))) mode = 'refreshing';
+    else if (Date.now() - Date.parse(feed.updatedAt || 0) > 60e3 && refreshInBackground(ctx, 'dart', () => runDartWatch({ docs: false, light: true }))) mode = 'refreshing';
     const items = await attachPx0((feed?.items || []).slice(0, 800).map(({ docTries, detailTries, ...x }) => x));
     return json({ ok: true, source: 'DART', mode, updatedAt: feed?.updatedAt, errors: feed?.errors || [], count: items.length, items }, { cdnSeconds: 15, swr: 30 });
   } catch (e) {

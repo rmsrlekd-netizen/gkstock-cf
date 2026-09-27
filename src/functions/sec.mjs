@@ -22,7 +22,7 @@ export default async (req, ctx) => {
     // 마지막 수집 후 90초가 지났으면 방문 시 가볍게 새로 수집 (10분마다 도는 수집기가 원문 보강 담당)
     // 저장된 피드를 바로 응답 (방문자 대기 없음). 90초 넘게 지났으면 응답 후 백그라운드에서 새로 수집
     if (!feed) { mode = 'live'; feed = await liveSec(); }
-    else if (Date.now() - Date.parse(feed.updatedAt || 0) > 90e3 && refreshInBackground(ctx, 'sec', liveSec)) mode = 'refreshing';
+    else if (Date.now() - Date.parse(feed.updatedAt || 0) > 60e3 && refreshInBackground(ctx, 'sec', liveSec)) mode = 'refreshing';
     const items0 = feed.items.slice(0, 600).map((it) => {
       const { _excerpt, txTries, docTries, aiTries, ...x } = it;
       const rk = koHeadline(it);

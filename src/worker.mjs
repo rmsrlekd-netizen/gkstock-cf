@@ -1,7 +1,7 @@
 // GK 공시레이더 — Cloudflare Worker 진입점
 //  · /api/*  → src/functions/*.mjs (각 파일의 config.path 로 연결)
 //  · 그 외   → public/ 정적 파일 (index.html, app.js, styles.css …)
-//  · Cron    → 10분마다 SEC / DART / 뉴스 수집 (서로 3분씩 어긋나게 실행)
+//  · Cron    → 매분 SEC·DART, 3분마다 보도자료·뉴스 수집 (한가한 시간엔 10분에 한 번)
 import { setDB } from './lib/store.mjs';
 
 import * as analyze from './functions/analyze.mjs';
@@ -117,10 +117,17 @@ export default {
   async scheduled(event, env, ctx) {
     init(env);
     const cron = event.cron || '';
-    const kind = cron.startsWith('1-') ? 'dart' : cron.startsWith('*/3') ? 'news' : cron.startsWith('3-') ? 'dart' : cron.startsWith('6-') ? 'news' : 'sec';
     const now = new Date(event.scheduledTime || Date.now());
-    if (!busy(kind, now) && now.getUTCMinutes() % 10 > (kind === 'news' ? 2 : 1)) return; // 한가한 시간엔 10분에 한 번
-    const job = kind === 'dart' ? dartWatch : kind === 'news' ? newsWatch : secWatch;
-    ctx.waitUntil(job());
+    const min = now.getUTCMinutes();
+    if (cron.startsWith('*/3')) {
+      if (busy('news', now) || min % 10 <= 2) ctx.waitUntil(newsWatch());
+      return;
+    }
+    // 매분: SEC·DART를 함께 (한가한 시간엔 각각 10분에 한 번)
+    // 과거 공시 채우기는 실행 시간이 길어지지 않게 SEC는 짝수 분, DART는 홀수 분에만
+    const jobs = [];
+    if (busy('sec', now) || min % 10 === 0) jobs.push(secWatch({ backfillMs: min % 2 === 0 ? 12000 : 0 }));
+    if (busy('dart', now) || min % 10 === 1) jobs.push(dartWatch({ backfillMs: min % 2 === 1 ? 12000 : 0 }));
+    if (jobs.length) ctx.waitUntil(Promise.allSettled(jobs));
   },
 };

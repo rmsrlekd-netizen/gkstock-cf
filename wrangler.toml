@@ -17,10 +17,10 @@ binding = "ASSETS"
 binding = "DB"
 database_name = "gkstock-db"
 
-# 수집기: SEC 2분마다(짝수 분) · DART 2분마다(홀수 분) · 보도자료/뉴스 3분마다
+# 수집기: SEC·DART 1분마다 (둘을 동시에 실행) · 보도자료/뉴스 3분마다
 #  장이 조용한 시간(미국 밤·주말, 한국 밤·주말)에는 워커가 알아서 10분 간격으로 줄임
 [triggers]
-crons = ["*/2 * * * *", "1-59/2 * * * *", "*/3 * * * *"]
+crons = ["* * * * *", "*/3 * * * *"]
 
 # 로그 보기 (Cloudflare 대시보드 → Workers → gkstock → Logs)
 [observability]
