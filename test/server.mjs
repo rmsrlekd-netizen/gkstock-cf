@@ -70,6 +70,7 @@ globalThis.fetch = async (url, opts = {}) => {
   if (url.includes('/v8/finance/chart/')) return J(chart(decodeURIComponent(url.split('/chart/')[1].split('?')[0])));
   if (url.includes('oauth2/tokenP')) return J({ access_token: 'tok', expires_in: 86400 });
   if (url.includes('inquire-price') && url.includes('futureoption')) return J({ rt_cd: '0', output1: { hts_kor_isnm: 'F 202612', futs_prpr: '452.35', futs_prdy_vrss: '3.15', prdy_vrss_sign: '2', futs_prdy_ctrt: '0.70', futs_prdy_clpr: '449.20', acml_vol: '58213', hts_otst_stpl_qty: '301234' } });
+  if (url.includes('inquire-index-price')) return J({ rt_cd: '0', output: url.includes('ISCD=0001') ? { bstp_nmix_prpr: '3512.34', bstp_nmix_prdy_vrss: '21.5', prdy_vrss_sign: '2', bstp_nmix_prdy_ctrt: '0.62' } : { bstp_nmix_prpr: '868.12', bstp_nmix_prdy_vrss: '3.1', prdy_vrss_sign: '5', bstp_nmix_prdy_ctrt: '0.36' } });
   if (url.includes('foreign-institution-total')) return J(kisOut(url.includes('RANK_SORT_CLS_CODE=1') ? 'sell' : 'buy'));
   if (url.includes('ranking/short-sale')) return J(kisOut('buy'));
   if (url.includes('inquire-investor')) return J({ rt_cd: '0', output: Array.from({ length: 8 }, (_, i) => ({ stck_bsop_date: '202609' + String(23 - i).padStart(2, '0'), stck_clpr: String(71000 - i * 300), prsn_ntby_qty: String(-120000 + i * 30000), frgn_ntby_qty: String(90000 - i * 25000), orgn_ntby_qty: String(30000 - i * 5000) })) });

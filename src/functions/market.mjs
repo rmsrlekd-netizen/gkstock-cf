@@ -55,17 +55,19 @@ async function nightFutures() {
 }
 
 export default async () => {
-  const [g, fg, night, kosdaq] = await Promise.all([
+  const [g, fg, night, kosdaq, kospi] = await Promise.all([
     googleQuotes(PAGES),
     fearGreed().catch((e) => ({ error: e.message })),
     nightFutures(),
     hasKis() ? kisIndex('1001').catch(() => null) : Promise.resolve(null),
+    hasKis() ? kisIndex('0001').catch(() => null) : Promise.resolve(null), // 코스피: 한국투자증권 (거의 실시간)
   ]);
   const q = g.quotes;
   const indices = await Promise.all(LIST.map(async ([label, key, nq]) => {
     let v = q[key] || null;
     let src = v ? 'Google' : null;
     if (key === 'KOSDAQ' && kosdaq) { v = kosdaq; src = 'KIS'; }
+    if (key === 'KOSPI:KRX' && kospi) { v = kospi; src = 'KIS'; }
     if (!v && nq) { try { v = await nasdaqQuote(nq, 'index'); src = 'Nasdaq'; } catch {} }
     if (!v || v.price === null) return { label, key, error: true };
     const out = { label, key, price: v.price, chg: v.chg, pct: v.pct, prev: v.prev, src };
