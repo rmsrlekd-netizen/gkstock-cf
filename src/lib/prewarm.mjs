@@ -28,7 +28,7 @@ export async function prewarm(items, { max = 3, budgetMs = 45000 } = {}) {
   const todo = [];
   for (const it of items) {
     if (todo.length >= Math.min(max, DAILY_MAX - cnt)) break;
-    if (await getJSON(`ai2/${it.id}`)) continue;
+    if (await getJSON(`ai3/${it.id}`)) continue;
     todo.push(it);
   }
   if (!todo.length) return 0;

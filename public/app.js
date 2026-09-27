@@ -985,7 +985,7 @@
   // AI 탭
   function aiPane(n) {
     const a = S.ai.get(n.id);
-    if (!a) return `<div class="box"><h4>AI 분석</h4><div class="loading"><span class="spin"></span>애널리스트 AI가 원문을 읽고 분석하는 중… (처음 여는 항목은 5~20초)</div></div>`;
+    if (!a) return `<div class="box"><h4>AI 분석</h4><div class="loading"><span class="spin"></span>섹터 애널리스트 AI가 원문과 재무·최근 공시 흐름을 함께 검토하는 중… (처음 여는 항목은 20~40초, 한 번 분석하면 바로 열립니다)</div></div>`;
     if (a.error) return `<div class="box"><h4>AI 분석</h4><p class="err">분석하지 못했습니다: ${esc(a.error)}</p><button class="btn sm" data-ai-retry>다시 시도</button></div>`;
     const li = (arr) => (arr && arr.length ? arr.map((x) => `<li>${esc(x)}</li>`).join('') : '<li class="muted">뚜렷한 요인 없음</li>');
     return `<div class="box a-sum"><h4>${a.fallback ? '핵심 내용 (자동 요약)' : 'AI 핵심 요약'} <span class="verdict ${verdictCls(a.verdict)}">주가 영향: ${esc(a.verdict || '중립')}</span></h4>
@@ -994,7 +994,11 @@
         <div class="pos"><h5><i></i>긍정적 요인<em>${(a.positive || []).length}</em></h5><ul>${li(a.positive)}</ul></div>
         <div class="neg"><h5><i></i>부정적 요인<em>${(a.negative || []).length}</em></h5><ul>${li(a.negative)}</ul></div>
       </div>
-      ${a.analyst ? `<div class="box analyst"><h4>애널리스트 코멘트 ${a.sector ? `<small>${esc(a.sector)} 섹터</small>` : ''}</h4><p>${esc(a.analyst)}</p>${a.watch?.length ? `<h4 style="margin:.9rem 0 0">앞으로 체크할 포인트</h4><ul class="watch">${a.watch.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>` : ''}
+      ${a.analyst ? `<div class="box analyst"><h4>애널리스트 코멘트 ${a.sector ? `<small>${esc(a.sector)} 섹터 시니어 애널리스트 관점</small>` : ''}</h4>
+        ${a.impact ? `<div class="impact-row"><span class="imp-size s-${a.impact.size === '큼' ? 'big' : a.impact.size === '제한적' ? 'low' : 'mid'}">주가 영향 ${esc(a.impact.size)}</span>${a.impact.short ? `<span><b>단기</b>${esc(a.impact.short)}</span>` : ''}${a.impact.mid ? `<span><b>중기</b>${esc(a.impact.mid)}</span>` : ''}</div>` : ''}
+        <p class="take">${esc(a.analyst)}</p>
+        ${a.points?.length ? `<div class="apoints">${a.points.map((x) => `<div><h6>${esc(x.t)}</h6><p>${esc(x.d)}</p></div>`).join('')}</div>` : ''}
+        ${a.watch?.length ? `<h4 style="margin:1rem 0 0">앞으로 체크할 포인트</h4><ul class="watch">${a.watch.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>` : ''}
       ${a.fallback ? `<p class="note">AI 분석이 잠시 준비되지 않아 원문의 핵심 문장과 키워드로 자동 정리했습니다. <button class="link" data-ai-retry>AI로 다시 분석</button></p>`
         : `<p class="note">${esc(a.provider || 'AI')}가 ${a.basis ? esc(a.basis) : '원문'}을 읽고 작성한 참고용 분석입니다. 투자 판단 전 원문을 확인하세요.</p>`}`;
   }

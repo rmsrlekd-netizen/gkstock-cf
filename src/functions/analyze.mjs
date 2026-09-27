@@ -6,6 +6,47 @@ import { hasAI, analyzeFiling, aiProvider } from '../lib/ai.mjs';
 import { findFiling, getFilingDoc } from '../lib/filing-doc.mjs';
 import { koHeadline } from '../lib/sec-ko.mjs';
 import { getSectors } from '../lib/sectors.mjs';
+import { naverKrQuotes, naverUsQuotes, reutersOf } from '../lib/naver.mjs';
+
+// 금액 → 읽기 쉬운 문자열
+const krw = (v) => (v == null || !Number.isFinite(v) ? null : Math.abs(v) >= 1e12 ? (v / 1e12).toFixed(2) + '조원' : Math.round(v / 1e8).toLocaleString('ko-KR') + '억원');
+const usdS = (v) => (v == null || !Number.isFinite(v) ? null : Math.abs(v) >= 1e9 ? '$' + (v / 1e9).toFixed(2) + 'B' : '$' + (v / 1e6).toFixed(1) + 'M');
+
+// 애널리스트에게 줄 배경 정보: 재무·밸류에이션, 최근 공시 흐름, 현재 주가 반응
+async function context(it, src, comp) {
+  const m = src === 'KR' ? krw : usdS;
+  const f = comp?.fin || {}, r = comp?.ratios || {};
+  const yoy = (a, b) => (a != null && b ? ` (전년 대비 ${(((a - b) / Math.abs(b)) * 100).toFixed(1)}%)` : '');
+  const val = [
+    comp?.marketCap ? `시가총액 ${m(comp.marketCap)}` : '',
+    f.revenue != null ? `매출 ${m(f.revenue)}${yoy(f.revenue, f.revenuePrev)}` : '',
+    f.opIncome != null ? `영업이익 ${m(f.opIncome)}${yoy(f.opIncome, f.opIncomePrev)}` : '',
+    f.netIncome != null ? `순이익 ${m(f.netIncome)}` : '',
+    f.period ? `(재무 기준: ${f.period})` : '',
+    r.per ? `PER ${r.per.toFixed(1)}배` : '', r.pbr ? `PBR ${r.pbr.toFixed(1)}배` : '', r.roe ? `ROE ${r.roe.toFixed(1)}%` : '', r.debt ? `부채비율 ${r.debt.toFixed(0)}%` : '',
+  ].filter(Boolean).join(', ');
+  // 같은 회사의 최근 공시·보도 (최대 6건)
+  let recent = [];
+  try {
+    const [sec, dart, news] = await Promise.all([getJSON('sec/feed'), getJSON('dart/feed'), getJSON('news/feed')]);
+    const t = String(it.ticker || '').toUpperCase();
+    const pool = [...(sec?.items || []), ...(dart?.items || []), ...(news?.items || [])].filter((x) => x.id !== it.id && t && String(x.ticker || '').toUpperCase() === t && x.src !== 'NEWS');
+    recent = pool.map((x) => ({ ms: Date.parse(x.time || x.seenAt || (x.date ? x.date + 'T09:00:00+09:00' : 0)) || 0, t: `${(x.time || x.date || '').slice(0, 10)} ${x.form || x.formKo || x.source || ''}: ${x.ko?.title || x.summary?.title || x.titleKo || x.pr?.headline || x.title || x.titleClean || x.formKo || ''}`.slice(0, 140) }))
+      .sort((a, b) => b.ms - a.ms).slice(0, 6).map((x) => x.t);
+  } catch {}
+  // 현재 주가 반응 (네이버 증권)
+  let move = '';
+  try {
+    const t = String(it.ticker || '');
+    if (t) {
+      let q = null;
+      if (src === 'KR') q = (await naverKrQuotes([t]))[t];
+      else { const rc = reutersOf(t, it.exchange) || `${t.toUpperCase()}.O`; q = (await naverUsQuotes([rc]))[rc]; }
+      if (q?.price != null) move = `현재가 ${src === 'KR' ? q.price.toLocaleString('ko-KR') + '원' : '$' + q.price} (당일 ${q.pct > 0 ? '+' : ''}${q.pct}%)`;
+    }
+  } catch {}
+  return { val, recent, move };
+}
 
 const POS = [
   [/흑자\s?전환|turn(ed)? profitable/i, '흑자 전환'], [/YoY \+|전년\s?대비\s?\+|up \d+% (from|year)/i, '전년 대비 증가'], [/(매출|영업이익|순이익)[^.\n]{0,20}(증가|성장)|record (revenue|quarter)|revenue (grew|increased|rose)/i, '실적 성장'],
@@ -51,7 +92,7 @@ export function analyzeId(id) {
 export default async (req) => {
   const id = new URL(req.url).searchParams.get('id') || '';
   if (!/^(SEC|DART)-[\d-]+$|^(NEWS|PR)-[a-z0-9]+$/.test(id)) return jsonRes({ ok: false, error: '잘못된 공시 ID' }, { status: 400, cdnSeconds: 60 });
-  const cached = await getJSON(`ai2/${id}`);
+  const cached = await getJSON(`ai3/${id}`);
   if (cached) return jsonRes({ ok: true, ...cached }, { cdnSeconds: 86400, swr: 86400 });
   const r = await analyzeId(id);
   return jsonRes(r.body, r.opt);
@@ -60,7 +101,7 @@ export default async (req) => {
 // 반환: { body, opt } (json() 인자)
 async function handle(id) {
   const json = (body, opt) => ({ body, opt });
-  const cached = await getJSON(`ai2/${id}`);
+  const cached = await getJSON(`ai3/${id}`);
   if (cached) return json({ ok: true, ...cached }, { cdnSeconds: 86400, swr: 86400 });
   let it, doc, title;
   try {
@@ -82,13 +123,12 @@ async function handle(id) {
       const sm = await getSectors({ allowFetch: false }).catch(() => null);
       const sraw = it.ticker && sm ? (src === 'KR' ? sm.kr?.[it.ticker] : sm.us?.[String(it.ticker).toUpperCase()]) : null;
       const sector = (sraw ? sraw.split('|')[0] : '') || comp?.sectorKo || [comp?.sector, comp?.industry].filter(Boolean).join(' · ') || '';
-      const r = comp?.ratios || {};
-      const val = [comp?.marketCap ? `시가총액 약 ${src === 'KR' ? Math.round(comp.marketCap / 1e8).toLocaleString('ko-KR') + '억원' : '$' + (comp.marketCap / 1e9).toFixed(1) + 'B'}` : '', r.per ? `PER ${r.per.toFixed(1)}배` : '', r.pbr ? `PBR ${r.pbr.toFixed(1)}배` : '', r.roe ? `ROE ${r.roe.toFixed(1)}%` : '', r.debt ? `부채비율 ${r.debt.toFixed(0)}%` : ''].filter(Boolean).join(', ');
-      const a = await analyzeFiling({ company: it.name || it.company || '', ticker: it.ticker, market: src, kind: it.src, title, form: it.form || it.source || '', text, overviewRaw: !hasOv && comp?.overviewRaw ? comp.overviewRaw : null, sector, valuation: val });
+      const cx = await Promise.race([context(it, src, comp), new Promise((r) => setTimeout(() => r({ val: '', recent: [], move: '' }), 4000))]);
+      const a = await analyzeFiling({ company: it.name || it.company || '', ticker: it.ticker, market: src, kind: it.src, title, form: it.form || it.source || '', text, overviewRaw: !hasOv && comp?.overviewRaw ? comp.overviewRaw : null, sector, valuation: cx.val, recent: cx.recent, move: cx.move });
       if (!a.summary.length) throw new Error('AI 응답에 요약이 없습니다');
       if (a.overview && ck) await setJSON(`aiov/${src}/${ck}`, { text: a.overview, at: Date.now() }).catch(() => {});
-      const out = { id, provider: aiProvider(), basis: doc.note || null, headline: a.headline || null, summary: a.summary, positive: a.positive, negative: a.negative, analyst: a.analyst, watch: a.watch, sector: sector || null, verdict: a.verdict, overview: a.overview || hasOv?.text || null, at: Date.now() };
-      await setJSON(`ai2/${id}`, out).catch(() => {});
+      const out = { id, provider: aiProvider(), basis: doc.note || null, headline: a.headline || null, summary: a.summary, positive: a.positive, negative: a.negative, analyst: a.analyst, points: a.points, impact: a.impact, watch: a.watch, sector: sector || null, verdict: a.verdict, overview: a.overview || hasOv?.text || null, at: Date.now() };
+      await setJSON(`ai3/${id}`, out).catch(() => {});
       return json({ ok: true, ...out }, { cdnSeconds: 86400, swr: 86400 });
     } catch (e) {
       aiError = String(e.message || e).slice(0, 300);

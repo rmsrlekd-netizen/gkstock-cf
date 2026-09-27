@@ -11,7 +11,7 @@ export const hasAI = () => !!aiProvider();
 
 // Gemini가 일부 지역(Cloudflare 서버 위치)을 거절하면 서울 중계 서버로 우회
 let geminiViaRelay = false;
-async function gemini(prompt, { maxTokens, timeout, json = true }) {
+async function gemini(prompt, { maxTokens, timeout, json = true, think = 0 }) {
   const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'].filter(Boolean))];
   const until = Date.now() + timeout;
   let lastErr;
@@ -20,7 +20,7 @@ async function gemini(prompt, { maxTokens, timeout, json = true }) {
       if (until - Date.now() < 2500) break;
       const cfg = { maxOutputTokens: maxTokens, temperature: 0.2 };
       if (json) cfg.responseMimeType = 'application/json';
-      if (thinking) cfg.thinkingConfig = { thinkingBudget: 0 };
+      if (thinking) cfg.thinkingConfig = { thinkingBudget: think }; // think>0: 답하기 전에 충분히 생각(심층 분석용)
       // 새 형식(AQ.) 키와 기존(AIza) 키 모두 x-goog-api-key 헤더로 전달
       const call = () => fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
@@ -76,8 +76,8 @@ async function anthropic(prompt, { maxTokens, timeout }) {
 }
 
 /** 프롬프트 → AI 응답 텍스트 */
-export async function claude(prompt, { maxTokens = 1200, timeout = 9000, json = true } = {}) {
-  if (googleKey()) return gemini(prompt, { maxTokens, timeout, json });
+export async function claude(prompt, { maxTokens = 1200, timeout = 9000, json = true, think = 0 } = {}) {
+  if (googleKey()) return gemini(prompt, { maxTokens, timeout, json, think });
   if (claudeKey()) return anthropic(prompt, { maxTokens, timeout });
   throw new Error('AI 키 미설정');
 }
@@ -109,43 +109,77 @@ ${JSON.stringify(input)}`;
 }
 
 /** 공시·보도자료 상세 분석: 섹터 전문 애널리스트 시각의 5줄 요약 + 긍정/부정 요인 + 코멘트 */
-export async function analyzeFiling({ company, ticker, market, kind, title, form, text, overviewRaw, sector, valuation }) {
+// 공시 종류별로 전문 애널리스트가 반드시 따져보는 항목
+function lensFor(kind, form, title, text) {
+  const t = `${form} ${title} ${text.slice(0, 3000)}`;
+  const L = [];
+  if (/2\.02|실적|잠정|results|revenue|earnings|quarter|매출액|영업이익/i.test(t)) L.push('실적: 매출·영업이익·순이익의 전년/전분기 대비 증감률, 이익률(마진) 변화, 일회성 요인 제거 후 본질 이익, 가이던스 상향·하향 여부, 원문에 컨센서스가 있으면 비교(없으면 "컨센서스 비교 불가"라고 명시)');
+  if (/offering|placement|유상증자|전환사채|신주인수권|convertible|warrant|at-the-market|424B|S-3|shelf/i.test(t)) L.push('자금조달·희석: 조달 금액 ÷ 시가총액으로 희석률(%) 계산, 할인율(발행가 vs 현재가), 자금 용도(성장 투자 vs 운영자금·부채상환), 현금 소진 속도와 추가 조달 가능성, 워런트·전환가 리셋 조건');
+  if (/1\.01|agreement|contract|awarded|공급계약|수주|계약/i.test(t)) L.push('계약·수주: 계약금액 ÷ 최근 연매출로 매출 대비 비중(%) 계산, 계약 기간(연 환산 매출 기여), 상대방 신용도·반복성, 마진 수준 추정 근거, 조건부·해지 조항');
+  if (/merger|acquisition|acquire|인수|합병|M&A|tender/i.test(t)) L.push('M&A: 인수가·프리미엄, 인수 대상 매출·이익 대비 멀티플, 자금 조달 방식(현금·주식·부채)과 희석, 시너지 실현 가능성, 규제 승인 리스크');
+  if (/FDA|임상|clinical|trial|approval|허가|PDUFA|phase/i.test(t)) L.push('임상·허가: 단계(1/2/3상), 1차 평가변수 충족 여부와 통계적 유의성(p값), 안전성 신호, 경쟁 약물 대비 차별점, 시장 규모와 상업화 일정, 현금으로 버틸 수 있는 기간');
+  if (/5\.02|사임|resign|appoint|대표이사|CEO|CFO|임원/i.test(t)) L.push('경영진 변동: 갑작스러운 사임 여부(사유 명시 유무), 후임자 경력, CFO 사임 시 회계 이슈 가능성, 업계에서 이런 변동이 주가에 미친 전례');
+  if (/buyback|repurchase|자기주식|자사주|dividend|배당|소각/i.test(t)) L.push('주주환원: 규모 ÷ 시가총액(%) 계산, 실제 매입·소각 여부(취득만인지), 재원(현금흐름 대비 지속 가능성), 배당수익률 변화');
+  if (/delist|상장폐지|거래정지|going concern|계속기업|Nasdaq.*deficiency|3\.01|불성실/i.test(t)) L.push('상장 유지 리스크: 사유(주가·자본·감사의견), 유예기간과 해소 방법(역분할 등), 역분할 시 과거 주가 흐름, 최악 시나리오');
+  if (/Form 4|insider|장내매수|장내매도|임원ㆍ주요주주|소유상황/i.test(t)) L.push('내부자 거래: 매수·매도 규모 ÷ 보유 주식(%), 사전계획(10b5-1) 여부, 최근 반복 패턴, 경영진 매수의 신호 의미');
+  if (/13D|13G|대량보유|5%/i.test(t)) L.push('지분 변동: 보고자의 성격(행동주의·전략적 투자자·패시브), 지분율 변화 폭, 경영 참여 목적 여부');
+  if (!L.length) L.push('이 발표가 매출·이익·현금흐름·재무구조·밸류에이션·경쟁 구도 중 어디에 실제로 영향을 주는지, 영향이 없다면 "주가 영향 제한적"이라고 분명히 판단');
+  return L;
+}
+
+export async function analyzeFiling({ company, ticker, market, kind, title, form, text, overviewRaw, sector, valuation, recent, move }) {
   const what = kind === 'NEWS' ? `${market === 'KR' ? '한국' : '미국'} 기업 관련 뉴스` : kind === 'PR' ? `${market === 'KR' ? '한국' : '미국'} 기업 보도자료` : market === 'KR' ? '한국 DART 공시' : '미국 SEC 공시';
-  const prompt = `당신은 ${sector ? `"${sector}" 섹터를 10년 이상 담당해 온` : '해당 업종을 오래 담당해 온'} 증권사 시니어 애널리스트입니다.
-한국 개인투자자에게 아래 ${what}가 주가에 어떤 의미인지 전문가 시각으로 분석해 주세요.
+  const lens = lensFor(kind, form || '', title || '', text);
+  const prompt = `당신은 ${sector ? `"${sector}" 섹터를` : '이 업종을'} 10년 넘게 커버해 온 증권사 시니어 애널리스트(바이사이드 경력 포함)입니다.
+기관투자자에게 보내는 당일 코멘트 수준으로, 아래 ${what}를 꼼꼼하고 날카롭게 분석하세요. 뻔한 일반론·원문 요약 반복은 쓰지 마세요.
 
-회사: ${company}${ticker ? ` (${ticker})` : ''}${sector ? ` / 섹터: ${sector}` : ''}
-${valuation ? `참고 지표: ${valuation}\n` : ''}제목: ${title}${form ? ` [${form}]` : ''}
-${overviewRaw ? `\n회사 사업 설명(원문):\n${overviewRaw.slice(0, 1500)}\n` : ''}
-원문(일부):
-${text.slice(0, 10000)}
+[회사] ${company}${ticker ? ` (${ticker})` : ''}${sector ? ` / 섹터: ${sector}` : ''}
+${valuation ? `[재무·밸류에이션] ${valuation}\n` : ''}${move ? `[현재 주가 반응] ${move}\n` : ''}${recent?.length ? `[최근 이 회사 공시·보도 흐름]\n${recent.map((x) => '- ' + x).join('\n')}\n` : ''}[제목] ${title}${form ? ` [${form}]` : ''}
+${overviewRaw ? `[회사 사업 설명(원문)]\n${overviewRaw.slice(0, 1500)}\n` : ''}
+[원문]
+${text.slice(0, 16000)}
 
-분석 방법:
-- 이 내용이 매출·이익률·현금흐름·재무구조·밸류에이션·지분 희석·경쟁 구도 중 무엇에 어떻게 영향을 주는지 따져보세요.
-- 같은 섹터에서 이런 발표가 보통 어떻게 받아들여지는지(업계 관행·비교 기준)를 반영하세요.
-- 숫자(금액, 증감률, 비율, 날짜)는 원문에 있는 그대로 인용하고, 없는 사실은 만들지 마세요.
-- 긍정·부정 요인은 "무엇이 → 왜 주가에 영향을 주는지"가 드러나게 한 문장으로 쓰세요.
+[이 발표에서 반드시 따져볼 항목]
+${lens.map((x) => '- ' + x).join('\n')}
 
-다음 JSON 하나만 출력하세요(설명 문장 없이, 모두 한국어):
+[분석 원칙]
+1. 숫자로 말하기: 원문 숫자를 그대로 인용하고, 가능한 경우 직접 계산하세요(희석률 = 조달액/시가총액, 계약 비중 = 계약액/연매출, 증감률 등). 계산에 쓴 숫자를 함께 적으세요.
+2. 맥락 비교: 같은 섹터에서 이런 발표가 보통 어떻게 평가되는지, 회사 규모 대비 의미가 큰지 작은지 판단하세요.
+3. 행간 읽기: 발표 시점(장 마감 후·금요일 등), 빠진 정보, 표현의 톤 변화, 조건·단서 조항처럼 시장이 놓치기 쉬운 부분을 짚으세요.
+4. 반대 시나리오: 긍정적인 발표라도 리스크를, 부정적인 발표라도 반전 가능성을 함께 보세요.
+5. 결론을 흐리지 마세요: "지켜봐야 한다"로 끝내지 말고 영향의 크기(크다/보통/제한적)와 방향을 분명히 판단하세요.
+6. 원문과 위 정보에 없는 사실(컨센서스 수치, 목표주가 등)은 절대 지어내지 마세요. 모르면 "정보 없음"이라고 쓰세요.
+
+다음 JSON 하나만 출력하세요(모두 한국어):
 {
-  "headline": "핵심 내용 한국어 한 줄 제목 (45자 이내, 숫자 포함, 회사명 제외)",
-  "summary": ["핵심 내용 3~5줄, 각 줄 70자 이내, 숫자·날짜 포함. 내용이 많고 중요하면 5줄, 짧거나 단순한 발표면 3줄 (억지로 채우지 말 것)"],
-  "positive": ["주가에 긍정적인 요인 1~3개, 각 70자 이내, 핵심만 간결하게"],
-  "negative": ["주가에 부정적인 요인·리스크 1~3개, 각 70자 이내, 핵심만 간결하게"],
-  "analyst": "애널리스트 코멘트 2~3문장: 이번 발표의 의미와 주가 영향에 대한 종합 판단 (200자 이내)",
-  "watch": ["앞으로 확인해야 할 체크포인트 2~3개, 각 60자 이내"],
+  "headline": "핵심 내용 한 줄 제목 (45자 이내, 숫자 포함, 회사명 제외)",
+  "summary": ["핵심 내용 3~5줄, 각 70자 이내, 숫자 포함. 중요하고 내용이 많으면 5줄, 단순하면 3줄"],
+  "positive": ["주가 긍정 요인 1~3개, 각 70자 이내, '무엇이 → 왜'가 드러나게"],
+  "negative": ["주가 부정 요인·리스크 1~3개, 각 70자 이내"],
+  "analyst": "종합 판단 3~4문장 (300자 이내): 이 발표의 본질, 주가 영향의 크기와 방향, 그 근거",
+  "points": [
+    {"t": "숫자로 본 의미", "d": "핵심 수치를 계산·비교해 해석 (200자 이내)"},
+    {"t": "섹터 관점", "d": "업계 관행·경쟁사 대비 의미 (200자 이내)"},
+    {"t": "시장이 놓치기 쉬운 점", "d": "행간·조건·타이밍·빠진 정보 (200자 이내)"},
+    {"t": "시나리오", "d": "상방 시나리오와 하방 시나리오를 각각 한 문장씩 (200자 이내)"}
+  ],
+  "impact": {"size": "큼" 또는 "보통" 또는 "제한적", "short": "단기(며칠) 주가 영향 한 줄 (50자 이내)", "mid": "중기(1~3개월) 영향 한 줄 (50자 이내)"},
+  "watch": ["앞으로 확인할 체크포인트 2~3개, 각 60자 이내, 구체적으로(날짜·수치·이벤트)"],
   "verdict": "긍정" 또는 "중립" 또는 "부정",
   "overview": ${overviewRaw ? '"이 회사가 무엇을 하는 회사인지 2~3문장 한국어 요약"' : 'null'}
 }
-투자 권유 표현(매수·매도 추천)은 쓰지 마세요.`;
-  const j = parseJSON(await claude(prompt, { maxTokens: 2200, timeout: 28000 }));
+매수·매도 추천이나 목표주가는 쓰지 마세요.`;
+  const j = parseJSON(await claude(prompt, { maxTokens: 8000, timeout: 55000, think: 2048 }));
   const arr = (v, n, len = 160) => (Array.isArray(v) ? v.filter(Boolean).map((s) => String(s).slice(0, len)).slice(0, n) : []);
+  const im = j.impact || {};
   return {
     headline: j.headline ? String(j.headline).slice(0, 80) : null,
     summary: arr(j.summary, 5),
     positive: arr(j.positive, 3),
     negative: arr(j.negative, 3),
-    analyst: j.analyst ? String(j.analyst).slice(0, 400) : null,
+    analyst: j.analyst ? String(j.analyst).slice(0, 500) : null,
+    points: (Array.isArray(j.points) ? j.points : []).filter((x) => x && x.t && x.d).slice(0, 4).map((x) => ({ t: String(x.t).slice(0, 30), d: String(x.d).slice(0, 320) })),
+    impact: im.size || im.short ? { size: ['큼', '보통', '제한적'].includes(im.size) ? im.size : '보통', short: String(im.short || '').slice(0, 90), mid: String(im.mid || '').slice(0, 90) } : null,
     watch: arr(j.watch, 3, 120),
     verdict: ['긍정', '중립', '부정'].includes(j.verdict) ? j.verdict : '중립',
     overview: j.overview ? String(j.overview).slice(0, 400) : null,
