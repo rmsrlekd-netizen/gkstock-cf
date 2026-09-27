@@ -839,3 +839,10 @@ body::before {
   .hdr-right .search kbd { display: none; }
   .hdr-right .ico, .btn-install { flex: none; }
 }
+
+/* ── v16: 모바일 — 앱 설치 버튼을 오른쪽 위(알림·설정 위)로 ── */
+@media (max-width: 720px) {
+  .hdr-in { position: relative; }
+  .brand-wrap { padding-right: 5.6rem; }
+  .hdr-right .btn-install { position: absolute; top: .75rem; right: .8rem; height: 2.1rem; padding: 0 .7rem; font-size: .76rem; gap: .25rem; border-radius: 10px; }
+}
