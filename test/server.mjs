@@ -183,6 +183,8 @@ const { setJSON } = await import('../src/lib/store.mjs');
 await setJSON('kr/names', { at: Date.now(), list: [{ n: 'SK하이닉스', c: '000660', k: '00164779' }, { n: '에코프로비엠', c: '247540', k: '01160363' }, { n: '삼성전자', c: '005930', k: '00126380' }, { n: '셀트리온', c: '068270', k: '00413046' }, { n: '현대차', c: '005380', k: '00164742' }].sort((a, b) => b.n.length - a.n.length) });
 const nw = (await import('../src/functions/news-watch.mjs')).default;
 await nw();
+await (await import('../src/functions/sec-watch.mjs')).default();
+await (await import('../src/functions/dart-watch.mjs')).default();
 for (const f of ['sec', 'dart', 'market', 'flows', 'stock', 'views', 'health', 'logo', 'company', 'doc', 'analyze', 'news', 'quote', 'digest', 'search', 'popular', 'sectors', 'translate', 'translate-doc', 'earnings']) fns['/api/' + f] = (await import(`../src/functions/${f}.mjs`)).default;
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
 http.createServer(async (req, res) => {

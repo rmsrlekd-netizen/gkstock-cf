@@ -999,13 +999,34 @@
         : `<p class="note">${esc(a.provider || 'AI')}가 ${a.basis ? esc(a.basis) : '원문'}을 읽고 작성한 참고용 분석입니다. 투자 판단 전 원문을 확인하세요.</p>`}`;
   }
 
+  // 마우스를 올려두면(0.25초) 클릭 전에 AI 분석·원문·기업 정보를 미리 요청 → 누르는 순간 이미 준비됨
+  const aiPending = new Map();
+  function prefetchItem(id) {
+    const n = S.items.get(id);
+    if (!n) return;
+    if (!S.ai.has(id) && !aiPending.has(id)) aiPending.set(id, getJSON(`/api/analyze?id=${encodeURIComponent(id)}`, {}).catch((e) => ({ error: e.message })));
+    if (!S.doc.has(id)) loadDoc(n);
+    if (n.ticker && hasCo(n)) fetchCo(coUrl(n.market, n.ticker, n.corpCode, n.exchange));
+  }
+  let hoverTimer = null;
+  document.addEventListener('pointerover', (e) => {
+    const el = e.target.closest?.('[data-id]');
+    if (!el || !el.closest('#list, #trend, #digestList, #aRel')) return;
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => prefetchItem(el.dataset.id), 250);
+  });
+  document.addEventListener('pointerout', (e) => { if (e.target.closest?.('[data-id]')) clearTimeout(hoverTimer); });
+  document.addEventListener('touchstart', (e) => { const el = e.target.closest?.('[data-id]'); if (el) prefetchItem(el.dataset.id); }, { passive: true });
+
   async function loadAI(n, force) {
     if (S.ai.has(n.id) && !force && !S.ai.get(n.id).error) { if (S.sel === n.id && $('#aAI')) $('#aAI').innerHTML = aiPane(n); return; }
     S.ai.delete(n.id);
     if (S.sel === n.id && $('#aAI')) $('#aAI').innerHTML = aiPane(n);
     let a;
-    try { a = await getJSON(`/api/analyze?id=${encodeURIComponent(n.id)}${force ? '&r=' + Date.now() : ''}`, force ? { cache: 'no-store' } : {}); }
+    const pre = !force && aiPending.get(n.id);
+    try { a = pre ? await pre : await getJSON(`/api/analyze?id=${encodeURIComponent(n.id)}${force ? '&r=' + Date.now() : ''}`, force ? { cache: 'no-store' } : {}); }
     catch (e) { a = { error: e.message }; }
+    aiPending.delete(n.id);
     S.ai.set(n.id, a);
     applyAI(n);
     if (S.sel !== n.id || S.view !== 'item') return;

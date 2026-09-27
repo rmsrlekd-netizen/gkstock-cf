@@ -1,6 +1,6 @@
 // /api/analyze?id=... → AI 5줄 요약 + 주가 긍정/부정 요인 (+ 기업 개요 한국어 요약). 결과는 저장해 재사용
 // AI 키가 없거나 AI 호출이 실패하면 원문 기반 자동 요약(규칙 기반)을 대신 돌려줌 (fallback: true)
-import { json } from '../lib/util.mjs';
+import { json as jsonRes } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { hasAI, analyzeFiling, aiProvider } from '../lib/ai.mjs';
 import { findFiling, getFilingDoc } from '../lib/filing-doc.mjs';
@@ -39,9 +39,27 @@ function fallback(title, sub, lines) {
   return { summary: sents.slice(0, 5), positive, negative, verdict };
 }
 
+// 진행 중인 분석을 같은 서버 안에서 공유 (미리 분석 중인 항목을 방문자가 열면 그 결과를 같이 기다림)
+const inflight = new Map();
+export function analyzeId(id) {
+  if (inflight.has(id)) return inflight.get(id);
+  const p = handle(id).finally(() => setTimeout(() => inflight.delete(id), 1000));
+  inflight.set(id, p);
+  return p;
+}
+
 export default async (req) => {
   const id = new URL(req.url).searchParams.get('id') || '';
-  if (!/^(SEC|DART)-[\d-]+$|^(NEWS|PR)-[a-z0-9]+$/.test(id)) return json({ ok: false, error: '잘못된 공시 ID' }, { status: 400, cdnSeconds: 60 });
+  if (!/^(SEC|DART)-[\d-]+$|^(NEWS|PR)-[a-z0-9]+$/.test(id)) return jsonRes({ ok: false, error: '잘못된 공시 ID' }, { status: 400, cdnSeconds: 60 });
+  const cached = await getJSON(`ai2/${id}`);
+  if (cached) return jsonRes({ ok: true, ...cached }, { cdnSeconds: 86400, swr: 86400 });
+  const r = await analyzeId(id);
+  return jsonRes(r.body, r.opt);
+};
+
+// 반환: { body, opt } (json() 인자)
+async function handle(id) {
+  const json = (body, opt) => ({ body, opt });
   const cached = await getJSON(`ai2/${id}`);
   if (cached) return json({ ok: true, ...cached }, { cdnSeconds: 86400, swr: 86400 });
   let it, doc, title;
@@ -83,6 +101,6 @@ export default async (req) => {
   const rk = it.src === 'SEC' ? koHeadline({ ...it, _excerpt: (doc.lines || []).slice(0, 40).join(' ') }) : null;
   if (rk) f.headline = rk.title;
   return json({ ok: true, id, fallback: true, provider: null, aiError, basis: doc.note || null, ...f, overview: null, at: Date.now() }, { cdnSeconds: 120 });
-};
+}
 
 export const config = { path: '/api/analyze' };

@@ -1,6 +1,7 @@
 // /api/market — 공포·탐욕 지수, 코스피200 야간선물, 주요 지수
 // 지수: 구글 파이낸스(주) → 나스닥(보조), 코스닥·야간선물: 한국투자증권 API
-import { json, fetchWithTimeout, BROWSER_UA, num } from '../lib/util.mjs';
+import { json, fetchWithTimeout, BROWSER_UA, num, refreshInBackground } from '../lib/util.mjs';
+import { getJSON, setJSON } from '../lib/store.mjs';
 import { hasKis, kospiFutures, kisIndex } from '../lib/kis.mjs';
 import { googleQuotes } from '../lib/gfin.mjs';
 
@@ -54,7 +55,7 @@ async function nightFutures() {
   }
 }
 
-export default async () => {
+async function build() {
   const [g, fg, night, kosdaq, kospi] = await Promise.all([
     googleQuotes(PAGES),
     fearGreed().catch((e) => ({ error: e.message })),
@@ -75,7 +76,20 @@ export default async () => {
     return out;
   }));
   const ok = indices.some((x) => !x.error);
-  return json({ ok: true, fetchedAt: new Date().toISOString(), errors: g.errors, fearGreed: fg, night, indices }, { cdnSeconds: ok ? 60 : 15, swr: 120 });
+  const body = { ok: true, fetchedAt: new Date().toISOString(), errors: g.errors, fearGreed: fg, night, indices };
+  if (ok) await setJSON('market/v1', { at: Date.now(), body }).catch(() => {});
+  return body;
+}
+
+// 저장된 값을 바로 응답(대기 없음) → 40초 넘게 지났으면 뒤에서 새로 받아옴
+export default async (req, ctx) => {
+  const c = await getJSON('market/v1');
+  if (c) {
+    if (Date.now() - c.at > 40e3) refreshInBackground(ctx, 'market', build);
+    return json(c.body, { cdnSeconds: 30, swr: 60 });
+  }
+  const body = await build();
+  return json(body, { cdnSeconds: 30, swr: 60 });
 };
 
 export const config = { path: '/api/market' };

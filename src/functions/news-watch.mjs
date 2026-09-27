@@ -4,6 +4,7 @@ import { getSectors } from '../lib/sectors.mjs';
 import { collectNews } from '../lib/news.mjs';
 import { hasAI, translateTitles } from '../lib/ai.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
+import { prewarm, pickPR } from '../lib/prewarm.mjs';
 
 export default async () => {
   const started = Date.now();
@@ -27,7 +28,8 @@ export default async () => {
         await setJSON('news/feed', cur);
       }
     }
-    console.log('news-watch', feed.items.length, Date.now() - started + 'ms');
+    const n = await prewarm(pickPR((await getJSON('news/feed'))?.items), { max: 3 }).catch((e) => console.warn('prewarm', e.message));
+    console.log('news-watch', feed.items.length, 'prewarm', n || 0, Date.now() - started + 'ms');
   } catch (e) {
     console.error('news-watch failed', e);
   }

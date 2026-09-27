@@ -1,11 +1,11 @@
 // /api/company?src=KR&t=005930&corp=00126380&ex=KOSPI | /api/company?src=US&t=AAPL
-import { json } from '../lib/util.mjs';
+import { json, refreshInBackground } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { krCompany, usCompany } from '../lib/company.mjs';
 import { getSectors } from '../lib/sectors.mjs';
 import { hasAI, overviewKo } from '../lib/ai.mjs';
 
-export default async (req) => {
+export default async (req, ctx) => {
   const u = new URL(req.url);
   const src = u.searchParams.get('src') === 'KR' ? 'KR' : 'US';
   const t = (u.searchParams.get('t') || '').trim().toUpperCase();
@@ -15,24 +15,24 @@ export default async (req) => {
   const key = `company2/${src}/${src === 'KR' ? corp : t}`;
   try {
     let d = await getJSON(key);
-    if (!d || Date.now() - (d.at || 0) > 12 * 3600e3) {
-      try {
-        const fresh = src === 'KR' ? await krCompany(t, corp, ex) : await usCompany(t);
-        fresh.at = Date.now();
-        d = fresh;
-        await setJSON(key, d).catch(() => {});
-      } catch (e) {
-        if (!d) throw e; // 새로 못 가져오면 예전 값이라도 보여줌
-      }
-    }
+    const fetchFresh = async () => {
+      const fresh = src === 'KR' ? await krCompany(t, corp, ex) : await usCompany(t);
+      fresh.at = Date.now();
+      await setJSON(key, fresh).catch(() => {});
+      return fresh;
+    };
+    if (!d) d = await fetchFresh();
+    else if (Date.now() - (d.at || 0) > 12 * 3600e3) refreshInBackground(ctx, key, fetchFresh); // 오래된 값은 먼저 보여주고 뒤에서 갱신
     const sm = await getSectors({ allowFetch: false }).catch(() => null);
     const sraw = sm ? (src === 'KR' ? sm.kr?.[t] : sm.us?.[t]) : null;
     if (sraw) { const [ind, prod] = sraw.split('|'); d = { ...d, sectorKo: ind, products: prod || d.products || null }; }
     const ovKey = `aiov/${src}/${src === 'KR' ? corp : t}`;
     let ov = await getJSON(ovKey);
     // 영문 기업 소개 → 한국어 (한 번 번역하면 저장해 재사용)
+    // (번역을 기다리지 않고 영문으로 먼저 응답 → 번역은 뒤에서 진행, 다음부터 한국어)
     if (!ov && src === 'US' && d.overviewRaw && hasAI()) {
-      try { const text = await overviewKo(d.name || t, d.overviewRaw); if (text) { ov = { text, at: Date.now() }; await setJSON(ovKey, ov).catch(() => {}); } } catch (e) { console.warn('overviewKo', e.message); }
+      const name = d.name || t, raw = d.overviewRaw;
+      refreshInBackground(ctx, ovKey, async () => { const text = await overviewKo(name, raw); if (text) await setJSON(ovKey, { text, at: Date.now() }); });
     }
     return json({ ok: true, ...d, overviewKo: ov?.text || null }, { cdnSeconds: ov ? 1800 : 60, swr: 3600 });
   } catch (e) {
