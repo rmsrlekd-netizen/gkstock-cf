@@ -15,7 +15,9 @@ async function db() {
       d.prepare('CREATE INDEX IF NOT EXISTS items_ms ON items (ms DESC)'),
       d.prepare('CREATE INDEX IF NOT EXISTS items_kind ON items (kind, market, ms DESC)'),
       d.prepare('CREATE INDEX IF NOT EXISTS items_tk ON items (market, ticker, ms DESC)'),
-      d.prepare('CREATE INDEX IF NOT EXISTS items_enrich ON items (enrich, ms DESC)'),
+      // 보강 대기 목록은 부분 색인 (enrich=1 인 행만 색인 → 쓰기 횟수 절약)
+      d.prepare('DROP INDEX IF EXISTS items_enrich'),
+      d.prepare('CREATE INDEX IF NOT EXISTS items_enrich1 ON items (ms DESC) WHERE enrich = 1'),
     ]).catch((e) => { ready = null; throw e; });
   }
   await ready;
@@ -60,12 +62,15 @@ export async function archiveItems(items, { mode = 'upsert', enrich = 0 } = {}) 
   const sql = mode === 'ignore'
     ? 'INSERT OR IGNORE INTO items (id, src, kind, market, ticker, name, ms, title, sig, enrich, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     : 'INSERT INTO items (id, src, kind, market, ticker, name, ms, title, sig, enrich, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET src = excluded.src, kind = excluded.kind, market = excluded.market, ticker = excluded.ticker, name = excluded.name, ms = excluded.ms, title = excluded.title, sig = excluded.sig, enrich = 0, data = excluded.data WHERE items.sig IS NOT excluded.sig';
+  let written = 0;
   for (let i = 0; i < rows.length; i += 40) {
     const part = rows.slice(i, i + 40);
-    await d.batch(part.map((r) => { const o = rowOf(r); return d.prepare(sql).bind(o.id, o.src, o.kind, o.market, o.ticker, o.name, o.ms, o.title, o.sig, enrich, o.data); }));
+    const res = await d.batch(part.map((r) => { const o = rowOf(r); return d.prepare(sql).bind(o.id, o.src, o.kind, o.market, o.ticker, o.name, o.ms, o.title, o.sig, enrich, o.data); }));
+    for (const x of res || []) written += Number(x?.meta?.rows_written ?? (x?.meta?.changes || 0) * 4) || 0;
     for (const r of part) seen.set(r.x.id, r.sig);
   }
   if (seen.size > 20000) seen.clear();
+  archiveItems.lastWritten = written; // 실제로 D1에 쓴 행 수 (색인 포함)
   return rows.length;
 }
 function rowOf({ x, data, sig }) {

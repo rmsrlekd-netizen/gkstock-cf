@@ -1,6 +1,6 @@
 // /api/health — 배포 후 점검용: 환경변수·수집기 상태 확인 (키 값은 노출하지 않음)
 import { json } from '../lib/util.mjs';
-import { getJSON } from '../lib/store.mjs';
+import { getJSON, setJSON } from '../lib/store.mjs';
 import { kospiFrontCode } from '../lib/kis.mjs';
 import { aiProvider, askAI } from '../lib/ai.mjs';
 
@@ -15,6 +15,11 @@ export default async (req) => {
       catch (e) { aiTest = { ok: false, error: String(e.message || e).slice(0, 300) }; }
     }
   }
+  // 저장소(D1) 쓰기 점검: 무료 한도(하루 10만 행)를 넘으면 여기서 오류가 보임
+  let dbWrite;
+  try { await setJSON('health/ping', { at: Date.now() }); dbWrite = { ok: true }; }
+  catch (e) { dbWrite = { ok: false, error: String(e.message || e).slice(0, 300) }; }
+  const bf = await getJSON('backfill/state').catch(() => null);
   const aiLast = await getJSON('ai/lastError');
   const sec = await getJSON('sec/feed');
   const dart = await getJSON('dart/feed');
@@ -22,6 +27,8 @@ export default async (req) => {
   const age = (t) => (t ? Math.round((Date.now() - Date.parse(t)) / 1000) + '초 전' : '없음');
   return json({
     ok: true,
+    dbWrite,
+    backfillQuota: bf?.quota || null,
     env: {
       DART_API_KEY: !!process.env.DART_API_KEY,
       SEC_USER_AGENT: !!process.env.SEC_USER_AGENT,

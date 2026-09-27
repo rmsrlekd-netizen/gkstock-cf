@@ -106,9 +106,17 @@ async function dartDay(key, ymd, page) {
 }
 
 /** 과거 채우기 한 단계 (수집기 실행 뒤 남는 시간에 조금씩). which: 'sec' | 'dart' */
+// Cloudflare D1 무료 한도: 하루 10만 행 쓰기 (한국시간 오전 9시 초기화)
+// 과거 채우기는 하루 이 만큼만 씀 → 실시간 수집이 쓸 몫을 남겨둠. 유료(Workers Paid)면 BACKFILL_DAILY_ROWS를 크게 (예: 2000000)
+const DAILY_ROWS = () => Math.max(0, Number(process.env.BACKFILL_DAILY_ROWS) || 25000);
+const utcDay = () => new Date().toISOString().slice(0, 10);
+
 export async function backfillStep(which, { budgetMs = 20000 } = {}) {
   const until = Date.now() + budgetMs;
   const st = (await getJSON('backfill/state')) || {};
+  if (!st.quota || st.quota.day !== utcDay()) st.quota = { day: utcDay(), rows: 0 };
+  if (st.quota.rows >= DAILY_ROWS()) { st.quota.full = true; return 0; } // 오늘 몫 다 씀 → 내일 이어서
+  const count = () => { st.quota.rows += archiveItems.lastWritten || 0; archiveItems.lastWritten = 0; };
   const limitDay = kstDate(-DAYS());
   let saved = 0;
   if (which === 'sec') {
@@ -123,7 +131,7 @@ export async function backfillStep(which, { budgetMs = 20000 } = {}) {
       try { done.push(await secEnrichOne(it)); } catch { done.push({ ...it, enrichFail: true }); }
       await sleep(130);
     }
-    if (done.length) await markEnriched(done);
+    if (done.length) { await markEnriched(done); count(); }
     // 2) 하루치 색인
     if (!s.done && Date.now() < until - 6000) {
       if (s.day < limitDay) s.done = true;
@@ -132,8 +140,8 @@ export async function backfillStep(which, { budgetMs = 20000 } = {}) {
         if (r.items?.length) {
           const needs = r.items.filter((x) => /^(8-K|6-K)/.test(x.form));
           const rest = r.items.filter((x) => !/^(8-K|6-K)/.test(x.form));
-          saved += await archiveItems(needs, { mode: 'ignore', enrich: 1 });
-          saved += await archiveItems(rest, { mode: 'ignore' });
+          saved += await archiveItems(needs, { mode: 'ignore', enrich: 1 }); count();
+          saved += await archiveItems(rest, { mode: 'ignore' }); count();
         }
         s.log = `${s.day}: ${r.none ? '휴장·색인 없음' : (r.items?.length || 0) + '건'}`;
         s.day = shiftDay(s.day, -1);
@@ -145,11 +153,11 @@ export async function backfillStep(which, { budgetMs = 20000 } = {}) {
     if (!key) return 0;
     const s = st.dart || { day: kstDate(-3), page: 1 };
     if (s.done && s.day >= limitDay) s.done = false; // BACKFILL_DAYS를 늘리면 이어서 더 과거로
-    while (!s.done && Date.now() < until - 3000) {
+    while (!s.done && Date.now() < until - 3000 && st.quota.rows < DAILY_ROWS()) {
       if (s.day < limitDay) { s.done = true; break; }
       const r = await dartDay(key, s.day.replace(/-/g, ''), s.page);
       const listed = r.list.filter((x) => CLS[x.corp_cls] && x.stock_code);
-      if (listed.length) saved += await archiveItems(listed.map(dartItem), { mode: 'ignore' });
+      if (listed.length) { saved += await archiveItems(listed.map(dartItem), { mode: 'ignore' }); count(); }
       if (!r.list.length || s.page >= (r.totalPage || 1) || s.page >= 60) { s.log = `${s.day}: ${s.page}쪽 완료`; s.day = shiftDay(s.day, -1); s.page = 1; }
       else s.page++;
     }

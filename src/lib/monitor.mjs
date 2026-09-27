@@ -19,6 +19,10 @@ async function checks() {
   const [sec, dart, news, market, popular, aiErr, aiOk, aiPause] = await Promise.all(['sec/feed', 'dart/feed', 'news/feed', 'market/v1', 'popular/v2', 'ai/lastError', 'ai/lastOk', 'ai/pause'].map((k) => getJSON(k)));
   const out = [];
   const add = (key, name, ok, msg) => out.push({ key, name, ok, msg });
+  // 저장소 쓰기 점검 (Cloudflare D1 무료 한도 초과 시 모든 수집이 멈춤)
+  let dbErr = null;
+  try { await setJSON('health/ping', { at: now }); } catch (e) { dbErr = String(e.message || e); }
+  add('db', '데이터 저장소 (D1)', !dbErr, dbErr ? `저장 실패 → 수집이 멈춘 상태: ${dbErr.slice(0, 160)}. 하루 쓰기 한도 초과라면 오전 9시(한국)에 풀림` : '저장 정상');
 
   const age = (f) => (f?.updatedAt ? now - Date.parse(f.updatedAt) : Infinity);
   const secLimit = usBusy ? 20 * MIN : 75 * MIN;
@@ -74,6 +78,9 @@ export async function runMonitor() {
     if (c.ok && p.alerted) { recovered.push(c); alerted = false; }
     state.checks[c.key] = { ...c, fails, alerted, since: c.ok === (p.ok ?? true) ? p.since || Date.now() : Date.now() };
   }
+  // 저장소가 막히면 상태 기록도 안 되므로 바로 알림 (같은 서버에서 3시간에 한 번)
+  const dbc = list.find((c) => c.key === 'db');
+  if (dbc && !dbc.ok && Date.now() - (globalThis.__gkDbAlert || 0) > 3 * 3600e3) { globalThis.__gkDbAlert = Date.now(); await telegram(`⚠️ GK 공시레이더 저장소 오류\n\n${dbc.msg}`).catch(() => {}); }
   if (alerts.length) await telegram(`⚠️ GK 공시레이더 이상 감지\n\n${alerts.map((c) => `• ${c.name}\n  ${c.msg}`).join('\n')}\n\nhttps://gk-stock.com/#admin`).catch(() => {});
   if (recovered.length) await telegram(`✅ GK 공시레이더 복구\n\n${recovered.map((c) => `• ${c.name}: ${c.msg}`).join('\n')}`).catch(() => {});
   await setJSON('monitor/state', state).catch(() => {});
