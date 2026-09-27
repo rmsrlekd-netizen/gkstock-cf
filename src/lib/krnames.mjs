@@ -3,7 +3,7 @@
 import { fetchWithTimeout } from './util.mjs';
 import { getJSON, setJSON } from './store.mjs';
 
-async function unzipFirst(buf) {
+export async function unzipFirst(buf, { bytes = false } = {}) {
   const b = new Uint8Array(buf);
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
   let eocd = -1;
@@ -17,9 +17,9 @@ async function unzipFirst(buf) {
   const nameLen = dv.getUint16(localOff + 26, true), extraLen = dv.getUint16(localOff + 28, true);
   const start = localOff + 30 + nameLen + extraLen;
   const data = b.subarray(start, start + compSize);
-  if (method === 0) return new TextDecoder('utf-8').decode(data);
+  if (method === 0) return bytes ? data : new TextDecoder('utf-8').decode(data);
   const s = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return new Response(s).text();
+  return bytes ? new Uint8Array(await new Response(s).arrayBuffer()) : new Response(s).text();
 }
 
 let mem = null;

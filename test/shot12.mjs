@@ -1,0 +1,11 @@
+import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch(); const errs = [];
+const p = await b.newPage({ viewport: { width: 1400, height: 700 } });
+p.on('pageerror', (e) => errs.push(e.message));
+await p.goto('http://localhost:8791/'); await p.waitForTimeout(4000);
+await p.evaluate(() => window.scrollTo(0, 2500)); await p.waitForTimeout(400);
+console.log(await p.evaluate(() => { const r = document.querySelector('.side').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight, styleTop: document.querySelector('.side').style.top }; }));
+await p.screenshot({ path: '/tmp/t1.png' });
+await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(300);
+await p.screenshot({ path: '/tmp/t2.png', clip: { x: 0, y: 0, width: 1400, height: 110 } });
+console.log('ERR', errs); await b.close();

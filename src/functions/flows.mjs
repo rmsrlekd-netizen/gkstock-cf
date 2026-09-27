@@ -1,4 +1,5 @@
 // /api/flows — 국내 기관·외국인 순매수/순매도 상위, 공매도 상위 (한국투자증권 API)
+import { getJSON, setJSON } from '../lib/store.mjs';
 import { json } from '../lib/util.mjs';
 import { hasKis, kisGet } from '../lib/kis.mjs';
 
@@ -57,6 +58,8 @@ export default async () => {
   if (!hasKis()) {
     return json({ ok: false, error: 'KIS_APP_KEY / KIS_APP_SECRET 환경변수가 없어 국내 수급을 불러올 수 없습니다.', needsKis: true }, { cdnSeconds: 60 });
   }
+  const c = await getJSON('flows/kr');
+  if (c && Date.now() - c.at < 3 * 60e3) return json({ ok: true, ...c.body }, { cdnSeconds: 120, swr: 300 });
   const tasks = {
     instBuy: () => instForeign('2', '0'),
     instSell: () => instForeign('2', '1'),
@@ -70,7 +73,10 @@ export default async () => {
   for (const [k, fn] of Object.entries(tasks)) {
     try { out[k] = await fn(); } catch (e) { out[k] = []; errors[k] = e.message; }
   }
-  return json({ ok: true, fetchedAt: new Date().toISOString(), errors, ...out }, { cdnSeconds: 180, swr: 300 });
+  const body = { fetchedAt: new Date().toISOString(), errors, ...out };
+  if (!Object.keys(errors).length) await setJSON('flows/kr', { at: Date.now(), body }).catch(() => {});
+  else if (c) return json({ ok: true, ...c.body, stale: true }, { cdnSeconds: 60 });
+  return json({ ok: true, ...body }, { cdnSeconds: 180, swr: 300 });
 };
 
 export const config = { path: '/api/flows' };

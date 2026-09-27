@@ -701,9 +701,8 @@
     return { px, ch, dir: dirCls(x.pct ?? x.chg) };
   }
   function nightInfo() {
-    const m = S.market, n = m?.night, ewy = m?.ewy?.price ? m.ewy : null;
-    if (n && n.ok) return { label: n.session === 'night' ? 'K200 야간선물' : 'K200 선물', price: fmtPx(n.price), pct: n.pct, chg: n.chg, note: n.note };
-    if (ewy) return { label: 'EWY(한국 ETF)', price: '$' + fmtPx(ewy.price), pct: ewy.pct, chg: ewy.chg, ewy: true };
+    const n = S.market?.night;
+    if (n && n.ok) return { label: n.session === 'night' ? '코스피 야간선물' : '코스피200 선물', price: fmtPx(n.price), pct: n.pct, chg: n.chg, note: n.note };
     return null;
   }
   function renderTape() {
@@ -712,6 +711,7 @@
     if (fg && !fg.error) parts.push(`<span class="tp" data-go="market"><b>공포·탐욕</b><span style="color:${fgColor(fg.score)}">${fg.score}</span><em style="color:${fgColor(fg.score)}">${FG_KO[fg.rating] || fg.rating}</em></span>`);
     const ni = nightInfo();
     if (ni) parts.push(`<span class="tp" data-go="market"><b>${ni.label}</b><span>${ni.price}</span><em class="${dirCls(ni.pct)}">${fmtPct(ni.pct)}</em></span>`);
+    else if (m) parts.push(`<span class="tp" data-go="market"><b>코스피 야간선물</b><span class="muted">—</span></span>`);
     for (const x of m?.indices || []) {
       if (x.error || x.price === null || x.price === undefined) continue;
       const f = idxFmt(x);
@@ -729,9 +729,9 @@
     } else $('#fgCard').innerHTML = `<div class="lbl">CNN 공포·탐욕 지수</div>${gaugeSVG(null)}<div class="fg-rating muted">${m ? '불러오기 실패' : '불러오는 중'}</div>`;
     const n = m?.night, ni = nightInfo();
     if (ni) {
-      $('#nightCard').innerHTML = `<div class="lbl">${ni.ewy ? '코스피 야간 대용 (EWY)' : n.session === 'night' ? '코스피200 야간선물' : '코스피200 선물(주간)'} <small class="muted">${ni.ewy ? '미국 상장 한국 ETF' : esc(n.code || '')}</small></div>
+      $('#nightCard').innerHTML = `<div class="lbl">${n.session === 'night' ? '코스피200 야간선물' : '코스피200 선물(주간)'} <small class="muted">${esc(n.code || '')}</small></div>
         <div class="night-price">${ni.price}</div><div class="night-chg ${dirCls(ni.chg)}">${ni.chg > 0 ? '▲' : ni.chg < 0 ? '▼' : ''} ${fmtPx(Math.abs(ni.chg || 0))} (${fmtPct(ni.pct)})</div>
-        <p class="foot-note">${ni.ewy ? '한국투자증권 API 키(KIS_APP_KEY·KIS_APP_SECRET)를 등록하면 실제 코스피200 야간선물 시세로 바뀝니다.' : `${ni.note ? esc(ni.note) + ' · ' : ''}한국투자증권 · 야간 18:00~05:00 KST`}</p>`;
+        <p class="foot-note">${ni.note ? esc(ni.note) + ' · ' : ''}한국투자증권 · 야간 18:00~05:00 KST</p>`;
     } else $('#nightCard').innerHTML = `<div class="lbl">코스피200 야간선물</div><div class="night-price muted">—</div><p class="foot-note">${m ? esc(n?.reason || '시세 없음') : '불러오는 중'}</p>`;
     const list = (m?.indices || []).filter((x) => !x.error && x.price !== null && x.price !== undefined);
     $('#idxGrid').innerHTML = list.map((x) => { const f = idxFmt(x); return `<div class="idx" title="${esc(x.src || '')}"><div class="l">${esc(x.label)}</div><div class="p">${f.px}</div><div class="c ${f.dir}">${f.ch}</div></div>`; }).join('') || '<div class="muted">지수 데이터를 불러오는 중이거나 가져오지 못했습니다.</div>';
@@ -1516,6 +1516,18 @@
 
   // ───────────────────────── 시작 ─────────────────────────
   function every(ms, fn) { fn(); setInterval(fn, ms); }
+  // 오른쪽 사이드(인기 종목·수집 현황)가 화면보다 길면: 페이지와 함께 내려가다가 맨 아래가 보이는 위치에서 멈춤
+  // (예전처럼 위에 고정되어 아래쪽이 잘리지 않도록)
+  function fitSide() {
+    const el = $('.side');
+    if (!el) return;
+    if (getComputedStyle(el).position !== 'sticky') { el.style.top = ''; return; }
+    const hdr = $('.hdr')?.getBoundingClientRect().height || 0;
+    const top = hdr + 10, h = el.offsetHeight, vh = window.innerHeight;
+    el.style.top = (h + top + 16 <= vh ? top : vh - h - 16) + 'px';
+  }
+  window.addEventListener('resize', fitSide);
+  if (window.ResizeObserver && $('.side')) new ResizeObserver(fitSide).observe($('.side'));
   bind();
   loadSnap();
   route();

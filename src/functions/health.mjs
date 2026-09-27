@@ -36,7 +36,7 @@ export default async (req) => {
     secWatcher: { updated: age(sec?.updatedAt), items: sec?.items?.length || 0, errors: sec?.errors || [], form4WithDetail: (sec?.items || []).filter((x) => x.tx).length, withPressRelease: (sec?.items || []).filter((x) => x.pr).length, withKoreanAI: (sec?.items || []).filter((x) => x.ko).length, aiError: sec?.aiError || null },
     dartWatcher: { updated: age(dart?.updatedAt), items: dart?.items?.length || 0, errors: dart?.errors || [], withOfficialTime: (dart?.items || []).filter((x) => x.timeMin && x.timeMin !== 'na').length, withSummary: (dart?.items || []).filter((x) => x.summary?.title).length },
     news: { updated: age(news?.updatedAt), items: news?.items?.length || 0, pr: (news?.items || []).filter((x) => x.src === 'PR').length, news: (news?.items || []).filter((x) => x.src === 'NEWS').length, withKorean: (news?.items || []).filter((x) => x.titleKo).length, errors: news?.errors || [], aiError: news?.aiError || null },
-    kospiFuturesCode: kospiFrontCode(),
+    kospiFuturesCode: (await getJSON('kis/futcode').catch(() => null))?.codes || kospiFrontCode(),
   }, { cdnSeconds: 0, swr: 0 });
 };
 

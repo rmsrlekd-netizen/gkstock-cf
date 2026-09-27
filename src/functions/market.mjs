@@ -20,7 +20,7 @@ const LIST = [
   ['니케이225', 'NI225:INDEXNIKKEI'],
 ];
 // 이 페이지들 안에 위 지수들이 함께 들어 있음
-const PAGES = ['KOSPI:KRX', 'SOX:INDEXNASDAQ', 'NQW00:CME_EMINIS', 'TNX:INDEXCBOE', 'USD-KRW', 'EWY:NYSEARCA'];
+const PAGES = ['KOSPI:KRX', 'SOX:INDEXNASDAQ', 'NQW00:CME_EMINIS', 'TNX:INDEXCBOE', 'USD-KRW'];
 
 const NQ_H = { 'User-Agent': BROWSER_UA, Accept: 'application/json', Origin: 'https://www.nasdaq.com', Referer: 'https://www.nasdaq.com/' };
 async function nasdaqQuote(sym, cls) {
@@ -72,10 +72,8 @@ export default async () => {
     if (key === 'TNX:INDEXCBOE' && v.price > 20) { out.price /= 10; out.chg /= 10; out.prev = out.prev !== null ? out.prev / 10 : null; out.unit = '%'; }
     return out;
   }));
-  let ewy = q['EWY:NYSEARCA'] || null;
-  if (!ewy) { try { ewy = await nasdaqQuote('EWY', 'etf'); } catch {} }
   const ok = indices.some((x) => !x.error);
-  return json({ ok: true, fetchedAt: new Date().toISOString(), errors: g.errors, fearGreed: fg, night, ewy, indices }, { cdnSeconds: ok ? 60 : 15, swr: 120 });
+  return json({ ok: true, fetchedAt: new Date().toISOString(), errors: g.errors, fearGreed: fg, night, indices }, { cdnSeconds: ok ? 60 : 15, swr: 120 });
 };
 
 export const config = { path: '/api/market' };

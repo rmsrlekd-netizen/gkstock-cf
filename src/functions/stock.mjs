@@ -3,6 +3,7 @@
 //  한국: ?src=KR&t=005930&corp=00126380 → 투자자별 순매수·공매도 거래 (KIS), 임원·5% 지분 변동 (DART)
 import { json, fetchWithTimeout, num, BROWSER_UA, kstYmd } from '../lib/util.mjs';
 import { hasKis, kisGet } from '../lib/kis.mjs';
+import { getJSON, setJSON } from '../lib/store.mjs';
 
 const NQ = {
   'User-Agent': BROWSER_UA,
@@ -117,7 +118,17 @@ export default async (req) => {
   const corp = u.searchParams.get('corp');
   if (!t || !/^[A-Za-z0-9.\-]{1,12}$/.test(t)) return json({ ok: false, error: '종목코드가 올바르지 않습니다' }, { status: 400, cdnSeconds: 60 });
   try {
-    const data = src === 'KR' ? await kr(t, corp && /^\d{8}$/.test(corp) ? corp : null) : await us(t);
+    // 같은 종목은 저장해 두고 재사용 (한국 5분·미국 30분) → 한국투자증권 호출 횟수 절약
+    const ck = `stock/${src === 'KR' ? 'KR' : 'US'}/${t.toUpperCase()}`;
+    const c = await getJSON(ck);
+    let data;
+    if (c && Date.now() - c.at < (src === 'KR' ? 5 : 30) * 60e3) data = c.data;
+    else {
+      data = src === 'KR' ? await kr(t, corp && /^\d{8}$/.test(corp) ? corp : null) : await us(t);
+      const bad = Object.values(data.errors || {}).some((e) => /초당|거래건수/.test(e));
+      if (!bad) await setJSON(ck, { at: Date.now(), data }).catch(() => {});
+      else if (c) data = c.data; // 호출 제한에 걸렸으면 직전 저장본 사용
+    }
     return json({ ok: true, fetchedAt: new Date().toISOString(), ...data }, { cdnSeconds: src === 'KR' ? 300 : 1800, swr: 600 });
   } catch (e) {
     return json({ ok: false, error: String(e.message || e) }, { cdnSeconds: 30, status: 502 });
