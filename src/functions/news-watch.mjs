@@ -5,6 +5,8 @@ import { collectNews } from '../lib/news.mjs';
 import { hasAI, translateTitles } from '../lib/ai.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { prewarm, pickPR } from '../lib/prewarm.mjs';
+import { capturePx0 } from '../lib/px0.mjs';
+import { runMonitor } from '../lib/monitor.mjs';
 
 export default async () => {
   const started = Date.now();
@@ -28,6 +30,10 @@ export default async () => {
         await setJSON('news/feed', cur);
       }
     }
+    await capturePx0((await getJSON('news/feed'))?.items).catch((e) => console.warn('px0', e.message));
+    // 고장 자동 감시 (약 9분마다)
+    const ms = await getJSON('monitor/state');
+    if (!ms || Date.now() - ms.at > 8 * 60e3) await runMonitor().catch((e) => console.warn('monitor', e.message));
     const n = await prewarm(pickPR((await getJSON('news/feed'))?.items), { max: 3 }).catch((e) => console.warn('prewarm', e.message));
     console.log('news-watch', feed.items.length, 'prewarm', n || 0, Date.now() - started + 'ms');
   } catch (e) {

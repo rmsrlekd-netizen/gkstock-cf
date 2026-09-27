@@ -2,6 +2,7 @@
 import { json, refreshInBackground } from '../lib/util.mjs';
 import { getJSON } from '../lib/store.mjs';
 import { runDartWatch } from '../lib/dart-core.mjs';
+import { attachPx0 } from '../lib/px0.mjs';
 
 export default async (req, ctx) => {
   try {
@@ -9,7 +10,7 @@ export default async (req, ctx) => {
     let mode = 'watcher';
     if (!feed) { mode = 'live'; await runDartWatch({ docs: false, light: true }); feed = await getJSON('dart/feed'); }
     else if (Date.now() - Date.parse(feed.updatedAt || 0) > 90e3 && refreshInBackground(ctx, 'dart', () => runDartWatch({ docs: false, light: true }))) mode = 'refreshing';
-    const items = (feed?.items || []).slice(0, 800).map(({ docTries, detailTries, ...x }) => x);
+    const items = await attachPx0((feed?.items || []).slice(0, 800).map(({ docTries, detailTries, ...x }) => x));
     return json({ ok: true, source: 'DART', mode, updatedAt: feed?.updatedAt, errors: feed?.errors || [], count: items.length, items }, { cdnSeconds: 15, swr: 30 });
   } catch (e) {
     return json({ ok: false, error: String(e.message || e), items: [] }, { cdnSeconds: 5, swr: 10, status: 502 });

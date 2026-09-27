@@ -770,3 +770,55 @@ body::before {
   .hdr { position: relative; transform: none; }
   html { scroll-padding-top: 1rem; }
 }
+
+/* ── v14: 관심종목 알림 카드 ── */
+#watchPop { position: fixed; right: 1.2rem; bottom: 1.2rem; z-index: 120; display: flex; flex-direction: column; gap: .6rem; width: min(360px, calc(100vw - 2rem)); }
+.wpop { background: linear-gradient(135deg, rgba(245,197,66,.16), #16193f 55%); border: 1px solid rgba(245,197,66,.55); border-radius: 14px; padding: .8rem .95rem; box-shadow: 0 12px 34px rgba(0,0,0,.5); cursor: pointer; animation: wpin .35s ease-out; transition: opacity .5s, transform .5s; }
+.wpop.out { opacity: 0; transform: translateX(30px); }
+.wpop .wp-h { display: flex; justify-content: space-between; align-items: center; font-size: .75rem; font-weight: 800; color: var(--gold); margin-bottom: .3rem; }
+.wpop .wp-h button { color: var(--muted); font-size: .8rem; }
+.wpop b { font-size: 1rem; } .wpop b small { color: var(--muted); font-weight: 500; font-size: .78rem; }
+.wpop p { margin: .25rem 0 0; font-size: .88rem; line-height: 1.5; color: var(--text); }
+@keyframes wpin { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+/* ── v14: 발표 후 주가 반응 ── */
+.px-after { display: block; margin-top: .3rem; font-size: .8rem; color: var(--text2); text-align: right; }
+.px-after b { font-family: var(--mono); font-size: .95rem; }
+.px-after.up b { color: var(--up); } .px-after.down b { color: var(--down); }
+.px-after small { display: block; color: var(--muted); font-size: .7rem; }
+.qchip span { letter-spacing: -.01em; }
+
+/* ── v14: 링크 복사·관리자 배지 ── */
+.a-top { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.admin-badge { font-size: .78rem; font-weight: 700; color: #1b1300; background: linear-gradient(135deg, #ffd54a, #ff9f1c); padding: .2rem .6rem; border-radius: 999px; }
+.admin-badge small { font-weight: 600; opacity: .75; }
+
+/* ── v14: 관리자 화면 ── */
+.admin-login form { display: flex; gap: .5rem; margin-top: .6rem; }
+.admin-login input { flex: 1; padding: .6rem .8rem; border-radius: 10px; border: 1px solid var(--line2); background: rgba(0,0,0,.3); color: var(--text); font-size: 1rem; }
+.adm-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin-bottom: .8rem; }
+.adm-kpis .card { display: grid; grid-template-columns: auto repeat(3, 1fr); align-items: center; gap: .8rem; }
+.adm-kpis .card > span { font-weight: 800; color: var(--muted); font-size: .85rem; }
+.adm-kpis b { display: block; font-family: var(--mono); font-size: 1.4rem; }
+.adm-kpis small { color: var(--muted); font-size: .72rem; }
+.adm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin-bottom: .8rem; }
+.adm-grid h3, #adminBody .card h3 { margin: 0 0 .7rem; font-size: 1rem; }
+.adm-bars { display: flex; align-items: flex-end; gap: 3px; height: 150px; padding-bottom: 1.1rem; position: relative; }
+.adm-bars > div { flex: 1; height: 100%; position: relative; display: flex; align-items: flex-end; justify-content: center; }
+.adm-bars i { position: absolute; bottom: 0; left: 10%; right: 10%; background: rgba(139,108,255,.45); border-radius: 3px 3px 0 0; min-height: 1px; }
+.adm-bars i.uv { background: #f5c542; left: 30%; right: 30%; }
+.adm-bars span { position: absolute; bottom: -1.1rem; font-size: .6rem; color: var(--muted); }
+.adm-dev { display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: rgba(62,166,255,.35); font-size: .75rem; font-weight: 700; }
+.adm-dev span { display: flex; align-items: center; padding: 0 .5rem; white-space: nowrap; }
+.adm-dev span:first-child { background: rgba(245,197,66,.55); color: #1b1300; }
+.adm-list { margin: 0; padding: 0; list-style: none; display: grid; gap: .35rem; max-height: 420px; overflow: auto; }
+.adm-list li { display: grid; grid-template-columns: 3.2rem 1fr; gap: .5rem; align-items: baseline; font-size: .88rem; padding: .35rem .4rem; border-radius: 8px; }
+.adm-list li[data-adm-open] { cursor: pointer; } .adm-list li[data-adm-open]:hover { background: rgba(255,255,255,.05); }
+.adm-list b { font-family: var(--mono); color: var(--gold); text-align: right; }
+.adm-list em { font-style: normal; color: var(--blue); font-weight: 700; margin-right: .35rem; }
+.mon { font-size: .75rem; font-weight: 800; padding: .15rem .55rem; border-radius: 999px; white-space: nowrap; }
+.mon.ok { background: var(--good-soft); color: #5ee6a8; } .mon.bad { background: var(--bad-soft); color: #ff8d98; } .mon.warn { background: var(--gold-soft); color: var(--gold); }
+.adm-mon td { font-size: .85rem; vertical-align: top; }
+@media (max-width: 900px) { .adm-kpis, .adm-grid { grid-template-columns: 1fr; } }
+.adm-mon td, .adm-mon th { text-align: left !important; font-family: var(--sans) !important; }
+.adm-mon td:last-child { color: var(--text2); }

@@ -3,7 +3,7 @@
 import { json as jsonRes } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { hasAI, analyzeFiling, aiProvider } from '../lib/ai.mjs';
-import { findFiling, getFilingDoc } from '../lib/filing-doc.mjs';
+import { findFiling, getFilingDoc, snapshotItem } from '../lib/filing-doc.mjs';
 import { koHeadline } from '../lib/sec-ko.mjs';
 import { getSectors } from '../lib/sectors.mjs';
 import { naverKrQuotes, naverUsQuotes, reutersOf } from '../lib/naver.mjs';
@@ -129,6 +129,8 @@ async function handle(id) {
       if (a.overview && ck) await setJSON(`aiov/${src}/${ck}`, { text: a.overview, at: Date.now() }).catch(() => {});
       const out = { id, provider: aiProvider(), basis: doc.note || null, headline: a.headline || null, summary: a.summary, positive: a.positive, negative: a.negative, analyst: a.analyst, points: a.points, impact: a.impact, watch: a.watch, sector: sector || null, verdict: a.verdict, overview: a.overview || hasOv?.text || null, at: Date.now() };
       await setJSON(`ai3/${id}`, out).catch(() => {});
+      await setJSON('ai/lastOk', { at: Date.now(), id }).catch(() => {});
+      await snapshotItem(it);
       return json({ ok: true, ...out }, { cdnSeconds: 86400, swr: 86400 });
     } catch (e) {
       aiError = String(e.message || e).slice(0, 300);

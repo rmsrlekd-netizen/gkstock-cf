@@ -24,12 +24,16 @@ import * as search from './functions/search.mjs';
 import * as sec from './functions/sec.mjs';
 import * as stock from './functions/stock.mjs';
 import * as views from './functions/views.mjs';
+import * as track from './functions/track.mjs';
+import * as admin from './functions/admin.mjs';
+import * as item from './functions/item.mjs';
+import { renderItemPage, sitemap } from './lib/page.mjs';
 import secWatch from './functions/sec-watch.mjs';
 import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -86,6 +90,12 @@ export default {
   async fetch(req, env, ctx) {
     init(env);
     const url = new URL(req.url);
+    // 공시별 고유 주소 페이지 (/p/SEC-…, /p/DART-…, /p/PR-…) · 사이트맵
+    const pm = url.pathname.match(/^\/p\/((?:SEC|DART)-[\d-]+|(?:NEWS|PR)-[a-z0-9]+)\/?$/);
+    if (pm && req.method === 'GET') return cached(req, ctx, () => renderItemPage(env, req, pm[1]));
+    if (url.pathname === '/sitemap-pages.xml') return cached(req, ctx, () => sitemap());
+    // www 주소로 들어오면 대표 주소로
+    if (url.hostname === 'www.gk-stock.com') return Response.redirect('https://gk-stock.com' + url.pathname + url.search, 301);
     const handler = ROUTES[url.pathname];
     if (!handler) {
       if (url.pathname.startsWith('/api/')) return new Response(JSON.stringify({ ok: false, error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } });

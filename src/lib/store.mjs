@@ -53,3 +53,10 @@ export async function setJSON(key, value) {
   await db.prepare('INSERT INTO kv (k, v, t) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, t = excluded.t')
     .bind(key, bytes, Date.now()).run();
 }
+
+/** SQL 직접 사용 (통계 카운터처럼 동시에 여러 번 +1 해야 하는 경우). 메모리 모드면 null */
+export async function sqlDB() {
+  if (useMem()) return null;
+  await init();
+  return db;
+}

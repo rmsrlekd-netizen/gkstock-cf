@@ -38,9 +38,9 @@
     flowTab: load('gk_flowtab', 'usInsider'), flowSide: 'buy', insiderSide: 'all',
     watch: load('gk_watch2', []),
     sound: load('gk_sound', false), notify: load('gk_notify', false), fs: load('gk_fs', 'fs-l'),
-    bell: [], booted: false, fresh: new Set(), tr: {}, trPending: new Set(), real: {}, trdoc: new Map(), docLang: 'ko', aTab: 'fin', digests: {}, digestMk: load('gk_dmk', 'ALL'), earn: null, earnMk: 'US', earnDay: 0, earnCap: '10',
+    bell: [], booted: false, fresh: new Set(), tr: {}, trPending: new Set(), real: {}, hiddenPoll: {}, watchAlert: load('gk_watchAlert', true), extra: new Map(), extraTried: new Map(), admin: load('gk_admin', ''), trdoc: new Map(), docLang: 'ko', aTab: 'fin', digests: {}, digestMk: load('gk_dmk', 'ALL'), earn: null, earnMk: 'US', earnDay: 0, earnCap: '10',
   };
-  document.documentElement.className = 'notranslate ' + S.fs;
+  document.documentElement.className = 'js notranslate ' + S.fs;
   const wkey = (m, t) => `${m}:${String(t || '').toUpperCase()}`;
   const inWatch = (m, t) => !!t && S.watch.some((w) => wkey(w.m, w.t) === wkey(m, t));
 
@@ -329,11 +329,13 @@
       if (S.trPending.size) queueTranslate([]);
     }, 400);
   }
+  const normRaw = (r) => (r.src === 'SEC' ? normSec(r) : r.src === 'DART' ? normDart(r) : normNews(r));
   function rebuild() {
     const prev = S.items, next = new Map();
     for (const r of S.raw.sec) next.set(r.id, normSec(r));
     for (const r of S.raw.dart) next.set(r.id, normDart(r));
     for (const r of S.raw.news) if (!next.has(r.id) && !r.dupOf && !(r.src === 'PR' && (r.market === 'KR' || (r.source === '뉴스와이어' && !r.usOk && !r.ko)))) next.set(r.id, normNews(r)); // 한국 보도자료 제외 (뉴스와이어의 미국 상장사 한국어판은 표시)
+    for (const [id, r] of S.extra) if (!next.has(id)) next.set(id, normRaw(r)); // 공유 링크로 연 오래된 항목 유지
     next.forEach((n) => { applyTr(n); applyAI(n); });
     // 같은 보도자료가 통신사(PR Newswire 등)에도 있으면 SEC 첨부본은 보도자료 탭에서 빼기
     const wire = new Map();
@@ -587,16 +589,26 @@
   }
   const quoteOf = (m, t) => { const q = S.quotes.get(wkey(m, t)); return q && q.price !== undefined ? q : null; };
   // 실시간 등락 칩: 공시가 나온 뒤 지금 이 종목이 얼마나 움직이고 있는지 목록에서 바로 보여줌
-  function qchipInner(m, t) {
+  // 발표 시점 주가(px0)가 있으면 "발표 후 등락", 없으면 오늘 등락
+  function qchipInner(m, t, p0) {
     const q = quoteOf(m, t);
-    if (!q || q.pct === null || q.pct === undefined) return '';
-    const big = Math.abs(q.pct) >= 5 ? ' big' : '';
-    return `<span class="${dirCls(q.pct)}${big}">${q.pct > 0 ? '▲' : q.pct < 0 ? '▼' : ''}${Math.abs(q.pct).toFixed(2)}%</span>`;
+    if (!q || q.price == null) return '';
+    let pct = q.pct, lbl = '';
+    if (p0 > 0) { pct = ((q.price - p0) / p0) * 100; lbl = '발표후 '; }
+    if (pct === null || pct === undefined || !Number.isFinite(pct)) return '';
+    const big = Math.abs(pct) >= 5 ? ' big' : '';
+    return `<span class="${dirCls(pct)}${big}">${lbl}${pct > 0 ? '▲' : pct < 0 ? '▼' : ''}${Math.abs(pct).toFixed(2)}%</span>`;
   }
   let chipKeyMode = false; // 목록 비교용 키를 만들 때는 등락 숫자를 빼서, 숫자만 바뀐 줄은 다시 그리지 않음
-  const qchip = (n) => (n.ticker ? `<span class="qchip" data-q="${esc(wkey(n.market, n.ticker))}" title="현재 주가 등락률 (1분마다 갱신)">${chipKeyMode ? '' : qchipInner(n.market, n.ticker)}</span>` : '');
+  const p0Of = (n) => (n.raw?.px0 > 0 && Date.now() - n.ms < 7 * 86400e3 ? n.raw.px0 : 0);
+  const qchip = (n) => {
+    if (!n.ticker) return '';
+    const p0 = p0Of(n);
+    const tip = p0 ? `발표 시점 ${n.market === 'KR' ? fmtInt(p0) + '원' : '$' + fmtPx(p0)} 대비 현재 주가 등락 (1분마다 갱신)` : '오늘 주가 등락률 (1분마다 갱신)';
+    return `<span class="qchip" data-q="${esc(wkey(n.market, n.ticker))}"${p0 ? ` data-p0="${p0}"` : ''} title="${esc(tip)}">${chipKeyMode ? '' : qchipInner(n.market, n.ticker, p0)}</span>`;
+  };
   function paintChips() {
-    $$('.qchip[data-q]').forEach((el) => { const [m, ...r] = el.dataset.q.split(':'); const h = qchipInner(m, r.join(':')); if (el.innerHTML !== h) el.innerHTML = h; });
+    $$('.qchip[data-q]').forEach((el) => { const [m, ...r] = el.dataset.q.split(':'); const h = qchipInner(m, r.join(':'), Number(el.dataset.p0) || 0); if (el.innerHTML !== h) el.innerHTML = h; });
   }
   let chipBusy = false;
   async function refreshChips() {
@@ -666,7 +678,9 @@
   }
 
   async function poll(kind) {
-    if (document.hidden && S.booted) return;
+    if (document.hidden && S.booted && !S.watch.length) return; // 관심종목이 있으면 다른 탭을 보고 있어도 계속 확인
+    if (document.hidden && S.booted && Date.now() - (S.hiddenPoll[kind] || 0) < 55e3) return;
+    S.hiddenPoll[kind] = Date.now();
     try {
       const j = await getJSON(`/api/${kind}`);
       S.raw[kind] = j.items || [];
@@ -682,8 +696,8 @@
     if (S.view === 'company' && S.coCur) renderCoRecent();
     if (!S.booted && S.real.sec && S.real.dart && S.real.news) {
       S.booted = true;
-      const m = location.hash.match(/^#item\/(.+)$/);
-      if (m) showItem(decodeURIComponent(m[1]));
+      const id = itemIdFromUrl();
+      if (id && S.view === 'item') showItem(id);
     }
   }
 
@@ -704,16 +718,74 @@
       });
     } catch {}
   }
+  // 관심종목 전용 알림음 (세 번 울리는 높은 음)
+  function watchChime() {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const now = actx.currentTime;
+      [784, 1047, 1319].forEach((f, i) => {
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = 'triangle'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, now + i * 0.14);
+        g.gain.exponentialRampToValueAtTime(0.2, now + i * 0.14 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.14 + 0.45);
+        o.connect(g).connect(actx.destination);
+        o.start(now + i * 0.14); o.stop(now + i * 0.14 + 0.5);
+      });
+    } catch {}
+  }
+  // 화면 오른쪽 아래에 뜨는 관심종목 알림 카드
+  function watchPopup(list) {
+    let box = $('#watchPop');
+    if (!box) { box = document.createElement('div'); box.id = 'watchPop'; document.body.appendChild(box); }
+    for (const n of list) {
+      const el = document.createElement('div');
+      el.className = 'wpop';
+      el.innerHTML = `<div class="wp-h"><span>⭐ 관심종목 새 ${n.kind === 'FILING' ? '공시' : n.kind === 'PR' ? '보도자료' : '뉴스'}</span><button aria-label="닫기">✕</button></div><b>${esc(n.market === 'KR' ? n.name : n.ticker)}${n.market === 'KR' ? '' : ` <small>${esc(n.name || '')}</small>`}</b><p>${esc(n.head)}</p>`;
+      el.addEventListener('click', (e) => { el.remove(); if (!e.target.closest('button')) { window.focus(); openItem(n.id); } });
+      box.prepend(el);
+      setTimeout(() => el.classList.add('out'), 14000);
+      setTimeout(() => el.remove(), 14600);
+    }
+    while (box.children.length > 4) box.lastElementChild.remove();
+  }
+  let titleFlash = null;
+  function flashTitle(nWatch) {
+    if (!document.hidden) return;
+    const base = document.title.replace(/^\(\d+\) [^|]*\| /, '');
+    let k = 0;
+    clearInterval(titleFlash);
+    titleFlash = setInterval(() => { document.title = k++ % 2 ? base : `(${nWatch}) 관심종목 새 소식 | ${base}`; }, 1200);
+    const stop = () => { if (!document.hidden) { clearInterval(titleFlash); document.title = base; document.removeEventListener('visibilitychange', stop); } };
+    document.addEventListener('visibilitychange', stop);
+  }
+  function askNotifyPermission() {
+    if (!('Notification' in window) || Notification.permission !== 'default') return;
+    Notification.requestPermission().then((p) => { if (p === 'granted') toast('관심종목 알림이 켜졌습니다'); });
+  }
   function onFresh(fresh) {
     fresh.forEach((n) => S.fresh.add(n.id));
     setTimeout(() => fresh.forEach((n) => S.fresh.delete(n.id)), 4000);
-    const imp = fresh.filter((n) => n.impact >= 4 || inWatch(n.market, n.ticker));
+    const watched = fresh.filter((n) => n.ticker && inWatch(n.market, n.ticker) && n.kind !== 'NEWS');
+    const imp = fresh.filter((n) => n.impact >= 4 || watched.includes(n));
     if (!imp.length) return;
     S.bell = [...imp.map((n) => ({ id: n.id })), ...S.bell].slice(0, 50);
     $('#bellDot').hidden = false;
-    if (S.sound) chime(imp.some((n) => n.impact >= 5 || inWatch(n.market, n.ticker)));
+    // 관심종목: 설정과 상관없이 항상 알림음 + 화면 알림 (+ 브라우저 알림 허용 시 바탕화면 알림)
+    if (watched.length && S.watchAlert !== false) {
+      watchChime();
+      watchPopup(watched.slice(0, 3));
+      flashTitle(watched.length);
+      if ('Notification' in window && Notification.permission === 'granted') {
+        watched.slice(0, 3).forEach((n) => {
+          try { const x = new Notification(`⭐ ${n.market === 'KR' ? n.name : n.ticker} 새 ${n.kind === 'FILING' ? '공시' : '보도자료'}`, { body: n.head, tag: n.id, icon: '/img/gk-favicon.png', requireInteraction: true }); x.onclick = () => { window.focus(); openItem(n.id); x.close(); }; } catch {}
+        });
+      }
+      return;
+    }
+    if (S.sound) chime(imp.some((n) => n.impact >= 5));
     if (S.notify && 'Notification' in window && Notification.permission === 'granted') {
-      imp.filter((n) => inWatch(n.market, n.ticker) || n.impact >= 5).slice(0, 3).forEach((n) => {
+      imp.filter((n) => n.impact >= 5).slice(0, 3).forEach((n) => {
         try { const x = new Notification(`${n.ticker || ''} ${n.name || ''}`.trim(), { body: n.head, tag: n.id }); x.onclick = () => { window.focus(); openItem(n.id); }; } catch {}
       });
     }
@@ -721,7 +793,8 @@
   function renderBell() {
     const rows = S.bell.map((b) => S.items.get(b.id)).filter(Boolean);
     $('#bellPanel').innerHTML = `<h4>알림 <button class="link" data-close-bell>닫기 ✕</button></h4>
-      <div class="set-row"><div>알림음<small>중요 공시·관심종목 소식이 오면 소리</small></div><input type="checkbox" class="tg" data-set="sound" ${S.sound ? 'checked' : ''}></div>
+      <div class="set-row"><div>관심종목 알림<small>관심종목 새 공시·보도자료가 나오면 알림음 + 알림 창</small></div><input type="checkbox" class="tg" data-set="watchAlert" ${S.watchAlert !== false ? 'checked' : ''}></div>
+      <div class="set-row"><div>알림음<small>중요 공시 소식이 오면 소리</small></div><input type="checkbox" class="tg" data-set="sound" ${S.sound ? 'checked' : ''}></div>
       <div class="set-row"><div>데스크톱 알림<small>관심종목·매우 중요한 항목</small></div><input type="checkbox" class="tg" data-set="notify" ${S.notify ? 'checked' : ''}></div>
       ${rows.length ? rows.map((n) => `<div class="al" data-id="${esc(n.id)}"><b>${esc(n.market === 'KR' ? n.name : n.ticker || n.name || '')}</b> ${esc(n.head)}<small>${fmtDT(new Date(n.ms)).full} · ${n.kind === 'FILING' ? '공시' : n.kind === 'PR' ? '보도자료' : '뉴스'}</small></div>`).join('')
         : '<div class="empty" style="padding:1.5rem 0">이 창을 연 뒤 새로 들어온 중요 공시·관심종목 소식이 여기에 쌓입니다.</div>'}`;
@@ -846,12 +919,16 @@
         return `<button class="dcard" data-id="${esc(x.id)}"><span class="dn">${i + 1}</span><div><div class="dc"><span class="mk ${mk === 'KR' ? 'kr' : 'us'}">${mk === 'KR' ? '한국' : '미국'}</span><b>${esc(n ? (n.market === 'KR' ? n.name : n.ticker || n.name) : x.company || '')}</b><span class="verdict ${vc(x.verdict)}">${esc(x.verdict)}</span></div><div class="dt">${esc(x.title)}</div><div class="dw">${esc(x.why)}</div></div></button>`;
       });
     }
-    if (!cards.length) {
-      // AI를 못 쓸 때: 자동 분류로 중요한 공시·보도자료
-      const arr = [...S.items.values()].filter((n) => n.kind !== 'NEWS' && n.ticker && mkOk(n.market) && n.impact >= 4 && Date.now() - n.ms < 72 * 3600e3).sort((a, b) => b.impact - a.impact || b.ms - a.ms).slice(0, 6);
-      $('#digestHead').textContent = d?.error && !anyLoaded() ? '' : arr.length ? '' : '오늘은 아직 주요 공시가 없습니다.';
-      $('#digestMeta').textContent = '자동 분류 기준 · 공시·보도자료';
-      cards = arr.map((n, i) => `<button class="dcard" data-id="${esc(n.id)}"><span class="dn">${i + 1}</span><div><div class="dc"><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><b>${esc(n.market === 'KR' ? n.name : n.ticker)}</b>${tagsHTML(n, 2, true)}</div><div class="dt">${esc(n.head)}</div></div></button>`);
+    if (cards.length < 6) {
+      // AI가 6건보다 적게 골랐거나 AI를 못 쓸 때: 자동 분류로 중요한 공시·보도자료를 채워 항상 6건
+      const used = new Set((d?.items || []).map((x) => x.id));
+      const aiCount = cards.length;
+      const arr = [...S.items.values()].filter((n) => !used.has(n.id) && n.kind !== 'NEWS' && n.ticker && mkOk(n.market) && n.impact >= 4 && Date.now() - n.ms < 72 * 3600e3).sort((a, b) => b.impact - a.impact || b.ms - a.ms).slice(0, 6 - aiCount);
+      if (!aiCount) {
+        $('#digestHead').textContent = d?.error && !anyLoaded() ? '' : arr.length ? '' : '오늘은 아직 주요 공시가 없습니다.';
+        $('#digestMeta').textContent = '자동 분류 기준 · 공시·보도자료';
+      }
+      cards = cards.concat(arr.map((n, j) => ({ n, i: aiCount + j })).map(({ n, i }) => `<button class="dcard" data-id="${esc(n.id)}"><span class="dn">${i + 1}</span><div><div class="dc"><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><b>${esc(n.market === 'KR' ? n.name : n.ticker)}</b>${tagsHTML(n, 2, true)}</div><div class="dt">${esc(n.head)}</div></div></button>`));
     }
     box.innerHTML = cards.join('') || (anyLoaded() ? '<p class="muted" style="margin:0">표시할 항목이 없습니다.</p>' : '<div class="skel"></div><div class="skel"></div><div class="skel"></div>');
   }
@@ -925,7 +1002,8 @@
     const fsOpt = [['fs-m', '보통'], ['fs-l', '크게'], ['fs-xl', '아주 크게']];
     openModal(`<h2>설정</h2>
       <div class="set-row"><div>글자 크기<small>화면 전체 글자 크기</small></div><div class="seg" id="fsSeg">${fsOpt.map(([v, l]) => `<button data-fs="${v}" class="${S.fs === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
-      <div class="set-row"><div>알림음<small>중요 공시·관심종목 소식이 오면 소리</small></div><input type="checkbox" class="tg" data-set="sound" ${S.sound ? 'checked' : ''}></div>
+      <div class="set-row"><div>관심종목 알림<small>관심종목 새 공시·보도자료가 나오면 알림음 + 알림 창</small></div><input type="checkbox" class="tg" data-set="watchAlert" ${S.watchAlert !== false ? 'checked' : ''}></div>
+      <div class="set-row"><div>알림음<small>중요 공시 소식이 오면 소리</small></div><input type="checkbox" class="tg" data-set="sound" ${S.sound ? 'checked' : ''}></div>
       <div class="set-row"><div>데스크톱 알림<small>관심종목·매우 중요한 항목</small></div><input type="checkbox" class="tg" data-set="notify" ${S.notify ? 'checked' : ''}></div>
       <h3 style="margin:1.2rem 0 .5rem;font-size:1rem">관심종목 (${S.watch.length})</h3>
       <div class="chips">${S.watch.map((w) => `<span class="wchip">${esc(w.m === 'KR' ? w.n || w.t : w.t)}<button data-unwatch="${esc(w.m)}|${esc(w.t)}">✕</button></span>`).join('') || '<span class="muted">없음 — 목록의 ☆를 눌러 추가하세요.</span>'}</div>
@@ -934,15 +1012,24 @@
 
   // ───────────────────────── 상세 페이지 (공시·보도자료·뉴스를 누르면 전체 화면으로) ─────────────────────────
   const verdictCls = (v) => (v === '긍정' ? 'pos' : v === '부정' ? 'neg' : 'neu');
+  // 공시별 고유 주소: gk-stock.com/p/공시ID (공유·검색용). 예전 #item/ID 주소도 계속 열림
+  const ITEM_RE = /^\/p\/((?:SEC|DART)-[\d-]+|(?:NEWS|PR)-[a-z0-9]+)\/?$/;
+  function itemIdFromUrl() {
+    const m = location.pathname.match(ITEM_RE);
+    if (m) return m[1];
+    const h = location.hash.match(/^#item\/(.+)$/);
+    return h ? decodeURIComponent(h[1]) : null;
+  }
   function openItem(id) {
     if (!S.items.has(id)) return;
-    if (S.view !== 'item') { S.listScroll = window.scrollY; S.returnHash = location.hash && !/^#item\//.test(location.hash) ? location.hash : '#' + (S.view || 'home'); S.fromList = true; }
-    const h = '#item/' + encodeURIComponent(id);
-    if (location.hash === h) showItem(id); else location.hash = h;
+    if (S.view !== 'item') { S.listScroll = window.scrollY; S.returnUrl = location.pathname === '/' ? '/' + (location.hash || '#' + (S.view || 'home')) : '/#home'; S.fromList = true; }
+    history.pushState({ item: id }, '', '/p/' + id);
+    showItem(id);
   }
   function backToList() {
     if (S.fromList) { S.fromList = false; history.back(); return; }
-    location.hash = S.returnHash || '#home';
+    history.pushState(null, '', S.returnUrl || '/#home');
+    route();
   }
   function showItem(id) {
     S.view = 'item';
@@ -951,12 +1038,24 @@
     $$('#nav button').forEach((b) => b.classList.remove('on'));
     const n = S.items.get(id);
     if (!n) {
-      $('#itemBody').innerHTML = S.booted ? `<div class="empty-big">이 항목을 찾을 수 없습니다. (최근 3~4일 안의 항목만 볼 수 있습니다)<div class="chips center"><button data-go="home">목록으로</button></div></div>` : '<div class="empty-big"><span class="spin"></span>불러오는 중…</div>';
+      // 목록에 없는 항목(오래된 공시·공유 링크) → 서버에서 한 건만 받아오기
+      const tried = S.extraTried.get(id);
+      if (!tried) {
+        S.extraTried.set(id, 'loading');
+        getJSON(`/api/item?id=${encodeURIComponent(id)}`, {}).then((j) => {
+          const r = j.item; if (!r) throw new Error('없음');
+          S.extra.set(id, r); S.extraTried.set(id, 'ok');
+          S.items.set(id, normRaw(r));
+        }).catch(() => S.extraTried.set(id, 'fail')).finally(() => { if (itemIdFromUrl() === id) showItem(id); });
+      }
+      $('#itemBody').innerHTML = tried === 'fail' ? `<div class="empty-big">이 항목을 찾을 수 없습니다.<div class="chips center"><button data-go="home">목록으로</button></div></div>` : '<div class="empty-big"><span class="spin"></span>불러오는 중…</div>';
       return;
     }
     S.sel = id;
     S.aTab = 'fin';
+    trackItem(id);
     $('#itemBody').innerHTML = articleHTML(n);
+    loadAdminViews(id);
     queueTranslate([n]);
     window.scrollTo({ top: 0 });
     document.title = `${n.head} | GK의 공시레이더`;
@@ -978,7 +1077,7 @@
     const sec = sectorOf(n.market, n.ticker);
     const news = n.kind === 'NEWS' && !n.ticker;
     const kindKo = n.kind === 'FILING' ? '공시' : n.kind === 'PR' ? '보도자료' : '뉴스';
-    return `<div class="a-top"><button class="btn sm" data-back>← 목록으로</button><span class="crumb">${kindKo} · ${n.market === 'KR' ? '한국' : '미국'}${n.ticker ? ' · ' + esc(n.market === 'KR' ? n.name : n.ticker) : ''}</span></div>
+    return `<div class="a-top"><button class="btn sm" data-back>← 목록으로</button><button class="btn sm" data-share="${esc(n.id)}" title="이 공시의 고유 주소를 복사합니다">🔗 링크 복사</button><span id="aAdmin"></span><span class="crumb">${kindKo} · ${n.market === 'KR' ? '한국' : '미국'}${n.ticker ? ' · ' + esc(n.market === 'KR' ? n.name : n.ticker) : ''}</span></div>
       <header class="a-head card">
         <div class="a-co">
           ${logoHTML(n.market, n.ticker, news ? n.source : n.name, 'lg', news)}
@@ -1081,7 +1180,9 @@
     await fetchQuotes([wkey(n.market, n.ticker)]);
     const q = quoteOf(n.market, n.ticker);
     if (S.sel !== n.id || !$('#aPx')) return;
-    $('#aPx').innerHTML = q ? `<b>${pxStr({ ...q, market: n.market })}</b><em class="${dirCls(q.pct)}">${q.pct > 0 ? '▲' : q.pct < 0 ? '▼' : ''} ${fmtPct(q.pct)}</em>` : '';
+    const p0 = p0Of(n);
+    const after = q && p0 ? ((q.price - p0) / p0) * 100 : null;
+    $('#aPx').innerHTML = q ? `<b>${pxStr({ ...q, market: n.market })}</b><em class="${dirCls(q.pct)}">오늘 ${q.pct > 0 ? '▲' : q.pct < 0 ? '▼' : ''} ${fmtPct(q.pct)}</em>${after != null ? `<span class="px-after ${dirCls(after)}" title="발표 시점 주가 대비">발표 후 <b>${after > 0 ? '▲' : after < 0 ? '▼' : ''}${fmtPct(after)}</b><small>발표 시점 ${n.market === 'KR' ? fmtInt(p0) + '원' : '$' + fmtPx(p0)}</small></span>` : ''}` : '';
   }
 
   // 기업·재무
@@ -1392,18 +1493,19 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', news: 'NEWS', watch: 'ALL' };
-  const PAGES = { item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
+  const PAGES = { admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
     $('#viewFeed').hidden = !feed;
     for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== v;
     $$('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
-    if (hash !== false) history.replaceState(null, '', hash || '#' + v);
+    if (hash !== false) { const u = '/' + (hash || '#' + v); if (location.pathname !== '/') history.pushState(null, '', u); else history.replaceState(null, '', u); }
     if (feed) { S.type = v === 'home' ? S.homeType || 'PR' : FEED_VIEWS[v]; S.limit = 80; renderAll(); }
     if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 한·미 실시간 공시·뉴스'; }
     if (v === 'market') renderMarket();
     if (v === 'earnings') loadEarnings();
+    if (v === 'admin') renderAdmin();
     if (v === 'popular') { renderPopularPage(); pollViews(); }
     if (v === 'flows') { renderFlows(); if (!S.flows || Date.now() - (S.flowsAt || 0) > 180e3) { S.flowsAt = Date.now(); pollFlows(); } }
     if (v === 'company' && !S.coCur) renderCoQuick();
@@ -1415,6 +1517,12 @@
     $('#coQuick').innerHTML = list.map(([m, t, n]) => `<button data-open-co="${esc(m)}|${esc(t)}|${esc(n || '')}">${esc(m === 'KR' ? n || t : t)}</button>`).join('');
   }
   function route() {
+    const id = itemIdFromUrl();
+    if (id) {
+      if (!ITEM_RE.test(location.pathname)) history.replaceState(null, '', '/p/' + id); // 예전 #item 주소 → 새 주소
+      showItem(id);
+      return;
+    }
     const h = decodeURIComponent(location.hash.slice(1));
     const m = h.match(/^company\/(US|KR)\/([A-Z0-9.\-]+)/i);
     if (m) { openCompany(m[1].toUpperCase(), m[2]); return; }
@@ -1486,7 +1594,7 @@
   function toggleWatch(m, t, n) {
     const k = wkey(m, t);
     if (S.watch.some((w) => wkey(w.m, w.t) === k)) { S.watch = S.watch.filter((w) => wkey(w.m, w.t) !== k); toast(`${m === 'KR' ? n || t : t} 관심종목 해제`); }
-    else { S.watch.push({ m, t: t.toUpperCase(), n }); toast(`${m === 'KR' ? n || t : t} 관심종목 추가 ★`); }
+    else { S.watch.push({ m, t: t.toUpperCase(), n }); toast(`${m === 'KR' ? n || t : t} 관심종목 추가 ★ · 새 공시가 나오면 알림음과 알림이 뜹니다`); askNotifyPermission(); try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume?.(); } catch {} }
     save('gk_watch2', S.watch);
     if (S.view in FEED_VIEWS) renderFeed();
     renderWatchbar();
@@ -1507,7 +1615,80 @@
     S[key] = on; save('gk_' + key, on);
     $$(`[data-set="${key}"]`).forEach((x) => (x.checked = on));
     if (key === 'sound' && on) chime(false);
+    if (key === 'watchAlert') { if (on) { watchChime(); askNotifyPermission(); } toast(on ? '관심종목 알림 켜짐' : '관심종목 알림 꺼짐'); return; }
     toast(key === 'sound' ? (on ? '알림음 켜짐' : '알림음 꺼짐') : on ? '데스크톱 알림 켜짐' : '데스크톱 알림 꺼짐');
+  }
+
+  // ───────────────────────── 방문 통계 기록 (관리자 본인 방문은 제외) ─────────────────────────
+  function sendTrack(body) {
+    if (S.admin) return;
+    try { fetch('/api/track', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(() => {}); } catch {}
+  }
+  function trackPV() {
+    let ref = '';
+    try { ref = document.referrer ? new URL(document.referrer).hostname : ''; } catch {}
+    sendTrack({ t: 'pv', ref, m: isMobile() });
+  }
+  function trackItem(id) {
+    try { const k = 'gk_iv_' + id; if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch {}
+    sendTrack({ t: 'item', id });
+  }
+  async function loadAdminViews(id) {
+    if (!S.admin) return;
+    try {
+      const j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&item=${encodeURIComponent(id)}`, { cache: 'no-store' });
+      if (S.sel === id && $('#aAdmin')) $('#aAdmin').innerHTML = `<span class="admin-badge" title="관리자에게만 보입니다">👁 조회 ${fmtInt(j.views?.[id] || 0)}회 <small>(최근 30일 · 관리자만 보임)</small></span>`;
+    } catch {}
+  }
+
+  // ───────────────────────── 관리자 화면 (gk-stock.com/#admin) ─────────────────────────
+  async function renderAdmin() {
+    const box = $('#adminBody');
+    if (!S.admin) {
+      box.innerHTML = `<div class="page-head"><h2>관리자</h2></div><div class="card admin-login"><p>관리자 비밀번호(Cloudflare 변수 <code>ADMIN_KEY</code>에 등록한 값)를 입력하세요.</p><form id="adminForm"><input type="password" id="adminKey" placeholder="관리자 비밀번호" autocomplete="current-password"><button class="btn" type="submit">들어가기</button></form><p class="err" id="adminErr"></p></div>`;
+      $('#adminForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const k = $('#adminKey').value.trim();
+        try { await getJSON(`/api/admin?key=${encodeURIComponent(k)}&item=x`, { cache: 'no-store' }); S.admin = k; save('gk_admin', k); renderAdmin(); }
+        catch (er) { $('#adminErr').textContent = er.message; }
+      });
+      return;
+    }
+    box.innerHTML = '<div class="page-head"><h2>관리자 · 방문 통계</h2></div><div class="card"><div class="loading"><span class="spin"></span>불러오는 중…</div></div>';
+    let d;
+    try { d = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}`, { cache: 'no-store' }); }
+    catch (e) { box.innerHTML = `<div class="page-head"><h2>관리자</h2></div><div class="card"><p class="err">${esc(e.message)}</p><button class="btn sm" data-admin-logout>다시 로그인</button></div>`; return; }
+    const maxPv = Math.max(1, ...d.days.map((x) => x.pv));
+    const maxHr = Math.max(1, ...d.hours);
+    const devT = (d.dev.m || 0) + (d.dev.d || 0) || 1;
+    const mon = d.monitor?.checks ? Object.values(d.monitor.checks) : [];
+    box.innerHTML = `<div class="page-head"><h2>관리자 · 방문 통계</h2><div class="chips" style="margin:0"><button class="btn sm" data-admin-act="refresh">새로고침</button><button class="btn sm" data-admin-logout>로그아웃</button></div></div>
+      <div class="adm-kpis">
+        ${[['오늘', d.today], ['최근 7일', d.week], ['최근 30일', d.month]].map(([l, x]) => `<div class="card"><span>${l}</span><div><b>${fmtInt(x?.uv || 0)}</b><small>방문자</small></div><div><b>${fmtInt(x?.pv || 0)}</b><small>페이지뷰</small></div><div><b>${fmtInt(x?.iv || 0)}</b><small>게시물 조회</small></div></div>`).join('')}
+      </div>
+      <div class="adm-grid">
+        <div class="card"><h3>일별 방문 (최근 30일)</h3><div class="adm-bars">${d.days.map((x) => `<div title="${x.d} · 방문자 ${x.uv} · 페이지뷰 ${x.pv}"><i style="height:${Math.round((x.pv / maxPv) * 100)}%"></i><i class="uv" style="height:${Math.round((x.uv / maxPv) * 100)}%"></i><span>${x.d.slice(8)}</span></div>`).join('')}</div><p class="note">■ 페이지뷰 ■ 방문자 · 막대에 마우스를 올리면 숫자가 보입니다</p></div>
+        <div class="card"><h3>오늘 시간대별 (KST)</h3><div class="adm-bars hrs">${d.hours.map((v, i) => `<div title="${i}시 · ${v}회"><i style="height:${Math.round((v / maxHr) * 100)}%"></i><span>${i % 3 ? '' : i}</span></div>`).join('')}</div>
+          <h3 style="margin-top:1rem">기기 (최근 7일)</h3><div class="adm-dev"><span style="width:${Math.round(((d.dev.m || 0) / devT) * 100)}%">휴대폰 ${Math.round(((d.dev.m || 0) / devT) * 100)}%</span><span>컴퓨터 ${Math.round(((d.dev.d || 0) / devT) * 100)}%</span></div></div>
+      </div>
+      <div class="adm-grid">
+        <div class="card"><h3>많이 본 게시물 (최근 7일)</h3><ol class="adm-list">${d.topItems.map((x) => `<li data-id="${esc(x.id)}" data-adm-open="${esc(x.id)}"><b>${fmtInt(x.n)}</b><span>${x.ticker ? `<em>${esc(x.market === 'KR' ? x.name || x.ticker : x.ticker)}</em>` : ''}${esc(x.title)}</span></li>`).join('') || '<li class="muted">아직 기록이 없습니다.</li>'}</ol></div>
+        <div class="card"><h3>유입 경로 (최근 7일)</h3><ol class="adm-list">${d.refs.map((x) => `<li><b>${fmtInt(x.n)}</b><span>${esc(x.r)}</span></li>`).join('') || '<li class="muted">아직 기록이 없습니다.</li>'}</ol></div>
+      </div>
+      <div class="card"><h3>고장 자동 감시 <small class="muted">${d.monitor?.at ? fmtDT(new Date(d.monitor.at)).full + ' 점검 · 약 9분마다 자동 점검' : '아직 점검 기록 없음'}</small></h3>
+        <table class="tbl adm-mon"><tr><th>항목</th><th>상태</th><th>내용</th></tr>${mon.map((c) => `<tr><td>${esc(c.name)}</td><td><span class="mon ${c.ok ? 'ok' : c.fails >= 2 ? 'bad' : 'warn'}">${c.ok ? '정상' : c.fails >= 2 ? '이상' : '확인 중'}</span></td><td>${esc(c.msg)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">점검 기록이 없습니다. 아래 "지금 점검"을 눌러보세요.</td></tr>'}</table>
+        <div class="chips" style="margin-top:.8rem"><button class="btn sm" data-admin-act="monitor">지금 점검</button><button class="btn sm" data-admin-act="tgfind">텔레그램 채팅 ID 찾기</button><button class="btn sm" data-admin-act="tgtest">텔레그램 테스트 알림</button></div>
+        <p class="note">텔레그램 알림: ${d.telegram?.token ? '봇 토큰 등록됨' : '봇 토큰(TELEGRAM_BOT_TOKEN) 미등록'} · ${d.telegram?.chat ? '채팅 ID 등록됨' : '채팅 ID(TELEGRAM_CHAT_ID) 미등록'}. 둘 다 등록하면 이상이 생길 때 텔레그램으로 알려줍니다.</p><p class="note" id="admMsg"></p></div>`;
+  }
+  async function adminAct(act) {
+    const msg = (t) => { if ($('#admMsg')) $('#admMsg').textContent = t; };
+    const k = encodeURIComponent(S.admin);
+    try {
+      if (act === 'refresh') return renderAdmin();
+      if (act === 'monitor') { msg('점검 중… (10~20초)'); await getJSON(`/api/admin?key=${k}&monitor=run`, { cache: 'no-store' }); return renderAdmin(); }
+      if (act === 'tgfind') { const j = await getJSON(`/api/admin?key=${k}&tg=find`, { cache: 'no-store' }); msg(j.error || (j.chats?.length ? '찾은 채팅 ID: ' + j.chats.map((c) => `${c.id} (${c.name || ''})`).join(', ') + ' → 이 숫자를 Cloudflare 변수 TELEGRAM_CHAT_ID로 등록하세요.' : j.hint)); return; }
+      if (act === 'tgtest') { const j = await getJSON(`/api/admin?key=${k}&tg=test`, { cache: 'no-store' }); msg(j.ok ? '텔레그램으로 테스트 알림을 보냈습니다.' : '보내지 못했습니다. 봇 토큰과 채팅 ID를 확인하세요.'); }
+    } catch (e) { msg(e.message); }
   }
 
   // ───────────────────────── 이벤트 ─────────────────────────
@@ -1563,10 +1744,18 @@
       if (t.closest('[data-close-modal]') || t.id === 'modal') { closeModal(); return; }
       if (t.closest('[data-back]')) { backToList(); return; }
       const fs = t.closest('[data-fs]');
-      if (fs) { S.fs = fs.dataset.fs; save('gk_fs', S.fs); document.documentElement.className = 'notranslate ' + S.fs; $$('#fsSeg button').forEach((b) => b.classList.toggle('on', b === fs)); return; }
+      if (fs) { S.fs = fs.dataset.fs; save('gk_fs', S.fs); document.documentElement.className = 'js notranslate ' + S.fs; $$('#fsSeg button').forEach((b) => b.classList.toggle('on', b === fs)); return; }
       if (t.closest('#moreRows')) { S.limit += 80; renderFeed(); return; }
       const kw = t.closest('[data-kw]');
       if (kw) { applyKeyword(kw.dataset.kw); $('#suggest').hidden = true; return; }
+      if (t.closest('[data-share]')) {
+        const url = `${location.origin}/p/${t.closest('[data-share]').dataset.share}`;
+        (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => toast('링크를 복사했습니다: ' + url)).catch(() => { prompt('아래 주소를 복사하세요', url); });
+        return;
+      }
+      if (t.closest('[data-adm-open]')) { const id = t.closest('[data-adm-open]').dataset.admOpen; if (S.items.has(id)) openItem(id); else { history.pushState(null, '', '/p/' + id); showItem(id); } return; }
+      if (t.closest('[data-admin-act]')) { adminAct(t.closest('[data-admin-act]').dataset.adminAct); return; }
+      if (t.closest('[data-admin-logout]')) { S.admin = ''; save('gk_admin', ''); renderAdmin(); return; }
       if (t.closest('[data-ftab]')) { S.aTab = t.closest('[data-ftab]').dataset.ftab; const n = S.items.get(S.sel); if (n) paintFinTab(n); return; }
       if (t.closest('[data-doclang]')) { S.docLang = t.closest('[data-doclang]').dataset.doclang; const n = S.items.get(S.sel); if (n) paintDoc(n); return; }
       if (t.closest('[data-tr-retry]')) { const n = S.items.get(S.sel); if (n) { S.trdoc.delete(n.id); loadTrDoc(n, true); } return; }
@@ -1589,6 +1778,7 @@
     });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll('sec'); poll('dart'); poll('news'); pollMarket(); pollPopular(); } });
     window.addEventListener('hashchange', route);
+    window.addEventListener('popstate', route);
   }
   const CO_EMPTY = document.getElementById('coBody').innerHTML;
 
@@ -1606,8 +1796,10 @@
   }
   window.addEventListener('resize', fitSide);
   if (window.ResizeObserver && $('.side')) new ResizeObserver(fitSide).observe($('.side'));
+  document.getElementById('ssr')?.remove(); // 검색엔진용 미리보기 글은 앱이 뜨면 치움
   bind();
   loadSnap();
+  trackPV();
   route();
   renderTape();
   renderFeed();

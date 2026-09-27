@@ -3,6 +3,7 @@ import { json, refreshInBackground } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { collectSec, mergeFeed, enrichForm4 } from '../lib/sec-core.mjs';
 import { koHeadline } from '../lib/sec-ko.mjs';
+import { attachPx0 } from '../lib/px0.mjs';
 
 async function liveSec() {
   const feed = await getJSON('sec/feed');
@@ -22,11 +23,12 @@ export default async (req, ctx) => {
     // 저장된 피드를 바로 응답 (방문자 대기 없음). 90초 넘게 지났으면 응답 후 백그라운드에서 새로 수집
     if (!feed) { mode = 'live'; feed = await liveSec(); }
     else if (Date.now() - Date.parse(feed.updatedAt || 0) > 90e3 && refreshInBackground(ctx, 'sec', liveSec)) mode = 'refreshing';
-    const items = feed.items.slice(0, 600).map((it) => {
+    const items0 = feed.items.slice(0, 600).map((it) => {
       const { _excerpt, txTries, docTries, aiTries, ...x } = it;
       const rk = koHeadline(it);
       return rk ? { ...x, rk } : x;
     });
+    const items = await attachPx0(items0);
     return json({ ok: true, source: 'SEC EDGAR', mode, updatedAt: feed.updatedAt, errors: feed.errors || [], count: items.length, items }, { cdnSeconds: 15, swr: 30 });
   } catch (e) {
     return json({ ok: false, error: String(e.message || e), items: [] }, { cdnSeconds: 5, swr: 10, status: 502 });

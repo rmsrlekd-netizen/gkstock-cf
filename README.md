@@ -41,6 +41,9 @@ gkstock-cf/
 | `FINNHUB_API_KEY` | 미국 지표·뉴스 보강 | 선택 |
 | `KIS_APP_KEY`, `KIS_APP_SECRET` | 한국투자증권 — 국내 수급, 코스닥, 야간선물 | 선택 |
 | `KOSPI_FUT_CODE` | 코스피200 선물 코드 강제 지정 | 선택 |
+| `ADMIN_KEY` | 관리자 화면(gk-stock.com/#admin) 비밀번호 — 방문 통계·게시물 조회수·고장 감시 | 권장 |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | 고장 감시 텔레그램 알림 | 선택 |
+| `PREWARM_DAILY_MAX` | AI 미리 분석 하루 최대 건수 (기본 500) | 선택 |
 
 ## 점검
 

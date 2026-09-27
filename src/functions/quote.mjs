@@ -35,8 +35,8 @@ export async function kr(t) {
 const mem = new Map();
 const fresh = (k) => { const v = mem.get(k); return v && Date.now() - v.at < 30e3 ? v.q : undefined; };
 
-export default async (req) => {
-  const list = [...new Set((new URL(req.url).searchParams.get('list') || '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^(US|KR):[A-Z0-9.\-]{1,10}$/.test(s)))].slice(0, 40);
+/** ['US:NVDA','KR:005930'] → { 'US:NVDA': {price, chg, pct, ...} } (네이버 일괄 조회 → 부족분은 대체 조회) */
+export async function getQuotes(list) {
   const out = {};
   const needKr = [], needUs = [];
   for (const k of list) {
@@ -44,7 +44,6 @@ export default async (req) => {
     if (c !== undefined) { out[k] = c; continue; }
     (k.startsWith('KR:') ? needKr : needUs).push(k.slice(3));
   }
-  // 한국: 네이버 한 번에 → 실패 시 개별
   if (needKr.length) {
     let q = {};
     try { q = await naverKrQuotes(needKr); } catch {}
@@ -53,7 +52,6 @@ export default async (req) => {
     // 네이버에서 못 받은 종목만 대체 조회 (한국투자증권 호출 제한 때문에 최대 5개)
     await Promise.all(miss.slice(0, 5).map(async (t) => { out['KR:' + t] = await kr(t).catch(() => null); }));
   }
-  // 미국: 네이버(거래소를 아는 종목) → 나머지는 Nasdaq
   if (needUs.length) {
     let map = null;
     try { map = await getTickerMap(); } catch {}
@@ -68,6 +66,12 @@ export default async (req) => {
     await Promise.all(rest.slice(0, 12).map(async (t) => { out['US:' + t] = await us(t).catch(() => null); }));
   }
   for (const k of list) if (out[k] !== undefined) mem.set(k, { at: Date.now(), q: out[k] });
+  return out;
+}
+
+export default async (req) => {
+  const list = [...new Set((new URL(req.url).searchParams.get('list') || '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^(US|KR):[A-Z0-9.\-]{1,10}$/.test(s)))].slice(0, 40);
+  const out = await getQuotes(list);
   return json({ ok: true, quotes: out }, { cdnSeconds: 30, swr: 60 });
 };
 

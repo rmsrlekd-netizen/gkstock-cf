@@ -10,7 +10,18 @@ import { fetchArticleLines } from './news.mjs';
 export async function findFiling(id) {
   const key = id.startsWith('SEC-') ? 'sec/feed' : id.startsWith('DART-') ? 'dart/feed' : 'news/feed';
   const feed = await getJSON(key);
-  return (feed?.items || []).find((x) => x.id === id) || null;
+  const hit = (feed?.items || []).find((x) => x.id === id);
+  if (hit) return hit;
+  // 피드에서 빠진 오래된 항목은 저장해 둔 사본으로 (공시별 고유 주소 페이지용)
+  return (await getJSON(`pg/${id}`))?.item || null;
+}
+
+/** 공시별 페이지용 사본 저장 (없을 때만) */
+export async function snapshotItem(it) {
+  if (!it?.id) return;
+  if (await getJSON(`pg/${it.id}`)) return;
+  const { _excerpt, txTries, docTries, aiTries, koTries, detailTries, ...item } = it;
+  await setJSON(`pg/${it.id}`, { item, at: Date.now() }).catch(() => {});
 }
 
 function rowHref(indexHtml, re) {

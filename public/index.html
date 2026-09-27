@@ -26,13 +26,15 @@
   <meta name="twitter:description" content="미국·한국 실시간 공시 + AI 분석" />
   <meta name="twitter:image" content="https://gk-stock.com/img/gk-logo.png" />
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"GK의 공시레이더","alternateName":["GK 공시레이더","gk-stock"],"url":"https://gk-stock.com/","inLanguage":"ko","description":"미국 SEC·한국 DART 실시간 공시와 보도자료, AI 분석","publisher":{"@type":"Organization","name":"GK의 미국 주식","url":"https://www.youtube.com/@GK_Stock","logo":"https://gk-stock.com/img/gk-logo.png"}}</script>
-  <link rel="icon" href="img/gk-favicon.png" />
+  <link rel="icon" href="/img/gk-favicon.png" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=16" />
+  <link rel="stylesheet" href="/styles.css?v=18" />
+  <script>document.documentElement.classList.add('js');</script>
+  <style>.js .ssr{display:none}.ssr{max-width:860px;margin:2rem auto;padding:0 1rem;color:#eef0ff;font-family:sans-serif;line-height:1.7}</style>
 </head>
 <body>
   <noscript>
@@ -45,7 +47,7 @@
     <div class="hdr-in">
       <div class="brand-wrap">
         <a class="brand" href="#home" data-go="home" aria-label="GK의 공시레이더 홈">
-          <img class="brand-logo" src="img/gk-logo.png" width="44" height="44" alt="GK American Stocks" />
+          <img class="brand-logo" src="/img/gk-logo.png" width="44" height="44" alt="GK American Stocks" />
           <span class="brand-txt"><b>GK의 <em>공시레이더</em></b><small>REAL-TIME DISCLOSURE RADAR</small></span>
         </a>
         <a class="yt" href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener" title="GK의 미국 주식 유튜브 채널 바로가기">
@@ -167,6 +169,9 @@
     <!-- ───────── 상세 페이지 ───────── -->
     <section id="viewItem" class="page" hidden><div id="itemBody"></div></section>
 
+    <!-- ───────── 관리자 (gk-stock.com/#admin, 비밀번호 필요) ───────── -->
+    <section id="viewAdmin" class="page" hidden><div id="adminBody"></div></section>
+
     <!-- ───────── 실적 캘린더 ───────── -->
     <section id="viewEarnings" class="page" hidden>
       <div class="page-head"><h2>실적 발표 캘린더</h2><span class="muted" id="earnMeta"></span></div>
@@ -248,6 +253,6 @@
   <div class="modal" id="modal" hidden><div class="modal-card"><button class="ico sm m-close" data-close-modal aria-label="닫기">✕</button><div id="modalBody"></div></div></div>
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
-  <script src="app.js?v=16" defer></script>
+  <script src="/app.js?v=18" defer></script>
 </body>
 </html>

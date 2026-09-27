@@ -210,7 +210,7 @@ export async function translateTitles(batch) {
 /** 오늘의 핵심 공시·뉴스 (여러 건 → 상위 5~7건 선정) */
 export async function dailyDigest(items, note = '') {
   const prompt = `당신은 한국 개인투자자를 위한 증권 애널리스트입니다. 아래는 오늘 나온 한국·미국 기업 공시와 보도자료·뉴스 목록입니다.
-주가에 영향이 클 만한 핵심 5~7건을 골라 중요도 순으로 정리하세요. 목록에 있는 사실만 사용하세요.${note ? '\n' + note : ''}
+주가에 영향이 클 만한 핵심 6건을 골라 중요도 순으로 정리하세요(목록이 6건보다 적으면 전부). 반드시 6건을 채우세요. 목록에 있는 사실만 사용하세요.${note ? '\n' + note : ''}
 출력은 JSON 하나만:
 {"headline":"오늘 시장의 공시 흐름 한 줄 요약(60자 이내)","items":[{"id":"목록의 id 그대로","title":"핵심 내용 한 줄(45자 이내)","why":"주가 영향 이유(60자 이내)","verdict":"긍정|중립|부정"}]}
 목록: ${JSON.stringify(items)}`;
