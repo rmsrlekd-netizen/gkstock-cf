@@ -1036,11 +1036,11 @@
           const pre = list.filter((x) => x.time === '장전').length, post = list.filter((x) => x.time === '장후').length;
           wk.push(`<button data-eday="${i}" class="ec-cell lv${lvl}${i === S.earnDay ? ' on' : ''}${cur === today ? ' today' : ''}" style="--r:${r.toFixed(2)}">
             <div class="ec-h"><span class="ec-d">${mtag}${dnum}</span>${cur === today ? '<i class="ec-today">오늘</i>' : stars ? `<i class="ec-star">★${stars}</i>` : ''}</div>
-            <div class="ec-n">${n}<small>개 기업</small></div>
+            <div class="ec-n">${n}<small class="pc">개 기업</small><small class="mo">곳</small></div>
             <div class="ec-bar"><span style="width:${Math.max(n ? 6 : 0, Math.round(r * 100))}%"></span></div>
             ${n ? `<div class="ec-tops">${top.map((x) => `<div class="ec-co${popSet.has(x.t) ? ' star' : ''}">${logoHTML('US', x.t, x.n, 'xs')}<b>${esc(x.ko || x.n || x.t)}</b><span class="mono">${esc(x.t)}</span></div>`).join('')}</div>
             <div class="ec-stack">${top.map((x) => logoHTML('US', x.t, x.n, 'xs')).join('')}</div>
-            <div class="ec-foot">${pre ? `<span class="pre">장전 ${pre}</span>` : ''}${post ? `<span class="post">장후 ${post}</span>` : ''}${n > 3 ? `<span class="more">+${n - 3}</span>` : ''}</div>` : '<div class="ec-none">발표 없음</div>'}
+            <div class="ec-foot">${pre ? `<span class="pre">장전 ${pre}</span>` : ''}${post ? `<span class="post">장후 ${post}</span>` : ''}${n > 2 ? `<span class="more">+${n - 2}</span>` : ''}</div>` : '<div class="ec-none">발표 없음</div>'}
           </button>`);
         }
         if (wd === 5) { weeks.push(wk); wk = []; }

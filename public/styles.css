@@ -952,3 +952,39 @@ button.ec-cell:hover { transform: translateY(-2px); border-color: rgba(160,140,2
   .brand-wrap { gap: .3rem; }
   .yt { padding: .2rem .4rem .2rem .3rem; }
 }
+
+/* ── v20: 모바일 달력 — 날짜와 기업 수 구분 ── */
+.ec-n small.mo { display: none; }
+@media (max-width: 720px) {
+  .ec-cell { justify-content: flex-start; }
+  .ec-h { width: 100%; justify-content: flex-start; }
+  .ec-d { flex-direction: row; align-items: baseline; gap: .15rem; font-size: .74rem; font-weight: 700; color: var(--muted); }
+  .ec-d::after { content: '일'; font-size: .6rem; font-weight: 700; }
+  .ec-mon { font-size: .56rem; }
+  .ec-cell.today .ec-d { color: var(--gold); }
+  .ec-n { display: inline-flex; align-items: baseline; justify-content: center; gap: .05rem; margin-top: .2rem; padding: .18rem .42rem; border-radius: 999px; background: rgba(139,108,255,.22); box-shadow: inset 0 0 0 1px rgba(160,140,255,.35); font-size: .88rem; color: #fff; }
+  .ec-cell.lv3 .ec-n { background: linear-gradient(135deg, #8b6cff, #4f7dff); -webkit-background-clip: border-box; background-clip: border-box; color: #fff; box-shadow: none; }
+  .ec-cell.lv0 .ec-n { background: rgba(255,255,255,.05); box-shadow: none; color: var(--muted); }
+  .ec-n small.pc { display: none; }
+  .ec-n small.mo { display: inline; font-family: var(--sans); font-size: .58rem; font-weight: 800; color: rgba(255,255,255,.75); margin-left: .05rem; }
+  .ec-bar { display: none; }
+}
+
+/* ── v21: 컴퓨터 화면 달력 크기 축소 ── */
+@media (min-width: 721px) {
+  .ec-card { padding: .95rem 1rem .9rem; border-radius: 18px; }
+  .ec-top { margin-bottom: .7rem; }
+  .ec-title { font-size: 1.25rem; }
+  .ec-grid { grid-template-columns: 3.6rem repeat(5, minmax(0, 1fr)); gap: .38rem; }
+  .ec-cell { min-height: 6.6rem; padding: .5rem .6rem .5rem; gap: .22rem; border-radius: 12px; }
+  .ec-d { font-size: .98rem; }
+  .ec-n { font-size: 1.2rem; margin-top: .05rem; }
+  .ec-bar { height: 3px; }
+  .ec-tops { gap: .18rem; margin-top: .05rem; }
+  .ec-co { font-size: .72rem; gap: .32rem; }
+  .ec-co:nth-child(3) { display: none; }
+  .ec-cell .logo-b { width: 1.05rem; height: 1.05rem; min-width: 1.05rem; border-radius: 5px; }
+  .ec-foot { padding-top: .1rem; }
+  .ec-foot span { font-size: .6rem; padding: .08rem .35rem; }
+}
+@media (min-width: 721px) and (max-width: 1100px) { .ec-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
