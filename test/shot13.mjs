@@ -1,0 +1,12 @@
+import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch(); const errs = [];
+const p = await b.newPage({ viewport: { width: 1200, height: 500 } });
+p.on('pageerror', (e) => errs.push(e.message));
+await p.goto('http://localhost:8791/'); await p.waitForTimeout(3500);
+const x1 = await p.evaluate(() => document.querySelector('.tape-track').getBoundingClientRect().x);
+await p.screenshot({ path: '/tmp/u1.png', clip: { x: 0, y: 60, width: 1200, height: 40 } });
+await p.waitForTimeout(2000);
+const x2 = await p.evaluate(() => document.querySelector('.tape-track').getBoundingClientRect().x);
+await p.screenshot({ path: '/tmp/u2.png', clip: { x: 0, y: 60, width: 1200, height: 40 } });
+console.log(x1, x2, await p.evaluate(() => [document.querySelector('.tape-track').style.animationDuration, document.querySelectorAll('.tape-set .tp').length]), 'ERR', errs);
+await b.close();

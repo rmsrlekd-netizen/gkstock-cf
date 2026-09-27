@@ -1,0 +1,12 @@
+import { chromium } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch(); const errs = [];
+const p = await b.newPage({ viewport: { width: 1300, height: 900 } });
+p.on('pageerror', (e) => errs.push(e.message));
+await p.goto('http://localhost:8791/'); await p.waitForTimeout(3500);
+await p.click('#mkSeg [data-mk="KR"]'); await p.waitForTimeout(500);
+const st = () => p.evaluate(() => ({ prHidden: document.querySelector('#tabs [data-type="PR"]').hidden, on: document.querySelector('#tabs button.on').dataset.type, prRows: document.querySelectorAll('.row[data-id^="PR"]').length }));
+console.log('KR', await st());
+await p.screenshot({ path: '/tmp/v1.png', clip: { x: 0, y: 500, width: 1300, height: 400 } });
+await p.click('#mkSeg [data-mk="US"]'); await p.waitForTimeout(500);
+console.log('US', await st());
+console.log('ERR', errs); await b.close();

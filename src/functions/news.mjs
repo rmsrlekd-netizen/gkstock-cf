@@ -9,7 +9,7 @@ export default async (req, ctx) => {
     let mode = 'cache';
     if (!feed) { mode = 'live'; feed = await collectNews(); }
     else if (Date.now() - Date.parse(feed.updatedAt || 0) > 120e3 && refreshInBackground(ctx, 'news', collectNews)) mode = 'refreshing';
-    const items = (feed.items || []).slice(0, 700).map(({ koTries, ...x }) => x);
+    const items = (feed.items || []).filter((x) => !(x.src === 'PR' && (x.market === 'KR' || x.source === '뉴스와이어'))).slice(0, 700).map(({ koTries, ...x }) => x);
     return json({ ok: true, mode, updatedAt: feed.updatedAt, errors: feed.errors || [], count: items.length, items }, { cdnSeconds: 45, swr: 90 });
   } catch (e) {
     return json({ ok: false, error: String(e.message || e), items: [] }, { status: 502, cdnSeconds: 10 });

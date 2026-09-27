@@ -1,5 +1,5 @@
 // 뉴스·보도자료 수집 (미국·한국)
-//  보도자료: GlobeNewswire(티커 포함), PR Newswire, 뉴스와이어(한국)
+//  보도자료(미국만): GlobeNewswire, PR Newswire, Business Wire
 //  뉴스: 구글 뉴스 RSS(한국어), Finnhub(키가 있으면)
 import { fetchWithTimeout, BROWSER_UA, decodeEntities, decodeText } from './util.mjs';
 import { sanitizeHtml } from './dart-doc.mjs';
@@ -103,21 +103,6 @@ async function businessWire(idx) {
   return out;
 }
 
-async function newswireKr(names) {
-  const items = await rss('https://api.newswire.co.kr/rss/all');
-  const out = [];
-  for (const x of items) {
-    const title = strip(tag(x, 'title'));
-    if (!/[가-힣]/.test(title)) continue; // 한국어 보도자료만 (영문 원문과 중복 방지)
-    const desc = strip(tag(x, 'description'));
-    const link = strip(tag(x, 'link')).replace(/&sourceType=rss/, '');
-    const us = (desc.match(TICK_RE) || [])[1];
-    const kr = us ? null : matchKr(title, names) || matchKr(desc.slice(0, 120), names);
-    out.push({ id: 'PR-' + hash(link), src: 'PR', market: us ? 'US' : 'KR', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: '뉴스와이어', ticker: us || kr?.c || null, company: kr?.n || null, corpCode: kr?.k || null });
-  }
-  return out;
-}
-
 // ───────── 뉴스 ─────────
 const GN = (q) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=ko&gl=KR&ceid=KR:ko`;
 const KR_QUERIES = ['특징주 when:1d', '공시 주가 when:1d', '코스피 코스닥 마감 when:1d', '실적 발표 주가 when:1d'];
@@ -172,7 +157,7 @@ async function finnhubNews() {
 export async function collectNews() {
   const [names, idx] = await Promise.all([getKrNames({ allowFetch: false }), companyIndex()]);
   const jobs = {
-    gnw: globeNewswire(), prn: prNewswire(idx), bw: businessWire(idx), nwkr: newswireKr(names),
+    gnw: globeNewswire(), prn: prNewswire(idx), bw: businessWire(idx), // 한국 보도자료(뉴스와이어)는 수집하지 않음 — 한국은 DART 공시가 보도자료 역할
     krnews: googleNews(KR_QUERIES, 'KR', names), usnews: googleNews(US_QUERIES, 'US', names), fh: finnhubNews(),
   };
   const errors = [];
@@ -181,8 +166,11 @@ export async function collectNews() {
     try { fresh.push(...(await p)); } catch (e) { errors.push(`${k}: ${e.message}`); }
   }));
   const prev = (await getJSON('news/feed')) || { items: [] };
-  const byId = new Map(prev.items.map((x) => [x.id, x]));
+  // 예전에 저장된 한국 보도자료(뉴스와이어)도 모두 제거
+  const isKrPR = (x) => x.src === 'PR' && (x.market === 'KR' || x.source === '뉴스와이어');
+  const byId = new Map(prev.items.filter((x) => !isKrPR(x)).map((x) => [x.id, x]));
   for (const it of fresh) {
+    if (isKrPR(it)) continue;
     const old = byId.get(it.id);
     byId.set(it.id, old ? { ...it, titleKo: old.titleKo, koTries: old.koTries, seenAt: old.seenAt } : { ...it, seenAt: new Date().toISOString() });
   }

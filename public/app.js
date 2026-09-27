@@ -333,7 +333,7 @@
     const prev = S.items, next = new Map();
     for (const r of S.raw.sec) next.set(r.id, normSec(r));
     for (const r of S.raw.dart) next.set(r.id, normDart(r));
-    for (const r of S.raw.news) if (!next.has(r.id)) next.set(r.id, normNews(r));
+    for (const r of S.raw.news) if (!next.has(r.id) && !(r.src === 'PR' && (r.market === 'KR' || r.source === '뉴스와이어'))) next.set(r.id, normNews(r)); // 한국 보도자료 제외
     next.forEach((n) => { applyTr(n); applyAI(n); });
     // 같은 보도자료가 통신사(PR Newswire 등)에도 있으면 SEC 첨부본은 보도자료 탭에서 빼기
     const wire = new Map();
@@ -508,6 +508,13 @@
     box.innerHTML = pick.map((n) => `<button class="tcard" data-id="${esc(n.id)}"><div class="t-top">${logoHTML(n.market, n.ticker, n.name, 'sm')}<span class="t-tk">${esc(n.market === 'KR' ? n.name : n.ticker)}</span><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><span style="margin-left:auto">${rel(n.ms)}</span></div><div class="t-h">${esc(n.head)}</div><div class="t-f">${tagsHTML(n, 2, true)}${qchip(n)}</div></button>`).join('') || '<div class="empty">아직 표시할 항목이 없습니다.</div>';
   }
   function syncControls() {
+    // 한국은 보도자료가 없음 (DART 공시가 그 역할) → 한국 선택 시 보도자료 탭 숨김
+    if (S.mk === 'KR' && S.type === 'PR') {
+      if (S.view === 'home') { S.type = 'FILING'; S.prAuto = true; } else S.mk = 'ALL';
+    } else if (S.mk !== 'KR' && S.prAuto && S.view === 'home' && S.type === 'FILING') { S.type = 'PR'; S.prAuto = false; }
+    if (S.type !== 'FILING') S.prAuto = false;
+    const prBtn = $('#tabs [data-type="PR"]');
+    if (prBtn) prBtn.hidden = S.mk === 'KR';
     $$('#mkSeg button').forEach((b) => b.classList.toggle('on', b.dataset.mk === S.mk));
     $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.type === S.type));
     $$('#themeChips button').forEach((b) => b.classList.toggle('on', b.dataset.theme === S.theme));
@@ -717,7 +724,16 @@
       const f = idxFmt(x);
       parts.push(`<span class="tp" data-go="market"><b>${esc(x.label)}</b><span>${f.px}</span><em class="${f.dir}">${f.ch}</em></span>`);
     }
-    $('#tapeIn').innerHTML = parts.length ? parts.join('') : `<span class="tp"><b>${m ? '시장 지표를 불러오지 못했습니다' : '시장 지표 불러오는 중…'}</b></span>`;
+    const box = $('#tapeIn');
+    if (!parts.length) { box.innerHTML = `<span class="tp"><b>${m ? '시장 지표를 불러오지 못했습니다' : '시장 지표 불러오는 중…'}</b></span>`; return; }
+    // 흐르는 전광판: 같은 목록을 두 번 이어 붙여 끊김 없이 왼쪽으로 계속 흐르게 (마우스를 올리면 멈춤)
+    let track = box.querySelector('.tape-track');
+    if (!track) { box.innerHTML = '<div class="tape-track"></div>'; track = box.querySelector('.tape-track'); }
+    const one = `<div class="tape-set">${parts.join('')}</div>`;
+    track.innerHTML = one + one.replace('class="tape-set"', 'class="tape-set" aria-hidden="true"');
+    const w = track.firstElementChild.getBoundingClientRect().width;
+    const dur = Math.max(20, Math.round(w / 55)); // 초당 약 55px
+    if (track.dataset.dur !== String(dur)) { track.style.animationDuration = dur + 's'; track.dataset.dur = dur; }
   }
   function renderMarket() {
     const m = S.market, fg = m?.fearGreed;

@@ -144,7 +144,11 @@ async function futQuote(code, mkt) {
   const price = n(o.futs_prpr);
   if (!price) return null;
   const sign = ['4', '5'].includes(String(o.prdy_vrss_sign)) ? -1 : 1;
-  return { code, name: o.hts_kor_isnm || '코스피200 선물', price, chg: Math.abs(n(o.futs_prdy_vrss) || 0) * sign, pct: Math.abs(n(o.futs_prdy_ctrt) || 0) * sign, prev: n(o.futs_prdy_clpr), volume: n(o.acml_vol), openInterest: n(o.hts_otst_stpl_qty) };
+  const prev = n(o.futs_prdy_clpr);
+  let chg = Math.abs(n(o.futs_prdy_vrss) || 0) * sign, pct = Math.abs(n(o.futs_prdy_ctrt) || 0) * sign;
+  // 주말·장 시작 전엔 등락이 0으로 오는 경우가 있어 전일 종가 기준으로 직접 계산
+  if (!chg && prev && price !== prev) { chg = price - prev; pct = (chg / prev) * 100; }
+  return { code, name: o.hts_kor_isnm || '코스피200 선물', price, chg, pct, prev, volume: n(o.acml_vol), openInterest: n(o.hts_otst_stpl_qty) };
 }
 
 /** 코스피200 선물 시세. session: 'night'(야간, CM) | 'day'(주간, F) */
