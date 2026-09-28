@@ -147,15 +147,38 @@ const rowVals = (tbl, label) => {
   return [r.value2, r.value3, r.value4, r.value5].map((v) => { const x = num(String(v || '').replace(/\((.*)\)/, '-$1')); return x === null ? null : x * 1000; }); // 단위: 천 달러
 };
 
+// 핀허브 무료 키로 받는 월가 정보: 애널리스트 투자의견 · 실적 서프라이즈 · 내부자 거래 심리 (안 되는 항목은 빈칸)
+async function finnhubWall(ticker, key) {
+  if (!key) return null;
+  const S = encodeURIComponent(ticker.toUpperCase());
+  const get = (path) => fetchWithTimeout(`https://finnhub.io/api/v1${path}&token=${key}`, {}, 6000).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const day = (n) => new Date(Date.now() + n * 86400e3).toISOString().slice(0, 10);
+  const [rec, earn, ins] = await Promise.all([
+    get(`/stock/recommendation?symbol=${S}`),
+    get(`/stock/earnings?symbol=${S}&limit=4`),
+    get(`/stock/insider-sentiment?symbol=${S}&from=${day(-200)}&to=${day(0)}`),
+  ]);
+  const r1 = (x) => (x ? { period: String(x.period || '').slice(0, 7), sb: x.strongBuy || 0, b: x.buy || 0, h: x.hold || 0, s: x.sell || 0, ss: x.strongSell || 0 } : null);
+  const recs = Array.isArray(rec) ? rec.slice().sort((a, b) => String(b.period).localeCompare(String(a.period))) : [];
+  const now = r1(recs[0]);
+  const out = {
+    rec: now && now.sb + now.b + now.h + now.s + now.ss > 0 ? { ...now, prev: r1(recs[3] || recs[recs.length - 1]) } : null,
+    earn: (Array.isArray(earn) ? earn : []).filter((x) => x && x.period).slice(0, 4).map((x) => ({ period: String(x.period).slice(0, 10), q: x.quarter, y: x.year, est: x.estimate ?? null, act: x.actual ?? null, pct: x.surprisePercent ?? null })),
+    insider: (Array.isArray(ins?.data) ? ins.data : []).map((x) => ({ ym: `${x.year}-${String(x.month).padStart(2, '0')}`, change: x.change ?? 0, mspr: x.mspr ?? null })).sort((a, b) => a.ym.localeCompare(b.ym)).slice(-6),
+  };
+  return out.rec || out.earn.length || out.insider.length ? out : { none: true };
+}
+
 export async function usCompany(ticker) {
   const T = encodeURIComponent(ticker.toUpperCase().replace('.', '/'));
   const fkey = process.env.FINNHUB_API_KEY;
-  const [summary, profile, annual, quarterly, fh] = await Promise.all([
+  const [summary, profile, annual, quarterly, fh, wall] = await Promise.all([
     nq(`/api/quote/${T}/summary?assetclass=stocks`).catch(() => null),
     nq(`/api/company/${T}/company-profile`).catch(() => null),
     nq(`/api/company/${T}/financials?frequency=1`).catch(() => null),
     nq(`/api/company/${T}/financials?frequency=2`).catch(() => null),
     fkey ? fetchWithTimeout(`https://finnhub.io/api/v1/stock/metric?symbol=${T}&metric=all&token=${fkey}`, {}, 6000).then((r) => r.json()).then((j) => j.metric || null).catch(() => null) : Promise.resolve(null),
+    finnhubWall(ticker, fkey).catch(() => null),
   ]);
   const sd = summary?.summaryData || {};
   const mcap = num(sd.MarketCap?.value);
@@ -178,6 +201,7 @@ export async function usCompany(ticker) {
   const pd = (k) => profile?.[k]?.value || null;
   return {
     src: 'US',
+    wall: wall || null,
     name: pd('CompanyName'),
     sector: pd('Sector') || sd.Sector?.value || null,
     industry: pd('Industry') || sd.Industry?.value || null,

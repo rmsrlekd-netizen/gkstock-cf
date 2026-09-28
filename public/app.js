@@ -1830,6 +1830,40 @@
       $$('p.ov[data-co]').forEach((el) => { if (el.dataset.co === url) el.textContent = ko; });
     }, [12, 20, 30, 45][i] * 1000);
   }
+  // 월가 시각 (핀허브): 애널리스트 투자의견 · 실적 서프라이즈 · 내부자 거래 심리
+  function wallHTML(d) {
+    const w = d?.wall;
+    if (!w || w.none) return '';
+    const parts = [];
+    if (w.rec) {
+      const r = w.rec, tot = r.sb + r.b + r.h + r.s + r.ss || 1;
+      const buyP = Math.round(((r.sb + r.b) / tot) * 100);
+      const pv = r.prev && r.prev.period !== r.period ? r.prev : null;
+      const pvTot = pv ? pv.sb + pv.b + pv.h + pv.s + pv.ss : 0;
+      const pvP = pvTot ? Math.round(((pv.sb + pv.b) / pvTot) * 100) : null;
+      const seg = [['sb', r.sb, '강력 매수'], ['b', r.b, '매수'], ['h', r.h, '보유'], ['s', r.s, '매도'], ['ss', r.ss, '강력 매도']].filter((x) => x[1] > 0);
+      parts.push(`<div class="wl-rec"><div class="wl-t"><b>애널리스트 투자의견</b><span>${esc(r.period)} 기준 · ${tot}명</span></div>
+        <div class="wl-bar">${seg.map(([k, v, l]) => `<i class="${k}" style="flex:${v}" title="${l} ${v}명"></i>`).join('')}</div>
+        <div class="wl-leg">${seg.map(([k, v, l]) => `<span><i class="${k}"></i>${l} ${v}</span>`).join('')}</div>
+        <p class="wl-sum">매수 의견 <b class="${buyP >= 60 ? 'up' : buyP < 40 ? 'down' : ''}">${buyP}%</b>${pvP != null ? ` <span class="muted">(${esc(pv.period)} ${pvP}% → ${buyP >= pvP ? (buyP > pvP ? '상향' : '유지') : '하향'})</span>` : ''}</p></div>`);
+    }
+    if (w.earn?.length) {
+      const f = (v) => (v == null ? '—' : '$' + Number(v).toFixed(2));
+      parts.push(`<div class="wl-earn"><div class="wl-t"><b>실적 서프라이즈</b><span>주당순이익(EPS) 예상 vs 실제</span></div><table class="tbl"><tr><th>분기</th><th>예상</th><th>실제</th><th>결과</th></tr>${w.earn.map((x) => {
+        const beat = x.pct == null || x.act == null ? '' : x.pct > 0.5 ? `<b class="up">상회 ${fmtPct(x.pct)}</b>` : x.pct < -0.5 ? `<b class="down">하회 ${fmtPct(x.pct)}</b>` : '<b>부합</b>';
+        return `<tr><td>${x.y ? `${x.y} ${x.q}Q` : esc(x.period)}</td><td class="mono">${f(x.est)}</td><td class="mono">${f(x.act)}</td><td>${beat}</td></tr>`;
+      }).join('')}</table></div>`);
+    }
+    if (w.insider?.length) {
+      const mx = Math.max(1, ...w.insider.map((x) => Math.abs(x.mspr || 0)));
+      const net = w.insider.reduce((a, x) => a + (x.change || 0), 0);
+      parts.push(`<div class="wl-ins"><div class="wl-t"><b>내부자 거래 심리</b><span>최근 ${w.insider.length}개월 · 임원·대주주 순매수(+)/순매도(−)</span></div>
+        <div class="wl-mspr">${w.insider.map((x) => `<div title="${esc(x.ym)} · 심리지수 ${x.mspr != null ? Number(x.mspr).toFixed(1) : '—'} · 순변동 ${fmtInt(x.change)}주"><span class="bar"><i class="${(x.mspr || 0) >= 0 ? 'p' : 'n'}" style="height:${Math.max(3, Math.round((Math.abs(x.mspr || 0) / mx) * 100))}%"></i></span><em>${Number(x.ym.slice(5))}월</em></div>`).join('')}</div>
+        <p class="wl-sum">기간 합계 <b class="${net > 0 ? 'up' : net < 0 ? 'down' : ''}">${net > 0 ? '순매수' : net < 0 ? '순매도' : '변동 없음'} ${net ? fmtInt(Math.abs(net)) + '주' : ''}</b></p></div>`);
+    }
+    if (!parts.length) return '';
+    return `<div class="box wall"><h4>월가 시각 <small>Finnhub · 참고용</small></h4><div class="wl-grid">${parts.join('')}</div></div>`;
+  }
   function metricsHTML(d) {
     const f = d.fin || {}, r = d.ratios || {}, cur = d.currency;
     const yoy = (a, b) => (a !== null && a !== undefined && b ? ((a - b) / Math.abs(b)) * 100 : null);
@@ -1870,7 +1904,7 @@
     return `<div class="box"><h4>${esc(d.name || n.name || n.ticker)} <small>${esc(d.products ? '주요 제품: ' + d.products : '')}</small></h4>
       <p class="ov" data-co="${esc(coUrl(n.market, n.ticker, n.corpCode, n.exchange) || '')}">${ov ? esc(ov.length > 600 ? ov.slice(0, 598) + '…' : ov) : '사업 개요 정보를 찾지 못했습니다.'}${!d.overviewKo && d.overviewRaw && d.src === 'US' ? ' <small class="muted">(영문 원문 · 잠시 뒤 한국어로 바뀝니다)</small>' : ''}</p>
       <div class="co-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join('')}${d.homepage ? `<a class="link" href="${esc(d.homepage)}" target="_blank" rel="noopener">홈페이지 ↗</a>` : ''}</div></div>
-      ${metrics ? `<div class="box"><h4>핵심 재무·투자지표</h4>${metricsHTML(d)}</div>` : ''}
+      ${metrics ? `<div class="box"><h4>핵심 재무·투자지표</h4>${metricsHTML(d)}</div>${wallHTML(d)}` : ''}
       ${chart ? `<div class="box"><h4>차트 <small>${n.market === 'KR' ? '네이버 증권 일봉' : 'TradingView'}</small></h4>${chartHTML(n.market, n.ticker, n.exchange)}</div>` : ''}`;
   }
   // 공매도·수급
@@ -1939,7 +1973,7 @@
       const d = coOf(n);
       if (!d) return '<div class="loading"><span class="spin"></span>핵심 재무제표 불러오는 중…</div>';
       if (d.error) return `<p class="err">재무 정보를 불러오지 못했습니다: ${esc(d.error)}</p>`;
-      return metricsHTML(d);
+      return metricsHTML(d) + wallHTML(d);
     }
     const d = S.stock.get(stockUrl(n.market, n.ticker, n.corpCode));
     if (!d) return '<div class="loading"><span class="spin"></span>데이터 불러오는 중…</div>';

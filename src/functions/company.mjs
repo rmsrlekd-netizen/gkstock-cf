@@ -22,7 +22,7 @@ export default async (req, ctx) => {
       return fresh;
     };
     if (!d) d = await fetchFresh();
-    else if (Date.now() - (d.at || 0) > 12 * 3600e3) refreshInBackground(ctx, key, fetchFresh); // 오래된 값은 먼저 보여주고 뒤에서 갱신
+    else if (Date.now() - (d.at || 0) > 12 * 3600e3 || (src === 'US' && d.wall === undefined && process.env.FINNHUB_API_KEY)) refreshInBackground(ctx, key, fetchFresh); // (월가 정보가 없던 예전 저장분도 새로) // 오래된 값은 먼저 보여주고 뒤에서 갱신
     const sm = await getSectors({ allowFetch: false }).catch(() => null);
     const sraw = sm ? (src === 'KR' ? sm.kr?.[t] : sm.us?.[t]) : null;
     if (sraw) { const [ind, prod] = sraw.split('|'); d = { ...d, sectorKo: ind, products: prod || d.products || null }; }

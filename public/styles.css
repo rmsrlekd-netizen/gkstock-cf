@@ -1565,3 +1565,24 @@ button.br-mv:hover { border-color: var(--accent); }
 .dg-share svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-right: .3rem; vertical-align: -2px; }
 .ibc-act .btn svg { margin-right: .25rem; vertical-align: -2px; }
 @media (max-width: 720px) { .digest-ctl { flex-wrap: wrap; justify-content: flex-start; row-gap: .4rem; } .digest-ctl .dseg { flex-basis: 100%; } }
+
+/* ── v73: 월가 시각 (핀허브) ── */
+.wall .wl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: .7rem; }
+.wl-earn .tbl td:last-child { white-space: nowrap; }
+.wall .wl-grid > div { background: rgba(0, 0, 0, .22); border: 1px solid var(--line); border-radius: 11px; padding: .7rem .8rem; min-width: 0; }
+.wl-t { display: flex; flex-direction: column; gap: .1rem; margin-bottom: .55rem; }
+.wl-t b { font-size: .88rem; } .wl-t span { font-size: .72rem; color: var(--muted); }
+.wl-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; }
+.wl-bar i, .wl-leg i { display: block; }
+.wl-bar i.sb, .wl-leg i.sb { background: #ff3b52; } .wl-bar i.b, .wl-leg i.b { background: #ff8a95; }
+.wl-bar i.h, .wl-leg i.h { background: #7c85a6; } .wl-bar i.s, .wl-leg i.s { background: #7fb6ff; } .wl-bar i.ss, .wl-leg i.ss { background: #3b82f6; }
+.wl-leg { display: flex; flex-wrap: wrap; gap: .25rem .6rem; margin-top: .45rem; font-size: .72rem; color: var(--text2); }
+.wl-leg span { display: inline-flex; align-items: center; gap: .25rem; } .wl-leg i { width: 8px; height: 8px; border-radius: 2px; }
+.wl-sum { margin: .55rem 0 0; font-size: .82rem; }
+.wl-earn .tbl { font-size: .78rem; width: 100%; } .wl-earn .tbl td, .wl-earn .tbl th { padding: .28rem .3rem; }
+.wl-mspr { display: flex; gap: .35rem; align-items: flex-end; height: 76px; }
+.wl-mspr > div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .2rem; height: 100%; }
+.wl-mspr .bar { flex: 1; width: 100%; max-width: 26px; display: flex; align-items: flex-end; background: rgba(255, 255, 255, .04); border-radius: 4px; }
+.wl-mspr .bar i { display: block; width: 100%; border-radius: 4px; } .wl-mspr .bar i.p { background: var(--up); } .wl-mspr .bar i.n { background: var(--down); }
+.wl-mspr em { font-style: normal; font-size: .66rem; color: var(--muted); }
+@media (max-width: 720px) { .wall .wl-grid { grid-template-columns: 1fr; } }
