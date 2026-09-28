@@ -26,7 +26,12 @@ async function checks() {
 
   const age = (f) => (f?.updatedAt ? now - Date.parse(f.updatedAt) : Infinity);
   const secLimit = usBusy ? 20 * MIN : 75 * MIN;
-  add('sec', '미국 SEC 공시 수집', age(sec) < secLimit && !(sec?.errors || []).length, `마지막 수집 ${ago(age(sec))}${(sec?.errors || []).length ? ' · 오류: ' + sec.errors.join(' / ').slice(0, 160) : ''}${(sec?.skipped || []).length ? ' · SEC 응답이 느려 드문 서식(' + sec.skipped.join(', ') + ')은 다음 회차에 먼저 수집' : ''}`);
+  // SEC 서버가 잠깐 느린 건(다음 회차에 바로 다시 조회) 이상으로 보지 않음 → 자주 나오는 서식이 20분 넘게 계속 실패할 때만 이상
+  const tok = (await getJSON('sec/typeok')) || {};
+  const FAST = ['8-K', '4', '6-K', 'SCHEDULE 13', '424B', '144'];
+  const stuck = usBusy ? FAST.filter((t) => tok[t] && now - tok[t] > 20 * MIN) : [];
+  const slowNow = (sec?.errors || []).map((e) => e.split(':')[0]);
+  add('sec', '미국 SEC 공시 수집', age(sec) < secLimit && !stuck.length, `마지막 수집 ${ago(age(sec))}${stuck.length ? ` · 계속 실패: ${stuck.map((t) => `${t}(${ago(now - tok[t])} 성공)`).join(', ')}` : ''}${slowNow.length ? ` · 이번 회차 SEC 응답 느림: ${slowNow.join(', ')} (다음 회차에 먼저 다시 조회)` : ''}`);
   const dartLimit = krBusy ? 20 * MIN : 75 * MIN;
   // DART 지연 = 우리가 처음 발견한 시각 - DART 공식 접수 시각(분 단위) (최근 24시간 중앙값)
   const dl = (dart?.items || []).filter((x) => x.seenLive && x.seenAt && x.timeMin && x.timeMin !== 'na' && now - Date.parse(x.seenAt) < 24 * 3600e3)

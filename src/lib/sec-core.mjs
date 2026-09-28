@@ -32,16 +32,16 @@ export async function getTickerMap() {
   return tickerMem.map;
 }
 
-async function getCurrent(type, count) {
+async function getCurrent(type, count, ms = 9000) {
   const url = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=${encodeURIComponent(type)}&company=&dateb=&owner=include&start=0&count=${count}&output=atom`;
-  const r = await fetchWithTimeout(url, { headers: SEC_HEADERS }, 9000);
+  const r = await fetchWithTimeout(url, { headers: SEC_HEADERS }, ms);
   if (!r.ok) throw new Error(`${type} HTTP ${r.status}`);
   return parseAtom(await r.text());
 }
 
 /** 최신 공시 목록 수집 (초당 10회 제한을 지키도록 간격을 둠) */
 // 자주 나오는 서식은 매번, 드문 서식은 3분에 한 번만 조회 (SEC 부하·시간 절약)
-const FAST_TYPES = ['8-K', '4', '6-K', 'SCHEDULE 13', '424B', '144'];
+export const FAST_TYPES = ['8-K', '4', '6-K', 'SCHEDULE 13', '424B', '144'];
 const SLOW_TYPES = ['10-Q', '10-K', '20-F', 'S-1', 'F-1', 'S-3', '13F-HR', '25', 'SC 13'];
 
 export async function collectSec({ spacing = 120, all = false, budget = 12000, fastOnly = false, first = [] } = {}) {
@@ -55,20 +55,25 @@ export async function collectSec({ spacing = 120, all = false, budget = 12000, f
   const types = [...FAST_TYPES, ...slow];
   const until = Date.now() + budget;
   let skipped = [];
+  const ok = [], failed = new Map();
+  const one = async (t, ms) => {
+    try { raw.push(...(await getCurrent(t, t === '4' ? 100 : 60, ms))); ok.push(t); failed.delete(t); }
+    catch (e) { failed.set(t, `${t}: ${e.name === 'AbortError' ? '응답 지연' : e.message}`); }
+  };
   // 세 개씩 나눠서 조회 (SEC 초당 10회 제한 안)
   for (let i = 0; i < types.length; i += 3) {
     if (Date.now() > until) { skipped = types.slice(i); break; }
-    await Promise.all(types.slice(i, i + 3).map(async (t) => {
-      try {
-        raw.push(...(await getCurrent(t, t === '4' ? 100 : 60)));
-      } catch (e) {
-        errors.push(`${t}: ${e.name === 'AbortError' ? '응답 지연' : e.message}`);
-      }
-    }));
+    await Promise.all(types.slice(i, i + 3).map((t) => one(t, 9000)));
     await sleep(spacing);
   }
+  // SEC 서버가 잠깐 느려서 놓친 서식은 남은 시간 안에 한 번 더 (자주 나오는 서식 먼저)
+  const retry = [...failed.keys()].sort((a, b) => FAST_TYPES.includes(b) - FAST_TYPES.includes(a));
+  for (let i = 0; i < retry.length && until + 4000 - Date.now() > 3000; i += 3) {
+    await Promise.all(retry.slice(i, i + 3).map((t) => one(t, Math.min(8000, until + 4000 - Date.now()))));
+  }
+  errors.push(...failed.values());
   if (!raw.length && errors.length) throw new Error(errors.join(' / '));
-  return { items: buildFeed(raw, map), errors, skipped };
+  return { items: buildFeed(raw, map), errors, skipped: [...new Set([...failed.keys(), ...skipped])], ok };
 }
 
 /** Form 4 원문을 읽어 매수/매도 수량·금액을 붙임 */
@@ -157,8 +162,12 @@ export async function runSecWatch() {
   const started = Date.now();
   const prev = (await getJSON('sec/feed')) || { items: [] };
   const first = (await getJSON('sec/skipped'))?.types || [];
-  const { items, errors, skipped } = await collectSec({ all: true, budget: 14000, first });
+  const { items, errors, skipped, ok } = await collectSec({ all: true, budget: 14000, first });
   await setJSON('sec/skipped', { types: skipped, at: Date.now() }).catch(() => {});
+  // 서식별 마지막 성공 시각 (잠깐 느린 것과 계속 막힌 것을 구분하는 고장 감시용)
+  const tok = (await getJSON('sec/typeok')) || {};
+  for (const t of ok || []) tok[t] = Date.now();
+  await setJSON('sec/typeok', tok).catch(() => {});
   const merged = mergeFeed(prev.items, items);
   const enriched = await enrichForm4(merged, { max: 20, deadline: started + 15000 });
   const docs = await enrichDocs(merged, { max: 14, deadline: started + 20000 });
