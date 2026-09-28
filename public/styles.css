@@ -1555,3 +1555,9 @@ button.br-mv:hover { border-color: var(--accent); }
   .br-foot .btn { width: 100%; }
   .sc-key { grid-template-columns: 2.8rem auto minmax(0, 1fr); padding: .45rem .55rem; }
 }
+/* 내일 일정: 하루치만 */
+.sc-daybar { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+.sc-daybar b { font-family: var(--head); font-size: 1.25rem; }
+.sc-daybar small { font-size: .8rem; color: var(--muted); }
+.sc-dtag { align-self: center; font-size: .74rem; font-weight: 800; padding: .22rem .6rem; border-radius: 999px; color: #fff; background: linear-gradient(135deg, #8b6cff, #5d7cff); }
+.sc-dtag.kr { background: linear-gradient(135deg, #ff5a6a, #d6336c); } .sc-dtag.us { background: linear-gradient(135deg, #3ea6ff, #2f6bff); }

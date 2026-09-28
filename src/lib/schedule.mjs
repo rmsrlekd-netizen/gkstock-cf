@@ -202,16 +202,7 @@ export async function buildSchedule(mk) {
       if (!evs) evs = await nasdaqDay(d.date).catch(() => []);
       d.econ = (evs || []).filter((e) => e.imp >= 1).map((e) => ({ kind: 'econ', date: d.date, time: kstOf(e.ms).time, kdate: kstOf(e.ms).date, et: e.et, ms: e.ms, country: 'US', name: e.ko || e.name, en: e.name, imp: e.imp, cons: e.cons, prev: e.prev, actual: e.actual, ai: e.ai?.headline || null }));
     }
-    const { usDay } = await import('../functions/earnings.mjs');
-    const lists = await Promise.all(dates.map((d) => usDay(d).catch(() => [])));
-    const big = lists.flat().filter((x) => (x.mcap || 0) >= 2e9).sort((a, b) => (b.mcap || 0) - (a.mcap || 0)).map((x) => x.t);
-    let ko = {};
-    try { ko = await Promise.race([(await import('./usko.mjs')).usKoNames(big.slice(0, 120), { max: 60 }), new Promise((r) => setTimeout(() => r({}), 8000))]) || {}; } catch {}
-    days.forEach((d, i) => {
-      const rows = (lists[i] || []).filter((x) => (x.mcap || 0) >= 3e8).sort((a, b) => (b.mcap || 0) - (a.mcap || 0));
-      d.earnings = rows.slice(0, 30).map((x) => ({ kind: 'earn', t: x.t, name: ko[x.t] || x.n, en: x.n, time: x.time, mcap: x.mcap, eps: x.eps, lastEps: x.lastEps }));
-      d.earnTotal = (lists[i] || []).length;
-    });
+    // 실적 발표는 '실적 캘린더' 메뉴에서 (여기선 뺌)
     const ipo = await usIpo().catch((e) => { errors.push('IPO: ' + e.message); return []; });
     for (const x of ipo) byDate[x.start]?.ipo.push({ ...x, tag: x.sub });
   }
@@ -229,7 +220,6 @@ export async function scheduleBrief(mk, sched) {
   const lines = [];
   for (const e of d.events || []) lines.push(`[주요 일정] ${e.time || ''} ${e.title} — ${e.desc}`);
   for (const e of d.econ.filter((x) => x.imp >= 2)) lines.push(`[경제지표] ${e.time} ${e.name} (예상 ${e.cons ?? '-'}, 이전 ${e.prev ?? '-'})`);
-  for (const x of d.earnings.slice(0, 12)) lines.push(`[실적] ${x.name}(${x.t}) ${x.time} 시총 ${Math.round((x.mcap || 0) / 1e9)}B$ 예상EPS ${x.eps ?? '-'}`);
   for (const x of d.ipo.filter((y) => !y.spac).slice(0, 8)) lines.push(`[IPO] ${x.name}${x.ticker ? '(' + x.ticker + ')' : ''} ${x.tag} ${x.price || x.range || ''}`);
   if (lines.length < 2) return null;
   const md = `${Number(d.date.slice(5, 7))}월 ${Number(d.date.slice(8))}일`;

@@ -1275,13 +1275,11 @@
     if (!s) { body.innerHTML = '<div class="skel"></div><div class="skel"></div>'; $('#scDays').innerHTML = ''; return; }
     if (s.error || !s.days) { body.innerHTML = `<div class="empty">일정을 불러오지 못했습니다${s.error ? ': ' + esc(s.error) : ''}</div>`; return; }
     const mk = S.scMk;
-    const sel = S.scDay[mk] && s.days.some((d) => d.date === S.scDay[mk]) ? S.scDay[mk] : s.focus;
+    const sel = s.focus; // 하루치만: 장 마감 전이면 오늘, 마감 뒤면 다음 거래일
     $('#scMeta').textContent = `${mk === 'KR' ? '한국 장 마감(15:30) 뒤엔 다음 거래일 기준' : '미국 장 마감(뉴욕 16:00) 뒤엔 다음 거래일 기준'} · 시간은 모두 한국시간`;
-    $('#scDays').innerHTML = s.days.map((d) => {
-      const l = scDayLabel(d.date, s);
-      const n = (d.events || []).length + d.earnings.length + d.ipo.length;
-      return `<button class="sc-day${d.date === sel ? ' on' : ''}${d.holiday ? ' off' : ''}" data-sc-day="${d.date}"><small>${l.rel || l.wd + '요일'}</small><b>${l.md} <i>${l.wd}</i></b><em>${d.holiday ? '휴장' : n ? n + '건' : '-'}</em></button>`;
-    }).join('');
+    const fl = scDayLabel(sel, s);
+    const ft = new Date(sel + 'T12:00:00Z');
+    $('#scDays').innerHTML = `<div class="sc-daybar"><span class="sc-dtag ${mk.toLowerCase()}">${fl.rel === '오늘' ? '오늘' : fl.rel === '내일' ? '내일' : '다음 거래일'}</span><b>${ft.getUTCMonth() + 1}월 ${ft.getUTCDate()}일 (${fl.wd})</b><small>${mk === 'KR' ? (s.closed ? '국장 마감 · 다음 거래일 일정' : '국장 오늘 일정 · 15:30 마감 뒤엔 다음 거래일로 바뀝니다') : (s.closed ? '미장 마감 · 다음 거래일 일정' : '미장 오늘 일정 · 뉴욕 16:00 마감 뒤엔 다음 거래일로 바뀝니다')}</small></div>`;
     const d = s.days.find((x) => x.date === sel);
     if (d.holiday) { body.innerHTML = `${briefHTML(s.briefs)}<div class="sc-holi"><b>${esc(d.holiday)}</b><span>${mk === 'KR' ? '한국' : '미국'} 증시 휴장일입니다.</span></div>`; return; }
     const econ = d.econ.filter((e) => S.scAll || (mk === 'KR' ? e.country === 'KR' || e.imp >= 2 : e.imp >= 2));
@@ -1290,11 +1288,11 @@
     const hidden = d.econ.length - econ.length;
     const ai = s.ai && s.ai.date === d.date ? s.ai : null;
     const aiHTML = ai ? `<div class="sc-brief"><div class="sc-bh"><span class="ai-pill">AI</span><h3>${scDayLabel(d.date, s).rel === '오늘' ? '오늘' : scDayLabel(d.date, s).rel === '내일' ? '내일' : scDayLabel(d.date, s).md} 꼭 볼 일정</h3><span class="muted sm">${esc(ai.headline || '')}</span></div><div class="sc-pts">${ai.points.map((p, i) => `<div class="sc-pt"><span class="ibc-n">${i + 1}</span><div><b>${esc(p.title)}</b><small>${esc(p.why)}</small></div></div>`).join('')}</div></div>` : '';
-    const stat = mk === 'KR' ? '' : `<div class="sc-stats">${mk === 'US' ? `<div><span>실적 발표</span><b>${d.earnTotal || d.earnings.length}</b><small>시총 3억$ 이상 ${d.earnings.length}</small></div>` : ''}<div><span>${mk === 'KR' ? '공모주' : 'IPO'}</span><b>${d.ipo.length}</b><small>${mk === 'KR' ? '청약·상장' : '상장 예정'}</small></div></div>`;
+    const stat = '' && `<div class="sc-stats">${mk === 'US' ? `<div><span>실적 발표</span><b>${d.earnTotal || d.earnings.length}</b><small>시총 3억$ 이상 ${d.earnings.length}</small></div>` : ''}<div><span>${mk === 'KR' ? '공모주' : 'IPO'}</span><b>${d.ipo.length}</b><small>${mk === 'KR' ? '청약·상장' : '상장 예정'}</small></div></div>`;
     const econCard = `<div class="card sc-card"><div class="card-h"><h3>경제지표 <b>${econ.length}</b></h3><button class="btn sm" data-sc-all>${S.scAll ? '중요 지표만' : `전체 보기${hidden ? ` (+${hidden})` : ''}`}</button></div>${econ.length ? `<div class="sc-evs">${econ.map((e) => scEconRow(e, mk)).join('')}</div>` : '<div class="empty sm">예정된 주요 경제지표가 없습니다.</div>'}<p class="note">★★★ 시장을 크게 움직이는 지표 · ★★ 중요 · ★ 참고${mk === 'KR' ? ' · 중국·일본은 중요 지표만' : ''}</p></div>`;
     const earnCard = mk === 'US' ? `<div class="card sc-card"><div class="card-h"><h3>실적 발표 <b>${d.earnTotal || d.earnings.length}</b></h3><button class="btn sm" data-go="earnings">실적 캘린더 →</button></div>${d.earnings.length ? `<div class="sc-earns">${d.earnings.slice(0, 15).map(scEarnRow).join('')}</div>` : '<div class="empty sm">시총 3억 달러 이상 기업의 실적 발표가 없습니다.</div>'}<p class="note">장전 = 미국 정규장 전(한국 밤) · 장후 = 장 마감 뒤(한국 새벽)</p></div>` : '';
     // 이 날 일정이 없으면 다가오는 일정을 대신 보여줌
-    const later = d.ipo.length ? [] : s.days.filter((x) => x.date > d.date).flatMap((x) => x.ipo.filter((y) => !/중/.test(y.tag)).map((y) => ({ ...y, _d: x.date }))).slice(0, 8);
+    const later = []; void s.days.filter((x) => x.date > d.date).flatMap((x) => x.ipo.filter((y) => !/중/.test(y.tag)).map((y) => ({ ...y, _d: x.date }))).slice(0, 8);
     const ipoCard = `<div class="card sc-card"><div class="card-h"><h3>${mk === 'KR' ? '공모주 청약·상장' : 'IPO 상장 예정'} <b>${d.ipo.length}</b></h3></div>${d.ipo.length ? `<div class="sc-ipos">${d.ipo.map((x) => scIpoRow(x, mk)).join('')}</div>` : `<div class="empty sm">${mk === 'KR' ? '이 날은 청약·상장 일정이 없습니다.' : '이 날은 상장 예정 기업이 없습니다.'}</div>${later.length ? `<h4 class="sc-later">다가오는 일정</h4><div class="sc-ipos">${later.map((x) => scIpoRow({ ...x, tag: `${scDayLabel(x._d, s).md} ${x.tag}` }, mk)).join('')}</div>` : ''}`}${mk === 'US' ? '<p class="note">날짜는 예상 상장일이며 공모가 확정 뒤 바뀔 수 있습니다.</p>' : '<p class="note">출처: 38커뮤니케이션 · 증권신고서 정정에 따라 일정이 바뀔 수 있습니다.</p>'}</div>`;
     const evs = d.events || [];
     const srcs = (d.evSources || []).filter((x) => x.uri).slice(0, 5);
@@ -1302,7 +1300,7 @@
     // 경제지표는 '경제지표' 메뉴와 겹치므로 여기선 빼고, 주요 일정·공모주·IPO를 앞에
     const key = d.econ.filter((e) => e.imp >= 3);
     const keyCard = key.length ? `<div class="card sc-card"><div class="card-h"><h3>핵심 경제지표 <b>${key.length}</b></h3><button class="btn sm" data-go="econ">경제지표 전체 →</button></div><div class="sc-keys">${key.map((e) => { const [cn, cc] = CFLAG[e.country] || ['', '']; return `<div class="sc-key"><b class="mono">${esc(e.time)}</b><span class="sc-c ${cc}">${cn}</span><span class="sc-kn">${esc(e.name)}</span><small>${e.actual != null ? `<b>실제 ${esc(e.actual)}</b> · ` : ''}${e.cons ? `예상 ${esc(e.cons)}` : ''}${e.prev ? ` · 이전 ${esc(e.prev)}` : ''}</small></div>`; }).join('')}</div></div>` : '';
-    body.innerHTML = `${briefHTML(s.briefs)}${aiHTML}${stat}<div class="sc-grid"><div>${evCard}${keyCard}</div><div>${ipoCard}${mk === 'US' ? earnCard : ''}</div></div>`;
+    body.innerHTML = `${briefHTML(s.briefs)}${aiHTML}${stat}<div class="sc-grid"><div>${evCard}${keyCard}</div><div>${ipoCard}</div></div>`;
   }
   function bindSched() {
     $('#scSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-sc]'); if (!b) return; S.scMk = b.dataset.sc; save('gk_scmk', S.scMk); renderSched(); loadSched(); });
