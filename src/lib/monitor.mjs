@@ -53,7 +53,9 @@ async function checks() {
   add('market', '시장 지표', mAge < 30 * MIN && idxOk >= 6, `마지막 갱신 ${ago(mAge)} · 지수 ${idxOk}개 정상${market?.body?.night?.ok === false ? ' · 야간선물 실패: ' + (market.body.night.reason || '') : ''}`);
   const pAge = popular?.at ? now - popular.at : Infinity;
   add('popular', '실시간 인기 종목', pAge < 30 * MIN && (popular?.kr || []).length > 0 && (popular?.us || []).length > 0, `마지막 갱신 ${ago(pAge)} · 국내 ${(popular?.kr || []).length}개 · 미국 ${(popular?.us || []).length}개`);
-  const errRecent = aiErr?.at && now - aiErr.at < 60 * MIN && (!aiOk?.at || aiErr.at > aiOk.at);
+  // AI가 가끔 틀린 형식으로 답하는 건(다음 호출에서 대부분 정상) 30분 안에 성공이 있으면 이상으로 보지 않음
+  const flaky = /JSON|형식 오류|Unexpected token|Unterminated|Expected/.test(String(aiErr?.error || ''));
+  const errRecent = aiErr?.at && now - aiErr.at < 60 * MIN && (!aiOk?.at || aiErr.at > aiOk.at) && !(flaky && aiOk?.at && now - aiOk.at < 30 * MIN);
   const paused = aiPause?.until > now;
   add('ai', 'AI 분석 (Gemini)', !errRecent && !paused, paused ? `${aiPause.reason || '한도 초과'} → ${Math.ceil((aiPause.until - now) / 60e3)}분 동안 AI 호출 중지 (그동안은 자동 요약). 반복되면 Gemini 결제(유료 전환) 필요` : errRecent ? `최근 실패 ${ago(now - aiErr.at)}: ${String(aiErr.error).slice(0, 180)}` : `마지막 성공 ${aiOk?.at ? ago(now - aiOk.at) : '기록 없음'}`);
   return out;

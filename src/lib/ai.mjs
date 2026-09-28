@@ -134,14 +134,24 @@ function repairJSON(t) {
   }
   return out.replace(/,\s*([}\]])/g, '$1');
 }
+// 속성 사이 쉼표 빠짐 보정: "값"\n  "다음키": → "값",\n  "다음키":
+const addCommas = (t) => t.replace(/(["\]}0-9el])(\s*\n\s*)(?="[^"\n]{1,40}"\s*:)/g, '$1,$2');
 export function parseJSON(text, open = '{', close = '}') {
-  const cleaned = String(text || '').replace(/```(?:json)?/gi, '').replace(/[“”]/g, '"');
-  const a = cleaned.indexOf(open), b = cleaned.lastIndexOf(close);
+  const base = String(text || '').replace(/```(?:json)?/gi, '');
+  const a = base.indexOf(open), b = base.lastIndexOf(close);
   if (a < 0 || b < a) throw new Error('AI 응답 형식 오류');
-  const raw = cleaned.slice(a, b + 1);
-  try { return JSON.parse(raw); } catch (e1) {
-    try { return JSON.parse(repairJSON(raw)); } catch { throw e1; }
-  }
+  const raw = base.slice(a, b + 1);
+  // 여러 방식으로 차례로 시도 (문장 속 “ ” 따옴표는 그대로 두는 게 먼저)
+  const tries = [
+    raw,
+    repairJSON(raw),
+    addCommas(raw),
+    repairJSON(addCommas(raw)),
+    repairJSON(addCommas(raw.replace(/[“”]/g, '"'))),
+  ];
+  let first;
+  for (const t of tries) { try { return JSON.parse(t); } catch (e) { first = first || e; } }
+  throw first;
 }
 
 /** 미국 공시 목록용 한국어 한 줄 제목 (수집기에서 사용) */
