@@ -58,7 +58,7 @@ async function asiaEcon(kstDates) {
   const etDates = [...new Set(kstDates.flatMap((d) => [addDays(d, -1), d]))];
   await Promise.all(etDates.map((d) => nasdaqDay(d).catch(() => null)));
   const all = [];
-  for (const d of etDates) { const c = await getJSON(`econ/day2/${d}`); for (const e of c?.asia || []) all.push(e); }
+  for (const d of etDates) { const c = await getJSON(`econ/day3/${d}`); for (const e of c?.asia || []) all.push(e); }
   const seen = new Set(), out = [];
   for (const e of all.sort((a, b) => a.ms - b.ms)) {
     const m = asiaMeta(e);

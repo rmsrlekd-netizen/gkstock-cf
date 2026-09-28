@@ -100,32 +100,37 @@ function offsetOf(p, rows) { // 이 응답의 실제 날짜 - 요청 날짜 (판
   const best = Object.entries(votes).sort((x, y) => y[1] - x[1])[0];
   return best ? Number(best[0]) : null;
 }
-let shiftMem = null;
-async function nasdaqShift() {
-  if (shiftMem && Date.now() - shiftMem.at < 3 * 3600e3) return shiftMem.s;
-  const c = await getJSON('econ/shift');
-  if (c && Date.now() - c.at < 3 * 3600e3) { shiftMem = c; return c.s; }
-  // 최근 평일 몇 개를 받아 요일 지표로 어긋남(보통 0)을 확인
-  const probes = [];
-  for (let i = -8; i <= 0; i++) { const d = etToday(i); const wd = new Date(d + 'T12:00:00Z').getUTCDay(); if (wd >= 2 && wd <= 5) probes.push(d); }
-  const votes = {};
-  await Promise.all(probes.slice(-5).map(async (p) => { const o = offsetOf(p, await nasdaqRaw(p).catch(() => [])); if (o !== null) votes[o] = (votes[o] || 0) + 1; }));
-  const best = Object.entries(votes).sort((x, y) => y[1] - x[1])[0];
-  const s = best && best[1] >= 2 ? Number(best[0]) : (c?.s ?? 0);
-  shiftMem = { s, at: Date.now(), votes };
-  await setJSON('econ/shift', shiftMem).catch(() => {});
-  return s;
+let shiftMem = null, shiftP = null;
+// 반환: { s: 어긋난 날 수, sure: 확인됐는지 }  (여러 곳에서 동시에 불려도 한 번만 확인)
+function nasdaqShift() {
+  if (shiftMem && Date.now() - shiftMem.at < 3 * 3600e3) return Promise.resolve(shiftMem);
+  if (!shiftP) shiftP = (async () => {
+    const c = await getJSON('econ/shift').catch(() => null);
+    if (c && c.sure && Date.now() - c.at < 3 * 3600e3) return (shiftMem = c);
+    // 최근 화~금 몇 개를 받아 요일 지표로 어긋남(정상이면 0)을 확인
+    const probes = [];
+    for (let i = -8; i <= 0; i++) { const d = etToday(i); const wd = new Date(d + 'T12:00:00Z').getUTCDay(); if (wd >= 2 && wd <= 5) probes.push(d); }
+    const votes = {};
+    for (const p of probes.slice(-4)) { const o = offsetOf(p, await nasdaqRaw(p).catch(() => [])); if (o !== null) votes[o] = (votes[o] || 0) + 1; }
+    const best = Object.entries(votes).sort((x, y) => y[1] - x[1])[0];
+    const sure = !!best && best[1] >= 2;
+    const out = { s: sure ? Number(best[0]) : (c?.s ?? 0), sure, at: Date.now(), votes };
+    if (sure) { shiftMem = out; await setJSON('econ/shift', out).catch(() => {}); }
+    return out;
+  })().finally(() => { shiftP = null; });
+  return shiftP;
 }
 
 /** 하루치 미국 지표 (ET 날짜 YYYY-MM-DD) */
 export async function nasdaqDay(date) {
-  const key = `econ/day2/${date}`;
+  const key = `econ/day3/${date}`;
   const c = await getJSON(key);
   const today = etToday(0);
   const ttl = date < today ? 12 * 3600e3 : date === today ? 60e3 : 3 * 3600e3;
   if (c && c.asia && Date.now() - c.at < ttl) return c.list;
   try {
-    const sh = await nasdaqShift().catch(() => 0);
+    const shf = await nasdaqShift().catch(() => ({ s: 0, sure: false }));
+    const sh = shf.s;
     const rows = await nasdaqRaw(addD(date, -sh)); // 응답이 하루 밀려 있으면 다음 날짜로 요청해서 그날 것을 받음
     const list = rows.filter((x) => /United States/i.test(x.country || '')).map((x) => {
       const name = clean(x.eventName);
@@ -135,7 +140,8 @@ export async function nasdaqDay(date) {
     });
     // 한국·중국·일본 지표도 같이 보관 (내일 일정용)
     const asia = rows.filter((x) => /Korea|China|Japan/i.test(x.country || '')).map((x) => ({ country: /Korea/i.test(x.country) ? 'KR' : /China/i.test(x.country) ? 'CN' : 'JP', name: clean(x.eventName), ms: etMs(date, x.gmt), actual: clean(x.actual) || null, cons: clean(x.consensus) || null, prev: clean(x.previous) || null }));
-    await setJSON(key, { at: Date.now(), list, asia, shift: sh }).catch(() => {});
+    // 날짜 보정이 확인 안 된 상태면 5분만 쓰고 다시 받음
+    await setJSON(key, { at: shf.sure ? Date.now() : Date.now() - ttl + 5 * 60e3, list, asia, shift: sh }).catch(() => {});
     return list;
   } catch (e) {
     if (c) return c.list;
