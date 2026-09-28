@@ -75,6 +75,9 @@ export default async () => {
     try { return [k, await fn(dir, 10)]; } catch (e) { errors.push(`${k}: ${e.message}`); return [k, cached?.[k] || []]; }
   }));
   const out = { at: Date.now(), kr, us: usList, krSrc, usSrc, ...Object.fromEntries(mv), errors };
+  // 저장된 "오늘 움직임 이유" 붙이기 (3분마다 따로 만들어 둠)
+  const wm = (await getJSON('why/map')) || {};
+  for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const w = wm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (w?.r && Date.now() - w.at < 20 * 3600e3) { x.reason = w.r; x.rconf = w.c; } }
   if (kr.length || usList.length) await setJSON('popular/v2', out).catch(() => {});
   return json({ ok: true, ...out }, { cdnSeconds: 60, swr: 120 });
 };

@@ -28,6 +28,8 @@ import * as track from './functions/track.mjs';
 import * as admin from './functions/admin.mjs';
 import * as item from './functions/item.mjs';
 import * as archive from './functions/archive.mjs';
+import * as why from './functions/why.mjs';
+import { whyWatch } from './lib/why.mjs';
 import { renderItemPage, sitemap } from './lib/page.mjs';
 import { renderOgImage } from './lib/og.mjs';
 import secWatch from './functions/sec-watch.mjs';
@@ -35,7 +37,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -120,7 +122,14 @@ export default {
     const now = new Date(event.scheduledTime || Date.now());
     const min = now.getUTCMinutes();
     if (cron.startsWith('*/3')) {
-      if (busy('news', now) || min % 10 <= 2) ctx.waitUntil(newsWatch({ mode: 'maint' })); // 번역·AI·고장 감시
+      const jobs3 = [];
+      if (busy('news', now) || min % 10 <= 2) jobs3.push(newsWatch({ mode: 'maint' })); // 번역·AI·고장 감시
+      // 인기·상승·하락 종목의 "오늘 움직임 이유" (한국·미국 장 시간엔 3분마다, 그 외엔 30분마다)
+      const krz = zoned(now, 'Asia/Seoul'), usz = zoned(now, 'America/New_York');
+      const krOpen = !['Sat', 'Sun'].includes(krz.wd) && krz.m >= 8 * 60 + 50 && krz.m <= 16 * 60;
+      const usOpen = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 4 * 60 && usz.m <= 20 * 60;
+      if (krOpen || usOpen || min % 30 < 3) jobs3.push(whyWatch().then((r) => console.log('why', JSON.stringify(r))).catch((e) => console.warn('why', e.message)));
+      if (jobs3.length) ctx.waitUntil(Promise.allSettled(jobs3));
       return;
     }
     // 매분: SEC·DART를 함께 (한가한 시간엔 각각 10분에 한 번)

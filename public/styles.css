@@ -998,3 +998,27 @@ button.ec-cell:hover { transform: translateY(-2px); border-color: rgba(160,140,2
 .pop-kind button.k-down.on { background: linear-gradient(135deg, rgba(76,157,255,.6), rgba(76,157,255,.35)); box-shadow: 0 2px 10px rgba(76,157,255,.25); }
 .pop-kind.big { max-width: 420px; margin: 0 0 1rem; }
 .pop-kind.big button { height: 2.2rem; font-size: .88rem; }
+
+/* ── v23: 오늘 주가 움직임 이유 ── */
+.rank .nm small.rs { font-family: var(--sans); color: #c9bfff; font-size: .72rem; }
+.rank .why.rwhy { display: flex; align-items: baseline; gap: .4rem; color: var(--text2); font-size: .8rem; }
+.rank .why.rwhy i { font-style: normal; flex: none; font-size: .62rem; font-weight: 800; padding: .08rem .4rem; border-radius: 6px; color: #d9d0ff; background: rgba(139,108,255,.22); }
+.rank .why.rwhy.none { color: var(--faint); }
+.why-box h4 .mono { font-size: .9rem; margin-left: .3rem; }
+.why-reason { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; padding: .75rem .9rem; border-radius: 12px; background: linear-gradient(135deg, rgba(139,108,255,.16), rgba(79,125,255,.08)); border: 1px solid rgba(160,140,255,.28); margin-bottom: .6rem; }
+.why-reason b { font-size: 1rem; color: #fff; }
+.why-reason em { font-style: normal; font-size: .72rem; color: var(--muted); margin-left: auto; }
+.why-reason.low { background: rgba(255,255,255,.03); border-color: var(--line); }
+.why-reason.low b { color: var(--text2); font-weight: 600; font-size: .92rem; }
+.why-hint { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .6rem; }
+.why-hint span { font-size: .76rem; padding: .2rem .55rem; border-radius: 999px; background: var(--gold-soft); color: var(--gold); font-weight: 700; }
+.why-news { list-style: none; margin: 0; padding: 0; display: grid; gap: .1rem; }
+.why-news li { padding: .45rem .2rem; border-bottom: 1px solid var(--line); }
+.why-news li:last-child { border-bottom: 0; }
+.why-news a { color: var(--text); text-decoration: none; font-size: .9rem; font-weight: 600; line-height: 1.45; }
+.why-news a:hover { color: #b9a8ff; text-decoration: underline; }
+.why-news li.used a::before { content: '근거'; font-size: .62rem; font-weight: 800; padding: .05rem .35rem; border-radius: 5px; background: rgba(139,108,255,.25); color: #d9d0ff; margin-right: .4rem; vertical-align: 1px; }
+.why-news small { display: block; font-size: .72rem; color: var(--faint); margin-top: .15rem; }
+.why-box h4 > span { white-space: nowrap; }
+@media (max-width: 720px) { .why-box h4 small { display: none; } .why-reason b { font-size: .95rem; } }
+.why-reason b, .why-news a, .rank .why.rwhy { word-break: keep-all; }

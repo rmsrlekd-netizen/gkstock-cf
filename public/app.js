@@ -663,7 +663,11 @@
     const sub = x.market === 'KR' ? x.ticker : x.name || '';
     const sec = sectorOf(x.market, x.ticker);
     const px = x.price != null ? (x.market === 'KR' ? `${fmtInt(x.price)}원` : `$${fmtPx(x.price)}`) : '';
-    return `<li data-open-co="${esc(x.market)}|${esc(x.ticker)}|${esc(x.name || '')}"><span class="rk">${i + 1}</span>${logoHTML(x.market, x.ticker, x.name, big ? 'md' : 'sm')}<span class="nm"><b>${esc(label)}</b><small>${esc(sub)}${sec ? ' · ' + esc(sec) : ''}</small></span><span class="px">${px ? `<b>${px}</b>` : ''}${x.pct != null ? `<em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em>` : ''}</span>${big && x.why ? `<span class="why">${esc(x.why)}</span>` : ''}</li>`;
+    // 오늘 움직임 이유(AI 추정): 오른쪽 작은 목록에선 종목코드 줄 대신, 큰 목록에선 아래 줄에
+    const rs = x.reason && !/^뚜렷한 개별 뉴스 없음/.test(x.reason) ? x.reason : null;
+    const subHTML = !big && rs ? `<small class="rs" title="AI 추정 · ${esc(x.reason)}">${esc(rs)}</small>` : `<small>${esc(sub)}${sec ? ' · ' + esc(sec) : ''}</small>`;
+    const whyHTML = big && x.reason ? `<span class="why rwhy ${rs ? '' : 'none'}"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.why ? `<span class="why">${esc(x.why)}</span>` : '';
+    return `<li data-open-co="${esc(x.market)}|${esc(x.ticker)}|${esc(x.name || '')}"><span class="rk">${i + 1}</span>${logoHTML(x.market, x.ticker, x.name, big ? 'md' : 'sm')}<span class="nm"><b>${esc(label)}</b>${subHTML}</span><span class="px">${px ? `<b>${px}</b>` : ''}${x.pct != null ? `<em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em>` : ''}</span>${whyHTML}</li>`;
   }
   // 인기 / 상승 / 하락 × 국내 / 미국
   const KIND_NAME = { pop: '인기', up: '상승', down: '하락' };
@@ -1525,14 +1529,39 @@
     const on = inWatch(m, t), sec = sectorOf(m, t);
     const n = { market: m, ticker: t, corpCode: c.corpCode, name: c.name, exchange: c.exchange };
     $('#coBody').innerHTML = `<div class="co-hero">${logoHTML(m, t, c.name, 'lg')}<div><h3>${esc(c.name)}</h3><div class="dp-meta"><span class="mk ${m === 'KR' ? 'kr' : 'us'}">${m === 'KR' ? '한국' : '미국'}</span><span class="mono">${esc(t)}</span>${c.exchange ? `<span>${esc(exShort(c.exchange))}</span>` : ''}${sec ? `<span class="sector">${esc(sec)}</span>` : ''}<button class="link" data-star="${esc(m)}|${esc(t)}|${esc(c.name)}">${on ? '★ 관심종목' : '☆ 관심종목 추가'}</button></div></div><div class="px" id="coPx"></div></div>
+      <div id="coWhy"></div>
       <div class="co-grid"><div><div id="coInfo">${coPane(n, null)}</div><div class="box"><h4>공시·보도자료 전체 기록 <small id="coRecentN"></small></h4><div id="coRecent"></div></div></div>
       <div><div id="coFlows">${stockHTML(m, null)}</div><div class="links">${coLinks(c)}</div></div></div>`;
     renderCoRecent();
+    loadWhy(c);
     fetchQuotes([wkey(m, t)]).then(() => { const q = quoteOf(m, t); if (S.coCur === c && $('#coPx')) $('#coPx').innerHTML = q ? `<b>${pxStr({ ...q, market: m })}</b><span class="${dirCls(q.pct)} mono">${q.pct > 0 ? '▲' : q.pct < 0 ? '▼' : ''} ${fmtPct(q.pct)}</span>` : ''; });
     const url = coUrl(m, t, c.corpCode, c.exchange);
     if (url) fetchCo(url).then((d) => { if (S.coCur === c) $('#coInfo').innerHTML = coPane(n, d); });
     else $('#coInfo').innerHTML = coPane(n, null);
     fetchStock(stockUrl(m, t, c.corpCode)).then((d) => { if (S.coCur === c) $('#coFlows').innerHTML = stockHTML(m, d); });
+  }
+  // 오늘 주가 움직임 이유 (공시가 없어도 뉴스로)
+  async function loadWhy(c) {
+    const box = () => (S.coCur === c ? $('#coWhy') : null);
+    if (box()) box().innerHTML = `<div class="box why-box"><h4>오늘 주가 움직임 <small>뉴스 · AI 추정</small></h4><div class="loading"><span class="spin"></span>관련 뉴스를 찾는 중…</div></div>`;
+    let d;
+    try { d = await getJSON(`/api/why?mk=${c.m}&t=${encodeURIComponent(c.t)}&name=${encodeURIComponent(c.name || '')}`, {}); } catch (e) { d = { error: e.message }; }
+    if (!box()) return;
+    box().innerHTML = whyHTML(d, c);
+  }
+  function whyHTML(d, c) {
+    if (d.error) return `<div class="box why-box"><h4>오늘 주가 움직임</h4><p class="muted" style="margin:0">관련 뉴스를 불러오지 못했습니다.</p></div>`;
+    const news = d.news || [];
+    const used = new Set((d.basis || []).map((n) => n - 1));
+    const hint = [d.peers?.group?.length ? `같은 그룹 동반 ${d.pct >= 0 ? '상승' : '하락'}: ${d.peers.group.join(', ')}` : '', d.peers?.sector ? `같은 업종(${d.peers.sector.name}) ${d.peers.sector.n}개 종목 동반 ${d.pct >= 0 ? '상승' : '하락'}` : ''].filter(Boolean);
+    const pct = d.pct != null ? `<span class="${dirCls(d.pct)} mono">${d.pct > 0 ? '▲' : d.pct < 0 ? '▼' : ''} ${fmtPct(d.pct)}</span>` : '';
+    const reason = d.reason
+      ? `<div class="why-reason ${d.conf === '낮음' ? 'low' : ''}"><span class="ai-pill">AI 추정</span><b>${esc(d.reason)}</b>${d.conf ? `<em>신뢰도 ${esc(d.conf)}</em>` : ''}</div>`
+      : `<div class="why-reason low"><b>${d.pct != null && Math.abs(d.pct) < 1 ? '오늘은 큰 움직임이 없습니다.' : news.length ? '아래 최근 뉴스를 참고하세요.' : '관련 뉴스를 찾지 못했습니다.'}</b></div>`;
+    return `<div class="box why-box"><h4><span>오늘 주가 움직임 ${pct}</span><small>공시 외 뉴스 · 동반 움직임 기준</small></h4>
+      ${reason}${hint.length ? `<div class="why-hint">${hint.map((h) => `<span>${esc(h)}</span>`).join('')}</div>` : ''}
+      ${news.length ? `<ul class="why-news">${news.slice(0, 6).map((x, i) => `<li class="${used.has(i) ? 'used' : ''}"><a href="${esc(x.url || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><small>${esc(x.src || '')} · ${rel(Date.parse(x.at))}</small></li>`).join('')}</ul>` : ''}
+      <p class="note">뉴스 제목과 동반 움직임을 바탕으로 AI가 추정한 내용입니다. 실제 원인과 다를 수 있으니 원문 기사를 확인하세요.</p></div>`;
   }
   function coLinks(c) {
     if (c.m === 'KR') return `<a class="btn" href="https://finance.naver.com/item/main.naver?code=${esc(c.t)}" target="_blank" rel="noopener">네이버 증권 ↗</a><a class="btn" href="https://dart.fss.or.kr/dsab007/main.do?option=corp&textCrpNm=${encodeURIComponent(c.name || '')}" target="_blank" rel="noopener">DART 공시 ↗</a>`;
