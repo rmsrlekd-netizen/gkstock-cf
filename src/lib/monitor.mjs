@@ -58,7 +58,7 @@ async function checks() {
   const sh = await getJSON('news/srchealth');
   if (sh) {
     const NM = { gnw: 'GlobeNewswire', prn: 'PR Newswire', bw: 'Business Wire', aw: 'ACCESS Newswire', nw: '뉴스와이어', prnd: 'PRN 직접' };
-    const STALL = { gnw: 3, prn: 3, bw: 4, aw: 8, nw: 12 }; // 시간
+    const STALL = { gnw: 3, prn: 3, bw: 4, aw: 8 }; // 시간 (뉴스와이어는 미국 상장사 글만 골라 받아서 하루 몇 건뿐 — 뜸한 게 정상이라 '연속 실패'만 봄)
     const usDay = weekday(us) && us.m >= 7 * 60 && us.m <= 20 * 60;
     const bad = [], info = [];
     for (const [k, h] of Object.entries(sh)) {

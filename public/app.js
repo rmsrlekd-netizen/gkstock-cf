@@ -687,7 +687,7 @@
     p0 = splitAdj(p0, q);
     // 미국 프리·애프터 시간엔 시간외 가격이 '지금 가격'
     const cur = q.live ?? q.price;
-    let pct = q.livePct ?? q.pct, lbl = q.session ? (q.session === 'AFTER' ? '애프터 ' : '프리 ') : '';
+    let pct = q.livePct ?? q.pct, lbl = q.session ? (q.session === 'AFTER' ? '애프터 ' : '프리 ') : '오늘 ';
     if (p0 > 0) { pct = ((cur - p0) / p0) * 100; lbl = '발표후 '; }
     if (pct === null || pct === undefined || !Number.isFinite(pct)) return '';
     const big = Math.abs(pct) >= 5 ? ' big' : '';
@@ -698,6 +698,8 @@
   const qchip = (n) => {
     if (!n.ticker) return '';
     const p0 = p0Of(n);
+    // 발표 시점 주가 기록이 없는 오래된 공시(하루 넘은 것)는 표시 안 함 — 오늘 등락을 붙이면 모든 공시가 같은 숫자로 보여 헷갈림
+    if (!p0 && Date.now() - n.ms > 24 * 3600e3) return '';
     const tip = p0 ? `발표 시점 ${n.market === 'KR' ? fmtInt(p0) + '원' : '$' + fmtPx(p0)} 대비 현재 주가 등락 (1분마다 갱신)` : '오늘 주가 등락률 (1분마다 갱신)';
     return `<span class="qchip" data-q="${esc(wkey(n.market, n.ticker))}"${p0 ? ` data-p0="${p0}"` : ''} title="${esc(tip)}">${chipKeyMode ? '' : qchipInner(n.market, n.ticker, p0)}</span>`;
   };
