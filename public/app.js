@@ -1657,7 +1657,7 @@
     for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== v;
     $$('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
     if (hash !== false) { const u = '/' + (hash || '#' + v); if (location.pathname !== '/') history.pushState(null, '', u); else history.replaceState(null, '', u); }
-    if (feed) { S.type = v === 'home' ? S.homeType || 'PR' : FEED_VIEWS[v]; S.limit = 80; renderAll(); }
+    if (feed) { S.type = v === 'home' ? S.homeType || 'ALL' : FEED_VIEWS[v]; S.limit = 80; renderAll(); }
     if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 미국·한국 실시간 공시·보도자료'; }
     if (v === 'market') renderMarket();
     if (v === 'earnings') loadEarnings();
