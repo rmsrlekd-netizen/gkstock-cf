@@ -87,7 +87,12 @@ export async function etfQuotes(symbols) {
 
 export async function usThemes(getQuotes) {
   const etfs = [...US_SECTORS.map((x) => x[0]), ...US_THEMES.map((x) => x[0])];
-  const q = await etfQuotes(etfs).catch(() => ({}));
+  // ETF 등락률도 네이버 실시간 시세(정규장 하루 등락) 우선 — Nasdaq 관심목록은 장 마감 뒤 '시간외 등락'이 섞여 나옴
+  const nq = await getQuotes(etfs.map((t) => 'US:' + t)).catch(() => ({}));
+  const q = {};
+  for (const t of etfs) { const v = nq['US:' + t]; if (v?.price != null && v.pct != null) q[t] = { price: v.price, pct: v.pct }; }
+  const missE = etfs.filter((t) => !q[t]);
+  if (missE.length) Object.assign(q, Object.fromEntries(Object.entries(await etfQuotes(missE).catch(() => ({}))).filter(([t]) => missE.includes(t))));
   const stocks = [...new Set(US_THEMES.flatMap((x) => x[2]))];
   const sq = await getQuotes(stocks.map((t) => 'US:' + t)).catch(() => ({}));
   const sectors = US_SECTORS.map(([t, name]) => ({ t, name, ...(q[t] || {}) })).filter((x) => x.pct != null).sort((a, b) => b.pct - a.pct);

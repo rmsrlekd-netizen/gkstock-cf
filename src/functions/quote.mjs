@@ -62,7 +62,7 @@ export async function getQuotes(list) {
     const exOf = new Map();
     if (map) for (const v of map.values()) if (v.ticker) exOf.set(String(v.ticker).toUpperCase(), v.exchange);
     const rc = {};
-    for (const t of needUs) { const r = reutersOf(t, exOf.get(t)); if (r) rc[t] = r; }
+    for (const t of needUs) rc[t] = reutersOf(t, exOf.get(t)) || `${t.replace('-', '.')}.O`; // 거래소를 모르면(ETF 등) 나스닥으로 먼저, 안 되면 다른 접미사로 자동 재시도
     let q = {};
     try { if (Object.keys(rc).length) q = await naverUsQuotes(Object.values(rc)); } catch {}
     const rest = needUs.filter((t) => !(rc[t] && q[rc[t]]?.price != null));

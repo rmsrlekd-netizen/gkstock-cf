@@ -2321,7 +2321,7 @@
       })()}
       <div class="card"><h3>고장 자동 감시 <small class="muted">${d.monitor?.at ? fmtDT(new Date(d.monitor.at)).full + ' 점검 · 약 9분마다 자동 점검' : '아직 점검 기록 없음'}</small></h3>
         <table class="tbl adm-mon"><tr><th>항목</th><th>상태</th><th>내용</th></tr>${mon.map((c) => `<tr><td>${esc(c.name)}</td><td><span class="mon ${c.ok ? 'ok' : c.fails >= 2 ? 'bad' : 'warn'}">${c.ok ? '정상' : c.fails >= 2 ? '이상' : '확인 중'}</span></td><td>${esc(c.msg)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">점검 기록이 없습니다. 아래 "지금 점검"을 눌러보세요.</td></tr>'}</table>
-        <div class="chips" style="margin-top:.8rem"><button class="btn sm" data-admin-act="monitor">지금 점검</button><button class="btn sm" data-admin-act="tgfind">텔레그램 채팅 ID 찾기</button><button class="btn sm" data-admin-act="tgtest">텔레그램 테스트 알림</button></div>
+        <div class="chips" style="margin-top:.8rem"><button class="btn sm" data-admin-act="monitor">지금 점검</button><button class="btn sm" data-admin-act="issKR">주요 이슈 다시 만들기 (국장)</button><button class="btn sm" data-admin-act="issUS">주요 이슈 다시 만들기 (미장)</button><button class="btn sm" data-admin-act="tgfind">텔레그램 채팅 ID 찾기</button><button class="btn sm" data-admin-act="tgtest">텔레그램 테스트 알림</button></div>
         <p class="note">텔레그램 알림: ${d.telegram?.token ? '봇 토큰 등록됨' : '봇 토큰(TELEGRAM_BOT_TOKEN) 미등록'} · ${d.telegram?.chat ? '채팅 ID 등록됨' : '채팅 ID(TELEGRAM_CHAT_ID) 미등록'}. 둘 다 등록하면 이상이 생길 때 텔레그램으로 알려줍니다.</p><p class="note" id="admMsg"></p></div>`;
   }
   async function adminAct(act) {
@@ -2330,6 +2330,15 @@
     try {
       if (act === 'refresh') return renderAdmin();
       if (act === 'monitor') { msg('점검 중… (10~20초)'); await getJSON(`/api/admin?key=${k}&monitor=run`, { cache: 'no-store' }); return renderAdmin(); }
+      if (act === 'issKR' || act === 'issUS') {
+        const mk = act.slice(3);
+        if (!confirm(`${mk === 'KR' ? '국장' : '미장'} 최신 "오늘 주요 이슈"를 지금 시세로 새로 써서 바꿀까요? (AI 1회 사용, 1~2분)`)) return;
+        msg('AI가 새로 쓰는 중… (1~2분, 창을 닫지 마세요)');
+        const j = await getJSON(`/api/issues?mk=${mk}&run=1&key=${k}`, { cache: 'no-store' });
+        if (!j.ok) return msg('실패: ' + (j.error || ''));
+        S.iss = S.iss || {}; S.iss[mk] = null;
+        msg(`완료: "${j.ed.headline || ''}" 로 바뀌었습니다. 메인 화면은 1~2분 안에 새 내용으로 보입니다.`); return;
+      }
       if (act === 'tgfind') { const j = await getJSON(`/api/admin?key=${k}&tg=find`, { cache: 'no-store' }); msg(j.error || (j.chats?.length ? '찾은 채팅 ID: ' + j.chats.map((c) => `${c.id} (${c.name || ''})`).join(', ') + ' → 이 숫자를 Cloudflare 변수 TELEGRAM_CHAT_ID로 등록하세요.' : j.hint)); return; }
       if (act === 'tgtest') { const j = await getJSON(`/api/admin?key=${k}&tg=test`, { cache: 'no-store' }); msg(j.ok ? '텔레그램으로 테스트 알림을 보냈습니다.' : '보내지 못했습니다. 봇 토큰과 채팅 ID를 확인하세요.'); }
     } catch (e) { msg(e.message); }

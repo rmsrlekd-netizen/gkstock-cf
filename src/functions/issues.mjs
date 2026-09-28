@@ -10,7 +10,9 @@ const J = (o, status = 200) => new Response(JSON.stringify(o), { status, headers
 async function makeNow(mk) {
   const s = dueSlot(mk, new Date(), { force: true });
   const idx = (await getJSON(`issues/idx/${mk}`)) || [];
-  const prev = idx[0] ? await getJSON(`issues/ed/${idx[0].id}`) : null;
+  // 같은 회차를 다시 만들 때(틀린 내용 교체)는 그 이전 회차와 비교
+  const pv = idx.find((x) => x.id !== s.id);
+  const prev = pv ? await getJSON(`issues/ed/${pv.id}`) : null;
   const ed = await buildEdition(mk, s, s.date, { prev, force: true });
   await saveEdition(ed);
   try { await (await import('../lib/og.mjs')).issueOgPng(null, ed.id, ed); } catch {}
@@ -24,7 +26,7 @@ export default async (req, ctx) => {
     if (!parseId(id)) return json({ ok: false, error: '잘못된 주소' }, { status: 400, cdnSeconds: 60 });
     const ed = await getJSON(`issues/ed/${id}`);
     if (!ed) return json({ ok: false, error: '없는 회차입니다' }, { status: 404, cdnSeconds: 30 });
-    return json({ ok: true, ed }, { cdnSeconds: 3600, swr: 3600 });
+    return json({ ok: true, ed }, { cdnSeconds: 120, swr: 300 });
   }
   const mk = u.searchParams.get('mk') === 'US' ? 'US' : 'KR';
   if (u.searchParams.get('run') === '1') {

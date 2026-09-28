@@ -134,9 +134,11 @@ export async function naverUsQuotes(reuters) {
   const miss = reuters.filter((rc) => !out[rc]);
   if (miss.length) {
     const alt = new Map();
-    for (const rc of miss.slice(0, 20)) for (const c of [tk(rc), tk(rc) + '.N', tk(rc) + '.K', tk(rc) + '.A', tk(rc) + '.O']) if (c !== rc) alt.set(c, rc);
+    for (const rc of miss.slice(0, 30)) for (const c of [tk(rc), tk(rc) + '.N', tk(rc) + '.K', tk(rc) + '.A', tk(rc) + '.O']) if (c !== rc) alt.set(c, rc);
     try {
-      const list = await fetchSet([...alt.keys()]);
+      const ks = [...alt.keys()], parts = [];
+      for (let i = 0; i < ks.length; i += 40) parts.push(ks.slice(i, i + 40));
+      const list = (await Promise.all(parts.map((c) => fetchSet(c).catch(() => [])))).flat();
       for (const rc of miss) {
         const x = list.find((d) => alt.get(d.reutersCode) === rc) || list.find((d) => String(d.symbolCode || '').toUpperCase() === tk(rc));
         if (x) out[rc] = { ...parseQuote(x), cur: 'USD', symbol: x.symbolCode || null, reuters: x.reutersCode };
