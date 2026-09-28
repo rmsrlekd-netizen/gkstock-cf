@@ -118,6 +118,38 @@ export function reutersOf(ticker, exchange) {
   if (e.includes('NASDAQ')) return `${t}.O`;
   if (e.includes('NYSE') && (e.includes('AMERICAN') || e.includes('MKT'))) return `${t}.A`;
   if (e.includes('ARCA')) return `${t}.K`;
+  if (e === 'AMEX') return `${t}.A`;
   if (e.includes('NYSE')) return `${t}.N`;
   return null;
+}
+
+/** 미국 시간외 상승·하락 상위 — 트레이딩뷰 전체 종목 스캐너 (미국 상장 주식 전부, 동전주 포함)
+ *  이름은 네이버 한글명으로 바꾸고, 등락률은 네이버 시간외 시세가 있으면 그걸로 맞춤 */
+export async function tvUsExtMovers(session, n = 10) {
+  const pre = session !== 'AFTER';
+  const chg = pre ? 'premarket_change' : 'postmarket_change', px = pre ? 'premarket_close' : 'postmarket_close', vol = pre ? 'premarket_volume' : 'postmarket_volume';
+  const scan = async (order) => {
+    const body = JSON.stringify({ columns: ['name', 'description', chg, px, 'close', 'change', 'market_cap_basic', vol, 'exchange'], filter: [{ left: 'type', operation: 'equal', right: 'stock' }, { left: vol, operation: 'greater', right: 5000 }, { left: chg, operation: order === 'desc' ? 'greater' : 'less', right: 0 }], sort: { sortBy: chg, sortOrder: order }, range: [0, n + 5] });
+    const opt = { method: 'POST', headers: { 'content-type': 'application/json', Origin: 'https://www.tradingview.com', Referer: 'https://www.tradingview.com/' }, body };
+    let r = await fetchWithTimeout('https://scanner.tradingview.com/america/scan', opt, 8000).catch(() => null);
+    if (!r?.ok && process.env.KR_RELAY_URL) r = await fetchWithTimeout('https://scanner.tradingview.com/america/scan', { ...opt, relay: true }, 9000);
+    if (!r?.ok) throw new Error('트레이딩뷰 HTTP ' + (r?.status || '오류'));
+    const j = await r.json();
+    return (j.data || []).map((x) => { const [t, desc, c, p, close, regChg, cap, v, ex] = x.d; return { ticker: String(t).replace('/', '.'), name: desc, pct: Math.round(c * 100) / 100, price: p, regPrice: close, regPct: regChg != null ? Math.round(regChg * 100) / 100 : null, cap, vol: v, ex }; })
+      .filter((x) => /^[A-Z][A-Z.]{0,5}$/.test(x.ticker) && x.pct != null && x.price != null);
+  };
+  const [up, down] = await Promise.all([scan('desc'), scan('asc')]);
+  if (!up.length && !down.length) throw new Error('트레이딩뷰 시간외 데이터 없음');
+  // 한글 이름·네이버 시간외 시세
+  const all = [...up, ...down];
+  const rc = Object.fromEntries(all.map((x) => [x.ticker, reutersOf(x.ticker, x.ex)]).filter((a) => a[1]));
+  let q = {};
+  try { q = await naverUsQuotes([...new Set(Object.values(rc))]); } catch {}
+  const fmt = (x) => {
+    const nq = q[rc[x.ticker]];
+    const e = nq?.ext && nq.ext.session === (pre ? 'PRE' : 'AFTER') ? nq.ext : null;
+    const capU = x.cap ? x.cap / 1e8 : null;
+    return { market: 'US', ticker: x.ticker, reuters: rc[x.ticker] || null, name: nq?.nameKo || x.name, price: e?.price ?? x.price, pct: e?.pct ?? x.pct, regPrice: x.regPrice, regPct: nq?.pct ?? x.regPct, session: pre ? 'PRE' : 'AFTER', cur: 'USD', mcapText: capU != null ? `${capU >= 10 ? Math.round(capU).toLocaleString('en-US') : capU.toFixed(2)}억 USD` : null, status: pre ? 'PRE' : 'AFTER' };
+  };
+  return { up: up.slice(0, n).map(fmt).sort((a, b) => b.pct - a.pct), down: down.slice(0, n).map(fmt).sort((a, b) => a.pct - b.pct), session: pre ? 'PRE' : 'AFTER', src: 'tv' };
 }

@@ -687,7 +687,7 @@
   }
   function popSrcText(p, mk, kind = S.popKind) {
     if (kind === 'pop') return mk === 'KR' ? p?.krSrc || '네이버 증권 검색 상위' : p?.usSrc || '';
-    if (mk === 'US' && p?.usSession) return `미국 ${p.usSession === 'AFTER' ? '애프터마켓' : '프리마켓'} ${kind === 'up' ? '상승률' : '하락률'} 상위 · 시총 상위 1,500 + 전일 급등락 종목 기준`;
+    if (mk === 'US' && p?.usSession) return `미국 ${p.usSession === 'AFTER' ? '애프터마켓' : '프리마켓'} ${kind === 'up' ? '상승률' : '하락률'} 상위 · ${p.usExt?.src === 'naver' ? '시총 상위 1,500 + 전일 급등락 종목 기준' : '미국 상장 주식 전체 (시간외 거래량 5천 주 이상)'}`;
     return `네이버 증권 ${kind === 'up' ? '상승률' : '하락률'} 상위 · ${mk === 'KR' ? '코스피·코스닥 전체' : '미국 전체'}`;
   }
   function renderPopular() {

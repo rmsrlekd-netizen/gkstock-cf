@@ -4,7 +4,7 @@
 import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { us as usQuote } from './quote.mjs';
-import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers } from '../lib/naver.mjs';
+import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers } from '../lib/naver.mjs';
 
 // 미국 시간외(프리마켓 04:00~09:30 · 애프터마켓 16:00~20:00, 뉴욕시간 평일)인지
 function usExtSession(now = new Date()) {
@@ -86,8 +86,14 @@ export default async () => {
   // 미국 프리마켓·애프터마켓 시간엔 상승·하락을 시간외 등락률 기준으로 (3분마다 새로 계산)
   const sess = usExtSession();
   if (sess) {
-    let ext = cached?.usExt && cached.usExt.session === sess && Date.now() - cached.usExt.at < 3 * 60e3 ? cached.usExt : null;
-    if (!ext) { try { ext = { ...(await naverUsExtMovers(10)), session: sess, at: Date.now() }; } catch (e) { errors.push('usExt: ' + e.message); } }
+    let ext = cached?.usExt && cached.usExt.session === sess && Date.now() - cached.usExt.at < 2 * 60e3 ? cached.usExt : null;
+    if (!ext) {
+      // 1순위: 트레이딩뷰 전체 종목 스캔 (소형주까지 전부) → 실패하면 네이버 시총 상위 + 전일 급등락 종목으로 계산
+      try { ext = { ...(await tvUsExtMovers(sess, 10)), at: Date.now() }; } catch (e) {
+        errors.push('usExtTV: ' + e.message);
+        try { ext = { ...(await naverUsExtMovers(10)), session: sess, src: 'naver', at: Date.now() }; } catch (e2) { errors.push('usExt: ' + e2.message); }
+      }
+    }
     if (ext?.up?.length) { out.usExt = ext; out.usUp = ext.up; out.usDown = ext.down; out.usSession = sess; }
     // 인기 종목도 시간외 등락률을 함께 표시
     for (const x of usList) if (x.ext && x.ext.session === sess) { x.regPct = x.pct; x.regPrice = x.price; x.pct = x.ext.pct; x.price = x.ext.price ?? x.price; x.session = sess; }
