@@ -210,7 +210,7 @@ export async function saveEdition(ed) {
 }
 
 /** 크론(매분): 매시 정각 5분쯤 새 이슈가 있으면 새 회차를 만듦 (실패하면 4분 뒤 다시, 최대 3번) */
-export async function issuesWatch(now = new Date()) {
+export async function issuesWatch(now = new Date(), ctx = null) {
   const out = {};
   for (const mk of ['KR', 'US']) {
     const idx = (await getJSON(`issues/idx/${mk}`)) || [];
@@ -235,6 +235,8 @@ export async function issuesWatch(now = new Date()) {
       const ed = await buildEdition(mk, s, s.date, { prev, force: boot });
       await saveEdition(ed);
       out[mk] = ed.id;
+      // 카톡 공유 미리보기 이미지를 미리 그려 둠
+      try { await (await import('./og.mjs')).issueOgPng(ctx, ed.id, ed); } catch (e) { console.warn('issue-og', e.message); }
     } catch (e) {
       out[mk] = (e.skip ? 'skip: ' : 'error: ') + e.message;
       await setJSON(tk, { n: e.skip ? 9 : t.n + 1, at: Date.now(), err: String(e.message).slice(0, 200) }).catch(() => {});

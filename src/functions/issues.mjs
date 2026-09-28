@@ -13,6 +13,7 @@ async function makeNow(mk) {
   const prev = idx[0] ? await getJSON(`issues/ed/${idx[0].id}`) : null;
   const ed = await buildEdition(mk, s, s.date, { prev, force: true });
   await saveEdition(ed);
+  try { await (await import('../lib/og.mjs')).issueOgPng(null, ed.id, ed); } catch {}
   return ed;
 }
 

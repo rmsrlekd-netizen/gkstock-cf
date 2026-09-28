@@ -157,7 +157,7 @@ export default {
     const econBusy = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 7 * 60 && usz.m <= 16 * 60 + 30;
     if (econBusy || min % 30 === 0) jobs.push(econWatch().then(async (r) => { if (r.ai || econBusy) { const { econCalendar } = await import('./lib/econ.mjs'); const { setJSON } = await import('./lib/store.mjs'); await setJSON('econ/v1', await econCalendar()); } }).catch((e) => console.warn('econ', e.message)));
     // 오늘 주요 이슈: 회차 시각이 되면 AI가 새로 만듦 (한국 4회·미국 4회)
-    jobs.push(issuesWatch(now).then((r) => { if (Object.keys(r).length) console.log('issues', JSON.stringify(r)); }).catch((e) => console.warn('issues', e.message)));
+    jobs.push(issuesWatch(now, ctx).then((r) => { if (Object.keys(r).length) console.log('issues', JSON.stringify(r)); }).catch((e) => console.warn('issues', e.message)));
     if (jobs.length) ctx.waitUntil(Promise.allSettled(jobs));
   },
 };
