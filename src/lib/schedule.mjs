@@ -144,10 +144,11 @@ async function usIpo() {
 }
 
 // ───── 주요 일정 (정부·대통령·정책 발표, 기업 행사 등) — AI가 구글 검색으로 확인 ─────
-export async function newsEvents(mk, date, { force = false } = {}) {
+export async function newsEvents(mk, date, { force = false, maxAge = 3 * 3600e3 } = {}) {
   const key = `sched/events/${mk}/${date}`;
   const c = await getJSON(key);
-  if (c && !force && Date.now() - c.at < 3 * 3600e3) return c;
+  // 결과가 비었으면(검색 실패·형식 오류) 30분 뒤 다시
+  if (c && !force && Date.now() - c.at < (c.events?.length ? maxAge : 30 * 60e3)) return c;
   if (!hasAI() || (await aiPauseInfo())) return c || null;
   const d = new Date(date + 'T12:00:00Z');
   const md = `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일(${'일월화수목금토'[d.getUTCDay()]})`;
@@ -163,13 +164,18 @@ export async function newsEvents(mk, date, { force = false } = {}) {
 - time: "HH:MM" 한국시간 (모르면 null) / title: 30자 이내 / desc: 왜 중요한지 50자 이내 / tag: 정부·정책·중앙은행·국회·기업·지표·해외 중 하나 / stocks: 관련 종목·업종 이름 최대 3개 / imp: 1~3
 JSON만 출력: {"events":[{"time":null,"title":"","desc":"","tag":"","stocks":[""],"imp":2}]}`;
   try {
-    const { text, sources } = await askAIWeb(full, { maxTokens: 3000, timeout: 70000 });
+    let r;
+    try { r = await askAIWeb(full, { maxTokens: 6000, timeout: 90000 }); }
+    catch (e1) { if (/pause|쉬는/i.test(e1.message)) throw e1; r = await askAIWeb(full, { maxTokens: 6000, timeout: 90000 }); } // 한 번 더
+    const { text, sources } = r;
     const j = parseJSON(text);
     const events = (Array.isArray(j?.events) ? j.events : []).filter((x) => x && x.title).slice(0, 10).map((x) => ({
       kind: 'news', time: /^\d{1,2}:\d{2}$/.test(String(x.time || '')) ? String(x.time).padStart(5, '0') : null,
       title: clean(x.title).slice(0, 40), desc: clean(x.desc).slice(0, 80), tag: clean(x.tag).slice(0, 6) || '일정',
       stocks: (Array.isArray(x.stocks) ? x.stocks : []).map((y) => clean(y).slice(0, 14)).filter(Boolean).slice(0, 3), imp: [1, 2, 3].includes(Number(x.imp)) ? Number(x.imp) : 2,
     })).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1);
+    if (!events.length && c?.events?.length) { const keep = { ...c, at: Date.now() - maxAge + 30 * 60e3 }; await setJSON(key, keep); return keep; }
+    if (!events.length && !/"events"\s*:/.test(String(text))) throw new Error('AI 응답 형식 오류');
     const out = { at: Date.now(), date, events, sources };
     await setJSON(key, out);
     return out;
@@ -246,9 +252,16 @@ export async function scheduleWatch() {
     const prev = await getJSON(`sched/v1/${mk}`);
     if (prev && Date.now() - prev.at < 20 * 60e3 && prev.focus === scheduleDates(mk).focus) { res[mk] = 'fresh'; continue; }
     try {
-      const { focus, today } = scheduleDates(mk);
-      for (const dt of [...new Set([today, focus])]) if (isTradingDay(mk, dt)) await newsEvents(mk, dt).catch((e) => console.warn('events', mk, e.message));
+      const { focus, today, dates } = scheduleDates(mk);
+      // 오늘 + 다음 거래일까지 미리 찾아 둠 → 장 마감 뒤 날짜가 바뀌어도 바로 채워져 있음
+      const nextTd = dates.find((x) => x > today && isTradingDay(mk, x));
+      const evErr = [];
+      for (const dt of [...new Set([today, focus, nextTd].filter(Boolean))]) {
+        if (!isTradingDay(mk, dt)) continue;
+        await newsEvents(mk, dt, { maxAge: dt === focus ? 3 * 3600e3 : 6 * 3600e3 }).catch((e) => { evErr.push(`${dt.slice(5)} ${String(e.message || e).slice(0, 80)}`); });
+      }
       const s = await buildSchedule(mk);
+      if (evErr.length) s.errors.push('주요 일정: ' + evErr.join(' / '));
       const fd = s.days.find((x) => x.date === s.focus);
       // AI 요약이 없거나, 요약 뒤에 주요 일정이 새로 확인됐으면 다시
       if ((!s.ai || (fd?.evAt && s.ai.at < fd.evAt)) && hasAI() && !(await aiPauseInfo())) {

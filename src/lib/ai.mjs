@@ -382,11 +382,13 @@ export async function askAIWeb(prompt, { maxTokens = 3000, timeout = 60000 } = {
   const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest'].filter(Boolean))];
   const until = Date.now() + timeout;
   let lastErr;
-  for (const model of models) {
+  for (const model of models) for (const thinking of [true, false]) {
     if (until - Date.now() < 3000) break;
+    const gc = { maxOutputTokens: maxTokens, temperature: 0.1 };
+    if (thinking) gc.thinkingConfig = { thinkingBudget: 1024 }; // 생각이 길어져 답이 잘리는 것 방지 (안 받는 모델이면 빼고 다시)
     const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': googleKey() }, relay: geminiViaRelay,
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: maxTokens, temperature: 0.1 } }),
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: gc }),
     }, Math.max(3000, until - Date.now()));
     const body = await r.text();
     if (r.ok) {
@@ -396,12 +398,13 @@ export async function askAIWeb(prompt, { maxTokens = 3000, timeout = 60000 } = {
       const text = (c?.content?.parts || []).map((p) => p.text || '').join('');
       const sources = (c?.groundingMetadata?.groundingChunks || []).map((g) => g.web).filter(Boolean).map((w) => ({ title: w.title || '', uri: w.uri || '' })).slice(0, 12);
       if (text) return { text, sources };
-      lastErr = new Error('Gemini 빈 응답');
-      continue;
+      lastErr = new Error('Gemini 빈 응답' + (c?.finishReason ? ' (' + c.finishReason + ')' : ''));
+      break; // 다음 모델로
     }
     lastErr = new Error(`Gemini 검색 HTTP ${r.status} (${model}) ${body.slice(0, 200)}`);
     if (r.status === 402 || (r.status === 429 && BILLING_RE.test(body))) { await pauseAI(body); throw lastErr; }
     if (![404, 429, 500, 503, 400].includes(r.status)) throw lastErr;
+    if (!(thinking && r.status === 400)) break; // 400이면 생각 설정 빼고 같은 모델로 한 번 더, 그 외엔 다음 모델
   }
   throw lastErr || new Error('Gemini 검색 실패');
 }

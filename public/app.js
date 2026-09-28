@@ -1786,9 +1786,21 @@
     if (!url) return null;
     if (S.co.has(url)) return S.co.get(url);
     if (coPending.has(url)) return coPending.get(url);
-    const p = getJSON(url, {}).catch((e) => ({ error: e.message })).then((d) => { S.co.set(url, d); coPending.delete(url); return d; });
+    const p = getJSON(url, {}).catch((e) => ({ error: e.message })).then((d) => { S.co.set(url, d); coPending.delete(url); if (d && !d.error && d.src === 'US' && d.overviewRaw && !d.overviewKo) pollOvKo(url); return d; });
     coPending.set(url, p);
     return p;
+  }
+  // 영문 기업 소개는 서버에서 AI가 한국어로 옮기는 중 → 잠시 뒤 다시 받아서 화면의 소개 문단만 바꿔 끼움
+  function pollOvKo(url, i = 0) {
+    if (i >= 4) return;
+    setTimeout(async () => {
+      let d = null;
+      try { d = await getJSON(url + '&ko=' + Date.now(), { cache: 'no-store' }); } catch {}
+      if (!d?.overviewKo) return pollOvKo(url, i + 1);
+      const cur = S.co.get(url); if (cur && !cur.error) cur.overviewKo = d.overviewKo;
+      const ko = d.overviewKo.length > 600 ? d.overviewKo.slice(0, 598) + '…' : d.overviewKo;
+      $$('p.ov[data-co]').forEach((el) => { if (el.dataset.co === url) el.textContent = ko; });
+    }, [12, 20, 30, 45][i] * 1000);
   }
   function metricsHTML(d) {
     const f = d.fin || {}, r = d.ratios || {}, cur = d.currency;
@@ -1828,7 +1840,7 @@
     const ov = d.overviewKo || d.overviewRaw || '';
     const tags = [d.sectorKo || sectorOf(n.market, n.ticker) || d.sector, d.industry && !d.sectorKo ? d.industry : '', d.ceo ? `대표 ${d.ceo}` : '', d.founded ? `설립 ${d.founded}` : ''].filter(Boolean);
     return `<div class="box"><h4>${esc(d.name || n.name || n.ticker)} <small>${esc(d.products ? '주요 제품: ' + d.products : '')}</small></h4>
-      <p class="ov">${ov ? esc(ov.length > 600 ? ov.slice(0, 598) + '…' : ov) : '사업 개요 정보를 찾지 못했습니다.'}${!d.overviewKo && d.overviewRaw && d.src === 'US' ? ' <small class="muted">(영문 원문 · AI 분석 후 한국어로 바뀝니다)</small>' : ''}</p>
+      <p class="ov" data-co="${esc(coUrl(n.market, n.ticker, n.corpCode, n.exchange) || '')}">${ov ? esc(ov.length > 600 ? ov.slice(0, 598) + '…' : ov) : '사업 개요 정보를 찾지 못했습니다.'}${!d.overviewKo && d.overviewRaw && d.src === 'US' ? ' <small class="muted">(영문 원문 · 잠시 뒤 한국어로 바뀝니다)</small>' : ''}</p>
       <div class="co-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join('')}${d.homepage ? `<a class="link" href="${esc(d.homepage)}" target="_blank" rel="noopener">홈페이지 ↗</a>` : ''}</div></div>
       ${metrics ? `<div class="box"><h4>핵심 재무·투자지표</h4>${metricsHTML(d)}</div>` : ''}
       ${chart ? `<div class="box"><h4>차트 <small>${n.market === 'KR' ? '네이버 증권 일봉' : 'TradingView'}</small></h4>${chartHTML(n.market, n.ticker, n.exchange)}</div>` : ''}`;
