@@ -73,22 +73,24 @@ async function viaRoutes(name, routes) {
   if (!routeMem || Date.now() - routeAt > 5 * 60e3) { routeMem = (await getJSON('src/route')) || {}; routeAt = Date.now(); }
   const pref = Math.min(routeMem[name] ?? 0, routes.length - 1);
   const order = [pref, ...routes.map((_, i) => i).filter((i) => i !== pref)];
-  let lastErr;
+  const errs = [];
   for (const i of order) {
     try {
       const r = await routes[i]();
       if (!r || (Array.isArray(r) && !r.length)) throw new Error('빈 응답 (형식 변경 가능성)');
       if (routeMem[name] !== i) { routeMem[name] = i; await setJSON('src/route', routeMem).catch(() => {}); }
       return r;
-    } catch (e) { lastErr = e; }
+    } catch (e) { errs.push(`${routes[i].label || '경로' + i}: ${e.message}`); }
   }
-  throw lastErr || new Error(name + ' 모든 경로 실패');
+  // 어느 경로에서 어떻게 실패했는지 전부 남김 (원인 파악용)
+  throw new Error(errs.join(' / ') || name + ' 모든 경로 실패');
 }
+const L = (label, fn) => Object.assign(fn, { label });
 const hasRelay = () => !!process.env.KR_RELAY_URL;
 const rssRoutes = (url, ms, maxBytes, headers = H) => [
-  () => rss(url, ms, { headers }, maxBytes),
-  ...(hasRelay() ? [() => rss(url, ms + 5000, { headers, relay: true }, maxBytes)] : []),
-  () => rss(url, ms, { headers: headers === H ? FEED_H : H }, maxBytes), // 다른 이름표(User-Agent)로 한 번 더
+  L('직접', () => rss(url, ms, { headers }, maxBytes)),
+  ...(hasRelay() ? [L('중계', () => rss(url, ms + 5000, { headers, relay: true }, maxBytes))] : []),
+  L('우회', () => rss(url, ms, { headers: headers === H ? FEED_H : H }, maxBytes)), // 다른 이름표(User-Agent)로 한 번 더
 ];
 
 // ───────── 보도자료 ─────────
@@ -106,9 +108,13 @@ const GNW_FEEDS = [
 ].map((f) => 'https://www.globenewswire.com/RssFeed/' + f);
 // GlobeNewswire는 Cloudflare 서버에서 직접 접속하면 응답이 멈추는 경우가 많아 중계 서버 경로를 먼저 시도
 async function gnwRss(url) {
-  const routes = rssRoutes(url, 10000, 900000, FEED_H);
-  if (hasRelay()) routes.unshift(routes.splice(1, 1)[0]);
-  return viaRoutes('gnw', routes);
+  // 중계(일반 브라우저 이름표) → 중계(피드 리더 이름표) → 직접 → 직접(다른 이름표)
+  const routes = [
+    ...(hasRelay() ? [L('중계', () => rss(url, 15000, { headers: H, relay: true }, 900000)), L('중계2', () => rss(url, 15000, { headers: FEED_H, relay: true }, 900000))] : []),
+    L('직접', () => rss(url, 10000, { headers: FEED_H }, 900000)),
+    L('우회', () => rss(url, 10000, { headers: H }, 900000)),
+  ];
+  return viaRoutes('gnw2', routes);
 }
 async function globeNewswire(idx, full) {
   const first = await Promise.allSettled([gnwRss(GNW_FEEDS[0])]);
@@ -265,7 +271,7 @@ async function awPage(page, relay) {
 async function accessWire(idx, { pages = 1 } = {}) {
   const out = [];
   for (let p = 1; p <= pages; p++) {
-    const cards = await viaRoutes('aw', [() => awPage(p, false), ...(hasRelay() ? [() => awPage(p, true)] : [])]);
+    const cards = await viaRoutes('aw', [L('직접', () => awPage(p, false)), ...(hasRelay() ? [L('중계', () => awPage(p, true))] : [])]);
     for (const c of cards) {
       const ticker = tickerOf(c.sum + ' ' + c.title, null, idx);
       if (!ticker) continue;
