@@ -103,8 +103,9 @@ async function gather(mk, slot) {
     for (const x of dl) keys.push('d:' + x.id);
     if (dl.length) L.push('[주요 공시 (DART)]\n' + dl.map((x) => { note(x.name, x.ticker); return `- ${x.name}(${x.ticker || ''}): ${cut(x.summary?.title || x.titleClean || x.formKo, 70)}`; }).join('\n'));
   } else {
-    if (pop?.usUp?.length) L.push(`[상승 특징주${prevNote}]\n` + lst(pop.usUp.filter((x) => (x.price || 0) >= 1), 16));
-    if (pop?.usDown?.length) L.push(`[하락 특징주${prevNote}]\n` + lst(pop.usDown.filter((x) => (x.price || 0) >= 1), 10));
+    const ses = pop?.usSession ? (pop.usSession === 'AFTER' ? ' (애프터마켓 등락률)' : ' (프리마켓 등락률)') : prevNote;
+    if (pop?.usUp?.length) L.push(`[상승 특징주${ses}]\n` + lst(pop.usUp.filter((x) => (x.price || 0) >= 1), 16));
+    if (pop?.usDown?.length) L.push(`[하락 특징주${ses}]\n` + lst(pop.usDown.filter((x) => (x.price || 0) >= 1), 10));
     if (pop?.us?.length) L.push('[한국 투자자 인기 미국 종목]\n' + lst(pop.us, 10));
     const ut = themes?.us;
     if (ut?.sectors?.length) L.push('[S&P 섹터 ETF] ' + ut.sectors.map((s) => `${s.name}(${s.t}) ${sp(s.pct)}`).join(' · '));

@@ -20,6 +20,43 @@ function parseQuote(x) {
     pct: signed(n0(x.fluctuationsRatio), code),
     nameKo: x.stockName || null,
     status: x.marketStatus || null,
+    ext: extOf(x),
+  };
+}
+// 미국 프리마켓·애프터마켓 시세 (최근 16시간 안에 거래된 것만)
+function extOf(x) {
+  const o = x.overMarketPriceInfo;
+  if (!o || o.fluctuationsRatio == null || !o.localTradedAt) return undefined;
+  if (Date.now() - Date.parse(o.localTradedAt) > 16 * 3600e3) return undefined;
+  const code = o.compareToPreviousPrice?.code;
+  return { session: o.tradingSessionType === 'AFTER_MARKET' ? 'AFTER' : 'PRE', price: n0(o.overPriceRaw ?? o.overPrice), pct: signed(n0(o.fluctuationsRatioRaw ?? o.fluctuationsRatio), code), open: o.overMarketStatus === 'OPEN', at: o.localTradedAt };
+}
+
+/** 미국 프리마켓·애프터마켓 상승·하락 상위
+ *  네이버에는 시간외 순위가 없어서: 시가총액 상위 1,500개 + 전일 상승·하락 상위 200개의 시간외 등락률로 직접 순위를 매김 */
+export async function naverUsExtMovers(n = 10) {
+  const urls = [
+    ...Array.from({ length: 15 }, (_, i) => `https://api.stock.naver.com/stock/nation/USA/marketValue?page=${i + 1}&pageSize=100`),
+    'https://api.stock.naver.com/stock/nation/USA/up?page=1&pageSize=100',
+    'https://api.stock.naver.com/stock/nation/USA/down?page=1&pageSize=100',
+  ];
+  const pages = await Promise.all(urls.map((u) => get(u, 9000).catch(() => null)));
+  if (pages.filter(Boolean).length < 6) throw new Error('네이버 시간외 데이터 부족');
+  const seen = new Map();
+  for (const j of pages) for (const x of j?.stocks || []) {
+    if (!x.symbolCode || x.stockEndType !== 'stock' || seen.has(x.reutersCode)) continue;
+    const e = extOf(x);
+    if (!e || e.pct == null || e.price == null) continue;
+    const q = parseQuote(x);
+    seen.set(x.reutersCode, { market: 'US', ticker: x.symbolCode, reuters: x.reutersCode, name: x.stockName || x.symbolCode, price: e.price, pct: e.pct, regPrice: q.price, regPct: q.pct, session: e.session, cur: 'USD', mcapText: x.marketValueHangeul || null, status: e.session });
+  }
+  const all = [...seen.values()];
+  if (all.length < 20) throw new Error('시간외 거래 종목 부족');
+  return {
+    up: all.filter((x) => x.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, n),
+    down: all.filter((x) => x.pct < 0).sort((a, b) => a.pct - b.pct).slice(0, n),
+    session: all.filter((x) => x.session === 'AFTER').length > all.length / 2 ? 'AFTER' : 'PRE',
+    count: all.length,
   };
 }
 

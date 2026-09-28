@@ -4,7 +4,15 @@
 import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { us as usQuote } from './quote.mjs';
-import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers } from '../lib/naver.mjs';
+import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers } from '../lib/naver.mjs';
+
+// 미국 시간외(프리마켓 04:00~09:30 · 애프터마켓 16:00~20:00, 뉴욕시간 평일)인지
+function usExtSession(now = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(now).map((x) => [x.type, x.value]));
+  if (['Sat', 'Sun'].includes(p.weekday)) return null;
+  const m = Number(p.hour) * 60 + Number(p.minute);
+  return m >= 240 && m < 570 ? 'PRE' : m >= 960 && m < 1200 ? 'AFTER' : null;
+}
 
 const n0 = (s) => { const x = Number(String(s ?? '').replace(/[,%+\s]/g, '')); return Number.isFinite(x) ? x : null; };
 
@@ -75,6 +83,15 @@ export default async () => {
     try { return [k, await fn(dir, 10)]; } catch (e) { errors.push(`${k}: ${e.message}`); return [k, cached?.[k] || []]; }
   }));
   const out = { at: Date.now(), kr, us: usList, krSrc, usSrc, ...Object.fromEntries(mv), errors };
+  // 미국 프리마켓·애프터마켓 시간엔 상승·하락을 시간외 등락률 기준으로 (3분마다 새로 계산)
+  const sess = usExtSession();
+  if (sess) {
+    let ext = cached?.usExt && cached.usExt.session === sess && Date.now() - cached.usExt.at < 3 * 60e3 ? cached.usExt : null;
+    if (!ext) { try { ext = { ...(await naverUsExtMovers(10)), session: sess, at: Date.now() }; } catch (e) { errors.push('usExt: ' + e.message); } }
+    if (ext?.up?.length) { out.usExt = ext; out.usUp = ext.up; out.usDown = ext.down; out.usSession = sess; }
+    // 인기 종목도 시간외 등락률을 함께 표시
+    for (const x of usList) if (x.ext && x.ext.session === sess) { x.regPct = x.pct; x.regPrice = x.price; x.pct = x.ext.pct; x.price = x.ext.price ?? x.price; x.session = sess; }
+  }
   // 저장된 "오늘 움직임 이유" 붙이기 (3분마다 따로 만들어 둠)
   const wm = (await getJSON('why/map')) || {};
   for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const w = wm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (w?.r && Date.now() - w.at < 20 * 3600e3) { x.reason = w.r; x.rconf = w.c; } }

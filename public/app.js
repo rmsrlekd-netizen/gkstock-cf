@@ -675,7 +675,7 @@
     const rs = x.reason && !/^뚜렷한 개별 뉴스 없음/.test(x.reason) ? x.reason : null;
     const subHTML = !big && rs ? `<small class="rs" title="AI 추정 · ${esc(x.reason)}">${esc(rs)}</small>` : `<small>${esc(sub)}${sec ? ' · ' + esc(sec) : ''}</small>`;
     const whyHTML = big && x.reason ? `<span class="why rwhy ${rs ? '' : 'none'}"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.why ? `<span class="why">${esc(x.why)}</span>` : '';
-    return `<li data-open-co="${esc(x.market)}|${esc(x.ticker)}|${esc(x.name || '')}"><span class="rk">${i + 1}</span>${logoHTML(x.market, x.ticker, x.name, big ? 'md' : 'sm')}<span class="nm"><b>${esc(label)}</b>${subHTML}</span><span class="px">${px ? `<b>${px}</b>` : ''}${x.pct != null ? `<em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em>` : ''}</span>${whyHTML}</li>`;
+    return `<li data-open-co="${esc(x.market)}|${esc(x.ticker)}|${esc(x.name || '')}"><span class="rk">${i + 1}</span>${logoHTML(x.market, x.ticker, x.name, big ? 'md' : 'sm')}<span class="nm"><b>${esc(label)}</b>${subHTML}</span><span class="px">${px ? `<b>${px}</b>` : ''}${x.pct != null ? `<em class="${dirCls(x.pct)}"${x.session ? ` title="정규장 ${fmtPct(x.regPct)}"` : ''}>${x.session ? `<i class="sess">${x.session === 'AFTER' ? '애프터' : '프리'}</i>` : ''}${fmtPct(x.pct)}</em>` : ''}</span>${whyHTML}</li>`;
   }
   // 인기 / 상승 / 하락 × 국내 / 미국
   const KIND_NAME = { pop: '인기', up: '상승', down: '하락' };
@@ -687,6 +687,7 @@
   }
   function popSrcText(p, mk, kind = S.popKind) {
     if (kind === 'pop') return mk === 'KR' ? p?.krSrc || '네이버 증권 검색 상위' : p?.usSrc || '';
+    if (mk === 'US' && p?.usSession) return `미국 ${p.usSession === 'AFTER' ? '애프터마켓' : '프리마켓'} ${kind === 'up' ? '상승률' : '하락률'} 상위 · 시총 상위 1,500 + 전일 급등락 종목 기준`;
     return `네이버 증권 ${kind === 'up' ? '상승률' : '하락률'} 상위 · ${mk === 'KR' ? '코스피·코스닥 전체' : '미국 전체'}`;
   }
   function renderPopular() {

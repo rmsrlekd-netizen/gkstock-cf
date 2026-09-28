@@ -1412,3 +1412,5 @@ button.ic-s:hover { border-color: var(--accent); }
   .ibc-list small { -webkit-line-clamp: 1; }
   .ibc-more { display: flex; }
 }
+/* 미국 시간외 표시 */
+.rank .px em .sess, .px em .sess { font-style: normal; font-family: var(--sans); font-size: .62rem; font-weight: 800; color: #1b1300; background: linear-gradient(135deg, #ffd54a, #ff9f1c); padding: .05rem .3rem; border-radius: 5px; margin-right: .25rem; vertical-align: 1px; }
