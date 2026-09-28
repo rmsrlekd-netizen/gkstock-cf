@@ -977,7 +977,7 @@
       cards = d.items.filter((x) => !/^NEWS-/.test(x.id)).slice(0, 6).map((x, i) => {
         const n = S.items.get(x.id);
         const mk = x.market || n?.market;
-        return `<button class="dcard" data-id="${esc(x.id)}"><span class="dn">${i + 1}</span><div><div class="dc"><span class="mk ${mk === 'KR' ? 'kr' : 'us'}">${mk === 'KR' ? '한국' : '미국'}</span><b>${esc(n ? (n.market === 'KR' ? n.name : n.ticker || n.name) : x.company || '')}</b><span class="verdict ${vc(x.verdict)}">${esc(x.verdict)}</span></div><div class="dt">${esc(x.title)}</div><div class="dw">${esc(x.why)}</div></div></button>`;
+        return `<button class="dcard" data-id="${esc(x.id)}"><span class="dn">${i + 1}</span><div><div class="dc"><span class="mk ${mk === 'KR' ? 'kr' : 'us'}">${mk === 'KR' ? '한국' : '미국'}</span><b>${esc(n ? (n.market === 'KR' ? n.name : n.ticker || n.name) : x.company || '')}</b><span class="verdict ${vc(x.verdict)}">${esc(x.verdict)}</span>${n ? qchip(n) : ''}</div><div class="dt">${esc(x.title)}</div><div class="dw">${esc(x.why)}</div></div></button>`;
       });
     }
     if (cards.length < 6) {
@@ -989,8 +989,9 @@
         $('#digestHead').textContent = d?.error && !anyLoaded() ? '' : arr.length ? '' : '오늘은 아직 주요 공시가 없습니다.';
         $('#digestMeta').textContent = '자동 분류 기준 · 공시·보도자료';
       }
-      cards = cards.concat(arr.map((n, j) => ({ n, i: aiCount + j })).map(({ n, i }) => `<button class="dcard" data-id="${esc(n.id)}"><span class="dn">${i + 1}</span><div><div class="dc"><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><b>${esc(n.market === 'KR' ? n.name : n.ticker)}</b>${tagsHTML(n, 2, true)}</div><div class="dt">${esc(n.head)}</div></div></button>`));
+      cards = cards.concat(arr.map((n, j) => ({ n, i: aiCount + j })).map(({ n, i }) => `<button class="dcard" data-id="${esc(n.id)}"><span class="dn">${i + 1}</span><div><div class="dc"><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><b>${esc(n.market === 'KR' ? n.name : n.ticker)}</b>${tagsHTML(n, 2, true)}${qchip(n)}</div><div class="dt">${esc(n.head)}</div></div></button>`));
     }
+    setTimeout(refreshChips, 50); // 발표 후 주가 등락 채우기
     box.innerHTML = cards.join('') || (anyLoaded() ? '<p class="muted" style="margin:0">표시할 항목이 없습니다.</p>' : '<div class="skel"></div><div class="skel"></div><div class="skel"></div>');
   }
 
