@@ -576,18 +576,52 @@
     if (k === 'DART') return S.type === 'FILING' && S.mk === 'KR';
     return S.type === k && S.mk === 'ALL';
   }
+  // 트렌딩: 최근 36시간 공시·보도자료 중 "발표 후 상승률"이 가장 큰 종목 순
+  //  한국 장중(9:00~15:30)엔 국내 우선, 미국 프리장(뉴욕 4:00)~애프터(20:00)엔 미국 우선
+  function trendPrimary() {
+    const z = (tz) => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value])); return { wd: p.weekday, m: Number(p.hour) * 60 + Number(p.minute) }; };
+    const kr = z('Asia/Seoul'), us = z('America/New_York');
+    if (!['Sat', 'Sun'].includes(kr.wd) && kr.m >= 540 && kr.m < 930) return 'KR';
+    if (!['Sat', 'Sun'].includes(us.wd) && us.m >= 240 && us.m < 1200) return 'US';
+    return null;
+  }
+  let trendBusy = 0;
+  function trendGain(n) {
+    const p0 = p0Of(n), q = quoteOf(n.market, n.ticker);
+    if (!p0 || !q || q.price == null) return null;
+    const cur = q.live ?? q.price;
+    const g = ((cur - p0) / p0) * 100;
+    return Number.isFinite(g) ? g : null;
+  }
   function renderTrend() {
     const box = $('#trend');
     if (!anyLoaded()) { box.innerHTML = Array.from({ length: 6 }, () => '<div class="skel"></div>').join(''); return; }
     const since = Date.now() - 36 * 3600e3;
     const pool = [...S.items.values()].filter((n) => (S.mk === 'ALL' || n.market === S.mk) && (S.type === 'ALL' || n.kind === S.type));
-    const arr = pool.filter((n) => n.ms > since && n.ticker && n.impact >= 3)
-      .sort((a, b) => b.impact - a.impact || (b.sent === 'pos') - (a.sent === 'pos') || b.ms - a.ms);
-    const seen = new Set(), pick = [];
-    for (const n of arr) { const k = wkey(n.market, n.ticker); if (seen.has(k)) continue; seen.add(k); pick.push(n); if (pick.length >= 10) break; }
-    if (pick.length < 4) for (const n of pool.filter((x) => x.ticker).sort((a, b) => b.ms - a.ms)) { if (pick.length >= 8) break; if (!pick.includes(n)) pick.push(n); }
+    const cand = pool.filter((n) => n.ms > since && n.ticker && n.kind !== 'NEWS' && p0Of(n));
+    // 종목별로 발표 후 상승률이 가장 큰 공시 하나
+    const best = new Map();
+    for (const n of cand) { const g = trendGain(n); if (g == null) continue; const k = wkey(n.market, n.ticker); if (!best.has(k) || g > best.get(k).g) best.set(k, { n, g }); }
+    const prim = trendPrimary();
+    const ranked = [...best.values()].sort((a, b) => ((prim && b.n.market === prim) - (prim && a.n.market === prim)) || b.g - a.g);
+    const pick = ranked.filter((x) => x.g > 0).slice(0, 10).map((x) => x.n);
+    if (pick.length < 6) { // 오른 종목이 적으면 기존 기준(중요도·최신)으로 채움
+      const seen = new Set(pick.map((n) => wkey(n.market, n.ticker)));
+      const arr = pool.filter((n) => n.ms > since && n.ticker && n.impact >= 3).sort((a, b) => ((prim && b.market === prim) - (prim && a.market === prim)) || b.impact - a.impact || b.ms - a.ms);
+      for (const n of arr) { const k = wkey(n.market, n.ticker); if (seen.has(k)) continue; seen.add(k); pick.push(n); if (pick.length >= 8) break; }
+    }
+    // 시세가 없는 후보는 뒤에서 받아 와서 다시 정렬
+    const need = [...new Set(cand.map((n) => wkey(n.market, n.ticker)))].filter((k) => { const q = S.quotes.get(k); return !q || Date.now() - q._at > 90e3; }).slice(0, 80);
+    if (need.length && Date.now() - trendBusy > 60e3) {
+      trendBusy = Date.now();
+      (async () => { for (let i = 0; i < need.length; i += 40) await fetchQuotes(need.slice(i, i + 40)); renderTrend(); })();
+    }
     queueTranslate(pick);
+    const sig = pick.map((n) => n.id).join('|');
+    if (box.dataset.sig === sig && box.children.length) { paintChips(); return; }
+    box.dataset.sig = sig;
     box.innerHTML = pick.map((n) => `<button class="tcard" data-id="${esc(n.id)}"><div class="t-top">${logoHTML(n.market, n.ticker, n.name, 'sm')}<span class="t-tk">${esc(n.market === 'KR' ? n.name : n.ticker)}</span><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><span style="margin-left:auto">${rel(n.ms)}</span></div><div class="t-h">${esc(n.head)}</div><div class="t-f">${tagsHTML(n, 2, true)}${qchip(n)}</div></button>`).join('') || '<div class="empty">아직 표시할 항목이 없습니다.</div>';
+    setTimeout(paintChips, 0);
   }
   function syncControls() {
     // 한국은 보도자료가 없음 (DART 공시가 그 역할) → 한국 선택 시 보도자료 탭 숨김
@@ -1212,7 +1246,7 @@
   S.brTab = null; S.brOpen = false;
   function briefHTML(briefs) {
     const has = ['US', 'KR'].filter((k) => briefs?.[k]);
-    if (!has.length) return '';
+    if (!has.length) return `<div class="br-card br-empty"><div class="br-h"><div class="br-ttl"><span class="br-badge">CLOSE</span><h3>장 마감 브리핑</h3></div></div><p class="muted" style="margin:.6rem 0 0">국장 마감 뒤(15:45)와 미장 마감 뒤(한국시간 새벽 5시 15분, 겨울엔 6시 15분)에 AI가 오늘 장을 정리하고 다음 장 체크포인트를 뽑아 여기에 올립니다.</p></div>`;
     const tab = S.brTab && briefs[S.brTab] ? S.brTab : has.sort((a, b) => briefs[b].at - briefs[a].at)[0];
     const b = briefs[tab];
     const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;

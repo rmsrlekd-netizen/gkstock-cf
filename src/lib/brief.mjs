@@ -66,18 +66,27 @@ export async function briefWatch(now = new Date()) {
   const res = {};
   for (const mk of ['KR', 'US']) {
     const z = local(mk, now);
-    if (['Sat', 'Sun'].includes(z.wd) || z.m < WIN[mk][0] || z.m > WIN[mk][1]) continue;
-    if (await getJSON(`brief/${mk}/${z.date}`)) continue;
+    let date = z.date;
+    const inWin = !['Sat', 'Sun'].includes(z.wd) && z.m >= WIN[mk][0] && z.m <= WIN[mk][1];
+    if (!inWin) {
+      // 처음 설치 직후 브리핑이 하나도 없으면: 장이 닫혀 있을 때 가장 최근 거래일 것을 한 번 만들어 둠
+      const open = mk === 'KR' ? [9 * 60, WIN.KR[0]] : [9 * 60 + 30, WIN.US[0]];
+      if ((await getJSON(`brief/latest/${mk}`)) || (z.m >= open[0] && z.m < open[1] && !['Sat', 'Sun'].includes(z.wd))) continue;
+      let back = z.m < open[0] || ['Sat', 'Sun'].includes(z.wd) ? 1 : 0;
+      const wd = (d) => new Date(d + 'T12:00:00Z').getUTCDay();
+      if (back) { do { date = new Date(Date.parse(date + 'T12:00:00Z') - 86400e3).toISOString().slice(0, 10); } while ([0, 6].includes(wd(date))); }
+    }
+    if (await getJSON(`brief/${mk}/${date}`)) continue;
     if (!hasAI() || (await aiPauseInfo())) continue;
     // 휴장일이면 (오늘 시세가 안 움직였으면) 건너뜀
     const pop = await getJSON('popular/v2');
     const list = mk === 'KR' ? pop?.krUp : pop?.usUp;
     if (list?.length && list.every((x) => !x.pct)) continue;
-    const tk = `brief/try/${mk}/${z.date}`;
+    const tk = `brief/try/${mk}/${date}`;
     const t = (await getJSON(tk)) || { n: 0 };
     if (t.n >= 3) continue;
     await setJSON(tk, { n: t.n + 1 });
-    try { res[mk] = (await buildBrief(mk, z.date)).headline; } catch (e) { res[mk] = 'error: ' + e.message; }
+    try { res[mk] = (await buildBrief(mk, date)).headline; } catch (e) { res[mk] = 'error: ' + e.message; }
   }
   return res;
 }
