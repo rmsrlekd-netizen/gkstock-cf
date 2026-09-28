@@ -1128,3 +1128,42 @@ button.ec-cell:hover { transform: translateY(-2px); border-color: rgba(160,140,2
 @media (max-width: 1100px) { .th-grid { grid-template-columns: minmax(0, 1fr); } }
 .dcard .dc .qchip { margin-left: auto; font-family: var(--mono); font-size: .74rem; font-weight: 800; }
 .dcard .dc .qchip:empty { display: none; }
+
+/* ══════════ v27: 디자인 통일 (모양·간격·효과를 한 규칙으로) ══════════ */
+:root { --r-card: 16px; --r-inner: 12px; --r-ctl: 10px; --sh-card: inset 0 1px 0 rgba(255,255,255,.035), 0 8px 24px rgba(0,0,0,.18); }
+/* 1) 모서리: 큰 카드 16 · 안쪽 카드/줄 12 · 버튼 10 */
+.card, .digest, .ec-card, .modal-card { border-radius: var(--r-card); }
+.card, .digest, .ec-card { box-shadow: var(--sh-card); }
+.row, .dcard, .tcard, .th-row, .ec-row, .ec-cell, .why-reason, .ec-ai, .sec-tile, .ec-next, .box { border-radius: var(--r-inner); }
+.btn, .ico, .search, .btn-install, .mkseg button, .seg, .pop-kind { border-radius: var(--r-ctl); }
+.seg button, .pop-kind button { border-radius: 7px; }
+/* 2) 빛 번짐 효과 절제: 선택 상태는 색으로만, 그림자는 얇게 */
+.mkseg button.on, .mkseg button.kr.on, .mkseg button.us.on, .ftabs button.on, .btn.primary { box-shadow: 0 2px 8px rgba(0,0,0,.28); }
+.btn-install { box-shadow: 0 2px 10px rgba(139,108,255,.22); }
+.pop-kind button.on, .pop-kind button.k-up.on, .pop-kind button.k-down.on { box-shadow: none; }
+.dcard .dn { box-shadow: inset 0 1px 0 rgba(255,255,255,.45); }
+.dcard:nth-child(1) .dn { box-shadow: 0 0 0 2px rgba(255,213,74,.25), inset 0 1px 0 rgba(255,255,255,.5); }
+.brand-logo { box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 4px 12px rgba(62,110,255,.2); }
+.ec-grid .ec-cell.on { box-shadow: 0 0 0 2px #9d85ff; }
+.to-top { box-shadow: 0 6px 18px rgba(20,16,70,.45), inset 0 1px 0 rgba(255,255,255,.22); }
+/* 3) 작은 표시(배지): 같은 높이·모서리·글씨 */
+.tag, .verdict, .ec-s, .qchip span { font-size: .7rem; line-height: 1.35; padding: .14rem .5rem; border-radius: 6px; }
+.mk { line-height: 1.35; border-radius: 5px; }
+.drawer .verdict, .a-sum .verdict, .ec-ai-h .verdict { font-size: .74rem; padding: .2rem .6rem; }
+/* 4) 제목 크기 통일 */
+.page-head h2 { font-size: 1.45rem; letter-spacing: -.02em; }
+.card-h h3 { font-size: 1rem; letter-spacing: -.01em; }
+.box h4 { letter-spacing: -.01em; }
+/* 5) 컴퓨터 헤더: 메뉴가 늘어서 오른쪽 설정 버튼이 잘리던 문제 → 중간 폭에선 유튜브 버튼 글씨 숨김 */
+@media (min-width: 1101px) and (max-width: 1580px) { .yt span { display: none !important; } .search { width: 220px; } }
+/* 6) 휴대폰 헤더를 더 얇게 (내용이 먼저 보이도록) */
+@media (max-width: 720px) {
+  .hdr-in { padding: .45rem .75rem .35rem; row-gap: .4rem; }
+  .brand-logo { width: 1.95rem; height: 1.95rem; }
+  .hdr-right .search { height: 2.3rem; }
+  .hdr-right .ico { width: 2.3rem; height: 2.3rem; }
+  .nav button { padding: .38rem .55rem; font-size: .86rem; }
+  .nav button.on::after { bottom: -.2rem; left: .55rem; right: .55rem; }
+  .tape-in { font-size: .76rem; padding-top: .3rem; padding-bottom: .3rem; }
+  main { padding-top: .8rem; }
+}
