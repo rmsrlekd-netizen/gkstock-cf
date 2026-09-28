@@ -40,7 +40,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=43" />
+  <link rel="stylesheet" href="/styles.css?v=44" />
   <script>document.documentElement.classList.add('js');</script>
   <style>.js .ssr{display:none}.ssr{max-width:860px;margin:2rem auto;padding:0 1rem;color:#eef0ff;font-family:sans-serif;line-height:1.7}</style>
 </head>
@@ -120,6 +120,12 @@
               <select id="sortSel" class="select" aria-label="정렬"><option value="time">최신순</option><option value="impact">중요도순</option></select>
               <button class="ico sm" id="btnRefresh" title="새로고침"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
             </div>
+          </div>
+          <!-- 휴대폰 전용: 목록 위 종목·티커 검색 (맨 위로 올라가지 않아도 되게) -->
+          <div class="search feed-search">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="search2" type="search" placeholder="종목명·티커·키워드 검색" autocomplete="off" />
+            <div class="suggest" id="suggest2" hidden></div>
           </div>
           <div class="filter-row">
             <div class="mkseg" id="mkSeg" role="tablist" aria-label="시장 선택">
@@ -276,6 +282,6 @@
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
   <button class="to-top" id="toTop" aria-label="맨 위로" title="맨 위로"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>맨 위로</span></button>
-  <script src="/app.js?v=43" defer></script>
+  <script src="/app.js?v=44" defer></script>
 </body>
 </html>

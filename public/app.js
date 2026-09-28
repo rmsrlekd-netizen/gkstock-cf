@@ -1880,6 +1880,7 @@
   }
   function applyKeyword(q) {
     S.q = q; S.theme = null;
+    for (const id of ['#search', '#search2']) { const el = $(id); if (el) { el.value = q; el.blur(); } }
     if (!(S.view in FEED_VIEWS) || S.view === 'watch') setView('home'); else renderAll();
     $('#search').blur();
   }
@@ -2061,6 +2062,7 @@
     }));
     $('.trend-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-trend]'); if (b) $('#trend').scrollBy({ left: Number(b.dataset.trend) * $('#trend').clientWidth * 0.8, behavior: 'smooth' }); });
     bindSearch($('#search'), $('#suggest'), { feed: true });
+    bindSearch($('#search2'), $('#suggest2'), { feed: true });
     bindSearch($('#coSearch'), $('#coSuggest'), { feed: false });
     $('#btnBell').addEventListener('click', (e) => { e.stopPropagation(); const p = $('#bellPanel'); p.hidden = !p.hidden; if (!p.hidden) { renderBell(); $('#bellDot').hidden = true; } });
     $('#btnUser').addEventListener('click', openSettings);
@@ -2076,8 +2078,8 @@
         e.preventDefault();
         const v = go.dataset.go;
         if (v === 'company') { S.coCur = null; $('#coBody').innerHTML = CO_EMPTY; }
-        if (v === 'home' && go.classList.contains('brand')) { S.q = ''; S.theme = null; S.mk = 'ALL'; $('#search').value = ''; }
-        if (S.q && !(v in FEED_VIEWS)) { S.q = ''; $('#search').value = ''; }
+        if (v === 'home' && go.classList.contains('brand')) { S.q = ''; S.theme = null; S.mk = 'ALL'; $('#search').value = ''; $('#search2').value = ''; }
+        if (S.q && !(v in FEED_VIEWS)) { S.q = ''; $('#search').value = ''; $('#search2').value = ''; }
         setView(v);
         return;
       }
@@ -2085,7 +2087,7 @@
       if (star) { e.stopPropagation(); const [m, tk, n] = star.dataset.star.split('|'); toggleWatch(m, tk, n); return; }
       const un = t.closest('[data-unwatch]');
       if (un) { e.stopPropagation(); const [m, tk] = un.dataset.unwatch.split('|'); toggleWatch(m, tk); if (!$('#modal').hidden) openSettings(); return; }
-      if (t.closest('[data-clear-q]')) { S.q = ''; $('#search').value = ''; renderAll(); return; }
+      if (t.closest('[data-clear-q]')) { S.q = ''; $('#search').value = ''; $('#search2').value = ''; renderAll(); return; }
       if (t.closest('[data-close-bell]')) { $('#bellPanel').hidden = true; return; }
       if (t.closest('[data-close-modal]') || t.id === 'modal') { closeModal(); return; }
       if (t.closest('[data-back]')) { backToList(); return; }
@@ -2094,7 +2096,7 @@
       if (t.closest('[data-co-more]')) { if (S.coCur) { S.coCur.recentLimit = (S.coCur.recentLimit || 20) + 40; renderCoRecent(); } return; }
       if (t.closest('#moreRows')) { if (visible().length > S.limit) { S.limit += 80; renderFeed(); } else loadOlder(); return; }
       const kw = t.closest('[data-kw]');
-      if (kw) { applyKeyword(kw.dataset.kw); $('#suggest').hidden = true; return; }
+      if (kw) { applyKeyword(kw.dataset.kw); $('#suggest').hidden = true; $('#suggest2').hidden = true; return; }
       if (t.closest('[data-share]')) {
         const url = `${location.origin}/p/${t.closest('[data-share]').dataset.share}`;
         (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => toast('링크를 복사했습니다: ' + url)).catch(() => { prompt('아래 주소를 복사하세요', url); });
@@ -2110,7 +2112,7 @@
       const mo = t.closest('[data-modal]');
       if (mo) { openDigestModal(); return; }
       const co = t.closest('[data-open-co]');
-      if (co) { const [m, tk, n] = co.dataset.openCo.split('|'); if (co.closest('#suggest')) $('#search').value = ''; $('#suggest').hidden = true; $('#coSuggest').hidden = true; openCompany(m, tk, n, { corpCode: co.dataset.corp || undefined, exchange: co.dataset.ex || undefined }); return; }
+      if (co) { const [m, tk, n] = co.dataset.openCo.split('|'); if (co.closest('#suggest')) $('#search').value = ''; if (co.closest('#suggest2')) $('#search2').value = ''; $('#suggest').hidden = true; $('#suggest2').hidden = true; $('#coSuggest').hidden = true; openCompany(m, tk, n, { corpCode: co.dataset.corp || undefined, exchange: co.dataset.ex || undefined }); return; }
       const thr = t.closest('[data-th-no]');
       if (thr && !t.closest('a')) { toggleTheme(thr); return; }
       const row = t.closest('[data-id]');
