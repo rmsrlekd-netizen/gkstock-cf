@@ -587,7 +587,8 @@
   }
   let trendBusy = 0;
   function trendGain(n) {
-    const p0 = p0Of(n), q = quoteOf(n.market, n.ticker);
+    const q = quoteOf(n.market, n.ticker);
+    const p0 = splitAdj(p0Of(n), q);
     if (!p0 || !q || q.price == null) return null;
     const cur = q.live ?? q.price;
     const g = ((cur - p0) / p0) * 100;
@@ -669,9 +670,21 @@
   const quoteOf = (m, t) => { const q = S.quotes.get(wkey(m, t)); return q && q.price !== undefined ? q : null; };
   // 실시간 등락 칩: 공시가 나온 뒤 지금 이 종목이 얼마나 움직이고 있는지 목록에서 바로 보여줌
   // 발표 시점 주가(px0)가 있으면 "발표 후 등락", 없으면 오늘 등락
+  // 액면병합·분할 안전장치: 발표 시점 주가와 '전일 종가'가 정수배(×2 이상 또는 ½ 이하)로 벌어져 있으면 병합·분할로 보고 환산
+  //  (미국은 서버에서 Nasdaq 주식분할 일정으로 먼저 보정, 이건 한국·누락분 대비)
+  function splitAdj(p0, q) {
+    if (!(p0 > 0) || !q || q.price == null || q.chg == null) return p0;
+    const prev = q.price - q.chg;
+    if (!(prev > 0)) return p0;
+    const r = prev / p0;
+    if (r < 1.8 && r > 0.55) return p0;
+    const k = r >= 1 ? Math.round(r) : 1 / Math.round(1 / r);
+    return Math.abs(r / k - 1) < 0.06 ? p0 * k : p0;
+  }
   function qchipInner(m, t, p0) {
     const q = quoteOf(m, t);
     if (!q || q.price == null) return '';
+    p0 = splitAdj(p0, q);
     // 미국 프리·애프터 시간엔 시간외 가격이 '지금 가격'
     const cur = q.live ?? q.price;
     let pct = q.livePct ?? q.pct, lbl = q.session ? (q.session === 'AFTER' ? '애프터 ' : '프리 ') : '';
@@ -1281,13 +1294,13 @@
     const ft = new Date(sel + 'T12:00:00Z');
     $('#scDays').innerHTML = `<div class="sc-daybar"><span class="sc-dtag ${mk.toLowerCase()}">${fl.rel === '오늘' ? '오늘' : fl.rel === '내일' ? '내일' : '다음 거래일'}</span><b>${ft.getUTCMonth() + 1}월 ${ft.getUTCDate()}일 (${fl.wd})</b><small>${mk === 'KR' ? (s.closed ? '국장 마감 · 다음 거래일 일정' : '국장 오늘 일정 · 15:30 마감 뒤엔 다음 거래일로 바뀝니다') : (s.closed ? '미장 마감 · 다음 거래일 일정' : '미장 오늘 일정 · 뉴욕 16:00 마감 뒤엔 다음 거래일로 바뀝니다')}</small></div>`;
     const d = s.days.find((x) => x.date === sel);
-    if (d.holiday) { body.innerHTML = `${briefHTML(s.briefs)}<div class="sc-holi"><b>${esc(d.holiday)}</b><span>${mk === 'KR' ? '한국' : '미국'} 증시 휴장일입니다.</span></div>`; return; }
+    if (d.holiday) { body.innerHTML = `<div class="sc-holi"><b>${esc(d.holiday)}</b><span>${mk === 'KR' ? '한국' : '미국'} 증시 휴장일입니다.</span></div>`; return; }
     const econ = d.econ.filter((e) => S.scAll || (mk === 'KR' ? e.country === 'KR' || e.imp >= 2 : e.imp >= 2));
     const seenAi = new Set(); // 같은 시각에 함께 나온 지표의 AI 해석은 한 번만
     for (const e of econ) { if (e.ai && seenAi.has(e.ai)) e.ai = null; else if (e.ai) seenAi.add(e.ai); }
     const hidden = d.econ.length - econ.length;
     const ai = s.ai && s.ai.date === d.date ? s.ai : null;
-    const aiHTML = ai ? `<div class="sc-brief"><div class="sc-bh"><span class="ai-pill">AI</span><h3>${scDayLabel(d.date, s).rel === '오늘' ? '오늘' : scDayLabel(d.date, s).rel === '내일' ? '내일' : scDayLabel(d.date, s).md} 꼭 볼 일정</h3><span class="muted sm">${esc(ai.headline || '')}</span></div><div class="sc-pts">${ai.points.map((p, i) => `<div class="sc-pt"><span class="ibc-n">${i + 1}</span><div><b>${esc(p.title)}</b><small>${esc(p.why)}</small></div></div>`).join('')}</div></div>` : '';
+    const aiHTML = ai ? `<div class="sc-brief"><div class="sc-bh"><span class="ai-pill">AI</span><h3>오늘 일정</h3><span class="muted sm">${esc(ai.headline || '')}</span></div><div class="sc-pts">${ai.points.map((p, i) => `<div class="sc-pt"><span class="ibc-n">${i + 1}</span><div><b>${esc(p.title)}</b><small>${esc(p.why)}</small></div></div>`).join('')}</div></div>` : '';
     const stat = '' && `<div class="sc-stats">${mk === 'US' ? `<div><span>실적 발표</span><b>${d.earnTotal || d.earnings.length}</b><small>시총 3억$ 이상 ${d.earnings.length}</small></div>` : ''}<div><span>${mk === 'KR' ? '공모주' : 'IPO'}</span><b>${d.ipo.length}</b><small>${mk === 'KR' ? '청약·상장' : '상장 예정'}</small></div></div>`;
     const econCard = `<div class="card sc-card"><div class="card-h"><h3>경제지표 <b>${econ.length}</b></h3><button class="btn sm" data-sc-all>${S.scAll ? '중요 지표만' : `전체 보기${hidden ? ` (+${hidden})` : ''}`}</button></div>${econ.length ? `<div class="sc-evs">${econ.map((e) => scEconRow(e, mk)).join('')}</div>` : '<div class="empty sm">예정된 주요 경제지표가 없습니다.</div>'}<p class="note">★★★ 시장을 크게 움직이는 지표 · ★★ 중요 · ★ 참고${mk === 'KR' ? ' · 중국·일본은 중요 지표만' : ''}</p></div>`;
     const earnCard = mk === 'US' ? `<div class="card sc-card"><div class="card-h"><h3>실적 발표 <b>${d.earnTotal || d.earnings.length}</b></h3><button class="btn sm" data-go="earnings">실적 캘린더 →</button></div>${d.earnings.length ? `<div class="sc-earns">${d.earnings.slice(0, 15).map(scEarnRow).join('')}</div>` : '<div class="empty sm">시총 3억 달러 이상 기업의 실적 발표가 없습니다.</div>'}<p class="note">장전 = 미국 정규장 전(한국 밤) · 장후 = 장 마감 뒤(한국 새벽)</p></div>` : '';
@@ -1300,7 +1313,7 @@
     // 경제지표는 '경제지표' 메뉴와 겹치므로 여기선 빼고, 주요 일정·공모주·IPO를 앞에
     const key = d.econ.filter((e) => e.imp >= 3);
     const keyCard = key.length ? `<div class="card sc-card"><div class="card-h"><h3>핵심 경제지표 <b>${key.length}</b></h3><button class="btn sm" data-go="econ">경제지표 전체 →</button></div><div class="sc-keys">${key.map((e) => { const [cn, cc] = CFLAG[e.country] || ['', '']; return `<div class="sc-key"><b class="mono">${esc(e.time)}</b><span class="sc-c ${cc}">${cn}</span><span class="sc-kn">${esc(e.name)}</span><small>${e.actual != null ? `<b>실제 ${esc(e.actual)}</b> · ` : ''}${e.cons ? `예상 ${esc(e.cons)}` : ''}${e.prev ? ` · 이전 ${esc(e.prev)}` : ''}</small></div>`; }).join('')}</div></div>` : '';
-    body.innerHTML = `${briefHTML(s.briefs)}${aiHTML}${stat}<div class="sc-grid"><div>${evCard}${keyCard}</div><div>${ipoCard}</div></div>`;
+    body.innerHTML = `${aiHTML}${stat}<div class="sc-grid"><div>${evCard}${keyCard}</div><div>${ipoCard}</div></div>`;
   }
   function bindSched() {
     $('#scSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-sc]'); if (!b) return; S.scMk = b.dataset.sc; save('gk_scmk', S.scMk); renderSched(); loadSched(); });

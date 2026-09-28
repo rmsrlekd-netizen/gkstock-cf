@@ -29,8 +29,41 @@ export async function capturePx0(items) {
   return n;
 }
 
-/** 피드 응답에 발표 시점 주가 붙이기 */
+// ── 액면병합·액면분할 보정 ──
+// 발표 뒤에 주식 병합(1:15 등)·분할(3:1 등)이 있으면 발표 시점 주가를 같은 기준으로 환산
+// (안 하면 1:15 병합 뒤 '발표후 +1400%'처럼 잘못 보임) — Nasdaq 주식분할 일정 사용, 2주치 보관
+async function splitMap() {
+  const c = await getJSON('splits/map');
+  if (c && Date.now() - c.at < 3 * 3600e3) return c.map;
+  const map = { ...(c?.map || {}) };
+  try {
+    const { fetchWithTimeout, BROWSER_UA } = await import('./util.mjs');
+    const r = await fetchWithTimeout('https://api.nasdaq.com/api/calendar/splits', { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json', Origin: 'https://www.nasdaq.com', Referer: 'https://www.nasdaq.com/' } }, 8000);
+    const rows = r.ok ? (await r.json())?.data?.rows || [] : [];
+    for (const x of rows) {
+      const m = String(x.ratio || '').match(/([\d.]+)\s*:\s*([\d.]+)/), d = String(x.executionDate || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (!m || !d || !x.symbol) continue;
+      const newN = Number(m[1]), oldN = Number(m[2]);
+      if (!(newN > 0 && oldN > 0) || newN === oldN) continue;
+      // 병합 1:15 → 주가 ×15, 분할 3:1 → 주가 ÷3 (미국 동부 해당일 장 시작 = 13:30 UTC 무렵)
+      map[String(x.symbol).toUpperCase()] = { f: oldN / newN, at: Date.parse(`${d[3]}-${d[1].padStart(2, '0')}-${d[2].padStart(2, '0')}T13:00:00Z`) };
+    }
+  } catch {}
+  for (const [k, v] of Object.entries(map)) if (Date.now() - v.at > 14 * 86400e3) delete map[k];
+  await setJSON('splits/map', { at: Date.now(), map }).catch(() => {});
+  return map;
+}
+
+/** 피드 응답에 발표 시점 주가 붙이기 (주식 병합·분할이 있었으면 환산) */
 export async function attachPx0(items) {
   const map = (await getJSON('px0/map')) || {};
-  return items.map((x) => (map[x.id] ? { ...x, px0: map[x.id].p } : x));
+  const sp = await splitMap().catch(() => ({}));
+  return items.map((x) => {
+    const v = map[x.id];
+    if (!v) return x;
+    let p = v.p;
+    const s = x.market !== 'KR' && x.ticker ? sp[String(x.ticker).toUpperCase()] : null;
+    if (s && v.t < s.at && Date.now() >= s.at) p = p * s.f;
+    return { ...x, px0: p };
+  });
 }
