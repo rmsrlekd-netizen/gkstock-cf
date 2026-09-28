@@ -4,7 +4,7 @@
 //  장 마감 뒤에는 AI가 "내일 꼭 볼 일정 3가지"를 골라 한 줄씩 설명
 import { fetchWithTimeout, BROWSER_UA, decodeText } from './util.mjs';
 import { getJSON, setJSON } from './store.mjs';
-import { hasAI, askAI, parseJSON, aiPauseInfo } from './ai.mjs';
+import { hasAI, askAI, askAIWeb, parseJSON, aiPauseInfo } from './ai.mjs';
 
 const TZ = { KR: 'Asia/Seoul', US: 'America/New_York' };
 // 휴장일 (주말 외) — 알려진 것만
@@ -75,7 +75,7 @@ async function asiaEcon(kstDates) {
 
 // ───── 한국 공모주 (38커뮤니케이션) ─────
 async function get38(path) {
-  const url = 'https://www.38.co.kr' + path;
+  const url = 'http://www.38.co.kr' + path; // https는 인증서 문제로 서버에서 접속이 안 됨
   let r = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html', Referer: 'https://www.38.co.kr/' } }, 9000).catch(() => null);
   if (!r?.ok && process.env.KR_RELAY_URL) r = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' }, relay: true }, 12000);
   if (!r?.ok) throw new Error('38커뮤니케이션 HTTP ' + (r?.status || '오류'));
@@ -143,6 +143,42 @@ async function usIpo() {
   return out;
 }
 
+// ───── 주요 일정 (정부·대통령·정책 발표, 기업 행사 등) — AI가 구글 검색으로 확인 ─────
+export async function newsEvents(mk, date, { force = false } = {}) {
+  const key = `sched/events/${mk}/${date}`;
+  const c = await getJSON(key);
+  if (c && !force && Date.now() - c.at < 3 * 3600e3) return c;
+  if (!hasAI() || (await aiPauseInfo())) return c || null;
+  const d = new Date(date + 'T12:00:00Z');
+  const md = `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일(${'일월화수목금토'[d.getUTCDay()]})`;
+  const prompt = mk === 'KR'
+    ? `오늘은 한국시간 ${new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16).replace('T', ' ')}이다. 웹 검색으로 ${md} 한국 증시 투자자가 알아야 할 주요 일정을 찾아라.
+포함: 대통령·국무총리·장관 주재 회의와 정책 발표, 국회 일정, 한국은행·금융위·금감원 발표, 정부 경제지표 발표, 주요 기업 행사(신제품·실적 설명회·컨퍼런스), 신규 상장·보호예수 해제·배당 관련 일정, 해외 주요 이벤트 중 한국 증시에 영향이 큰 것.`
+    : `오늘은 미국 동부시간 ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}이다. 웹 검색으로 ${md}(미국 날짜) 미국 증시 투자자가 알아야 할 주요 일정을 찾아라.
+포함: 연준 위원 발언·FOMC 관련, 대통령·백악관·재무부 발표, 의회 일정, 관세·무역 이벤트, 주요 기업 행사(신제품 발표·투자자의 날·컨퍼런스), 대형 IPO, 옵션 만기 등.`;
+  const full = `${prompt}
+규칙:
+- 검색으로 날짜가 ${md}인 것이 확인된 일정만. 추측·지어내기 금지. 날짜가 다르거나 불확실하면 빼라.
+- 주가에 영향이 있을 만한 순서로 최대 10개.
+- time: "HH:MM" 한국시간 (모르면 null) / title: 30자 이내 / desc: 왜 중요한지 50자 이내 / tag: 정부·정책·중앙은행·국회·기업·지표·해외 중 하나 / stocks: 관련 종목·업종 이름 최대 3개 / imp: 1~3
+JSON만 출력: {"events":[{"time":null,"title":"","desc":"","tag":"","stocks":[""],"imp":2}]}`;
+  try {
+    const { text, sources } = await askAIWeb(full, { maxTokens: 3000, timeout: 70000 });
+    const j = parseJSON(text);
+    const events = (Array.isArray(j?.events) ? j.events : []).filter((x) => x && x.title).slice(0, 10).map((x) => ({
+      kind: 'news', time: /^\d{1,2}:\d{2}$/.test(String(x.time || '')) ? String(x.time).padStart(5, '0') : null,
+      title: clean(x.title).slice(0, 40), desc: clean(x.desc).slice(0, 80), tag: clean(x.tag).slice(0, 6) || '일정',
+      stocks: (Array.isArray(x.stocks) ? x.stocks : []).map((y) => clean(y).slice(0, 14)).filter(Boolean).slice(0, 3), imp: [1, 2, 3].includes(Number(x.imp)) ? Number(x.imp) : 2,
+    })).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1);
+    const out = { at: Date.now(), date, events, sources };
+    await setJSON(key, out);
+    return out;
+  } catch (e) {
+    if (c) return c;
+    throw e;
+  }
+}
+
 // ───── 전체 조립 ─────
 export async function buildSchedule(mk) {
   const { dates, focus, closed } = scheduleDates(mk);
@@ -180,6 +216,8 @@ export async function buildSchedule(mk) {
     for (const x of ipo) byDate[x.start]?.ipo.push({ ...x, tag: x.sub });
   }
   for (const d of days) d.econ.sort((a, b) => a.ms - b.ms);
+  // 주요 일정(뉴스·정책): 저장된 것만 붙임 (새로 찾는 건 크론에서)
+  for (const d of days) { const ev = await getJSON(`sched/events/${mk}/${d.date}`); if (ev) { d.events = ev.events; d.evSources = ev.sources; d.evAt = ev.at; } }
   const ai = await getJSON(`sched/ai/${mk}/${focus}`);
   return { at: Date.now(), mk, focus, closed, days, ai: ai || null, errors };
 }
@@ -189,6 +227,7 @@ export async function scheduleBrief(mk, sched) {
   const d = sched.days.find((x) => x.date === sched.focus);
   if (!d || d.holiday) return null;
   const lines = [];
+  for (const e of d.events || []) lines.push(`[주요 일정] ${e.time || ''} ${e.title} — ${e.desc}`);
   for (const e of d.econ.filter((x) => x.imp >= 2)) lines.push(`[경제지표] ${e.time} ${e.name} (예상 ${e.cons ?? '-'}, 이전 ${e.prev ?? '-'})`);
   for (const x of d.earnings.slice(0, 12)) lines.push(`[실적] ${x.name}(${x.t}) ${x.time} 시총 ${Math.round((x.mcap || 0) / 1e9)}B$ 예상EPS ${x.eps ?? '-'}`);
   for (const x of d.ipo.filter((y) => !y.spac).slice(0, 8)) lines.push(`[IPO] ${x.name}${x.ticker ? '(' + x.ticker + ')' : ''} ${x.tag} ${x.price || x.range || ''}`);
@@ -217,11 +256,15 @@ export async function scheduleWatch() {
     const prev = await getJSON(`sched/v1/${mk}`);
     if (prev && Date.now() - prev.at < 20 * 60e3 && prev.focus === scheduleDates(mk).focus) { res[mk] = 'fresh'; continue; }
     try {
+      const { focus, today } = scheduleDates(mk);
+      for (const dt of [...new Set([today, focus])]) if (isTradingDay(mk, dt)) await newsEvents(mk, dt).catch((e) => console.warn('events', mk, e.message));
       const s = await buildSchedule(mk);
-      if (!s.ai && hasAI() && !(await aiPauseInfo())) {
+      const fd = s.days.find((x) => x.date === s.focus);
+      // AI 요약이 없거나, 요약 뒤에 주요 일정이 새로 확인됐으면 다시
+      if ((!s.ai || (fd?.evAt && s.ai.at < fd.evAt)) && hasAI() && !(await aiPauseInfo())) {
         const tk = `sched/aitry/${mk}/${s.focus}`;
         const t = (await getJSON(tk)) || { n: 0 };
-        if (t.n < 3) { await setJSON(tk, { n: t.n + 1 }); try { s.ai = await scheduleBrief(mk, s); } catch (e) { s.errors.push('AI: ' + e.message); } }
+        if (t.n < 5) { await setJSON(tk, { n: t.n + 1 }); try { s.ai = await scheduleBrief(mk, s); } catch (e) { s.errors.push('AI: ' + e.message); } }
       }
       await setJSON(`sched/v1/${mk}`, s);
       res[mk] = 'ok';

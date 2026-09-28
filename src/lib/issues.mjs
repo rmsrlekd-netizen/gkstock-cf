@@ -61,10 +61,14 @@ const US_RC = /^[A-Z][A-Z0-9.]{0,6}\.(O|N|A|K|P)$/;
 const US_WORD = /미국|뉴욕|월가|연준|파월|나스닥|S&P|다우|국채|트럼프|백악관|달러|유가|엔비디아|애플|테슬라|마이크로소프트|아마존|구글|알파벳|메타|브로드컴|마이크론/;
 
 /** AI에 줄 재료 모으기 */
-async function gather(mk, slot) {
+export async function gather(mk, slot, opts = {}) {
   const pre = slot.phase === '장 시작 전' || slot.phase === '프리마켓';
   const keys = []; // 새 소식 판단용 (뉴스 제목·공시 번호)
-  const [pop, themes, mkt, sec, dart, news, econ, wm] = await Promise.all(['popular/v2', 'themes/v1', 'market/v1', 'sec/feed', 'dart/feed', 'news/feed', 'econ/v1', 'why/map'].map((k) => getJSON(k).catch(() => null)));
+  let [pop, themes, mkt, sec, dart, news, econ, wm] = await Promise.all(['popular/v2', 'themes/v1', 'market/v1', 'sec/feed', 'dart/feed', 'news/feed', 'econ/v1', 'why/map'].map((k) => getJSON(k).catch(() => null)));
+  // 장 마감 브리핑: 미국은 시간외가 아닌 정규장 등락 기준으로
+  if (opts.regular && mk === 'US') {
+    try { const { naverUsMovers } = await import('./naver.mjs'); const [up, down] = await Promise.all([naverUsMovers('up', 20), naverUsMovers('down', 12)]); pop = { ...(pop || {}), usUp: up, usDown: down, usSession: null }; } catch {}
+  }
   const L = [];
   const names = new Map(); // 이름 → 코드 (AI가 코드를 빼먹었을 때 찾기용)
   const note = (name, code) => { if (name && code) names.set(String(name).replace(/\s/g, ''), String(code)); };

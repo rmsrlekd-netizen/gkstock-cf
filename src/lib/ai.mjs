@@ -353,3 +353,34 @@ ${paras.map((p, i) => `[[${i}]] ${p}`).join('\n')}`;
   }
   return out.map((x, i) => x || paras[i]);
 }
+
+/** 구글 검색을 함께 쓰는 Gemini 호출 (웹에서 확인한 최신 정보가 필요할 때) → { text, sources } */
+export async function askAIWeb(prompt, { maxTokens = 3000, timeout = 60000 } = {}) {
+  if (!googleKey()) throw new Error('웹 검색 AI는 Gemini 키가 필요합니다');
+  const paused = await aiPausedUntil();
+  if (paused) throw new Error('AI 잠시 쉬는 중: ' + (pauseMem.reason || ''));
+  const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest'].filter(Boolean))];
+  const until = Date.now() + timeout;
+  let lastErr;
+  for (const model of models) {
+    if (until - Date.now() < 3000) break;
+    const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': googleKey() }, relay: geminiViaRelay,
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: maxTokens, temperature: 0.1 } }),
+    }, Math.max(3000, until - Date.now()));
+    const body = await r.text();
+    if (r.ok) {
+      const j = JSON.parse(body);
+      const c = j.candidates?.[0];
+      const text = (c?.content?.parts || []).map((p) => p.text || '').join('');
+      const sources = (c?.groundingMetadata?.groundingChunks || []).map((g) => g.web).filter(Boolean).map((w) => ({ title: w.title || '', uri: w.uri || '' })).slice(0, 12);
+      if (text) return { text, sources };
+      lastErr = new Error('Gemini 빈 응답');
+      continue;
+    }
+    lastErr = new Error(`Gemini 검색 HTTP ${r.status} (${model}) ${body.slice(0, 200)}`);
+    if (r.status === 402 || (r.status === 429 && BILLING_RE.test(body))) { await pauseAI(body); throw lastErr; }
+    if (![404, 429, 500, 503, 400].includes(r.status)) throw lastErr;
+  }
+  throw lastErr || new Error('Gemini 검색 실패');
+}

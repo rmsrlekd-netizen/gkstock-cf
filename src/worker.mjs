@@ -34,6 +34,7 @@ import * as econ from './functions/econ.mjs';
 import * as issues from './functions/issues.mjs';
 import * as schedule from './functions/schedule.mjs';
 import { scheduleWatch } from './lib/schedule.mjs';
+import { briefWatch } from './lib/brief.mjs';
 import { issuesWatch } from './lib/issues.mjs';
 import { econWatch } from './lib/econ.mjs';
 import { whyWatch } from './lib/why.mjs';
@@ -142,6 +143,7 @@ export default {
       const usOpen = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 4 * 60 && usz.m <= 20 * 60;
       if (krOpen || usOpen || min % 30 < 3) jobs3.push(whyWatch().then((r) => console.log('why', JSON.stringify(r))).catch((e) => console.warn('why', e.message)));
       // 내일 일정 (20분마다 새로 모으고, 새 거래일이 되면 AI 요약)
+      jobs3.push(briefWatch(now).then((r) => { if (Object.keys(r).length) console.log('brief', JSON.stringify(r)); }).catch((e) => console.warn('brief', e.message))); // 장 마감 브리핑
       if (min % 6 < 3) jobs3.push(scheduleWatch().then((r) => console.log('sched', JSON.stringify(r))).catch((e) => console.warn('sched', e.message)));
       if (jobs3.length) ctx.waitUntil(Promise.allSettled(jobs3));
       return;

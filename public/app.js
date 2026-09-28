@@ -1208,6 +1208,33 @@
     const cap = x.mcap ? (x.mcap >= 1e12 ? `$${(x.mcap / 1e12).toFixed(2)}T` : `$${Math.round(x.mcap / 1e9)}B`) : '';
     return `<button class="sc-earn" data-open-co="US|${esc(x.t)}|${esc(x.en || x.name || '')}">${logoHTML('US', x.t, x.en, 'sm')}<span class="sc-en"><b>${esc(x.name || x.t)}</b><small>${esc(x.t)}${cap ? ' · ' + cap : ''}</small></span><span class="sc-when ${x.time === '장전' ? 'pre' : x.time === '장후' ? 'post' : ''}">${esc(x.time)}</span><span class="sc-eps">${x.eps != null ? `예상 EPS <b>$${Number(x.eps).toFixed(2)}</b>` : ''}</span></button>`;
   }
+  // 장 마감 브리핑 (국장·미장 마감 뒤 AI 정리 — 미장 브리핑은 국장 오전장 체크포인트 중심)
+  S.brTab = null; S.brOpen = false;
+  function briefHTML(briefs) {
+    const has = ['US', 'KR'].filter((k) => briefs?.[k]);
+    if (!has.length) return '';
+    const tab = S.brTab && briefs[S.brTab] ? S.brTab : has.sort((a, b) => briefs[b].at - briefs[a].at)[0];
+    const b = briefs[tab];
+    const md = (d) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
+    const tabs = ['US', 'KR'].map((k) => briefs[k] ? `<button class="${k === tab ? 'on ' : ''}${k.toLowerCase()}" data-br="${k}">${k === 'US' ? '미장' : '국장'} 마감 <small>${md(briefs[k].date)}</small></button>` : '').join('');
+    const ix = (b.idx || []).slice(0, 4).map((x) => `<span class="br-ix">${esc(x.label)} <em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em></span>`).join('');
+    const nextT = tab === 'US' ? '국장 오전장 체크포인트' : '다음 장 체크포인트';
+    const next = b.next.map((x, i) => `<div class="br-nx"><span class="ibc-n">${i + 1}</span><div><b>${esc(x.title)}</b><small>${esc(x.desc)}</small>${x.targets?.length ? `<div class="sc-rel">${x.targets.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : ''}</div></div>`).join('');
+    const sec = (arr, cls) => arr.map((x) => `<span class="br-sec ${cls}" title="${esc(x.why)}">${esc(x.name)}<small>${esc(x.why)}</small></span>`).join('');
+    const movers = b.movers.map((x) => `<${x.code ? `button data-open-co="${tab}|${esc(x.code)}|${esc(x.name)}"` : 'div'} class="br-mv"><b>${esc(x.name)}</b>${x.pct != null ? `<em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em>` : ''}<small>${esc(x.why)}</small></${x.code ? 'button' : 'div'}>`).join('');
+    const more = S.brOpen ? `<div class="br-more">
+        <div class="br-col"><h4>오늘 장 요약</h4><ul class="ic-pts">${b.summary.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+          ${b.sectors.up.length || b.sectors.down.length ? `<h4>섹터 흐름</h4><div class="br-secs">${sec(b.sectors.up, 'up')}${sec(b.sectors.down, 'down')}</div>` : ''}</div>
+        <div class="br-col"><h4>특징주</h4><div class="br-mvs">${movers}</div></div>
+      </div>${b.risk ? `<p class="br-risk"><b>주의</b>${esc(b.risk)}</p>` : ''}` : '';
+    return `<div class="br-card br-${tab.toLowerCase()}">
+      <div class="br-h"><div class="br-ttl"><span class="br-badge">CLOSE</span><h3>장 마감 브리핑</h3></div><div class="br-tabs">${tabs}</div></div>
+      <p class="br-head">${esc(b.headline)}</p>${ix ? `<div class="br-ixs">${ix}</div>` : ''}
+      <div class="br-next"><h4>${nextT}</h4><div class="br-nxs">${next}</div></div>
+      ${more}
+      <div class="br-foot"><span class="muted sm">${fmtDT(new Date(b.at)).hm} AI 정리 · 투자 참고용</span><button class="btn sm" data-br-toggle>${S.brOpen ? '접기 ▴' : '오늘 장 요약·특징주 보기 ▾'}</button></div>
+    </div>`;
+  }
   function renderSched() {
     $$('#scSeg button').forEach((b) => b.classList.toggle('on', b.dataset.sc === S.scMk));
     const s = S.sc[S.scMk], body = $('#scBody');
@@ -1218,11 +1245,11 @@
     $('#scMeta').textContent = `${mk === 'KR' ? '한국 장 마감(15:30) 뒤엔 다음 거래일 기준' : '미국 장 마감(뉴욕 16:00) 뒤엔 다음 거래일 기준'} · 시간은 모두 한국시간`;
     $('#scDays').innerHTML = s.days.map((d) => {
       const l = scDayLabel(d.date, s);
-      const n = d.earnings.length + d.ipo.length;
+      const n = (d.events || []).length + d.earnings.length + d.ipo.length;
       return `<button class="sc-day${d.date === sel ? ' on' : ''}${d.holiday ? ' off' : ''}" data-sc-day="${d.date}"><small>${l.rel || l.wd + '요일'}</small><b>${l.md} <i>${l.wd}</i></b><em>${d.holiday ? '휴장' : n ? n + '건' : '-'}</em></button>`;
     }).join('');
     const d = s.days.find((x) => x.date === sel);
-    if (d.holiday) { body.innerHTML = `<div class="sc-holi"><b>${esc(d.holiday)}</b><span>${mk === 'KR' ? '한국' : '미국'} 증시 휴장일입니다.</span></div>`; return; }
+    if (d.holiday) { body.innerHTML = `${briefHTML(s.briefs)}<div class="sc-holi"><b>${esc(d.holiday)}</b><span>${mk === 'KR' ? '한국' : '미국'} 증시 휴장일입니다.</span></div>`; return; }
     const econ = d.econ.filter((e) => S.scAll || (mk === 'KR' ? e.country === 'KR' || e.imp >= 2 : e.imp >= 2));
     const seenAi = new Set(); // 같은 시각에 함께 나온 지표의 AI 해석은 한 번만
     for (const e of econ) { if (e.ai && seenAi.has(e.ai)) e.ai = null; else if (e.ai) seenAi.add(e.ai); }
@@ -1235,13 +1262,22 @@
     // 이 날 일정이 없으면 다가오는 일정을 대신 보여줌
     const later = d.ipo.length ? [] : s.days.filter((x) => x.date > d.date).flatMap((x) => x.ipo.filter((y) => !/중/.test(y.tag)).map((y) => ({ ...y, _d: x.date }))).slice(0, 8);
     const ipoCard = `<div class="card sc-card"><div class="card-h"><h3>${mk === 'KR' ? '공모주 청약·상장' : 'IPO 상장 예정'} <b>${d.ipo.length}</b></h3></div>${d.ipo.length ? `<div class="sc-ipos">${d.ipo.map((x) => scIpoRow(x, mk)).join('')}</div>` : `<div class="empty sm">${mk === 'KR' ? '이 날은 청약·상장 일정이 없습니다.' : '이 날은 상장 예정 기업이 없습니다.'}</div>${later.length ? `<h4 class="sc-later">다가오는 일정</h4><div class="sc-ipos">${later.map((x) => scIpoRow({ ...x, tag: `${scDayLabel(x._d, s).md} ${x.tag}` }, mk)).join('')}</div>` : ''}`}${mk === 'US' ? '<p class="note">날짜는 예상 상장일이며 공모가 확정 뒤 바뀔 수 있습니다.</p>' : '<p class="note">출처: 38커뮤니케이션 · 증권신고서 정정에 따라 일정이 바뀔 수 있습니다.</p>'}</div>`;
-    // 경제지표는 '경제지표' 메뉴와 겹치므로 여기선 빼고, 공모주·IPO를 앞에
-    body.innerHTML = `${aiHTML}${stat}<div class="sc-grid${mk === 'KR' ? ' one' : ''}"><div>${ipoCard}</div>${mk === 'US' ? `<div>${earnCard}</div>` : ''}</div>`;
+    const evs = d.events || [];
+    const srcs = (d.evSources || []).filter((x) => x.uri).slice(0, 5);
+    const evCard = `<div class="card sc-card sc-evcard"><div class="card-h"><h3>주요 일정 <b>${evs.length}</b></h3><span class="muted sm">${mk === 'KR' ? '정부·정책·기업 행사' : '연준·정책·기업 행사'} · AI가 뉴스 검색으로 확인</span></div>${evs.length ? `<div class="sc-news">${evs.map((e) => `<div class="sc-nw i${e.imp}"><div class="sc-t"><b>${esc(e.time || '종일')}</b></div><div class="sc-n"><div class="sc-nh"><span class="sc-tg">${esc(e.tag)}</span><b>${esc(e.title)}</b><span class="sc-imp i${e.imp}">${'★'.repeat(e.imp)}${'☆'.repeat(3 - e.imp)}</span></div>${e.desc ? `<small>${esc(e.desc)}</small>` : ''}${e.stocks?.length ? `<div class="sc-rel">${e.stocks.map((x) => `<span>${esc(x)}</span>`).join('')}</div>` : ''}</div></div>`).join('')}</div>${srcs.length ? `<p class="note sc-src">출처: ${srcs.map((x) => `<a href="${esc(x.uri)}" target="_blank" rel="noopener nofollow">${esc(x.title || '링크')}</a>`).join(' · ')}</p>` : ''}` : `<div class="empty sm">${d.evAt ? '확인된 주요 일정이 없습니다.' : '장 시작 전·마감 뒤에 AI가 이 날의 주요 일정을 찾아 채웁니다.'}</div>`}</div>`;
+    // 경제지표는 '경제지표' 메뉴와 겹치므로 여기선 빼고, 주요 일정·공모주·IPO를 앞에
+    const key = d.econ.filter((e) => e.imp >= 3);
+    const keyCard = key.length ? `<div class="card sc-card"><div class="card-h"><h3>핵심 경제지표 <b>${key.length}</b></h3><button class="btn sm" data-go="econ">경제지표 전체 →</button></div><div class="sc-keys">${key.map((e) => { const [cn, cc] = CFLAG[e.country] || ['', '']; return `<div class="sc-key"><b class="mono">${esc(e.time)}</b><span class="sc-c ${cc}">${cn}</span><span class="sc-kn">${esc(e.name)}</span><small>${e.actual != null ? `<b>실제 ${esc(e.actual)}</b> · ` : ''}${e.cons ? `예상 ${esc(e.cons)}` : ''}${e.prev ? ` · 이전 ${esc(e.prev)}` : ''}</small></div>`; }).join('')}</div></div>` : '';
+    body.innerHTML = `${briefHTML(s.briefs)}${aiHTML}${stat}<div class="sc-grid"><div>${evCard}${keyCard}</div><div>${ipoCard}${mk === 'US' ? earnCard : ''}</div></div>`;
   }
   function bindSched() {
     $('#scSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-sc]'); if (!b) return; S.scMk = b.dataset.sc; save('gk_scmk', S.scMk); renderSched(); loadSched(); });
     $('#scDays').addEventListener('click', (e) => { const b = e.target.closest('[data-sc-day]'); if (!b) return; S.scDay[S.scMk] = b.dataset.scDay; renderSched(); });
-    $('#scBody').addEventListener('click', (e) => { if (e.target.closest('[data-sc-all]')) { S.scAll = !S.scAll; renderSched(); } });
+    $('#scBody').addEventListener('click', (e) => {
+      if (e.target.closest('[data-sc-all]')) { S.scAll = !S.scAll; renderSched(); return; }
+      const br = e.target.closest('[data-br]'); if (br) { S.brTab = br.dataset.br; renderSched(); return; }
+      if (e.target.closest('[data-br-toggle]')) { S.brOpen = !S.brOpen; renderSched(); }
+    });
   }
 
   // ───────────────────────── 실적 캘린더 ─────────────────────────
