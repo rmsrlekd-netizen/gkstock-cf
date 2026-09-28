@@ -32,6 +32,8 @@ import * as why from './functions/why.mjs';
 import * as themes from './functions/themes.mjs';
 import * as econ from './functions/econ.mjs';
 import * as issues from './functions/issues.mjs';
+import * as schedule from './functions/schedule.mjs';
+import { scheduleWatch } from './lib/schedule.mjs';
 import { issuesWatch } from './lib/issues.mjs';
 import { econWatch } from './lib/econ.mjs';
 import { whyWatch } from './lib/why.mjs';
@@ -42,7 +44,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -139,6 +141,8 @@ export default {
       const krOpen = !['Sat', 'Sun'].includes(krz.wd) && krz.m >= 8 * 60 + 50 && krz.m <= 16 * 60;
       const usOpen = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 4 * 60 && usz.m <= 20 * 60;
       if (krOpen || usOpen || min % 30 < 3) jobs3.push(whyWatch().then((r) => console.log('why', JSON.stringify(r))).catch((e) => console.warn('why', e.message)));
+      // 내일 일정 (20분마다 새로 모으고, 새 거래일이 되면 AI 요약)
+      if (min % 6 < 3) jobs3.push(scheduleWatch().then((r) => console.log('sched', JSON.stringify(r))).catch((e) => console.warn('sched', e.message)));
       if (jobs3.length) ctx.waitUntil(Promise.allSettled(jobs3));
       return;
     }

@@ -15,7 +15,7 @@ function etDate(offsetDays) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(d);
 }
 
-async function usDay(date) {
+export async function usDay(date) {
   const key = `earn/us/${date}`;
   const c = await getJSON(key);
   if (c && Date.now() - c.at < 6 * 3600e3) return c.rows;

@@ -1167,6 +1167,80 @@
     });
   }
 
+  // ───────────────────────── 내일 일정 (경제지표·실적·공모주/IPO + AI 요약) ─────────────────────────
+  S.scMk = load('gk_scmk', 'KR'); S.sc = {}; S.scDay = {}; S.scAll = false;
+  const SC_WD = '일월화수목금토';
+  const scDayLabel = (date, s) => {
+    const d = new Date(date + 'T12:00:00Z');
+    const md = `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+    const t = todayOf(s.mk), tm = new Date(Date.parse(t + 'T12:00:00Z') + 86400e3).toISOString().slice(0, 10);
+    const rel = date === t ? '오늘' : date === tm ? '내일' : date === s.focus ? '다음 거래일' : '';
+    return { md, wd: SC_WD[d.getUTCDay()], rel };
+  };
+  const todayOf = (mk) => new Intl.DateTimeFormat('en-CA', { timeZone: mk === 'KR' ? 'Asia/Seoul' : 'America/New_York' }).format(new Date());
+  const CFLAG = { KR: ['한국', 'kr'], US: ['미국', 'us'], CN: ['중국', 'cn'], JP: ['일본', 'jp'] };
+  async function loadSched(force) {
+    if (S.view !== 'sched') return;
+    const mk = S.scMk;
+    if (!S.sc[mk] || force || Date.now() - S.sc[mk]._at > 5 * 60e3) {
+      if (!S.sc[mk]) renderSched();
+      try { S.sc[mk] = { ...(await getJSON(`/api/schedule?mk=${mk}`, {})), _at: Date.now() }; } catch (e) { S.sc[mk] = { error: e.message, _at: Date.now() - 4 * 60e3 }; }
+    }
+    if (mk === S.scMk) renderSched();
+  }
+  function scEconRow(e, mk) {
+    const [cn, cc] = CFLAG[e.country] || ['', ''];
+    const stars = '★'.repeat(e.imp) + '☆'.repeat(Math.max(0, 3 - e.imp));
+    const nextDay = e.kdate && e.kdate !== e.date ? '<small class="nd">+1</small>' : '';
+    const vals = [e.actual != null ? `<b class="act">실제 ${esc(e.actual)}</b>` : '', e.cons ? `<span>예상 ${esc(e.cons)}</span>` : '', e.prev ? `<span>이전 ${esc(e.prev)}</span>` : ''].filter(Boolean).join('');
+    return `<div class="sc-ev i${e.imp}${e.actual != null ? ' done' : ''}">
+      <div class="sc-t"><b>${esc(e.time)}</b>${nextDay}${mk === 'US' && e.et ? `<small>뉴욕 ${esc(e.et)}</small>` : ''}</div>
+      <div class="sc-n"><div class="sc-nh"><span class="sc-c ${cc}">${cn}</span><b>${esc(e.name)}</b><span class="sc-imp i${e.imp}">${stars}</span></div>${vals ? `<div class="sc-v">${vals}</div>` : ''}${e.ai ? `<div class="sc-ai">AI · ${esc(e.ai)}</div>` : ''}</div>
+    </div>`;
+  }
+  function scIpoRow(x, mk) {
+    const cls = /상장/.test(x.tag) ? 'lst' : /마감/.test(x.tag) ? 'end' : 'sub';
+    const price = x.price ? `공모가 ${esc(x.price)}${mk === 'KR' ? '원' : '$'}` : x.range ? `${mk === 'KR' ? '희망가' : '예정가'} ${esc(x.range)}${mk === 'KR' ? '원' : '$'}` : '';
+    const extra = [x.broker ? esc(x.broker) : '', x.size ? esc(String(x.size).replace(/\.00$/, '')) : '', x.exch ? esc(x.exch) : '', x.comp ? `경쟁률 ${esc(x.comp)}` : ''].filter(Boolean).join(' · ');
+    return `<div class="sc-ipo"><span class="sc-tag ${cls}">${esc(x.tag)}</span><div class="sc-in"><b>${esc(x.name)}${x.ticker ? ` <em>${esc(x.ticker)}</em>` : ''}${x.spac ? '<i class="spac">스팩</i>' : ''}</b><small>${[price, extra].filter(Boolean).join(' · ')}</small></div></div>`;
+  }
+  function scEarnRow(x) {
+    const cap = x.mcap ? (x.mcap >= 1e12 ? `$${(x.mcap / 1e12).toFixed(2)}T` : `$${Math.round(x.mcap / 1e9)}B`) : '';
+    return `<button class="sc-earn" data-open-co="US|${esc(x.t)}|${esc(x.en || x.name || '')}">${logoHTML('US', x.t, x.en, 'sm')}<span class="sc-en"><b>${esc(x.name || x.t)}</b><small>${esc(x.t)}${cap ? ' · ' + cap : ''}</small></span><span class="sc-when ${x.time === '장전' ? 'pre' : x.time === '장후' ? 'post' : ''}">${esc(x.time)}</span><span class="sc-eps">${x.eps != null ? `예상 EPS <b>$${Number(x.eps).toFixed(2)}</b>` : ''}</span></button>`;
+  }
+  function renderSched() {
+    $$('#scSeg button').forEach((b) => b.classList.toggle('on', b.dataset.sc === S.scMk));
+    const s = S.sc[S.scMk], body = $('#scBody');
+    if (!s) { body.innerHTML = '<div class="skel"></div><div class="skel"></div>'; $('#scDays').innerHTML = ''; return; }
+    if (s.error || !s.days) { body.innerHTML = `<div class="empty">일정을 불러오지 못했습니다${s.error ? ': ' + esc(s.error) : ''}</div>`; return; }
+    const mk = S.scMk;
+    const sel = S.scDay[mk] && s.days.some((d) => d.date === S.scDay[mk]) ? S.scDay[mk] : s.focus;
+    $('#scMeta').textContent = `${mk === 'KR' ? '한국 장 마감(15:30) 뒤엔 다음 거래일 기준' : '미국 장 마감(뉴욕 16:00) 뒤엔 다음 거래일 기준'} · 시간은 모두 한국시간`;
+    $('#scDays').innerHTML = s.days.map((d) => {
+      const l = scDayLabel(d.date, s);
+      const n = d.econ.filter((e) => e.imp >= 2).length + d.earnings.length + d.ipo.length;
+      return `<button class="sc-day${d.date === sel ? ' on' : ''}${d.holiday ? ' off' : ''}" data-sc-day="${d.date}"><small>${l.rel || l.wd + '요일'}</small><b>${l.md} <i>${l.wd}</i></b><em>${d.holiday ? '휴장' : n ? n + '건' : '-'}</em></button>`;
+    }).join('');
+    const d = s.days.find((x) => x.date === sel);
+    if (d.holiday) { body.innerHTML = `<div class="sc-holi"><b>${esc(d.holiday)}</b><span>${mk === 'KR' ? '한국' : '미국'} 증시 휴장일입니다.</span></div>`; return; }
+    const econ = d.econ.filter((e) => S.scAll || (mk === 'KR' ? e.country === 'KR' || e.imp >= 2 : e.imp >= 2));
+    const seenAi = new Set(); // 같은 시각에 함께 나온 지표의 AI 해석은 한 번만
+    for (const e of econ) { if (e.ai && seenAi.has(e.ai)) e.ai = null; else if (e.ai) seenAi.add(e.ai); }
+    const hidden = d.econ.length - econ.length;
+    const ai = s.ai && s.ai.date === d.date ? s.ai : null;
+    const aiHTML = ai ? `<div class="sc-brief"><div class="sc-bh"><span class="ai-pill">AI</span><h3>${scDayLabel(d.date, s).rel === '오늘' ? '오늘' : scDayLabel(d.date, s).rel === '내일' ? '내일' : scDayLabel(d.date, s).md} 꼭 볼 일정</h3><span class="muted sm">${esc(ai.headline || '')}</span></div><div class="sc-pts">${ai.points.map((p, i) => `<div class="sc-pt"><span class="ibc-n">${i + 1}</span><div><b>${esc(p.title)}</b><small>${esc(p.why)}</small></div></div>`).join('')}</div></div>` : '';
+    const stat = `<div class="sc-stats"><div><span>경제지표</span><b>${d.econ.length}</b><small>중요 ${d.econ.filter((e) => e.imp >= 2).length}</small></div>${mk === 'US' ? `<div><span>실적 발표</span><b>${d.earnTotal || d.earnings.length}</b><small>시총 3억$ 이상 ${d.earnings.length}</small></div>` : ''}<div><span>${mk === 'KR' ? '공모주' : 'IPO'}</span><b>${d.ipo.length}</b><small>${mk === 'KR' ? '청약·상장' : '상장 예정'}</small></div></div>`;
+    const econCard = `<div class="card sc-card"><div class="card-h"><h3>경제지표 <b>${econ.length}</b></h3><button class="btn sm" data-sc-all>${S.scAll ? '중요 지표만' : `전체 보기${hidden ? ` (+${hidden})` : ''}`}</button></div>${econ.length ? `<div class="sc-evs">${econ.map((e) => scEconRow(e, mk)).join('')}</div>` : '<div class="empty sm">예정된 주요 경제지표가 없습니다.</div>'}<p class="note">★★★ 시장을 크게 움직이는 지표 · ★★ 중요 · ★ 참고${mk === 'KR' ? ' · 중국·일본은 중요 지표만' : ''}</p></div>`;
+    const earnCard = mk === 'US' ? `<div class="card sc-card"><div class="card-h"><h3>실적 발표 <b>${d.earnTotal || d.earnings.length}</b></h3><button class="btn sm" data-go="earnings">실적 캘린더 →</button></div>${d.earnings.length ? `<div class="sc-earns">${d.earnings.slice(0, 15).map(scEarnRow).join('')}</div>` : '<div class="empty sm">시총 3억 달러 이상 기업의 실적 발표가 없습니다.</div>'}<p class="note">장전 = 미국 정규장 전(한국 밤) · 장후 = 장 마감 뒤(한국 새벽)</p></div>` : '';
+    const ipoCard = `<div class="card sc-card"><div class="card-h"><h3>${mk === 'KR' ? '공모주 청약·상장' : 'IPO 상장 예정'} <b>${d.ipo.length}</b></h3></div>${d.ipo.length ? `<div class="sc-ipos">${d.ipo.map((x) => scIpoRow(x, mk)).join('')}</div>` : `<div class="empty sm">${mk === 'KR' ? '청약·상장 일정이 없습니다.' : '상장 예정 기업이 없습니다.'}</div>`}${mk === 'US' ? '<p class="note">날짜는 예상 상장일이며 공모가 확정 뒤 바뀔 수 있습니다.</p>' : '<p class="note">출처: 38커뮤니케이션 · 증권신고서 정정에 따라 일정이 바뀔 수 있습니다.</p>'}</div>`;
+    body.innerHTML = `${aiHTML}${stat}<div class="sc-grid"><div>${econCard}</div><div>${earnCard}${ipoCard}</div></div>`;
+  }
+  function bindSched() {
+    $('#scSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-sc]'); if (!b) return; S.scMk = b.dataset.sc; save('gk_scmk', S.scMk); renderSched(); loadSched(); });
+    $('#scDays').addEventListener('click', (e) => { const b = e.target.closest('[data-sc-day]'); if (!b) return; S.scDay[S.scMk] = b.dataset.scDay; renderSched(); });
+    $('#scBody').addEventListener('click', (e) => { if (e.target.closest('[data-sc-all]')) { S.scAll = !S.scAll; renderSched(); } });
+  }
+
   // ───────────────────────── 실적 캘린더 ─────────────────────────
   async function loadEarnings() {
     if (S.earn && Date.now() - S.earn._at < 30 * 60e3) { renderEarnings(); return; }
@@ -1957,7 +2031,7 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
-  const PAGES = { issue: '#viewIssue', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
+  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
@@ -1970,6 +2044,7 @@
     if (v === 'market') renderMarket();
     if (v === 'earnings') loadEarnings();
     if (v === 'themes') loadThemes();
+    if (v === 'sched') loadSched();
     if (v === 'econ') loadEcon(true);
     if (v === 'admin') renderAdmin();
     if (v === 'popular') { renderPopularPage(); pollViews(); }
@@ -2326,6 +2401,7 @@
   setupToTop();
   bind();
   bindIssues();
+  bindSched();
   setTop(S.top);
   loadSnap();
   trackPV();
@@ -2340,6 +2416,7 @@
   every(60000, pollMarket);
   every(60000, pollPopular);
   every(60000, () => { if (S.view === 'themes') loadThemes(true); });
+  every(5 * 60000, () => { if (S.view === 'sched') loadSched(true); });
   every(45000, () => loadEcon(false));
   setInterval(refreshChips, 60000);
   every(15 * 60000, () => { if (S.top === 'digest') loadDigest(); });

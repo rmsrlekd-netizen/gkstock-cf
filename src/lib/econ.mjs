@@ -66,14 +66,14 @@ const MAP = [
   [/Consumer Credit/i, '소비자신용', 1, ''],
 ];
 const clean = (s) => String(s || '').replace(/&nbsp;/g, '').replace(/&amp;/g, '&').replace(/&#039;/g, "'").replace(/&lt;.*?&gt;/g, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-function meta(name) {
+export function meta(name) {
   for (const [re, ko, imp, desc] of MAP) if (re.test(name)) return { ko, imp, desc };
   return { ko: null, imp: 1, desc: '' };
 }
 const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
 
 // 미국 동부 날짜·시각 → UTC ms
-function etMs(date, hhmm) {
+export function etMs(date, hhmm) {
   const [h, m] = String(hhmm || '00:00').split(':').map(Number);
   const probe = new Date(`${date}T12:00:00Z`);
   const off = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'shortOffset' }).formatToParts(probe).find((x) => x.type === 'timeZoneName')?.value || 'GMT-4';
@@ -86,12 +86,12 @@ export function etToday(offset = 0) {
 }
 
 /** 하루치 미국 지표 (ET 날짜 YYYY-MM-DD) */
-async function nasdaqDay(date) {
+export async function nasdaqDay(date) {
   const key = `econ/day/${date}`;
   const c = await getJSON(key);
   const today = etToday(0);
   const ttl = date < today ? 12 * 3600e3 : date === today ? 60e3 : 3 * 3600e3;
-  if (c && Date.now() - c.at < ttl) return c.list;
+  if (c && c.asia && Date.now() - c.at < ttl) return c.list;
   try {
     const r = await fetchWithTimeout(`https://api.nasdaq.com/api/calendar/economicevents?date=${date}`, { headers: NQ_H }, 9000);
     if (!r.ok) throw new Error('Nasdaq HTTP ' + r.status);
@@ -102,7 +102,9 @@ async function nasdaqDay(date) {
       const ms = etMs(date, x.gmt);
       return { id: 'E' + hash(`${date}|${x.gmt}|${name}|${clean(x.previous)}`), date, et: x.gmt || '', ms, name, ko: m.ko, imp: m.imp, desc: m.desc, actual: clean(x.actual) || null, cons: clean(x.consensus) || null, prev: clean(x.previous) || null };
     });
-    await setJSON(key, { at: Date.now(), list }).catch(() => {});
+    // 한국·중국·일본 지표도 같이 보관 (내일 일정용)
+    const asia = rows.filter((x) => /Korea|China|Japan/i.test(x.country || '')).map((x) => ({ country: /Korea/i.test(x.country) ? 'KR' : /China/i.test(x.country) ? 'CN' : 'JP', name: clean(x.eventName), ms: etMs(date, x.gmt), actual: clean(x.actual) || null, cons: clean(x.consensus) || null, prev: clean(x.previous) || null }));
+    await setJSON(key, { at: Date.now(), list, asia }).catch(() => {});
     return list;
   } catch (e) {
     if (c) return c.list;
