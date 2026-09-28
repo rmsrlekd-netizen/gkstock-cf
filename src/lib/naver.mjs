@@ -31,6 +31,22 @@ export async function naverKrTop(n = 10) {
   return list.slice(0, n).map((x) => ({ market: 'KR', ticker: x.itemCode, name: x.stockName, ...parseQuote(x), cur: 'KRW', mcapText: x.marketValueHangeul || null, valueText: x.accumulatedTradingValueKrwHangeul || null }));
 }
 
+/** 국내 상승·하락 상위 (코스피+코스닥 전체 주식, ETF·ETN만 제외) */
+export async function naverKrMovers(dir, n = 10) {
+  const j = await get(`https://m.stock.naver.com/api/stocks/${dir === 'down' ? 'down' : 'up'}/all?page=1&pageSize=40`);
+  const list = (j.stocks || []).filter((x) => x.itemCode && x.stockEndType === 'stock');
+  if (!list.length) throw new Error('네이버 국내 등락 데이터 없음');
+  return list.slice(0, n).map((x) => ({ market: 'KR', ticker: x.itemCode, name: x.stockName, ...parseQuote(x), cur: 'KRW', mcapText: x.marketValueHangeul || null, valueText: x.accumulatedTradingValueKrwHangeul || null }));
+}
+
+/** 미국 상승·하락 상위 (나스닥·뉴욕·아멕스 전체 주식, 동전주 포함) */
+export async function naverUsMovers(dir, n = 10) {
+  const j = await get(`https://api.stock.naver.com/stock/nation/USA/${dir === 'down' ? 'down' : 'up'}?page=1&pageSize=30`);
+  const list = (j.stocks || []).filter((x) => x.symbolCode && x.stockEndType === 'stock');
+  if (!list.length) throw new Error('네이버 미국 등락 데이터 없음');
+  return list.slice(0, n).map((x) => ({ market: 'US', ticker: x.symbolCode, reuters: x.reutersCode, ...parseQuote(x), name: x.stockName || x.symbolCode, cur: 'USD', mcapText: x.marketValueHangeul || null }));
+}
+
 /** 해외 인기 종목 (네이버 증권 사용자 조회 상위, 최근 1시간) */
 export async function naverUsTop(n = 10) {
   const j = await get('https://stock.naver.com/api/domestic/market/searchTop');

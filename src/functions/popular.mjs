@@ -1,10 +1,10 @@
-// /api/popular — 실시간 인기 종목 TOP 10
+// /api/popular — 실시간 인기 종목 TOP 10 + 상승·하락 상위 10 (국내·미국)
 //  한국: 네이버 증권 "검색 상위 종목"
 //  미국: StockTwits 실시간 트렌딩(미국 상장 주식만) → 실패 시 Nasdaq 거래량 상위
 import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { us as usQuote } from './quote.mjs';
-import { naverKrTop, naverUsTop } from '../lib/naver.mjs';
+import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers } from '../lib/naver.mjs';
 
 const n0 = (s) => { const x = Number(String(s ?? '').replace(/[,%+\s]/g, '')); return Number.isFinite(x) ? x : null; };
 
@@ -70,7 +70,11 @@ export default async () => {
     const q = await usQuote(x.ticker).catch(() => null);
     if (q) { x.price = q.price; x.pct = q.pct; }
   }));
-  const out = { at: Date.now(), kr, us: usList, krSrc, usSrc, errors };
+  // 상승·하락 상위 (국내·미국)
+  const mv = await Promise.all([['krUp', naverKrMovers, 'up'], ['krDown', naverKrMovers, 'down'], ['usUp', naverUsMovers, 'up'], ['usDown', naverUsMovers, 'down']].map(async ([k, fn, dir]) => {
+    try { return [k, await fn(dir, 10)]; } catch (e) { errors.push(`${k}: ${e.message}`); return [k, cached?.[k] || []]; }
+  }));
+  const out = { at: Date.now(), kr, us: usList, krSrc, usSrc, ...Object.fromEntries(mv), errors };
   if (kr.length || usList.length) await setJSON('popular/v2', out).catch(() => {});
   return json({ ok: true, ...out }, { cdnSeconds: 60, swr: 120 });
 };

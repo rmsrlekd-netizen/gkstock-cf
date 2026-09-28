@@ -988,3 +988,13 @@ button.ec-cell:hover { transform: translateY(-2px); border-color: rgba(160,140,2
   .ec-foot span { font-size: .6rem; padding: .08rem .35rem; }
 }
 @media (min-width: 721px) and (max-width: 1100px) { .ec-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+
+/* ── v22: 인기 / 상승 / 하락 탭 ── */
+.pop-kind { display: grid; grid-template-columns: repeat(3, 1fr); gap: .25rem; padding: .22rem; margin: -.2rem 0 .6rem; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line); }
+.pop-kind button { height: 1.75rem; border-radius: 7px; font-size: .78rem; font-weight: 800; color: var(--muted); transition: background .15s, color .15s; }
+.pop-kind button:hover { color: var(--text); }
+.pop-kind button.on { color: #fff; background: linear-gradient(135deg, rgba(139,108,255,.55), rgba(79,125,255,.45)); box-shadow: 0 2px 10px rgba(139,108,255,.25); }
+.pop-kind button.k-up.on { background: linear-gradient(135deg, rgba(255,90,106,.6), rgba(255,90,106,.35)); box-shadow: 0 2px 10px rgba(255,90,106,.25); }
+.pop-kind button.k-down.on { background: linear-gradient(135deg, rgba(76,157,255,.6), rgba(76,157,255,.35)); box-shadow: 0 2px 10px rgba(76,157,255,.25); }
+.pop-kind.big { max-width: 420px; margin: 0 0 1rem; }
+.pop-kind.big button { height: 2.2rem; font-size: .88rem; }

@@ -34,7 +34,7 @@
     sel: null, dTab: 'ai',
     ai: new Map(), co: new Map(), doc: new Map(), stock: new Map(), quotes: new Map(),
     sectors: { us: {}, kr: {} },
-    market: null, flows: null, views: null, popular: null, popTab: load('gk_poptab', 'KR'),
+    market: null, flows: null, views: null, popular: null, popTab: load('gk_poptab', 'KR'), popKind: load('gk_popkind', 'pop'),
     flowTab: load('gk_flowtab', 'usInsider'), flowSide: 'buy', insiderSide: 'all',
     watch: load('gk_watch2', []),
     sound: load('gk_sound', false), notify: load('gk_notify', false), fs: load('gk_fs', 'fs-l'),
@@ -665,20 +665,40 @@
     const px = x.price != null ? (x.market === 'KR' ? `${fmtInt(x.price)}원` : `$${fmtPx(x.price)}`) : '';
     return `<li data-open-co="${esc(x.market)}|${esc(x.ticker)}|${esc(x.name || '')}"><span class="rk">${i + 1}</span>${logoHTML(x.market, x.ticker, x.name, big ? 'md' : 'sm')}<span class="nm"><b>${esc(label)}</b><small>${esc(sub)}${sec ? ' · ' + esc(sec) : ''}</small></span><span class="px">${px ? `<b>${px}</b>` : ''}${x.pct != null ? `<em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em>` : ''}</span>${big && x.why ? `<span class="why">${esc(x.why)}</span>` : ''}</li>`;
   }
+  // 인기 / 상승 / 하락 × 국내 / 미국
+  const KIND_NAME = { pop: '인기', up: '상승', down: '하락' };
+  function popList(p, mk, kind = S.popKind) {
+    if (!p) return null;
+    if (kind === 'up') return mk === 'KR' ? p.krUp : p.usUp;
+    if (kind === 'down') return mk === 'KR' ? p.krDown : p.usDown;
+    return mk === 'KR' ? p.kr : p.us;
+  }
+  function popSrcText(p, mk, kind = S.popKind) {
+    if (kind === 'pop') return mk === 'KR' ? p?.krSrc || '네이버 증권 검색 상위' : p?.usSrc || '';
+    return `네이버 증권 ${kind === 'up' ? '상승률' : '하락률'} 상위 · ${mk === 'KR' ? '코스피·코스닥 전체' : '미국 전체'}`;
+  }
   function renderPopular() {
     const p = S.popular;
     $$('#popSeg button').forEach((b) => b.classList.toggle('on', b.dataset.pop === S.popTab));
+    $$('#popKind button, #popKindPage button').forEach((b) => b.classList.toggle('on', b.dataset.kind === S.popKind));
+    $('#popTitle').textContent = `실시간 ${KIND_NAME[S.popKind]} 종목`;
     if (!p) { $('#popList').innerHTML = '<li class="muted">불러오는 중…</li>'; return; }
-    const list = S.popTab === 'KR' ? p.kr : p.us;
-    $('#popList').innerHTML = list?.length ? list.slice(0, 10).map((x, i) => rankRow(x, i)).join('') : `<li class="muted">${S.popTab === 'KR' ? '네이버 증권' : '미국 인기 종목'} 데이터를 불러오지 못했습니다.</li>`;
-    $('#popSrc').textContent = `${S.popTab === 'KR' ? p.krSrc : p.usSrc} · ${fmtDT(new Date(p.at)).hm} 갱신 · 1분마다 업데이트`;
+    const list = popList(p, S.popTab);
+    $('#popList').innerHTML = list?.length ? list.slice(0, 10).map((x, i) => rankRow(x, i)).join('') : `<li class="muted">${list ? '데이터를 불러오지 못했습니다.' : '불러오는 중…'}</li>`;
+    $('#popSrc').textContent = `${popSrcText(p, S.popTab)} · ${fmtDT(new Date(p.at)).hm} 갱신 · 1분마다 업데이트`;
     if (S.view === 'popular') renderPopularPage();
   }
   function renderPopularPage() {
     const p = S.popular;
-    $('#popKR').innerHTML = p?.kr?.length ? p.kr.map((x, i) => rankRow(x, i, true)).join('') : '<li class="muted">불러오는 중이거나 가져오지 못했습니다.</li>';
-    $('#popUS').innerHTML = p?.us?.length ? p.us.map((x, i) => rankRow(x, i, true)).join('') : '<li class="muted">불러오는 중이거나 가져오지 못했습니다.</li>';
-    $('#popUSsrc').textContent = p?.usSrc || '';
+    const k = KIND_NAME[S.popKind];
+    $('#popPageTitle').textContent = `실시간 ${k} 종목 TOP 10`;
+    $('#popKRh').textContent = `국내 ${k} 종목`;
+    $('#popUSh').textContent = `미국 ${k} 종목`;
+    $('#popKRsrc').textContent = popSrcText(p, 'KR');
+    $('#popUSsrc').textContent = popSrcText(p, 'US');
+    const kr = popList(p, 'KR'), us = popList(p, 'US');
+    $('#popKR').innerHTML = kr?.length ? kr.map((x, i) => rankRow(x, i, true)).join('') : '<li class="muted">불러오는 중이거나 가져오지 못했습니다.</li>';
+    $('#popUS').innerHTML = us?.length ? us.map((x, i) => rankRow(x, i, true)).join('') : '<li class="muted">불러오는 중이거나 가져오지 못했습니다.</li>';
     $('#popMeta').textContent = p ? `${fmtDT(new Date(p.at)).full} 기준` : '';
     const v = (S.views?.top || []).map((x) => ({ market: x.src, ticker: x.ticker, name: x.name, ...(quoteOf(x.src, x.ticker) || {}) }));
     $('#popViews').innerHTML = v.length ? v.map((x, i) => rankRow(x, i, true)).join('') : '<li class="muted">오늘 조회된 종목이 아직 없습니다.</li>';
@@ -1845,6 +1865,7 @@
     $('#digestMore').addEventListener('click', openDigestModal);
     $('#digestSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-dmk]'); if (b) setDigestMk(b.dataset.dmk); });
     $('#popSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.popTab = b.dataset.pop; save('gk_poptab', S.popTab); renderPopular(); });
+    for (const id of ['#popKind', '#popKindPage']) $(id).addEventListener('click', (e) => { const b = e.target.closest('[data-kind]'); if (!b) return; S.popKind = b.dataset.kind; save('gk_popkind', S.popKind); renderPopular(); if (S.view === 'popular') renderPopularPage(); });
     $('#btnRefresh').addEventListener('click', async (e) => { const svg = e.currentTarget.querySelector('svg'); svg.style.animation = 'spin .8s linear infinite'; await Promise.all([poll('sec'), poll('dart'), poll('news'), pollPopular()]); svg.style.animation = ''; toast('새로고침 완료'); });
     $$('.stats4 button').forEach((b) => b.addEventListener('click', () => {
       const k = b.dataset.stat;

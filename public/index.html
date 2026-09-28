@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=29" />
+  <link rel="stylesheet" href="/styles.css?v=31" />
   <script>document.documentElement.classList.add('js');</script>
   <style>.js .ssr{display:none}.ssr{max-width:860px;margin:2rem auto;padding:0 1rem;color:#eef0ff;font-family:sans-serif;line-height:1.7}</style>
 </head>
@@ -144,9 +144,10 @@
         <aside class="side">
           <div class="card pop-card">
             <div class="card-h">
-              <h3>실시간 인기 종목 <b>TOP 10</b></h3>
+              <h3><span id="popTitle">실시간 인기 종목</span> <b>TOP 10</b></h3>
               <div class="seg xs" id="popSeg"><button data-pop="KR" class="on">국내</button><button data-pop="US">미국</button></div>
             </div>
+            <div class="pop-kind" id="popKind"><button data-kind="pop" class="on">인기</button><button data-kind="up" class="k-up">상승</button><button data-kind="down" class="k-down">하락</button></div>
             <ol class="rank" id="popList"><li class="muted">불러오는 중…</li></ol>
             <div class="card-f" id="popSrc"></div>
           </div>
@@ -190,10 +191,11 @@
 
     <!-- ───────── 인기 종목 ───────── -->
     <section id="viewPopular" class="page" hidden>
-      <div class="page-head"><h2>실시간 인기 종목 TOP 10</h2><span class="muted" id="popMeta"></span></div>
+      <div class="page-head"><h2 id="popPageTitle">실시간 인기 종목 TOP 10</h2><span class="muted" id="popMeta"></span></div>
+      <div class="pop-kind big" id="popKindPage"><button data-kind="pop" class="on">인기 종목</button><button data-kind="up" class="k-up">상승 종목</button><button data-kind="down" class="k-down">하락 종목</button></div>
       <div class="pop-grid">
-        <div class="card"><div class="card-h"><h3>국내 인기 종목</h3><span class="muted sm">네이버 증권 검색 상위</span></div><ol class="rank big" id="popKR"></ol></div>
-        <div class="card"><div class="card-h"><h3>미국 인기 종목</h3><span class="muted sm" id="popUSsrc"></span></div><ol class="rank big" id="popUS"></ol></div>
+        <div class="card"><div class="card-h"><h3 id="popKRh">국내 인기 종목</h3><span class="muted sm" id="popKRsrc">네이버 증권 검색 상위</span></div><ol class="rank big" id="popKR"></ol></div>
+        <div class="card"><div class="card-h"><h3 id="popUSh">미국 인기 종목</h3><span class="muted sm" id="popUSsrc"></span></div><ol class="rank big" id="popUS"></ol></div>
       </div>
       <div class="card" style="margin-top:1rem"><div class="card-h"><h3>GK의 공시레이더 오늘 많이 본 종목</h3><span class="muted sm" id="viewsMeta"></span></div><ol class="rank big" id="popViews"></ol></div>
     </section>
@@ -257,6 +259,6 @@
   <div class="modal" id="modal" hidden><div class="modal-card"><button class="ico sm m-close" data-close-modal aria-label="닫기">✕</button><div id="modalBody"></div></div></div>
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
-  <script src="/app.js?v=29" defer></script>
+  <script src="/app.js?v=31" defer></script>
 </body>
 </html>
