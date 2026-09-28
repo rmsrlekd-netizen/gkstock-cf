@@ -5,6 +5,7 @@
 import { getJSON } from '../lib/store.mjs';
 import { report, itemViews } from '../lib/stats.mjs';
 import { runMonitor, telegram } from '../lib/monitor.mjs';
+import { aiUsage } from '../lib/ai.mjs';
 import { fetchWithTimeout } from '../lib/util.mjs';
 import { archiveStats } from '../lib/archive.mjs';
 
@@ -41,7 +42,8 @@ export default async (req) => {
   };
   rep.topItems = await Promise.all(rep.topItems.map(async (x) => ({ ...x, ...(await titleOf(x.id)) })));
   const [arch, bf] = await Promise.all([archiveStats().catch((e) => ({ error: e.message })), getJSON('backfill/state')]);
-  return J({ ok: true, ...rep, archive: arch, backfill: bf, monitor: mon, telegram: { token: !!process.env.TELEGRAM_BOT_TOKEN, chat: !!process.env.TELEGRAM_CHAT_ID } });
+  const usage = await aiUsage(7).catch(() => []);
+  return J({ ok: true, ...rep, usage, archive: arch, backfill: bf, monitor: mon, telegram: { token: !!process.env.TELEGRAM_BOT_TOKEN, chat: !!process.env.TELEGRAM_CHAT_ID } });
 };
 
 export const config = { path: '/api/admin' };

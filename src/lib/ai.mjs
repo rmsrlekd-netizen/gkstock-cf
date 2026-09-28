@@ -33,7 +33,26 @@ export const hasAI = () => !!aiProvider();
 
 // Gemini가 일부 지역(Cloudflare 서버 위치)을 거절하면 서울 중계 서버로 우회
 let geminiViaRelay = false;
-async function gemini(prompt, { maxTokens, timeout, json = true, think = 0 }) {
+// ── AI 사용량 기록 (기능별 호출 수·토큰) → 관리자 화면에서 어디서 비용이 나가는지 확인 ──
+async function logUsage(tag, u) {
+  if (!u) return;
+  try {
+    const d = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+    const key = `ai/usage/${d}`;
+    const cur = (await getJSON(key)) || {};
+    const t = cur[tag] || { n: 0, in: 0, out: 0, th: 0 };
+    t.n++; t.in += u.promptTokenCount || 0; t.out += u.candidatesTokenCount || 0; t.th += u.thoughtsTokenCount || 0;
+    cur[tag] = t;
+    await setJSON(key, cur);
+  } catch {}
+}
+export async function aiUsage(days = 7) {
+  const out = [];
+  for (let i = 0; i < days; i++) { const d = new Date(Date.now() + 9 * 3600e3 - i * 86400e3).toISOString().slice(0, 10); out.push({ date: d, tags: (await getJSON(`ai/usage/${d}`)) || {} }); }
+  return out;
+}
+
+async function gemini(prompt, { maxTokens, timeout, json = true, think = 0, tag = '기타' }) {
   const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'].filter(Boolean))];
   const until = Date.now() + timeout;
   let lastErr, n429 = 0, nOther = 0, body429 = '';
@@ -60,6 +79,7 @@ async function gemini(prompt, { maxTokens, timeout, json = true, think = 0 }) {
       }
       if (r.ok) {
         const j = JSON.parse(body);
+        await logUsage(tag, j.usageMetadata);
         const text = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
         if (text) return text;
         lastErr = new Error('Gemini 빈 응답 ' + (j.candidates?.[0]?.finishReason || ''));
@@ -102,10 +122,10 @@ async function anthropic(prompt, { maxTokens, timeout }) {
 }
 
 /** 프롬프트 → AI 응답 텍스트 */
-export async function claude(prompt, { maxTokens = 1200, timeout = 9000, json = true, think = 0 } = {}) {
+export async function claude(prompt, { maxTokens = 1200, timeout = 9000, json = true, think = 0, tag = '기타' } = {}) {
   const paused = googleKey() ? await aiPausedUntil() : 0;
   if (paused) throw new Error(`AI 잠시 쉬는 중: ${pauseMem.reason || '사용 한도 초과'} (${new Date(paused + 9 * 3600e3).toISOString().slice(11, 16)} KST 이후 다시 시도)`);
-  if (googleKey()) return gemini(prompt, { maxTokens, timeout, json, think });
+  if (googleKey()) return gemini(prompt, { maxTokens, timeout, json, think, tag });
   if (claudeKey()) return anthropic(prompt, { maxTokens, timeout });
   throw new Error('AI 키 미설정');
 }
@@ -200,7 +220,7 @@ export async function koreanHeadlines(batch) {
 
 입력:
 ${JSON.stringify(input)}`;
-  const arr = parseJSON(await claude(prompt, { maxTokens: 1500, timeout: 20000 }), '[', ']');
+  const arr = parseJSON(await claude(prompt, { maxTokens: 1500, timeout: 20000, tag: 'SEC 제목 번역' }), '[', ']');
   const out = {};
   for (const x of arr) if (x && x.id && x.title) out[x.id] = { title: String(x.title).slice(0, 80), sub: String(x.sub || '').slice(0, 140) };
   return out;
@@ -235,7 +255,7 @@ export async function analyzeFiling({ company, ticker, market, kind, title, form
 ${valuation ? `[재무·밸류에이션] ${valuation}\n` : ''}${move ? `[현재 주가 반응] ${move}\n` : ''}${recent?.length ? `[최근 이 회사 공시·보도 흐름]\n${recent.map((x) => '- ' + x).join('\n')}\n` : ''}[제목] ${title}${form ? ` [${form}]` : ''}
 ${overviewRaw ? `[회사 사업 설명(원문)]\n${overviewRaw.slice(0, 1500)}\n` : ''}
 [원문]
-${text.slice(0, 16000)}
+${text.slice(0, 12000)}
 
 [이 발표에서 반드시 따져볼 항목]
 ${lens.map((x) => '- ' + x).join('\n')}
@@ -268,12 +288,12 @@ ${lens.map((x) => '- ' + x).join('\n')}
 }
 매수·매도 추천이나 목표주가는 쓰지 마세요.`;
   let j, raw1 = '', raw2 = '';
-  try { raw1 = await claude(prompt, { maxTokens: 8000, timeout: 55000, think: 2048 }); j = parseJSON(raw1); }
+  try { raw1 = await claude(prompt, { maxTokens: 6000, timeout: 55000, think: 1024, tag: '공시 AI 분석' }); j = parseJSON(raw1); }
   catch (e) {
     if (!raw1) throw e; // AI 호출 자체가 실패(한도 등)
     // 형식이 깨졌으면 한 번 더 요청 (이번엔 빠르게)
     console.warn('analyze JSON retry', e.message);
-    try { raw2 = await claude(prompt + '\n\n주의: 반드시 올바른 JSON만 출력하세요. 문장 안에서 큰따옴표(")는 쓰지 말고 작은따옴표(\')를 쓰세요. 항목 사이 쉼표를 빠뜨리지 마세요.', { maxTokens: 6000, timeout: 40000, think: 0 }); j = parseJSON(raw2); }
+    try { raw2 = await claude(prompt + '\n\n주의: 반드시 올바른 JSON만 출력하세요. 문장 안에서 큰따옴표(")는 쓰지 말고 작은따옴표(\')를 쓰세요. 항목 사이 쉼표를 빠뜨리지 마세요.', { maxTokens: 6000, timeout: 40000, think: 0, tag: '공시 AI 분석' }); j = parseJSON(raw2); }
     catch (e2) {
       // 그래도 깨졌으면 항목별로 느슨하게 뽑아냄 (요약·긍정·부정·코멘트만 있어도 충분)
       j = looseParse(raw2) || looseParse(raw1);
@@ -300,7 +320,7 @@ ${lens.map((x) => '- ' + x).join('\n')}
 /** 영문 기업 소개 → 한국어 2~3문장 */
 export async function overviewKo(name, raw) {
   const prompt = `다음은 ${name}의 영문 기업 소개입니다. 한국 개인투자자가 이해하기 쉽게 이 회사가 무엇을 하는 회사인지(주요 사업·제품·고객·시장) 한국어 3문장 이내로 설명하세요. 원문에 있는 사실만 쓰고, 설명 문장만 출력하세요.\n\n${String(raw).slice(0, 2500)}`;
-  const t = await claude(prompt, { maxTokens: 500, timeout: 20000, json: false });
+  const t = await claude(prompt, { maxTokens: 500, timeout: 20000, json: false, tag: '회사 소개 번역' });
   const out = String(t).replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 450);
   return /[가-힣]{4,}/.test(out) ? out : null;
 }
@@ -312,7 +332,7 @@ export async function translateTitles(batch) {
 규칙: 50자 이내, 숫자·금액·제품명 유지, 회사명은 빼도 됨, 과장 금지.
 출력은 JSON 배열만: [{"id":"...","ko":"..."}]
 입력: ${JSON.stringify(batch.map((b) => ({ id: b.id, title: b.title, desc: (b.desc || '').slice(0, 200) })))}`;
-  const arr = parseJSON(await claude(prompt, { maxTokens: 1800, timeout: 20000 }), '[', ']');
+  const arr = parseJSON(await claude(prompt, { maxTokens: 1800, timeout: 20000, tag: '보도자료 제목 번역' }), '[', ']');
   const out = {};
   for (const x of arr) if (x && x.id && x.ko) out[x.id] = String(x.ko).slice(0, 90);
   return out;
@@ -325,7 +345,7 @@ export async function dailyDigest(items, note = '') {
 출력은 JSON 하나만:
 {"headline":"오늘 시장의 공시 흐름 한 줄 요약(60자 이내)","items":[{"id":"목록의 id 그대로","title":"핵심 내용 한 줄(45자 이내)","why":"주가 영향 이유(60자 이내)","verdict":"긍정|중립|부정"}]}
 목록: ${JSON.stringify(items)}`;
-  const j = parseJSON(await claude(prompt, { maxTokens: 1800, timeout: 25000 }));
+  const j = parseJSON(await claude(prompt, { maxTokens: 1800, timeout: 25000, tag: 'AI 핵심 공시' }));
   return {
     headline: String(j.headline || '').slice(0, 120),
     items: (Array.isArray(j.items) ? j.items : []).slice(0, 8).map((x) => ({ id: String(x.id || ''), title: String(x.title || '').slice(0, 100), why: String(x.why || '').slice(0, 140), verdict: ['긍정', '중립', '부정'].includes(x.verdict) ? x.verdict : '중립' })),
@@ -342,7 +362,7 @@ export async function translateParagraphs(paras, { timeout = 40000 } = {}) {
 - 번역문 외 다른 설명은 쓰지 마세요
 
 ${paras.map((p, i) => `[[${i}]] ${p}`).join('\n')}`;
-  const text = await claude(prompt, { maxTokens: 8000, timeout, json: false });
+  const text = await claude(prompt, { maxTokens: 8000, timeout, json: false, tag: '원문 번역' });
   const out = new Array(paras.length).fill(null);
   const re = /\[\[(\d+)\]\]\s*([\s\S]*?)(?=\n?\[\[\d+\]\]|$)/g;
   let m;
@@ -372,6 +392,7 @@ export async function askAIWeb(prompt, { maxTokens = 3000, timeout = 60000 } = {
     if (r.ok) {
       const j = JSON.parse(body);
       const c = j.candidates?.[0];
+      await logUsage('일정 검색(웹)', j.usageMetadata);
       const text = (c?.content?.parts || []).map((p) => p.text || '').join('');
       const sources = (c?.groundingMetadata?.groundingChunks || []).map((g) => g.web).filter(Boolean).map((w) => ({ title: w.title || '', uri: w.uri || '' })).slice(0, 12);
       if (text) return { text, sources };

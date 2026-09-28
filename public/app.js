@@ -1568,7 +1568,7 @@
     const vc = (v) => (v === '긍정' ? 'pos' : v === '부정' ? 'neg' : 'neu');
     $('#modalBody').innerHTML = `<h2>AI가 고른 오늘의 핵심 공시</h2><p class="dg-head">${esc(d.headline || '')}</p>
       ${(d.items || []).map((x, i) => `<div class="dg-item" data-id="${esc(x.id)}"><span class="dg-n">${i + 1}</span><div><div class="dg-c">${x.market === 'KR' ? '한국' : '미국'} · ${esc(x.company || '')}</div><div class="dg-t">${esc(x.title)}</div><div class="dg-w">${esc(x.why)}</div></div><span class="verdict ${vc(x.verdict)}">${esc(x.verdict)}</span></div>`).join('') || '<div class="empty">오늘은 아직 주요 공시가 없습니다.</div>'}
-      <p class="note">${d.at ? fmtDT(new Date(d.at)).full + ' 분석 · ' : ''}30분마다 새로 분석합니다. 투자 참고용이며 투자 권유가 아닙니다.</p>`;
+      <p class="note">${d.at ? fmtDT(new Date(d.at)).full + ' 분석 · ' : ''}1시간마다 새로 분석합니다. 투자 참고용이며 투자 권유가 아닙니다.</p>`;
   }
   function digestFallback() {
     const arr = [...S.items.values()].filter((n) => n.kind !== 'NEWS' && (S.digestMk === 'ALL' || n.market === S.digestMk) && n.impact >= 4 && Date.now() - n.ms < 72 * 3600e3).sort((a, b) => b.impact - a.impact || b.ms - a.ms).slice(0, 7);
@@ -2306,6 +2306,17 @@
       <div class="card" style="margin-bottom:.8rem"><h3>공시 보관소 <small class="muted">지우지 않고 계속 쌓임</small></h3>
         <div class="adm-kpis" style="grid-template-columns:repeat(4,1fr);margin:0">${[['전체', d.archive?.total], ['미국 공시', d.archive?.bySrc?.SEC], ['한국 공시', d.archive?.bySrc?.DART], ['보도자료', d.archive?.bySrc?.PR]].map(([l, v]) => `<div class="card" style="display:block"><span>${l}</span><div><b>${fmtInt(v || 0)}</b><small>건</small></div></div>`).join('')}</div>
         <p class="note">가장 오래된 기록: ${d.archive?.oldest ? fmtDT(new Date(d.archive.oldest)).date : '—'} · 8-K 항목 보강 대기 ${fmtInt(d.archive?.pendingEnrich || 0)}건<br>과거 채우기 — 미국: ${d.backfill?.sec ? (d.backfill.sec.done ? '완료' : esc(d.backfill.sec.day) + ' 진행 중') + (d.backfill.sec.log ? ' (' + esc(d.backfill.sec.log) + ')' : '') : '대기'} · 한국: ${d.backfill?.dart ? (d.backfill.dart.done ? '완료' : esc(d.backfill.dart.day) + ' 진행 중') + (d.backfill.dart.log ? ' (' + esc(d.backfill.dart.log) + ')' : '') : '대기'}</p></div>
+      ${(() => { // AI 사용량 (기능별 호출 수·토큰, 최근 7일)
+        const u = d.usage || []; if (!u.length) return '';
+        const tot = {}; for (const day of u) for (const [k, v] of Object.entries(day.tags || {})) { const t = tot[k] || (tot[k] = { n: 0, in: 0, out: 0, th: 0 }); t.n += v.n; t.in += v.in; t.out += v.out; t.th += v.th; }
+        const rows = Object.entries(tot).sort((a, b) => (b[1].in + b[1].out * 8 + b[1].th * 8) - (a[1].in + a[1].out * 8 + a[1].th * 8));
+        const sum = rows.reduce((a, [, v]) => a + v.in + (v.out + v.th) * 8, 0) || 1;
+        const today = u[0]?.tags || {};
+        const tk = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n));
+        return `<div class="card" style="margin-bottom:.8rem"><h3>AI 사용량 <small class="muted">최근 7일 · 기능별 (출력·생각 토큰은 입력보다 비싸서 비중 계산 시 8배로 반영)</small></h3>
+          <table class="tbl"><tr><th>기능</th><th>오늘 호출</th><th>7일 호출</th><th>입력</th><th>출력</th><th>생각</th><th>비용 비중</th></tr>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${fmtInt(today[k]?.n || 0)}</td><td>${fmtInt(v.n)}</td><td>${tk(v.in)}</td><td>${tk(v.out)}</td><td>${tk(v.th)}</td><td><b>${Math.round(((v.in + (v.out + v.th) * 8) / sum) * 100)}%</b></td></tr>`).join('')}</table>
+          <p class="note">토큰 = AI가 읽고 쓴 글자 양. 실제 요금은 Google AI Studio 결제 화면 기준입니다.</p></div>`;
+      })()}
       <div class="card"><h3>고장 자동 감시 <small class="muted">${d.monitor?.at ? fmtDT(new Date(d.monitor.at)).full + ' 점검 · 약 9분마다 자동 점검' : '아직 점검 기록 없음'}</small></h3>
         <table class="tbl adm-mon"><tr><th>항목</th><th>상태</th><th>내용</th></tr>${mon.map((c) => `<tr><td>${esc(c.name)}</td><td><span class="mon ${c.ok ? 'ok' : c.fails >= 2 ? 'bad' : 'warn'}">${c.ok ? '정상' : c.fails >= 2 ? '이상' : '확인 중'}</span></td><td>${esc(c.msg)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">점검 기록이 없습니다. 아래 "지금 점검"을 눌러보세요.</td></tr>'}</table>
         <div class="chips" style="margin-top:.8rem"><button class="btn sm" data-admin-act="monitor">지금 점검</button><button class="btn sm" data-admin-act="tgfind">텔레그램 채팅 ID 찾기</button><button class="btn sm" data-admin-act="tgtest">텔레그램 테스트 알림</button></div>

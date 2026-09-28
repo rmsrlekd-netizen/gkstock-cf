@@ -4,7 +4,7 @@ import { getJSON, setJSON } from './store.mjs';
 import { hasAI, aiPauseInfo } from './ai.mjs';
 import { kstDate } from './util.mjs';
 
-const DAILY_MAX = Number(process.env.PREWARM_DAILY_MAX || 500); // AI 미리 분석 하루 최대 건수 (요금·한도 보호)
+const DAILY_MAX = Number(process.env.PREWARM_DAILY_MAX || 200); // AI 미리 분석 하루 최대 건수 (요금·한도 보호)
 
 async function runOne(it) {
   const { analyzeId } = await import('../functions/analyze.mjs');

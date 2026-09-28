@@ -231,7 +231,7 @@ JSON만: {"headline":"","points":[{"title":"","why":""}]}
 
 일정:
 ${lines.join('\n')}`;
-  const j = parseJSON(await askAI(prompt, { maxTokens: 1500, timeout: 40000 }));
+  const j = parseJSON(await askAI(prompt, { maxTokens: 1500, timeout: 40000, tag: '오늘 일정 요약' }));
   const points = (Array.isArray(j?.points) ? j.points : []).slice(0, 3).map((p) => ({ title: clean(p.title).slice(0, 30), why: clean(p.why).slice(0, 80) })).filter((p) => p.title);
   if (!points.length) throw new Error('AI 응답 형식 오류');
   const out = { date: d.date, headline: clean(j.headline).slice(0, 50), points, at: Date.now() };

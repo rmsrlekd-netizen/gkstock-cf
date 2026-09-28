@@ -35,7 +35,7 @@ JSON만: {"headline":"","summary":["","",""],"sectors":{"up":[{"name":"","why":"
 
 [자료]
 ${g.text}`;
-  const j = parseJSON(await askAI(prompt, { maxTokens: 5000, timeout: 90000, think: 512 }));
+  const j = parseJSON(await askAI(prompt, { maxTokens: 5000, timeout: 90000, think: 512, tag: '장 마감 브리핑' }));
   if (!j?.headline || !Array.isArray(j.next)) throw new Error('AI 응답 형식 오류');
   const okCode = (c) => (mk === 'KR' ? /^\d{6}$/.test(c) : /^[A-Z][A-Z0-9.\-]{0,6}$/.test(c));
   const movers = (Array.isArray(j.movers) ? j.movers : []).slice(0, 5).map((x) => {

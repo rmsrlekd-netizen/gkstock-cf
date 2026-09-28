@@ -29,7 +29,7 @@ export default async (req) => {
   if (!hasAI()) return json({ ok: false, needsKey: true, error: 'AI 키가 없습니다' }, { cdnSeconds: 300 });
   const key = `ai/digest2/${mk}`;
   const cached = await getJSON(key);
-  if (cached && Date.now() - cached.at < 30 * 60e3) return json({ ok: true, mk, ...cached }, { cdnSeconds: 300, swr: 600 });
+  if (cached && Date.now() - cached.at < 60 * 60e3) return json({ ok: true, mk, ...cached }, { cdnSeconds: 300, swr: 600 });
   try {
     const [sec, dart, news] = await Promise.all([getJSON('sec/feed'), getJSON('dart/feed'), getJSON('news/feed')]);
     // 주말·연휴처럼 최근 24시간에 공시가 적으면 최대 3일까지 넓혀서 고름

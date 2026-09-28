@@ -176,7 +176,7 @@ export async function buildEdition(mk, slot, date, { prev = null, force = false 
   const same = prev && prev.date === date ? prev : null;
   const fresh = same?.sig ? g.keys.filter((k) => !same.sig.includes(k)).length : g.keys.length;
   if (same && !force && fresh < MIN_NEW) { const e = new Error(`새 이슈 없음 (새 소식 ${fresh}건)`); e.skip = true; throw e; }
-  const txt = await askAI(prompt(mk, slot, date, g.text, same), { maxTokens: 9000, timeout: 110000, think: 1024 });
+  const txt = await askAI(prompt(mk, slot, date, g.text, same), { maxTokens: 7000, timeout: 110000, think: 512, tag: '오늘 주요 이슈' });
   const j = parseJSON(txt);
   const okCode = (c) => (mk === 'KR' ? /^\d{6}$/.test(c) : /^[A-Z][A-Z0-9.\-]{0,6}$/.test(c));
   const issues = (Array.isArray(j?.issues) ? j.issues : []).filter((x) => x && x.title).slice(0, 6).map((x) => ({

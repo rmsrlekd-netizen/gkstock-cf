@@ -145,7 +145,7 @@ ${lines}
 - 과장 금지, 불확실하면 "제한적"
 JSON만 출력:
 {"headline":"한 줄 요약(40자 이내)","surprise":"예상 상회|예상 하회|예상 부합|혼조","summary":["핵심 해석 2~3줄"],"stock":"호재|악재|중립","impact":{"size":"큼|보통|제한적","text":"주가에 미칠 영향 한두 문장"},"rates":"금리·달러·연준 정책에 대한 의미 한 문장","good":[{"sector":"섹터","why":"이유"}],"bad":[{"sector":"섹터","why":"이유"}],"korea":"한국 증시·환율에 미칠 영향 한 문장","watch":"다음에 볼 포인트 한 문장"}`;
-  const txt = await askAI(prompt, { maxTokens: 1500, timeout: 30000, think: 512 });
+  const txt = await askAI(prompt, { maxTokens: 1500, timeout: 30000, think: 512, tag: '경제지표 해석' });
   const j = parseJSON(txt);
   if (!j?.headline) throw new Error('AI 형식 오류');
   return { ...j, at: Date.now() };

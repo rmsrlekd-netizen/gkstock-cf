@@ -7,7 +7,7 @@ import { getJSON, setJSON } from './store.mjs';
 import { hasAI, askAI, parseJSON, aiPauseInfo } from './ai.mjs';
 
 const H = { Accept: 'application/json', Referer: 'https://m.stock.naver.com/' };
-const DAILY_MAX = () => Number(process.env.WHY_DAILY_MAX || 300);
+const DAILY_MAX = () => Number(process.env.WHY_DAILY_MAX || 200);
 const clean = (s) => String(s || '').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
 // "202609280931" 또는 "20260928020132" (한국 시간) → ISO
 const kstIso = (s) => { const m = String(s || '').match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?/); return m ? new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] || '00'}+09:00`).toISOString() : null; };
@@ -82,7 +82,7 @@ JSON만 출력: {"reason":"","confidence":"높음|보통|낮음","basis":[1]}
 
 ${peerTxt ? '동반 움직임:\n' + peerTxt + '\n\n' : ''}최근 뉴스:
 ${newsTxt || '(없음)'}`;
-  const txt = await askAI(prompt, { maxTokens: 400, timeout: 20000 });
+  const txt = await askAI(prompt, { maxTokens: 400, timeout: 20000, tag: '주가 움직임 이유' });
   const j = parseJSON(txt);
   if (!j?.reason) throw new Error('AI 응답 형식 오류');
   return { reason: String(j.reason).slice(0, 80), conf: ['높음', '보통', '낮음'].includes(j.confidence) ? j.confidence : '보통', basis: (j.basis || []).map(Number).filter((n) => n >= 1 && n <= news.length) };
