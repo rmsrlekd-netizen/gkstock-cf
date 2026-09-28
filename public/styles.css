@@ -1167,3 +1167,18 @@ button.ec-cell:hover { transform: translateY(-2px); border-color: rgba(160,140,2
   .tape-in { font-size: .76rem; padding-top: .3rem; padding-bottom: .3rem; }
   main { padding-top: .8rem; }
 }
+
+/* ══════════ v28: 테두리 끝이 살짝 빛나는 효과를 전체에 통일 ("AI가 고른 오늘의 핵심 공시" 카드 기준) ══════════ */
+:root {
+  --edge: rgba(139,108,255,.38);        /* 큰 카드 테두리 */
+  --edge-soft: rgba(139,108,255,.2);    /* 안쪽 카드·줄 테두리 */
+  --edge-glow: 0 0 0 1px rgba(139,108,255,.06), 0 0 22px rgba(139,108,255,.09);
+}
+.card, .digest, .ec-card { border-color: var(--edge); box-shadow: var(--edge-glow), inset 0 1px 0 rgba(255,255,255,.04), 0 8px 24px rgba(0,0,0,.18); }
+.box, .row, .dcard, .tcard, .th-row, .ec-row, .ec-cell:not(.past), .sec-tile, .ec-ai, .why-reason, .ec-next { border-color: var(--edge-soft); }
+.row:hover, .dcard:hover, .tcard:hover, .th-row:hover { border-color: rgba(160,140,255,.5); box-shadow: 0 0 16px rgba(139,108,255,.12); }
+/* 색이 정해진 칸(상승·하락 타일, 오늘 달력, 주요 지표)은 원래 색 유지 */
+.sec-tile.up { border-color: rgba(255,90,106,.35); } .sec-tile.down { border-color: rgba(76,157,255,.35); }
+.ec-row.i3 { border-color: rgba(245,197,66,.3); }
+.ec-next { border-color: rgba(245,197,66,.3); }
+.row.sel { border-color: var(--accent); }
