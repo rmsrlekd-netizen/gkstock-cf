@@ -32,7 +32,7 @@
     errors: {}, updated: {},
     view: 'home', mk: 'ALL', type: 'ALL', theme: null, q: '', sort: 'time', limit: 80,
     sel: null, dTab: 'ai',
-    ai: new Map(), co: new Map(), doc: new Map(), stock: new Map(), quotes: new Map(),
+    ai: new Map(), aiq: new Map(), co: new Map(), doc: new Map(), stock: new Map(), quotes: new Map(),
     sectors: { us: {}, kr: {} },
     market: null, flows: null, views: null, popular: null, popTab: load('gk_poptab', 'KR'), popKind: load('gk_popkind', 'pop'),
     flowTab: load('gk_flowtab', 'usInsider'), flowSide: 'buy', insiderSide: 'all',
@@ -1707,7 +1707,13 @@
   // AI 탭
   function aiPane(n) {
     const a = S.ai.get(n.id);
-    if (!a) return `<div class="box"><h4>AI 분석</h4><div class="loading"><span class="spin"></span>섹터 애널리스트 AI가 원문과 재무·최근 공시 흐름을 함께 검토하는 중… (처음 여는 항목은 20~40초, 한 번 분석하면 바로 열립니다)</div></div>`;
+    if (!a) {
+      const q = S.aiq.get(n.id);
+      if (q) return `<div class="box a-sum"><h4>AI 빠른 요약 <span class="verdict ${verdictCls(q.verdict)}">주가 영향: ${esc(q.verdict || '중립')}</span></h4>
+        ${q.headline ? `<p style="margin:.2rem 0 .5rem;font-weight:700">${esc(q.headline)}</p>` : ''}<ol class="sum5">${q.summary.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>
+        <div class="box"><div class="loading"><span class="spin"></span>섹터 애널리스트 AI가 긍정·부정 요인과 심층 코멘트를 작성하는 중… (끝나면 자동으로 바뀝니다)</div></div>`;
+      return `<div class="box"><h4>AI 분석</h4><div class="loading"><span class="spin"></span>AI가 원문을 읽는 중… 핵심 요약이 곧 나오고, 심층 분석은 이어서 표시됩니다</div></div>`;
+    }
     if (a.error) return `<div class="box"><h4>AI 분석</h4><p class="err">분석하지 못했습니다: ${esc(a.error)}</p><button class="btn sm" data-ai-retry>다시 시도</button></div>`;
     const li = (arr) => (arr && arr.length ? arr.map((x) => `<li>${esc(x)}</li>`).join('') : `<li class="muted">${a.fallback ? 'AI 분석이 끝나면 표시됩니다' : '뚜렷한 요인 없음'}</li>`);
     return `<div class="box a-sum"><h4>${a.fallback ? '핵심 내용 (자동 요약)' : 'AI 핵심 요약'} <span class="verdict ${verdictCls(a.verdict)}">주가 영향: ${esc(a.verdict || '중립')}</span></h4>
@@ -1727,9 +1733,23 @@
 
   // 마우스를 올려두면(0.25초) 클릭 전에 AI 분석·원문·기업 정보를 미리 요청 → 누르는 순간 이미 준비됨
   const aiPending = new Map();
+  const qPending = new Set();
+  // 빠른 요약(3~5초) 먼저 받아서, 심층 분석이 오기 전까지 보여줌
+  function startQuick(id) {
+    if (S.ai.has(id) || S.aiq.has(id) || qPending.has(id)) return;
+    qPending.add(id);
+    getJSON(`/api/analyze?id=${encodeURIComponent(id)}&quick=1`, {}).then((q) => {
+      if (!q?.summary?.length) return;
+      if (!q.quick) { if (!S.ai.has(id)) { S.ai.set(id, q); aiPending.delete(id); } } // 이미 심층 분석이 있었음
+      else S.aiq.set(id, q);
+      const n = S.items.get(id);
+      if (n && S.sel === id && S.view === 'item' && $('#aAI')) { $('#aAI').innerHTML = aiPane(n); if (!q.quick) applyAI(n); }
+    }).catch(() => {}).finally(() => qPending.delete(id));
+  }
   function prefetchItem(id) {
     const n = S.items.get(id);
     if (!n) return;
+    startQuick(id);
     if (!S.ai.has(id) && !aiPending.has(id)) aiPending.set(id, getJSON(`/api/analyze?id=${encodeURIComponent(id)}`, {}).catch((e) => ({ error: e.message })));
     if (!S.doc.has(id)) loadDoc(n);
     if (n.ticker && hasCo(n)) fetchCo(coUrl(n.market, n.ticker, n.corpCode, n.exchange));
@@ -1748,6 +1768,7 @@
     const had = S.ai.get(n.id);
     if (had && !force && !had.error && !had.fallback) { if (S.sel === n.id && $('#aAI')) $('#aAI').innerHTML = aiPane(n); return; }
     S.ai.delete(n.id);
+    if (!force) startQuick(n.id);
     if (S.sel === n.id && $('#aAI')) $('#aAI').innerHTML = aiPane(n);
     let a;
     const pre = !force && aiPending.get(n.id);

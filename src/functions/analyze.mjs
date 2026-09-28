@@ -2,7 +2,7 @@
 // AI 키가 없거나 AI 호출이 실패하면 원문 기반 자동 요약(규칙 기반)을 대신 돌려줌 (fallback: true)
 import { json as jsonRes } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
-import { hasAI, analyzeFiling, aiProvider } from '../lib/ai.mjs';
+import { hasAI, analyzeFiling, aiProvider, claude, parseJSON } from '../lib/ai.mjs';
 import { findFiling, getFilingDoc, snapshotItem } from '../lib/filing-doc.mjs';
 import { koHeadline } from '../lib/sec-ko.mjs';
 import { getSectors } from '../lib/sectors.mjs';
@@ -89,11 +89,49 @@ export function analyzeId(id) {
   return p;
 }
 
+// 빠른 요약: 처음 여는 공시는 심층 분석(20~40초) 전에 3~5초 안에 핵심 3줄 + 주가 영향을 먼저 보여줌
+const qInflight = new Map();
+async function quick(id) {
+  const c = await getJSON(`aiq/${id}`);
+  if (c) return c;
+  const it = await findFiling(id);
+  if (!it) throw new Error('공시를 찾을 수 없습니다');
+  const doc = await getFilingDoc(it);
+  const text = (doc.lines || []).join('\n');
+  if (text.length < 15) throw new Error('원문 내용이 비어 있습니다');
+  const title = it.titleKo || it.title || it.summary?.title || it.ko?.title || it.pr?.headline || it.formKo || it.form;
+  const what = it.src === 'NEWS' ? '기업 뉴스' : it.src === 'PR' ? '기업 보도자료' : it.src === 'DART' ? '한국 DART 공시' : '미국 SEC 공시';
+  const prompt = `아래 ${what}의 핵심을 한국 개인투자자에게 빠르게 알려줘라. 원문에 있는 사실만, 숫자·금액은 그대로.
+- headline: 무슨 발표인지 한 줄 (35자 이내)
+- summary: 핵심 정확히 3개 (각 60자 이내)
+- verdict: 주가 영향 "긍정" / "중립" / "부정" 중 하나
+JSON만: {"headline":"","summary":["","",""],"verdict":""}
+
+[회사] ${it.name || it.company || ''}${it.ticker ? ` (${it.ticker})` : ''}
+[제목] ${title}${it.form ? ` [${it.form}]` : ''}
+[원문]
+${text.slice(0, 5000)}`;
+  const j = parseJSON(await claude(prompt, { maxTokens: 800, timeout: 15000, think: 0, tag: '빠른 요약' }));
+  const summary = (Array.isArray(j?.summary) ? j.summary : []).map((x) => String(x || '').trim()).filter(Boolean).slice(0, 3);
+  if (!summary.length) throw new Error('빠른 요약 실패');
+  const out = { id, quick: true, headline: String(j.headline || '').slice(0, 60) || null, summary, verdict: ['긍정', '중립', '부정'].includes(j.verdict) ? j.verdict : '중립', at: Date.now() };
+  await setJSON(`aiq/${id}`, out).catch(() => {});
+  return out;
+}
+
 export default async (req) => {
-  const id = new URL(req.url).searchParams.get('id') || '';
+  const u = new URL(req.url);
+  const id = u.searchParams.get('id') || '';
   if (!/^(SEC|DART)-[\d-]+$|^(NEWS|PR)-[a-z0-9]+$/.test(id)) return jsonRes({ ok: false, error: '잘못된 공시 ID' }, { status: 400, cdnSeconds: 60 });
   const cached = await getJSON(`ai3/${id}`);
   if (cached) return jsonRes({ ok: true, ...cached }, { cdnSeconds: 86400, swr: 86400 });
+  if (u.searchParams.get('quick') === '1') {
+    if (!hasAI()) return jsonRes({ ok: false, error: 'AI 없음' }, { status: 503, cdnSeconds: 60 });
+    try {
+      if (!qInflight.has(id)) qInflight.set(id, quick(id).finally(() => setTimeout(() => qInflight.delete(id), 1000)));
+      return jsonRes({ ok: true, ...(await qInflight.get(id)) }, { cdnSeconds: 300 });
+    } catch (e) { return jsonRes({ ok: false, error: String(e.message || e) }, { status: 502, cdnSeconds: 30 }); }
+  }
   const r = await analyzeId(id);
   return jsonRes(r.body, r.opt);
 };
