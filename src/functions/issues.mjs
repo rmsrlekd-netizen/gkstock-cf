@@ -9,7 +9,9 @@ const J = (o, status = 200) => new Response(JSON.stringify(o), { status, headers
 
 async function makeNow(mk) {
   const s = dueSlot(mk, new Date(), { force: true });
-  const ed = await buildEdition(mk, s, s.date);
+  const idx = (await getJSON(`issues/idx/${mk}`)) || [];
+  const prev = idx[0] ? await getJSON(`issues/ed/${idx[0].id}`) : null;
+  const ed = await buildEdition(mk, s, s.date, { prev, force: true });
   await saveEdition(ed);
   return ed;
 }

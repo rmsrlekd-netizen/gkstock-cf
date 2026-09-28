@@ -1313,3 +1313,46 @@ button.ic-s:hover { border-color: var(--accent); }
   .ib-past { grid-column: 1 / -1; margin-left: 0; max-width: none; }
   .ib-foot { flex-direction: column; align-items: stretch; } .ib-act { justify-content: stretch; } .ib-act .btn { flex: 1; }
 }
+
+/* ── v32: 오늘 주요 이슈 — 메인은 작은 요약판 (한 줄 × 9) ── */
+.issue { padding: .95rem 1.1rem; }
+#issBody { margin-top: .7rem; }
+#issBody .skel { height: 4.5rem; }
+.ibc { --acc: #ff5a6a; --acc2: #d6336c; }
+.ibc.mk-us { --acc: #3ea6ff; --acc2: #2f6bff; }
+.ibc-top { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.ibc-date { font-size: .78rem; color: var(--muted); white-space: nowrap; flex: none; }
+.ibc-head { margin: 0; font-size: .92rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.ibc-act { display: flex; gap: .35rem; flex: none; margin-left: auto; }
+.ibc-act .btn { padding: .38rem .7rem; font-size: .78rem; }
+.ibc-act svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ibc-list { list-style: none; margin: .65rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem .6rem; }
+.ibc-list li { display: flex; align-items: center; gap: .45rem; min-width: 0; padding: .45rem .6rem; border-radius: 10px; background: rgba(8,10,28,.5); border: 1px solid var(--edge-soft, var(--line)); cursor: pointer; transition: border-color .15s; position: relative; }
+.ibc-list li:hover { border-color: var(--edge, var(--accent)); }
+.ibc-list li::before { content: ''; position: absolute; left: 0; top: .5rem; bottom: .5rem; width: 2px; border-radius: 2px; background: var(--muted); opacity: .5; }
+.ibc-list li.t-pos::before { background: #2fd08a; opacity: 1; } .ibc-list li.t-neg::before { background: #ff5a6a; opacity: 1; }
+.ibc-n { flex: none; width: 1.3rem; height: 1.3rem; border-radius: 6px; display: grid; place-items: center; font: 900 .72rem/1 var(--head); color: #1b1300; background: linear-gradient(135deg, #ffd54a, #ff9f1c); }
+.ibc-tag { flex: none; font-size: .66rem; font-weight: 800; color: #cfc4ff; padding: .08rem .4rem; border-radius: 999px; background: rgba(139,108,255,.16); max-width: 4.6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ibc-list b { font-size: .84rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.ibc-s { flex: none; font-size: .72rem; color: var(--text2); white-space: nowrap; }
+.ibc-s em { font-style: normal; font-family: var(--mono); font-weight: 800; font-size: .7rem; }
+.ibc-more { display: none; margin-top: .55rem; padding: .5rem; font-size: .82rem; }
+@media (max-width: 1100px) { .ibc-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ibc-list li:nth-child(n+7) { display: none; } .ibc-more { display: flex; } }
+@media (max-width: 720px) {
+  .issue { padding: .8rem .8rem .75rem; }
+  .ibc-top { flex-wrap: wrap; row-gap: .3rem; }
+  .ibc-head { flex-basis: 100%; order: 3; font-size: .86rem; }
+  .ibc-act .btn span { display: none; }
+  .ibc-act .btn.primary { display: none; }
+  .ibc-list { grid-template-columns: 1fr; gap: .3rem; margin-top: .5rem; }
+  .ibc-list li { padding: .4rem .5rem; }
+  .ibc-list li:nth-child(n+5) { display: none; }
+  #issMeta { display: none; }
+  .ibc-list b { font-size: .82rem; }
+  .ibc-more { display: flex; }
+}
+.iss-new { flex: none; font: 900 .6rem/1 var(--head); letter-spacing: .04em; color: #1b1300; background: linear-gradient(135deg, #fff176, #ffb300); padding: .2rem .38rem; border-radius: 6px; box-shadow: 0 0 10px rgba(255,200,40,.35); }
+.ib-slots { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+.ib-slots::-webkit-scrollbar { display: none; }
+.ib-sl { flex: none; }
+@media (max-width: 720px) { .ib-slots { display: flex; } .ib-past { flex: none; margin-left: 0; max-width: 10rem; } }

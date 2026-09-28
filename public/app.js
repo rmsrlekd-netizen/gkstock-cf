@@ -1004,15 +1004,11 @@
   }
 
   // ───────────────────────── 오늘 주요 이슈 9 (AI가 시간대마다 자동 생성) ─────────────────────────
-  const ISS_SLOTS = {
-    KR: [[1, '장 시작 전', '08:00'], [2, '오전장', '10:30'], [3, '오후장', '13:30'], [4, '장 마감 후', '15:50']],
-    US: [[1, '프리마켓', '08:30'], [2, '개장 후', '10:00'], [3, '오전장', '11:30'], [4, '장 마감 후', '16:30']],
-  };
-  const ISS_RE = /^\/i\/((?:kr|us)-\d{8}-[1-4])\/?$/;
+  const ISS_RE = /^\/i\/((?:kr|us)-\d{8}-\d{1,2})\/?$/;
   const issEd = new Map();
   S.issMk = load('gk_imk', 'KR'); S.iss = {}; S.issSel = {}; S.top = load('gk_top', 'issue');
   const issDate = (date) => { const d = new Date(date + 'T12:00:00Z'); return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 (${'일월화수목금토'[d.getUTCDay()]})`; };
-  const issSlotTxt = (ed) => (ed.short === '장중' ? `장중 · ${ed.slot}` : ed.slot);
+  const issSlotTxt = (ed) => (ed.hour != null || ed.short !== '장중' ? ed.slot : `장중 · ${ed.slot}`);
   const issUrl = (id) => `${location.origin}/i/${id}`;
 
   function setTop(v) {
@@ -1047,7 +1043,7 @@
       return s.code ? `<button class="ic-s" data-open-co="${ed.mk}|${esc(s.code)}|${esc(s.name)}">${esc(ed.mk === 'US' && s.code !== s.name ? s.code : s.name)}${pct}</button>` : `<span class="ic-s">${esc(s.name)}</span>`;
     }).join('');
     return `<article class="ic t-${tone}${full ? ' full' : ''}" id="ic${i + 1}" ${full ? '' : `data-iss-open="${esc(ed.id)}#ic${i + 1}"`}>
-      <div class="ic-h"><span class="ic-n">${i + 1}</span><span class="ic-tag">${esc(x.tag)}</span><span class="ic-tone">${esc(x.tone)}</span></div>
+      <div class="ic-h"><span class="ic-n">${i + 1}</span><span class="ic-tag">${esc(x.tag)}</span>${x.isNew ? '<span class="iss-new">NEW</span>' : ''}<span class="ic-tone">${esc(x.tone)}</span></div>
       <h4>${esc(x.title)}</h4>${x.sub ? `<p class="ic-sub">${esc(x.sub)}</p>` : ''}
       ${full && x.points?.length ? `<ul class="ic-pts">${x.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
       ${stk ? `<div class="ic-stk">${stk}</div>` : ''}
@@ -1057,12 +1053,10 @@
   function issBoardHTML(ed, { full = false, list = [] } = {}) {
     const n = ed.issues.length;
     const ix = (ed.idx || []).slice(0, full ? 6 : 4).map((x) => `<div class="ib-ix"><span>${esc(x.label)}</span><b>${x.price != null ? Number(x.price).toLocaleString('en-US', { maximumFractionDigits: x.price > 100 ? 2 : 3 }) + (x.unit || '') : '—'}</b><em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em></div>`).join('');
-    const have = new Set(list.filter((x) => x.date === ed.date).map((x) => x.n));
-    have.add(ed.n);
-    const slots = ISS_SLOTS[ed.mk].map(([k, name, tm]) => {
-      const id = `${ed.mk.toLowerCase()}-${ed.date.replace(/-/g, '')}-${k}`;
-      return have.has(k) ? `<button class="ib-sl${k === ed.n ? ' on' : ''}" data-iss-pick="${id}"><b>${esc(name)}</b><small>${tm}${ed.mk === 'US' ? ' 뉴욕' : ''}</small></button>` : `<span class="ib-sl off"><b>${esc(name)}</b><small>${tm}${ed.mk === 'US' ? ' 뉴욕' : ''}</small></span>`;
-    }).join('');
+    const today = list.filter((x) => x.date === ed.date);
+    if (!today.some((x) => x.id === ed.id)) today.push({ id: ed.id, date: ed.date, n: ed.n, hour: ed.hour, slot: ed.slot, short: ed.short });
+    today.sort((a, b) => (a.hour ?? a.n ?? 0) - (b.hour ?? b.n ?? 0));
+    const slots = today.map((x) => `<button class="ib-sl${x.id === ed.id ? ' on' : ''}" data-iss-pick="${esc(x.id)}"><b>${x.hour != null ? (ed.mk === 'US' ? '뉴욕 ' : '') + x.hour + '시' : esc(x.slot)}</b><small>${esc(x.hour != null ? x.short || '' : '')}</small></button>`).join('');
     const past = list.filter((x) => x.date !== ed.date).slice(0, 30);
     const pastSel = past.length ? `<select class="ib-past" data-iss-past><option value="">지난 회차</option>${past.map((x) => `<option value="${esc(x.id)}">${esc(issDate(x.date))} ${esc(x.slot)}</option>`).join('')}</select>` : '';
     const cards = ed.issues.map((x, i) => issCardHTML(ed, x, i, full)).join('');
@@ -1082,6 +1076,22 @@
       <div class="ib-foot"><span>${made ? made + ' AI 생성 · ' : ''}뉴스·공시·시세 기반 · 투자 참고용</span><div class="ib-act"><button class="btn sm" data-iss-share="${esc(ed.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>링크 복사</button>${full ? '' : `<button class="btn sm primary" data-iss-open="${esc(ed.id)}">크게 보기</button>`}</div></div>
     </div>`;
   }
+  // 메인 화면용 작은 요약판: 한 줄짜리 이슈 9개 (자세한 내용은 '크게 보기')
+  function issCompactHTML(ed) {
+    const made = ed.at ? fmtDT(new Date(ed.at)).hm : '';
+    const rows = ed.issues.map((x, i) => {
+      const tone = x.tone === '호재' ? 'pos' : x.tone === '악재' ? 'neg' : 'neu';
+      const s = (x.stocks || []).find((y) => y.code) || (x.stocks || [])[0];
+      const stk = s ? `<span class="ibc-s">${esc(ed.mk === 'US' && s.code ? s.code : s.name)}${s.pct != null ? ` <em class="${dirCls(s.pct)}">${fmtPct(s.pct)}</em>` : ''}</span>` : '';
+      return `<li class="t-${tone}" data-iss-open="${esc(ed.id)}#ic${i + 1}"><span class="ibc-n">${i + 1}</span><span class="ibc-tag">${esc(x.tag)}</span>${x.isNew ? '<span class="iss-new">NEW</span>' : ''}<b>${esc(x.title)}</b>${stk}</li>`;
+    }).join('');
+    return `<div class="ibc mk-${ed.mk.toLowerCase()}">
+      <div class="ibc-top"><span class="ib-slot">${esc(issSlotTxt(ed))}</span><span class="ibc-date">${esc(issDate(ed.date))}${made ? ' · ' + made : ''}</span>${ed.headline ? `<p class="ibc-head">${esc(ed.headline)}</p>` : ''}
+        <div class="ibc-act"><button class="btn sm" data-iss-share="${esc(ed.id)}" title="링크 복사"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>링크 복사</span></button><button class="btn sm primary" data-iss-open="${esc(ed.id)}">크게 보기 →</button></div></div>
+      <ol class="ibc-list">${rows}</ol>
+      <button class="btn block ibc-more" data-iss-open="${esc(ed.id)}">${ed.issues.length}개 이슈 자세히 보기 →</button>
+    </div>`;
+  }
   async function renderIssueBox() {
     const box = $('#issBody');
     if (!box) return;
@@ -1097,8 +1107,8 @@
     let ed = c.ed;
     const sel = S.issSel[S.issMk];
     if (sel && sel !== ed.id) { try { ed = (await getEd(sel)) || ed; } catch {} }
-    $('#issMeta').textContent = S.issMk === 'KR' ? '한국장 하루 4번 자동 업데이트' : '미국장 하루 4번 자동 업데이트';
-    box.innerHTML = issBoardHTML(ed, { list: c.list || [] });
+    $('#issMeta').textContent = S.issMk === 'KR' ? '평일 8~16시 매시간 새 이슈 자동 반영' : '뉴욕 8~17시 매시간 새 이슈 자동 반영';
+    box.innerHTML = issCompactHTML(ed);
   }
   function setIssMk(mk) { S.issMk = mk === 'US' ? 'US' : 'KR'; save('gk_imk', S.issMk); renderIssueBox(); loadIssues(); }
   async function showIssuePage(id, anchor) {
