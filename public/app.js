@@ -599,7 +599,7 @@
     if (!anyLoaded()) { box.innerHTML = Array.from({ length: 6 }, () => '<div class="skel"></div>').join(''); return; }
     const since = Date.now() - 36 * 3600e3;
     const pool = [...S.items.values()].filter((n) => (S.mk === 'ALL' || n.market === S.mk) && (S.type === 'ALL' || n.kind === S.type));
-    const cand = pool.filter((n) => n.ms > since && n.ticker && n.kind !== 'NEWS' && p0Of(n));
+    const cand = pool.filter((n) => n.ms > since && n.ticker && n.kind !== 'NEWS' && p0Of(n) && !/OTC/i.test(n.exchange || n.raw?.exchange || '')); // 장외(OTC) 종목 제외
     // 종목별로 발표 후 상승률이 가장 큰 공시 하나
     const best = new Map();
     for (const n of cand) { const g = trendGain(n); if (g == null) continue; const k = wkey(n.market, n.ticker); if (!best.has(k) || g > best.get(k).g) best.set(k, { n, g }); }
