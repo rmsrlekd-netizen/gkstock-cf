@@ -40,7 +40,7 @@ async function checks() {
   const SRC = { 'PR Newswire': 'PRN', 'Business Wire': 'BW', 'GlobeNewswire': 'GNW', 'ACCESS Newswire': 'AW', '뉴스와이어': '뉴스와이어' };
   const bySrc = {};
   for (const x of news?.items || []) {
-    if (x.src !== 'PR' || !x.seenAt || now - Date.parse(x.time) > 24 * 3600e3) continue;
+    if (x.src !== 'PR' || !x.seenAt || x.late || now - Date.parse(x.time) > 24 * 3600e3) continue;
     const v = (Date.parse(x.seenAt) - Date.parse(x.time)) / 60e3;
     if (v < -5 || v > 360) continue;
     (bySrc[SRC[x.source] || x.source] ||= []).push(Math.max(0, v));

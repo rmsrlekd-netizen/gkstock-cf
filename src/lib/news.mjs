@@ -205,9 +205,10 @@ function etIsoFrom(label) {
   return new Date(Date.UTC(y, mo - 1, d, hh - oh, mm)).toISOString();
 }
 export async function prnDirect(idx) {
-  const r = await fetchWithTimeout('https://www.prnewswire.com/news-releases/news-releases-list/?page=1&pagesize=50', { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' } }, 9000);
+  // RSS는 최신 20건뿐이라 정각·30분·장 마감 직후처럼 보도자료가 몰리면 놓침 → 웹 목록 100건을 직접 읽음
+  const r = await fetchWithTimeout('https://www.prnewswire.com/news-releases/news-releases-list/?page=1&pagesize=100', { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' } }, 15000);
   if (!r.ok) throw new Error('PRN 페이지 HTTP ' + r.status);
-  const html = (await r.text()).slice(0, 900000);
+  const html = (await r.text()).slice(0, 1500000);
   const seen = (await getJSON('prn/seen')) || {};
   const out = [];
   let fetched = 0;
@@ -434,7 +435,8 @@ export async function collectNews({ full = true, direct = false } = {}) {
     if (isKrPR(it)) continue;
     if (!it.titleKo && tr[it.id]) it.titleKo = tr[it.id];
     const old = byId.get(it.id);
-    byId.set(it.id, old ? { ...it, titleKo: old.titleKo || it.titleKo, koTries: old.koTries, seenAt: old.seenAt } : { ...it, seenAt: new Date().toISOString() });
+    // 발표 3시간 넘게 지나서 처음 들어온 것(수집 중단 뒤 몰아서 채운 것)은 표시 → 지연 통계에서 제외
+    byId.set(it.id, old ? { ...it, titleKo: old.titleKo || it.titleKo, koTries: old.koTries, seenAt: old.seenAt, late: old.late } : { ...it, seenAt: new Date().toISOString(), ...(Date.now() - Date.parse(it.time) > 3 * 3600e3 ? { late: true } : {}) });
   }
   const cutoff = Date.now() - 3 * 86400e3;
   const items = [...byId.values()].filter((x) => Date.parse(x.time) > cutoff).sort((a, b) => Date.parse(b.time) - Date.parse(a.time)).slice(0, 1500);

@@ -148,9 +148,10 @@ export default {
     if (busy('sec', now) || min % 10 === 0) jobs.push(secWatch({ backfillMs: min % 2 === 0 ? 12000 : 0 }));
     if (busy('dart', now) || min % 10 === 1) jobs.push(dartWatch({ backfillMs: min % 2 === 1 ? 12000 : 0 }));
     // 보도자료: 매분 가장 빠른 전체 목록, 5분마다 주제·업종별 목록까지 (한가한 시간엔 5분에 한 번)
-    // 한국시간 평일 저녁 7:00~10:30 (미국 장 시작 전, 보도자료가 몰리는 시간)에는 PR Newswire 웹페이지를 매분 직접 확인
-    const kr = zoned(now, 'Asia/Seoul');
-    const direct = !['Sat', 'Sun'].includes(kr.wd) && kr.m >= 19 * 60 && kr.m <= 22 * 60 + 30;
+    // 미국 동부 평일 6:00~20:00에는 PR Newswire 웹 목록(100건)을 매분 직접 확인
+    // PR Newswire 웹 목록 직접 확인: 미국 동부 평일 6:00~20:00 매분 (RSS는 최신 20건뿐이라 몰릴 때 놓침)
+    const ny = zoned(now, 'America/New_York');
+    const direct = !['Sat', 'Sun'].includes(ny.wd) && ny.m >= 6 * 60 && ny.m <= 20 * 60;
     if (busy('news', now) || direct || min % 5 === 0) jobs.push(newsWatch({ mode: 'pr', full: min % 5 === 0, direct }));
     // 미국 경제지표: 발표가 몰리는 미국 동부 평일 7:00~16:30엔 매분, 그 외엔 30분마다 (발표되면 AI 해석 + 달력 갱신)
     const usz = zoned(now, 'America/New_York');
