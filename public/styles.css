@@ -1356,3 +1356,59 @@ button.ic-s:hover { border-color: var(--accent); }
 .ib-slots::-webkit-scrollbar { display: none; }
 .ib-sl { flex: none; }
 @media (max-width: 720px) { .ib-slots { display: flex; } .ib-past { flex: none; margin-left: 0; max-width: 10rem; } }
+
+/* ── v33: 주요 이슈 글씨 조금 크게 + 요약판 아래 강세 테마 ── */
+.ibc-date { font-size: .84rem; }
+.ibc-head { font-size: 1rem; }
+.ibc .ib-slot { font-size: .8rem; }
+.ibc-list { gap: .45rem .65rem; }
+.ibc-list li { padding: .52rem .7rem; gap: .5rem; }
+.ibc-n { width: 1.45rem; height: 1.45rem; font-size: .8rem; }
+.ibc-tag { font-size: .72rem; max-width: 5.2rem; }
+.ibc-list b { font-size: .92rem; }
+.ibc-s { font-size: .78rem; } .ibc-s em { font-size: .76rem; }
+.ibc-ths { display: flex; align-items: center; gap: .5rem; margin-top: .65rem; padding-top: .6rem; border-top: 1px solid var(--line); min-width: 0; }
+.ibc-ths > b { flex: none; font-size: .8rem; color: var(--muted); }
+.ibc-thl { display: flex; gap: .35rem; flex-wrap: wrap; min-width: 0; }
+.ib-th { font-size: .82rem; } .ib-th em { font-size: .76rem; }
+.ic h4 { font-size: 1.04rem; } .ib-full .ic h4 { font-size: 1.12rem; }
+.ic-sub { font-size: .86rem; }
+.ic-pts li { font-size: .9rem; }
+.ic-tag { font-size: .76rem; } .ic-tone { font-size: .74rem; }
+.ic-s { font-size: .8rem; } .ic-s em { font-size: .76rem; }
+.ic-chk { font-size: .85rem; } .ic-chk b { font-size: .74rem; }
+@media (max-width: 720px) {
+  .ibc-head { font-size: .94rem; }
+  .ibc-list b { font-size: .9rem; }
+  .ibc-ths { align-items: flex-start; flex-direction: column; gap: .35rem; }
+  .ibc-thl { flex-wrap: nowrap; overflow-x: auto; width: 100%; scrollbar-width: none; padding-bottom: .1rem; }
+  .ibc-thl::-webkit-scrollbar { display: none; }
+  .ibc-thl .ib-th { flex: none; }
+}
+@media (max-width: 720px) {
+  .ibc-list b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; word-break: keep-all; }
+  .ibc-s { font-size: .74rem; }
+}
+
+/* ── v34: 주요 이슈 6개 — AI 핵심 공시와 같은 크기의 카드 (3×2) ── */
+.ibc-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; margin-top: .8rem; }
+.ibc-list li { display: grid; grid-template-columns: 2.2rem 1fr; align-items: start; gap: .7rem; padding: .8rem .85rem; border-radius: 13px; }
+.ibc-list li::before { top: .8rem; bottom: .8rem; width: 3px; }
+.ibc-n { width: 2.2rem; height: 2.2rem; border-radius: 10px; font-size: 1.02rem; box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
+.ibc-list li:first-child .ibc-n { background: linear-gradient(135deg, #fff176, #ffb300); box-shadow: 0 0 0 2px rgba(255,213,74,.25), inset 0 1px 0 rgba(255,255,255,.5); }
+.ibc-b { display: grid; gap: .25rem; min-width: 0; }
+.ibc-r { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+.ibc-r .ibc-s { margin-left: auto; }
+.ibc-list b { font-size: .98rem; font-weight: 800; line-height: 1.4; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ibc-list small { font-size: .82rem; color: var(--text2); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: keep-all; }
+.ibc-list li:hover { transform: translateY(-2px); }
+.ibc-list li { transition: border-color .15s, transform .15s; }
+@media (max-width: 1100px) { .ibc-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ibc-list li:nth-child(n+7) { display: grid; } .ibc-more { display: none; } }
+@media (max-width: 720px) {
+  .ibc-list { grid-template-columns: 1fr; gap: .5rem; }
+  .ibc-list li { padding: .7rem .75rem; gap: .6rem; grid-template-columns: 2rem 1fr; }
+  .ibc-n { width: 2rem; height: 2rem; font-size: .95rem; }
+  .ibc-list li:nth-child(n+4) { display: none; }
+  .ibc-list small { -webkit-line-clamp: 1; }
+  .ibc-more { display: flex; }
+}

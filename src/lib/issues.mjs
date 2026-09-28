@@ -1,4 +1,4 @@
-// 오늘 주요 이슈 9 — 매시간 새 이슈가 있으면 AI가 자동으로 새로 만드는 시황 카드 (디자인은 고정, 내용만 AI가 채움)
+// 오늘 주요 이슈 6 — 매시간 새 이슈가 있으면 AI가 자동으로 새로 만드는 시황 카드 (디자인은 고정, 내용만 AI가 채움)
 //  한국: 평일 한국시간 8시~16시 매시 정각 5분 후 (장 시작 전 · 장중 · 장 마감 후)
 //  미국: 평일 뉴욕시간 8시~17시 매시 정각 5분 후 (프리마켓 · 장중 · 장 마감 후, 서머타임 자동)
 //  직전 회차 이후 새 뉴스·공시가 3건 미만이면 그 시간은 건너뜀 (같은 내용 반복 방지)
@@ -135,13 +135,13 @@ function prompt(mk, slot, date, text, prev) {
     ? { '장 시작 전': '한국 증시 개장 전 (전날 미국장·밤사이 뉴스·오늘 일정 중심)', 장중: `한국 증시 장중 (한국시간 ${h}시 현재)`, '장 마감 후': '한국 증시 마감 직후 (오늘 장 정리)' }[slot.phase]
     : { 프리마켓: `미국 증시 개장 전 프리마켓 (뉴욕시간 ${h}시, 밤사이 뉴스·실적·경제지표 중심)`, 장중: `미국 증시 장중 (뉴욕시간 ${h}시 현재)`, '장 마감 후': '미국 증시 마감 직후 (오늘 장 정리)' }[slot.phase];
   const prevTxt = prev?.issues?.length ? `\n[직전 회차 (${prev.slot}) 이슈]\n${prev.issues.map((x, i) => `${i + 1}. [${x.tag}] ${x.title}`).join('\n')}\n` : '';
-  return `너는 증권사 리서치센터의 시황 에디터다. 한국 개인투자자를 위해 "${md} ${mk === 'KR' ? '국장' : '미장'} ${slot.name} 주요 이슈 9"를 만든다. 매시간 새로 갱신되는 시황판이다.
+  return `너는 증권사 리서치센터의 시황 에디터다. 한국 개인투자자를 위해 "${md} ${mk === 'KR' ? '국장' : '미장'} ${slot.name} 주요 이슈 6"을 만든다. 매시간 새로 갱신되는 시황판이다.
 시점: ${when}
 
 규칙:
 - 아래 [자료]에 있는 사실만 쓴다. 자료에 없는 숫자·사건·전망은 절대 지어내지 않는다.
-- 서로 다른 이슈 9개를 지금 시점의 중요도 순으로 (자료가 부족하면 최소 6개). 같은 사건을 두 번 쓰지 않는다.
-- 시장 전체 흐름(지수·수급·금리·환율 등) 이슈 1~2개 + 기업·업종·테마 이슈로 구성.${prevTxt ? '\n- 직전 회차 이후 새로 나온 뉴스·공시를 우선 반영한다. 여전히 중요한 직전 이슈는 최신 내용으로 고쳐 유지해도 된다.\n- new: 직전 회차 목록에 없던 새 이슈면 true, 이어지는 이슈면 false' : '\n- new: 모두 false'}
+- 서로 다른 핵심 이슈 정확히 6개를 지금 시점의 중요도 순으로 (자료가 부족하면 최소 5개). 같은 사건을 두 번 쓰지 않는다.
+- 시장 전체 흐름(지수·수급·금리·환율 등) 이슈 1개 + 기업·업종·테마 이슈로 구성. 덜 중요한 건 과감히 뺀다.${prevTxt ? '\n- 직전 회차 이후 새로 나온 뉴스·공시를 우선 반영한다. 여전히 중요한 직전 이슈는 최신 내용으로 고쳐 유지해도 된다.\n- new: 직전 회차 목록에 없던 새 이슈면 true, 이어지는 이슈면 false' : '\n- new: 모두 false'}
 - 등락률 숫자는 쓰지 않아도 된다 (종목 등락률은 시스템이 실제 시세로 붙인다). 금액·수치는 자료에 있을 때만.
 - 매수·매도 추천 표현 금지. 사실과 영향 위주의 간결한 명사형 문장.
 - tag: 업종·테마 이름 2~7자 (예: 반도체, 2차전지, 바이오, 거시경제, 방산)
@@ -174,7 +174,7 @@ export async function buildEdition(mk, slot, date, { prev = null, force = false 
   const txt = await askAI(prompt(mk, slot, date, g.text, same), { maxTokens: 9000, timeout: 110000, think: 1024 });
   const j = parseJSON(txt);
   const okCode = (c) => (mk === 'KR' ? /^\d{6}$/.test(c) : /^[A-Z][A-Z0-9.\-]{0,6}$/.test(c));
-  const issues = (Array.isArray(j?.issues) ? j.issues : []).filter((x) => x && x.title).slice(0, 9).map((x) => ({
+  const issues = (Array.isArray(j?.issues) ? j.issues : []).filter((x) => x && x.title).slice(0, 6).map((x) => ({
     tag: cut(x.tag, 9), title: cut(x.title, 34), sub: cut(x.sub, 48),
     points: (Array.isArray(x.points) ? x.points : []).map((p) => cut(p, 60)).filter(Boolean).slice(0, 3),
     check: cut(x.check, 56),

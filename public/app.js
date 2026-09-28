@@ -1072,24 +1072,26 @@
       <div class="ib-slots">${slots}${pastSel}</div>
       <div class="ib-grid">${cards}</div>
       ${!full && n > 3 ? `<button class="btn block ib-more" data-iss-open="${esc(ed.id)}">나머지 ${n - 3}개 이슈 모두 보기 →</button>` : ''}
-      ${th ? `<div class="ib-ths"><b>${ed.mk === 'KR' ? '오늘 강세 테마' : '오늘 강세 테마 ETF'}</b>${th}</div>` : ''}
+      ${th ? `<div class="ib-ths"><b>오늘 강세 테마</b>${th}</div>` : ''}
       <div class="ib-foot"><span>${made ? made + ' AI 생성 · ' : ''}뉴스·공시·시세 기반 · 투자 참고용</span><div class="ib-act"><button class="btn sm" data-iss-share="${esc(ed.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>링크 복사</button>${full ? '' : `<button class="btn sm primary" data-iss-open="${esc(ed.id)}">크게 보기</button>`}</div></div>
     </div>`;
   }
   // 메인 화면용 작은 요약판: 한 줄짜리 이슈 9개 (자세한 내용은 '크게 보기')
   function issCompactHTML(ed) {
     const made = ed.at ? fmtDT(new Date(ed.at)).hm : '';
-    const rows = ed.issues.map((x, i) => {
+    const th = (ed.themes || []).filter((x) => x.pct != null).slice(0, 6).map((x) => `<span class="ib-th">${esc(x.name)}<em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em></span>`).join('');
+    const rows = ed.issues.slice(0, 6).map((x, i) => {
       const tone = x.tone === '호재' ? 'pos' : x.tone === '악재' ? 'neg' : 'neu';
       const s = (x.stocks || []).find((y) => y.code) || (x.stocks || [])[0];
       const stk = s ? `<span class="ibc-s">${esc(ed.mk === 'US' && s.code ? s.code : s.name)}${s.pct != null ? ` <em class="${dirCls(s.pct)}">${fmtPct(s.pct)}</em>` : ''}</span>` : '';
-      return `<li class="t-${tone}" data-iss-open="${esc(ed.id)}#ic${i + 1}"><span class="ibc-n">${i + 1}</span><span class="ibc-tag">${esc(x.tag)}</span>${x.isNew ? '<span class="iss-new">NEW</span>' : ''}<b>${esc(x.title)}</b>${stk}</li>`;
+      return `<li class="t-${tone}" data-iss-open="${esc(ed.id)}#ic${i + 1}"><span class="ibc-n">${i + 1}</span><div class="ibc-b"><div class="ibc-r"><span class="ibc-tag">${esc(x.tag)}</span>${x.isNew ? '<span class="iss-new">NEW</span>' : ''}${stk}</div><b>${esc(x.title)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</div></li>`;
     }).join('');
     return `<div class="ibc mk-${ed.mk.toLowerCase()}">
       <div class="ibc-top"><span class="ib-slot">${esc(issSlotTxt(ed))}</span><span class="ibc-date">${esc(issDate(ed.date))}${made ? ' · ' + made : ''}</span>${ed.headline ? `<p class="ibc-head">${esc(ed.headline)}</p>` : ''}
         <div class="ibc-act"><button class="btn sm" data-iss-share="${esc(ed.id)}" title="링크 복사"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>링크 복사</span></button><button class="btn sm primary" data-iss-open="${esc(ed.id)}">크게 보기 →</button></div></div>
       <ol class="ibc-list">${rows}</ol>
-      <button class="btn block ibc-more" data-iss-open="${esc(ed.id)}">${ed.issues.length}개 이슈 자세히 보기 →</button>
+      ${th ? `<div class="ibc-ths"><b>오늘 강세 테마</b><div class="ibc-thl">${th}</div></div>` : ''}
+      <button class="btn block ibc-more" data-iss-open="${esc(ed.id)}">${Math.min(6, ed.issues.length)}개 이슈 자세히 보기 →</button>
     </div>`;
   }
   async function renderIssueBox() {
