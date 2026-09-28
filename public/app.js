@@ -1850,6 +1850,20 @@
     } catch (e) { msg(e.message); }
   }
 
+  // ───────────────────────── 맨 위로 버튼 (스크롤을 내리면 나타나서 따라다님) ─────────────────────────
+  function setupToTop() {
+    const btn = $('#toTop');
+    if (!btn) return;
+    let ticking = false;
+    const update = () => { ticking = false; btn.classList.toggle('show', scrollY > Math.max(500, innerHeight * 0.8)); };
+    addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    btn.addEventListener('click', () => {
+      const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+    });
+    update();
+  }
+
   // ───────────────────────── 앱 설치 (홈 화면·바탕화면에 추가) ─────────────────────────
   function setupInstall() {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -1991,6 +2005,7 @@
   if (window.ResizeObserver && $('.side')) new ResizeObserver(fitSide).observe($('.side'));
   document.getElementById('ssr')?.remove(); // 검색엔진용 미리보기 글은 앱이 뜨면 치움
   setupInstall();
+  setupToTop();
   bind();
   loadSnap();
   trackPV();
