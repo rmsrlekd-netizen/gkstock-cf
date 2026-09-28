@@ -265,9 +265,10 @@ export async function scheduleWatch() {
       const fd = s.days.find((x) => x.date === s.focus);
       // AI 요약이 없거나, 요약 뒤에 주요 일정이 새로 확인됐으면 다시
       if ((!s.ai || (fd?.evAt && s.ai.at < fd.evAt)) && hasAI() && !(await aiPauseInfo())) {
-        const tk = `sched/aitry/${mk}/${s.focus}`;
+        // 실패한 경우만 횟수를 셈 (일정이 아직 없어서 건너뛴 건 세지 않음)
+        const tk = `sched/aitry2/${mk}/${s.focus}`;
         const t = (await getJSON(tk)) || { n: 0 };
-        if (t.n < 5) { await setJSON(tk, { n: t.n + 1 }); try { s.ai = await scheduleBrief(mk, s); } catch (e) { s.errors.push('AI: ' + e.message); } }
+        if (t.n < 5) { try { s.ai = (await scheduleBrief(mk, s)) || s.ai; } catch (e) { await setJSON(tk, { n: t.n + 1 }); s.errors.push('AI: ' + e.message); } }
       }
       await setJSON(`sched/v1/${mk}`, s);
       res[mk] = 'ok';
