@@ -10,7 +10,11 @@ export async function us(t) {
   for (const cls of ['stocks', 'etf']) {
     try {
       const r = await fetchWithTimeout(`https://api.nasdaq.com/api/quote/${encodeURIComponent(t.replace('.', '/'))}/info?assetclass=${cls}`, { headers: NQ_H }, 5000);
-      const d = (await r.json())?.data?.primaryData;
+      const data = (await r.json())?.data;
+      // 장 마감 뒤에는 primaryData가 '시간외 거래(종가 대비)'라서 등락이 0%에 가깝게 나옴 → 정규장 종가(secondaryData)를 기본으로
+      const p = data?.primaryData, s2 = data?.secondaryData;
+      const ext = s2 && num(s2.lastSalePrice) !== null && !/^open/i.test(String(data?.marketStatus || ''));
+      const d = ext ? s2 : p;
       if (d && num(d.lastSalePrice) !== null) return { price: num(d.lastSalePrice), chg: num(d.netChange), pct: num(d.percentageChange), cur: 'USD' };
     } catch {}
   }

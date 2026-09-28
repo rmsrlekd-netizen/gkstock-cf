@@ -115,9 +115,35 @@ export async function naverKrQuotes(codes) {
 /** 미국 현재가 여러 종목 한 번에 (로이터 코드: NVDA.O 나스닥, IBM.N 뉴욕 …) */
 export async function naverUsQuotes(reuters) {
   if (!reuters.length) return {};
-  const j = await get(`https://polling.finance.naver.com/api/realtime/worldstock/stock/${reuters.join(',')}`, 7000);
+  const fetchSet = async (codes) => {
+    const j = await get(`https://polling.finance.naver.com/api/realtime/worldstock/stock/${codes.join(',')}`, 7000);
+    return (j.datas || []).filter((x) => x.reutersCode);
+  };
+  const tk = (rc) => String(rc).split('.')[0].toUpperCase();
   const out = {};
-  for (const x of j.datas || []) if (x.reutersCode) out[x.reutersCode] = { ...parseQuote(x), cur: 'USD', symbol: x.symbolCode || null };
+  const take = (list, want) => {
+    for (const rc of want) {
+      if (out[rc]) continue;
+      const x = list.find((d) => d.reutersCode === rc) || list.find((d) => String(d.symbolCode || tk(d.reutersCode)).toUpperCase() === tk(rc));
+      if (x) out[rc] = { ...parseQuote(x), cur: 'USD', symbol: x.symbolCode || null };
+    }
+  };
+  let firstErr = null;
+  try { take(await fetchSet(reuters), reuters); } catch (e) { firstErr = e; }
+  // 거래소 접미사가 네이버와 다르면(뉴욕증시 종목 등) 못 받아옴 → 다른 접미사로 한 번 더
+  const miss = reuters.filter((rc) => !out[rc]);
+  if (miss.length) {
+    const alt = new Map();
+    for (const rc of miss.slice(0, 20)) for (const c of [tk(rc), tk(rc) + '.N', tk(rc) + '.K', tk(rc) + '.A', tk(rc) + '.O']) if (c !== rc) alt.set(c, rc);
+    try {
+      const list = await fetchSet([...alt.keys()]);
+      for (const rc of miss) {
+        const x = list.find((d) => alt.get(d.reutersCode) === rc) || list.find((d) => String(d.symbolCode || '').toUpperCase() === tk(rc));
+        if (x) out[rc] = { ...parseQuote(x), cur: 'USD', symbol: x.symbolCode || null, reuters: x.reutersCode };
+      }
+    } catch {}
+  }
+  if (firstErr && !Object.keys(out).length) throw firstErr;
   return out;
 }
 
