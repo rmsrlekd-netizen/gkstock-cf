@@ -1190,3 +1190,26 @@ button.ec-cell:hover { transform: translateY(-2px); border-color: rgba(160,140,2
   .feed-search input { flex: 1; min-width: 0; }
   .feed-search .suggest { min-width: 0; }
 }
+
+/* ── v30: 기업 분석 수급 표 — 휴대폰에서 칸 넘침 수정 ── */
+.tbl .ns { display: none; }
+.mini-stats b .ns { display: none; }
+.tbl td.t { overflow-wrap: anywhere; word-break: keep-all; }
+.tbl td:not(.t) { white-space: nowrap; }
+@media (max-width: 720px) {
+  .tbl .nf, .mini-stats b .nf { display: none; }
+  .tbl .ns, .mini-stats b .ns { display: inline; }
+  .tbl { font-size: .76rem; }
+  .tbl th { font-size: .68rem; padding: .35rem .3rem; white-space: nowrap; }
+  .tbl td { padding: .4rem .3rem; }
+  .tbl td.t { white-space: normal; } .tbl td.t:first-child { min-width: 5.5rem; }
+  .co-grid .box, #coFlows .box, .a-flow .box { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .mini-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; }
+  .mini-stats > div { min-width: 0; }
+  .mini-stats b { font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .mini-stats span { font-size: .66rem; }
+}
+@media (max-width: 720px) { .tbl .hide-m { display: none; } }
+.mini-stats b span { font-size: inherit; color: inherit; display: inline; }
+.mini-stats b .ns { display: none; }
+@media (max-width: 720px) { .mini-stats b .nf { display: none; } .mini-stats b .ns { display: inline; } }

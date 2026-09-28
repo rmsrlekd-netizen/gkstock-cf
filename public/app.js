@@ -69,6 +69,14 @@
   const dirCls = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : 'flat');
   const fmtInt = (n) => (n === null || n === undefined || Number.isNaN(n) ? '—' : Math.round(n).toLocaleString('ko-KR'));
   const signedInt = (n) => (n === null || n === undefined ? '—' : `${n > 0 ? '+' : ''}${Math.round(n).toLocaleString('ko-KR')}`);
+  // 휴대폰 표에서 긴 숫자를 짧게 (-7,630,126 → -763만) — 컴퓨터는 전체 숫자, 휴대폰은 짧은 숫자를 보여줌
+  const shortNum = (n, signed) => {
+    if (n === null || n === undefined || Number.isNaN(n)) return '—';
+    const a = Math.abs(n), sg = n < 0 ? '-' : signed && n > 0 ? '+' : '';
+    const v = a >= 1e8 ? (a / 1e8).toFixed(a >= 1e10 ? 0 : 1).replace(/\.0$/, '') + '억' : a >= 1e4 ? Math.round(a / 1e4).toLocaleString('ko-KR') + '만' : Math.round(a).toLocaleString('ko-KR');
+    return sg + v;
+  };
+  const nx = (n, signed = true) => `<span class="nf">${signed ? signedInt(n) : fmtInt(n)}</span><span class="ns">${shortNum(n, signed)}</span>`;
   function fmtBig(n) {
     if (n === null || n === undefined) return '—';
     const a = Math.abs(n), s = n < 0 ? '-' : '';
@@ -1519,19 +1527,19 @@
     const s0 = d.short[0], s1 = d.short[1];
     const chg = s1 && s1.interest ? ((s0.interest - s1.interest) / s1.interest) * 100 : null;
     return `<h4>공매도 잔고 <small>FINRA · ${esc(s0.date)} 결제일 기준 · 월 2회 발표</small></h4><div class="mini-stats"><div><span>공매도 잔고</span><b>${fmtBig(s0.interest)}주</b></div><div><span>직전 대비</span><b class="${dirCls(chg)}">${fmtPct(chg)}</b></div><div><span>숏커버 소요일</span><b>${s0.days !== null && s0.days !== undefined ? s0.days.toFixed(1) + '일' : '—'}</b></div></div>
-      <table class="tbl"><tr><th>결제일</th><th>잔고</th><th>일평균 거래량</th><th>커버일</th></tr>${d.short.map((r) => `<tr><td>${esc(r.date)}</td><td>${fmtInt(r.interest)}</td><td>${fmtInt(r.avgVol)}</td><td>${r.days !== null && r.days !== undefined ? r.days.toFixed(2) : '—'}</td></tr>`).join('')}</table>`;
+      <table class="tbl"><tr><th>결제일</th><th>잔고</th><th class="hide-m">일평균 거래량</th><th>커버일</th></tr>${d.short.map((r) => `<tr><td>${esc(r.date)}</td><td>${nx(r.interest, false)}</td><td class="hide-m">${nx(r.avgVol, false)}</td><td>${r.days !== null && r.days !== undefined ? r.days.toFixed(2) : '—'}</td></tr>`).join('')}</table>`;
   }
   function usInsiderHTML(d) {
     const i = d.insider;
     if (!i) return `<h4>내부자 거래</h4>${note(d.errors?.insider || '데이터 없음')}`;
     return `<h4>내부자 거래 <small>최근 3개월 매수 ${i.buys3m ?? 0}건 · 매도 ${i.sells3m ?? 0}건</small></h4><div class="mini-stats"><div><span>3개월 순매매</span><b class="${dirCls(i.net3m)}">${signedInt(i.net3m)}주</b></div><div><span>12개월 순매매</span><b class="${dirCls(i.net12m)}">${signedInt(i.net12m)}주</b></div><div><span>거래 건수</span><b>${fmtInt((i.rows || []).length)}건</b></div></div>
-      <table class="tbl"><tr><th>내부자</th><th>일자</th><th>거래</th><th>수량</th><th>가격</th></tr>${(i.rows || []).slice(0, 15).map((r) => `<tr><td class="t">${esc(titleCase(r.who))}<br><small>${esc(r.relation || '')}</small></td><td>${esc(r.date)}</td><td class="t ${/Buy/i.test(r.type) ? 'buy' : /Sell/i.test(r.type) ? 'sell' : ''}">${esc(r.type)}</td><td>${fmtInt(r.shares)}</td><td>${r.price ? '$' + fmtPx(r.price) : '—'}</td></tr>`).join('')}</table>`;
+      <table class="tbl"><tr><th>내부자</th><th>일자</th><th>거래</th><th>수량</th><th class="hide-m">가격</th></tr>${(i.rows || []).slice(0, 15).map((r) => `<tr><td class="t">${esc(titleCase(r.who))}<br><small>${esc(r.relation || '')}</small></td><td>${esc(r.date)}</td><td class="t ${/Buy/i.test(r.type) ? 'buy' : /Sell/i.test(r.type) ? 'sell' : ''}">${esc(r.type)}</td><td>${nx(r.shares, false)}</td><td class="hide-m">${r.price ? '$' + fmtPx(r.price) : '—'}</td></tr>`).join('')}</table>`;
   }
   function usInstHTML(d) {
     const s = d.inst;
     if (!s) return `<h4>기관 보유</h4>${note(d.errors?.inst || '데이터 없음')}`;
     return `<h4>기관 보유 <small>13F · 분기 단위</small></h4><div class="metrics"><div><span>기관 보유율</span><b>${esc(s.pct || '—')}</b></div><div><span>비중 확대</span><b class="up">${fmtInt(s.increased?.holders)}곳</b></div><div><span>비중 축소</span><b class="down">${fmtInt(s.decreased?.holders)}곳</b></div><div><span>신규 / 청산</span><b>${fmtInt(s.newPos?.holders)} / ${fmtInt(s.soldOut?.holders)}</b></div></div>
-      <table class="tbl" style="margin-top:.7rem"><tr><th>기관</th><th>기준일</th><th>보유 주식</th><th>변동</th></tr>${(s.top || []).slice(0, 15).map((r) => `<tr><td class="t">${esc(r.name)}</td><td>${esc(r.date)}</td><td>${fmtBig(r.shares)}</td><td class="${dirCls(r.change)}">${signedInt(r.change)}<br><small>${esc(r.changePct || '')}</small></td></tr>`).join('')}</table>`;
+      <table class="tbl" style="margin-top:.7rem"><tr><th>기관</th><th>기준일</th><th>보유 주식</th><th>변동</th></tr>${(s.top || []).slice(0, 15).map((r) => `<tr><td class="t">${esc(r.name)}</td><td>${esc(r.date)}</td><td>${fmtBig(r.shares)}</td><td class="${dirCls(r.change)}">${nx(r.change)}<br><small>${esc(r.changePct || '')}</small></td></tr>`).join('')}</table>`;
   }
   function usStockHTML(d) { return [usShortHTML, usInsiderHTML, usInstHTML].map((f) => `<div class="box">${f(d)}</div>`).join(''); }
   const krYmd = (s) => (s && s.length === 8 ? `${s.slice(4, 6)}.${s.slice(6, 8)}` : esc(s || ''));
@@ -1539,20 +1547,20 @@
   function krInvHTML(d) {
     if (!d.investors?.length) return `<h4>투자자별 순매수 (기관·외국인)</h4>${note(kisMsg(d.errors?.investors))}`;
     const sum = (k) => d.investors.slice(0, 5).reduce((a, r) => a + (r[k] || 0), 0);
-    return `<h4>투자자별 순매수 <small>최근 ${d.investors.length}거래일 · 주</small></h4><div class="mini-stats"><div><span>외국인 5일 누적</span><b class="${dirCls(sum('foreign'))}">${signedInt(sum('foreign'))}주</b></div><div><span>기관 5일 누적</span><b class="${dirCls(sum('inst'))}">${signedInt(sum('inst'))}주</b></div><div><span>개인 5일 누적</span><b class="${dirCls(sum('person'))}">${signedInt(sum('person'))}주</b></div></div>
-      <table class="tbl"><tr><th>일자</th><th>종가</th><th>개인</th><th>외국인</th><th>기관</th></tr>${d.investors.map((r) => `<tr><td>${krYmd(r.date)}</td><td>${fmtInt(r.close)}</td><td class="${dirCls(r.person)}">${signedInt(r.person)}</td><td class="${dirCls(r.foreign)}">${signedInt(r.foreign)}</td><td class="${dirCls(r.inst)}">${signedInt(r.inst)}</td></tr>`).join('')}</table>`;
+    return `<h4>투자자별 순매수 <small>최근 ${d.investors.length}거래일 · 주</small></h4><div class="mini-stats"><div><span>외국인 5일 누적</span><b class="${dirCls(sum('foreign'))}">${nx(sum('foreign'))}주</b></div><div><span>기관 5일 누적</span><b class="${dirCls(sum('inst'))}">${nx(sum('inst'))}주</b></div><div><span>개인 5일 누적</span><b class="${dirCls(sum('person'))}">${nx(sum('person'))}주</b></div></div>
+      <table class="tbl"><tr><th>일자</th><th class="hide-m">종가</th><th>개인</th><th>외국인</th><th>기관</th></tr>${d.investors.map((r) => `<tr><td>${krYmd(r.date)}</td><td class="hide-m">${fmtInt(r.close)}</td><td class="${dirCls(r.person)}">${nx(r.person)}</td><td class="${dirCls(r.foreign)}">${nx(r.foreign)}</td><td class="${dirCls(r.inst)}">${nx(r.inst)}</td></tr>`).join('')}</table>`;
   }
   function krShortHTML(d) {
     if (!d.short?.length) return `<h4>공매도</h4>${note(kisMsg(d.errors?.short))}`;
-    return `<h4>공매도 거래 <small>일별 · 잔고는 KRX 로그인 전용</small></h4><table class="tbl"><tr><th>일자</th><th>종가</th><th>공매도 수량</th><th>거래 비중</th></tr>${d.short.map((r) => `<tr><td>${krYmd(r.date)}</td><td>${fmtInt(r.close)}</td><td>${fmtInt(r.qty)}</td><td>${r.ratio !== null && r.ratio !== undefined ? r.ratio.toFixed(2) + '%' : '—'}</td></tr>`).join('')}</table>`;
+    return `<h4>공매도 거래 <small>일별 · 잔고는 KRX 로그인 전용</small></h4><table class="tbl"><tr><th>일자</th><th>종가</th><th>공매도 수량</th><th>거래 비중</th></tr>${d.short.map((r) => `<tr><td>${krYmd(r.date)}</td><td>${fmtInt(r.close)}</td><td>${nx(r.qty, false)}</td><td>${r.ratio !== null && r.ratio !== undefined ? r.ratio.toFixed(2) + '%' : '—'}</td></tr>`).join('')}</table>`;
   }
   function krInsHTML(d) {
     if (!d.insider?.length) return `<h4>임원·주요주주 지분 변동</h4>${note(d.errors?.insider || '최근 보고 없음')}`;
-    return `<h4>임원·주요주주 지분 변동 <small>DART · 내부자 거래</small></h4><table class="tbl"><tr><th>보고자</th><th>보고일</th><th>증감</th><th>보유</th><th>비율</th></tr>${d.insider.map((r) => `<tr><td class="t">${esc(r.who)}<br><small>${esc(r.role || '')}</small></td><td>${esc(r.date)}</td><td class="${dirCls(r.change)}">${signedInt(r.change)}</td><td>${fmtInt(r.shares)}</td><td>${r.rate ?? '—'}%</td></tr>`).join('')}</table>`;
+    return `<h4>임원·주요주주 지분 변동 <small>DART · 내부자 거래</small></h4><table class="tbl"><tr><th>보고자</th><th>보고일</th><th>증감</th><th class="hide-m">보유</th><th>비율</th></tr>${d.insider.map((r) => `<tr><td class="t">${esc(r.who)}<br><small>${esc(r.role || '')}</small></td><td>${esc(r.date)}</td><td class="${dirCls(r.change)}">${nx(r.change)}</td><td class="hide-m">${nx(r.shares, false)}</td><td>${r.rate ?? '—'}%</td></tr>`).join('')}</table>`;
   }
   function krMajorHTML(d) {
     if (!d.major?.length) return `<h4>5% 이상 대량보유</h4>${note(d.errors?.major || '최근 보고 없음')}`;
-    return `<h4>5% 이상 대량보유 <small>DART · 기관 지분</small></h4><table class="tbl"><tr><th>보고자</th><th>보고일</th><th>증감</th><th>지분율</th></tr>${d.major.map((r) => `<tr><td class="t">${esc(r.who)}<br><small>${esc(r.reason || r.type || '')}</small></td><td>${esc(r.date)}</td><td class="${dirCls(r.change)}">${signedInt(r.change)}</td><td>${r.rate ?? '—'}% <small class="${dirCls(r.rateChange)}">(${r.rateChange > 0 ? '+' : ''}${r.rateChange ?? 0})</small></td></tr>`).join('')}</table>`;
+    return `<h4>5% 이상 대량보유 <small>DART · 기관 지분</small></h4><table class="tbl"><tr><th>보고자</th><th>보고일</th><th>증감</th><th>지분율</th></tr>${d.major.map((r) => `<tr><td class="t">${esc(r.who)}<br><small>${esc(r.reason || r.type || '')}</small></td><td>${esc(r.date)}</td><td class="${dirCls(r.change)}">${nx(r.change)}</td><td>${r.rate ?? '—'}%<br><small class="${dirCls(r.rateChange)}">(${r.rateChange > 0 ? '+' : ''}${r.rateChange ?? 0})</small></td></tr>`).join('')}</table>`;
   }
   function krStockHTML(d) { return [krInvHTML, krShortHTML, krInsHTML, krMajorHTML].map((f) => `<div class="box">${f(d)}</div>`).join(''); }
 
