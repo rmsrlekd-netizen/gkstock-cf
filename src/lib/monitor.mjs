@@ -36,9 +36,18 @@ async function checks() {
   const nErr = news?.errors || [];
   const prDay = (news?.items || []).filter((x) => x.src === 'PR' && now - Date.parse(x.time) < 24 * 3600e3).length;
   // 보도자료 지연 = 우리가 처음 가져온 시각 - 원래 발표 시각 (최근 24시간 중앙값)
-  const lags = (news?.items || []).filter((x) => x.src === 'PR' && x.seenAt && now - Date.parse(x.time) < 24 * 3600e3).map((x) => (Date.parse(x.seenAt) - Date.parse(x.time)) / 60e3).filter((v) => v > -5 && v < 600).sort((a, b) => a - b);
-  const lagMed = lags.length ? lags[Math.floor(lags.length / 2)] : null;
-  add('news', '보도자료 수집', age(news) < 15 * MIN && (prDay > 0 || !weekday(us)), `마지막 수집 ${ago(age(news))} · 24시간 보도자료 ${prDay}건${lagMed != null ? ` · 발표 후 평균 지연 약 ${Math.max(0, lagMed).toFixed(1)}분` : ''}${nErr.length ? ' · 실패한 출처: ' + nErr.map((e) => e.split(':')[0]).join(', ') : ''}`);
+  // 출처별 발표 후 지연(중앙값). 수집이 멈췄다가 몰아서 들어온 것(6시간 넘게 늦은 것)은 제외
+  const SRC = { 'PR Newswire': 'PRN', 'Business Wire': 'BW', 'GlobeNewswire': 'GNW', 'ACCESS Newswire': 'AW', '뉴스와이어': '뉴스와이어' };
+  const bySrc = {};
+  for (const x of news?.items || []) {
+    if (x.src !== 'PR' || !x.seenAt || now - Date.parse(x.time) > 24 * 3600e3) continue;
+    const v = (Date.parse(x.seenAt) - Date.parse(x.time)) / 60e3;
+    if (v < -5 || v > 360) continue;
+    (bySrc[SRC[x.source] || x.source] ||= []).push(Math.max(0, v));
+  }
+  const med = (a) => { a.sort((p, q) => p - q); return a[Math.floor(a.length / 2)]; };
+  const lagTxt = Object.entries(bySrc).map(([k, a]) => `${k} ${Math.round(med(a))}분`).join(' · ');
+  add('news', '보도자료 수집', age(news) < 15 * MIN && (prDay > 0 || !weekday(us)), `마지막 수집 ${ago(age(news))} · 24시간 보도자료 ${prDay}건${lagTxt ? ` · 발표 후 지연(중앙값) ${lagTxt}` : ''}${nErr.length ? ' · 이번 회차 응답 없음: ' + nErr.map((e) => ({ bw: 'BW', prn: 'PRN', gnw: 'GNW', aw: 'AW', nw: '뉴스와이어', prnd: 'PRN 직접' }[e.split(':')[0]] || e.split(':')[0])).join(', ') : ''}`);
   const mAge = market?.at ? now - market.at : Infinity;
   const idxOk = (market?.body?.indices || []).filter((x) => !x.error).length;
   add('market', '시장 지표', mAge < 30 * MIN && idxOk >= 6, `마지막 갱신 ${ago(mAge)} · 지수 ${idxOk}개 정상${market?.body?.night?.ok === false ? ' · 야간선물 실패: ' + (market.body.night.reason || '') : ''}`);

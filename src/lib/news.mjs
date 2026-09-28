@@ -108,7 +108,9 @@ const PRN_FEEDS = [
   ...['financial-services', 'technology', 'business-technology', 'health', 'energy', 'auto-transportation', 'consumer-technology', 'general-business', 'consumer-products-retail', 'heavy-industry-manufacturing', 'telecommunications', 'entertainment-media', 'environment', 'policy-public-interest', 'travel'].map((c) => `https://www.prnewswire.com/rss/${c}-latest-news/${c}-latest-news-list.rss`),
 ];
 async function prNewswire(idx, full) {
-  const all = await Promise.allSettled((full ? PRN_FEEDS : PRN_FEEDS.slice(0, 1)).map((u) => rss(u, 9000)));
+  // 가끔 PRN 서버가 잠깐 404를 주면 1초 뒤 한 번 더
+  const get = (u) => rss(u, 9000).catch(async (e) => { await new Promise((r) => setTimeout(r, 1000)); return rss(u + (u.includes('?') ? '&' : '?') + 'r=' + Date.now(), 9000).catch(() => { throw e; }); });
+  const all = await Promise.allSettled((full ? PRN_FEEDS : PRN_FEEDS.slice(0, 1)).map(get));
   if (all.every((r) => r.status === 'rejected')) throw all[0].reason;
   const out = [];
   for (const r of all) {
@@ -127,49 +129,24 @@ async function prNewswire(idx, full) {
 }
 
 // Business Wire 전체 뉴스
-// Business Wire: 예전 RSS 주소가 비어 있어서(2026-09 확인) 뉴스룸 페이지에 들어있는 목록 데이터를 직접 읽음
-//  /newsroom?language=en&page=N (한 쪽에 10건) — 처음 보는 글이 이어지면 다음 쪽까지 (최대 maxPages쪽)
-let bwViaRelay = false;
-async function bwPage(page) {
-  const url = `https://www.businesswire.com/newsroom?language=en&page=${page}`;
-  const get = async (relay) => {
-    const r = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' }, ...(relay ? { relay: true } : {}) }, relay ? 15000 : 10000);
-    if (!r.ok) throw new Error('Business Wire HTTP ' + r.status);
-    return r.text();
-  };
-  let html;
-  if (!bwViaRelay) {
-    try { html = await get(false); } catch (e) { if (!process.env.KR_RELAY_URL) throw e; bwViaRelay = true; setTimeout(() => { bwViaRelay = false; }, 30 * 60e3); }
-  }
-  if (html == null) html = await get(true);
-  const s = html.replace(/\\"/g, '"');
-  const m = s.match(/"news":\{"currentPage":\d+,"totalPages":\d+,"total":\d+,"items":(\[.*?\])\}/);
-  if (!m) throw new Error('Business Wire 목록 형식 변경');
-  return JSON.parse(m[1]);
-}
-async function businessWire(idx, { maxPages = 3 } = {}) {
-  const seen = (await getJSON('bw/seen')) || {};
+// Business Wire: 공식 "전체 뉴스" RSS (최신순, 약 1주일치·수 MB) → 앞부분만 읽음
+//  ※ 예전 주소(…WA==)는 '네트워크 기술' 분야 전용이라 비어 있었음. 뉴스룸 페이지는 봇 차단(HTTP 400)
+const BW_ALL = 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJcFVJYWQ==';
+async function businessWire(idx, { maxBytes = 350000 } = {}) {
+  const items = await rss(BW_ALL, 12000, {}, maxBytes);
   const out = [];
-  for (let page = 1; page <= maxPages; page++) {
-    const list = await bwPage(page);
-    let known = 0;
-    for (const x of list) {
-      if (!x?.newsItemId || (x.language && x.language !== 'en')) continue;
-      const url = `https://www.businesswire.com/news/home/${x.newsItemId}/en/`;
-      const title = strip(x.headline || '');
-      const desc = strip(x.teaser || '');
-      const ticker = tickerOf(desc + ' ' + title, null, idx);
-      if (seen[x.newsItemId]) known++;
-      seen[x.newsItemId] = Date.parse(x.releaseDate) || Date.now();
-      if (!ticker || !title) continue;
-      const company = null; // 회사명은 티커로 찾음 (본문 첫머리는 형식이 제각각)
-      out.push({ id: 'PR-' + hash(url), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url, time: x.releaseDate ? new Date(x.releaseDate).toISOString() : new Date().toISOString(), source: 'Business Wire', company, ticker });
-    }
-    if (known > 0 || list.length < 10) break; // 이미 본 글이 나오면 그 뒤는 지난번에 다 봄
+  for (const x of items) {
+    const link = strip(tag(x, 'link'));
+    const nid = (link.match(/\/news\/home\/(\d+)\//) || [])[1];
+    if (!nid) continue;
+    if (!/\/en\//.test(link)) continue; // 영문판만
+    const title = strip(tag(x, 'title'));
+    const desc = strip(tag(x, 'description'));
+    const ticker = tickerOf(desc + ' ' + title, null, idx);
+    if (!ticker || !title) continue;
+    const url = `https://www.businesswire.com/news/home/${nid}/en/`;
+    out.push({ id: 'PR-' + hash(url), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url, time: iso(strip(tag(x, 'pubDate'))), source: 'Business Wire', company: null, ticker });
   }
-  const keys = Object.keys(seen);
-  if (keys.length > 3000) for (const k of keys.sort((a, b) => seen[a] - seen[b]).slice(0, keys.length - 3000)) delete seen[k];
-  await setJSON('bw/seen', seen).catch(() => {});
   return out;
 }
 
@@ -346,7 +323,7 @@ export async function collectNews({ full = true, direct = false } = {}) {
   const idx = await companyIndex();
   const jobs = {
     ...(direct ? { prnd: prnDirect(idx) } : {}),
-    gnw: globeNewswire(idx, full), prn: prNewswire(idx, full), bw: businessWire(idx, { maxPages: full ? 5 : 3 }), aw: accessWire(idx),
+    gnw: globeNewswire(idx, full), prn: prNewswire(idx, full), bw: businessWire(idx, { maxBytes: full ? 700000 : 350000 }), aw: accessWire(idx),
     nw: newswireUs(idx), // 뉴스와이어는 미국 상장사 보도자료만 (한국 기업 보도자료는 수집 안 함 — 한국은 DART 공시가 그 역할)
   };
   const errors = [];
