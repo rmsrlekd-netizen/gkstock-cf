@@ -4,7 +4,7 @@
 import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { us as usQuote } from './quote.mjs';
-import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers } from '../lib/naver.mjs';
+import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers, naverKrExtMovers } from '../lib/naver.mjs';
 
 // 미국 시간외(프리마켓 04:00~09:30 · 애프터마켓 16:00~20:00, 뉴욕시간 평일)인지
 function usExtSession(now = new Date()) {
@@ -13,6 +13,16 @@ function usExtSession(now = new Date()) {
   const m = Number(p.hour) * 60 + Number(p.minute);
   return m >= 240 && m < 570 ? 'PRE' : m >= 960 && m < 1200 ? 'AFTER' : null;
 }
+
+// 국내 넥스트레이드 시간외: 프리 08:00~08:50, 애프터 15:30~20:00 (평일)
+function krExtSession(now = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(now).map((x) => [x.type, x.value]));
+  if (['Sat', 'Sun'].includes(p.weekday)) return null;
+  const m = Number(p.hour) * 60 + Number(p.minute);
+  return m >= 480 && m < 540 ? 'PRE' : m >= 930 && m < 1205 ? 'AFTER' : null;
+}
+// 시간외 가격이 있으면 표시 등락률·가격을 시간외 기준으로 (정규장 값은 regPct·regPrice로 보관)
+const useExt = (x) => { if (x && x.session && x.livePct != null && x.regPct === undefined) { x.regPct = x.pct; x.regPrice = x.price; x.pct = x.livePct; x.price = x.live ?? x.price; } return x; };
 
 const n0 = (s) => { const x = Number(String(s ?? '').replace(/[,%+\s]/g, '')); return Number.isFinite(x) ? x : null; };
 
@@ -97,6 +107,14 @@ export default async () => {
     if (ext?.up?.length) { out.usExt = ext; out.usUp = ext.up; out.usDown = ext.down; out.usSession = sess; }
     // 인기 종목도 시간외 등락률을 함께 표시
     for (const x of usList) if (x.ext && x.ext.session === sess) { x.regPct = x.pct; x.regPrice = x.price; x.pct = x.ext.pct; x.price = x.ext.price ?? x.price; x.session = sess; }
+  }
+  // 국내 넥스트레이드 프리·애프터마켓 시간엔 인기·상승·하락을 시간외 등락률 기준으로
+  for (const k of ['kr', 'krUp', 'krDown']) for (const x of out[k] || []) useExt(x);
+  const ks = krExtSession();
+  if (ks) {
+    let ext = cached?.krExt && cached.krExt.session === ks && Date.now() - cached.krExt.at < 2 * 60e3 ? cached.krExt : null;
+    if (!ext) { try { ext = { ...(await naverKrExtMovers(10)), session: ks, at: Date.now() }; } catch (e) { errors.push('krExt: ' + e.message); } }
+    if (ext?.up?.length || ext?.down?.length) { out.krExt = ext; out.krUp = ext.up; out.krDown = ext.down; out.krSession = ks; }
   }
   // 저장된 "오늘 움직임 이유" 붙이기 (3분마다 따로 만들어 둠)
   const wm = (await getJSON('why/map')) || {};

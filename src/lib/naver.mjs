@@ -20,7 +20,8 @@ function parseQuote(x) {
   const q = parseQuoteBase(x, code);
   // 미국 정규장이 닫혀 있고 프리·애프터 거래가 더 최근이면 '지금 가격'은 시간외 가격
   const e = q.ext;
-  if (e && e.price != null && q.status !== 'OPEN' && Date.parse(e.at) > (Date.parse(x.localTradedAt || '') || 0)) { q.live = e.price; q.livePct = e.pct; q.session = e.session; }
+  // (국내는 넥스트레이드 프리마켓 08:00~08:50 · 애프터마켓 15:30~20:00, 시간외 거래가 열려 있으면 그 가격)
+  if (e && e.price != null && e.pct != null && q.status !== 'OPEN' && (e.open || Date.parse(e.at) > (Date.parse(x.localTradedAt || '') || 0))) { q.live = e.price; q.livePct = e.pct; q.session = e.session; }
   return q;
 }
 function parseQuoteBase(x, code) {
@@ -76,6 +77,33 @@ export async function naverKrTop(n = 10) {
   const list = (j.stocks || []).filter((x) => x.stockType === 'domestic' && x.itemCode);
   if (!list.length) throw new Error('네이버 검색 상위 데이터 없음');
   return list.slice(0, n).map((x) => ({ market: 'KR', ticker: x.itemCode, name: x.stockName, ...parseQuote(x), cur: 'KRW', mcapText: x.marketValueHangeul || null, valueText: x.accumulatedTradingValueKrwHangeul || null }));
+}
+
+/** 국내 넥스트레이드(NXT) 프리·애프터마켓 상승·하락 상위
+ *  네이버에 시간외 순위가 없어서: 코스피·코스닥 시가총액 상위 + 검색 상위 + 전일 급등락 종목의 시간외 등락률로 직접 순위를 매김 (NXT 거래 종목은 대부분 여기 포함) */
+export async function naverKrExtMovers(n = 10) {
+  const B = 'https://m.stock.naver.com/api/stocks';
+  const urls = [
+    ...[1, 2, 3, 4, 5].map((i) => `${B}/marketValue/KOSPI?page=${i}&pageSize=100`),
+    ...[1, 2, 3, 4].map((i) => `${B}/marketValue/KOSDAQ?page=${i}&pageSize=100`),
+    `${B}/up/all?page=1&pageSize=100`, `${B}/down/all?page=1&pageSize=100`, `${B}/searchTop/all?page=1&pageSize=50`,
+  ];
+  const pages = await Promise.all(urls.map((u) => get(u, 9000).catch(() => null)));
+  const seen = new Map();
+  for (const j of pages) for (const x of j?.stocks || []) {
+    if (!x.itemCode || seen.has(x.itemCode) || (x.stockEndType && x.stockEndType !== 'stock')) continue;
+    const e = extOf(x);
+    if (!e || e.pct == null || e.price == null) continue;
+    const q = parseQuote(x);
+    seen.set(x.itemCode, { market: 'KR', ticker: x.itemCode, name: x.stockName, price: e.price, pct: e.pct, regPrice: q.price, regPct: q.pct, session: e.session, status: q.status, cur: 'KRW', mcapText: x.marketValueHangeul || null, valueText: x.accumulatedTradingValueKrwHangeul || null });
+  }
+  const all = [...seen.values()];
+  if (all.length < 20) throw new Error(`국내 시간외 거래 종목 부족 (${all.length}개, 응답 ${pages.filter(Boolean).length}/${urls.length})`);
+  return {
+    up: all.filter((x) => x.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, n),
+    down: all.filter((x) => x.pct < 0).sort((a, b) => a.pct - b.pct).slice(0, n),
+    count: all.length,
+  };
 }
 
 /** 국내 상승·하락 상위 (코스피+코스닥 전체 주식, ETF·ETN만 제외) */
