@@ -381,6 +381,19 @@ async function finnhubNews() {
 /** 전체 수집 → 기존 저장분과 병합 */
 // 보도자료 수집 (뉴스는 원문을 가져올 수 없어 수집하지 않음)
 //  full=false: 가장 빠른 전체 최신 목록만 (1분마다) / full=true: 주제·업종별 목록까지 (5분마다)
+// 미국 로펌들이 매일 수십 건씩 뿌리는 증권 집단소송 모집 광고성 보도자료 (정보 가치 낮음) → 수집 안 함
+export const LAWSUIT_PR = [
+  /집단\s?소송|증권\s?사기|로펌|법률\s?사무소/,
+  /securities (fraud|class action|law violations|litigation)/i,
+  /class action (lawsuit|investigation|filed|deadline)/i,
+  /(investors|shareholders|stockholders)\b[^.]{0,80}\b(lost money|opportunity to lead|to contact|to inquire|urged|remind|deadline|recover)/i,
+  /lead plaintiff|filing deadline|recover(ing)? (their )?losses/i,
+  /(stock|investor|shareholder)s? (alert|notice)\b.*\b(investigat|law|llp|firm)/i,
+  /obtaining a fair price for (its )?(shareholders|stockholders)/i,
+  /\b(halper sadeh|rosen law|pomerantz|levi (&|&amp;) korsinsky|bragar eagel|faruqi|robbins (llp|geller)|glancy prongay|bronstein,? gewirtz|schall law|gross law|kessler topaz|hagens berman|block (&|&amp;) leviton|bfa law|kahn swick|johnson fistel|portnoy law|monteverde|ademi|frank r\. cruz|howard g\. smith|djs law|sbs law|law offices of|lowey dannenberg|bernstein liebhard|scott\+scott|kirby mcinerney|rigrodsky|brodsky (&|&amp;) smith|wolf haldenstein|labaton|saxena white|berger montague|holzer|spector roseman|edelson lechtzin|zhang investor law|kaskela|wohl (&|&amp;) fruchter|rm law|brager|jakubowitz|pomerantz)\b/i,
+];
+export const isLawsuitPR = (t) => LAWSUIT_PR.some((re) => re.test(String(t || '')));
+
 export async function collectNews({ full = true, direct = false } = {}) {
   const idx = await companyIndex();
   const jobs = {
@@ -414,7 +427,7 @@ export async function collectNews({ full = true, direct = false } = {}) {
     await setJSON('news/srchealth', hl);
   } catch {}
   // 한국 보도자료는 저장하지 않음 (예전 저장분도 제거). 뉴스와이어는 미국 티커가 확인된 것만 남김
-  const isKrPR = (x) => x.src !== 'PR' || x.market === 'KR' || (x.source === '뉴스와이어' && !x.usOk && !x.ko); // 뉴스·한국 보도자료 제외
+  const isKrPR = (x) => x.src !== 'PR' || x.market === 'KR' || (x.source === '뉴스와이어' && !x.usOk && !x.ko) || isLawsuitPR(x.title) || isLawsuitPR(x.titleKo); // 뉴스·한국 보도자료·증권소송 광고 제외
   const byId = new Map(prev.items.filter((x) => !isKrPR(x)).map((x) => [x.id, x]));
   const tr = (await getJSON('tr/map')) || {};
   for (const it of fresh) {

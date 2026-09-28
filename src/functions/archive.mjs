@@ -5,6 +5,7 @@ import { json } from '../lib/util.mjs';
 import { queryArchive, itemMs } from '../lib/archive.mjs';
 import { companyHistory } from '../lib/backfill.mjs';
 import { attachPx0 } from '../lib/px0.mjs';
+import { isLawsuitPR } from '../lib/news.mjs';
 
 export default async (req) => {
   const u = new URL(req.url);
@@ -20,9 +21,11 @@ export default async (req) => {
     hist = await Promise.race([companyHistory(mk, ticker, /^\d{8}$/.test(p('corp')) ? p('corp') : null), new Promise((r) => setTimeout(() => r({ timeout: true }), 12000))]).catch((e) => ({ error: e.message }));
   }
   try {
-    const items = await attachPx0(await queryArchive({ kind, market: mk, before, ticker, q, limit }));
-    const last = items.length ? itemMs(items[items.length - 1]) : null;
-    return json({ ok: true, count: items.length, next: items.length === limit ? last : null, hist, items }, { cdnSeconds: before ? 600 : 60, swr: 600 });
+    const raw = await queryArchive({ kind, market: mk, before, ticker, q, limit });
+    const last = raw.length ? itemMs(raw[raw.length - 1]) : null;
+    // 예전에 보관된 증권소송 광고성 보도자료는 보여주지 않음
+    const items = await attachPx0(raw.filter((x) => !(x.src === 'PR' && (isLawsuitPR(x.title) || isLawsuitPR(x.titleKo)))));
+    return json({ ok: true, count: items.length, next: raw.length === limit ? last : null, hist, items }, { cdnSeconds: before ? 600 : 60, swr: 600 });
   } catch (e) {
     return json({ ok: false, error: String(e.message || e), items: [] }, { status: 502, cdnSeconds: 10 });
   }
