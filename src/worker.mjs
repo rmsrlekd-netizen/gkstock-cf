@@ -29,6 +29,9 @@ import * as admin from './functions/admin.mjs';
 import * as item from './functions/item.mjs';
 import * as archive from './functions/archive.mjs';
 import * as why from './functions/why.mjs';
+import * as themes from './functions/themes.mjs';
+import * as econ from './functions/econ.mjs';
+import { econWatch } from './lib/econ.mjs';
 import { whyWatch } from './lib/why.mjs';
 import { renderItemPage, sitemap } from './lib/page.mjs';
 import { renderOgImage } from './lib/og.mjs';
@@ -37,7 +40,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -142,6 +145,10 @@ export default {
     const kr = zoned(now, 'Asia/Seoul');
     const direct = !['Sat', 'Sun'].includes(kr.wd) && kr.m >= 19 * 60 && kr.m <= 22 * 60 + 30;
     if (busy('news', now) || direct || min % 5 === 0) jobs.push(newsWatch({ mode: 'pr', full: min % 5 === 0, direct }));
+    // 미국 경제지표: 발표가 몰리는 미국 동부 평일 7:00~16:30엔 매분, 그 외엔 30분마다 (발표되면 AI 해석 + 달력 갱신)
+    const usz = zoned(now, 'America/New_York');
+    const econBusy = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 7 * 60 && usz.m <= 16 * 60 + 30;
+    if (econBusy || min % 30 === 0) jobs.push(econWatch().then(async (r) => { if (r.ai || econBusy) { const { econCalendar } = await import('./lib/econ.mjs'); const { setJSON } = await import('./lib/store.mjs'); await setJSON('econ/v1', await econCalendar()); } }).catch((e) => console.warn('econ', e.message)));
     if (jobs.length) ctx.waitUntil(Promise.allSettled(jobs));
   },
 };

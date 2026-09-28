@@ -1087,6 +1087,138 @@
     ${sel ? `<div class="ec-selhead"><b>${Number(sel.date.slice(5, 7))}월 ${Number(sel.date.slice(8, 10))}일 (${WD[sdt.getUTCDay()]})</b><span>${counts[S.earnDay]}개 기업 · 미국 동부 기준</span></div>` : ''}`;
   }
 
+  // ───────────────────────── 오늘의 주도 테마·섹터 ─────────────────────────
+  S.thMk = load('gk_thmk', 'KR');
+  const pctTxt = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%`);
+  async function loadThemes(force) {
+    if (S.view !== 'themes') return;
+    if (!S.themes || force || Date.now() - (S.themesAt || 0) > 60e3) {
+      try { S.themes = await getJSON('/api/themes', {}); S.themesAt = Date.now(); } catch (e) { if (!S.themes) S.themes = { error: e.message }; }
+    }
+    renderThemes();
+  }
+  function thLeader(s, mk) {
+    const lim = s.limit === 'up' ? '<b class="lim up">상한</b>' : s.limit === 'down' ? '<b class="lim down">하한</b>' : '';
+    const label = mk === 'KR' ? s.name : s.t;
+    return `<button class="th-chip" data-open-co="${mk}|${esc(s.t)}|${esc(s.name || s.nameKo || '')}">${esc(label)} <em class="${dirCls(s.pct)}">${pctTxt(s.pct)}</em>${lim}</button>`;
+  }
+  function thRow(g, i, kind) {
+    const tot = Math.max(1, g.rise + g.fall + g.flat);
+    return `<div class="th-row" data-th-no="${g.no}" data-th-kind="${kind}">
+      <div class="th-top"><span class="rk">${i + 1}</span><b class="th-name">${esc(g.name)}</b><span class="th-cnt">${g.total}종목</span><span class="th-rate ${dirCls(g.rate)}">${pctTxt(g.rate)}</span><span class="th-caret">▾</span></div>
+      <div class="th-breadth" title="상승 ${g.rise} · 하락 ${g.fall} · 보합 ${g.flat}"><i class="r" style="width:${(g.rise / tot) * 100}%"></i><i class="f" style="width:${(g.fall / tot) * 100}%"></i></div>
+      ${g.why ? `<p class="th-why"><i>AI 추정</i>${esc(g.why)}</p>` : ''}
+      ${g.leaders?.length ? `<div class="th-leaders">${g.leaders.map((s) => thLeader(s, 'KR')).join('')}</div>` : ''}
+      <div class="th-more" hidden></div></div>`;
+  }
+  async function toggleTheme(el) {
+    const box = el.querySelector('.th-more');
+    if (!box) return;
+    if (!box.hidden) { box.hidden = true; el.classList.remove('open'); return; }
+    box.hidden = false; el.classList.add('open');
+    box.innerHTML = '<div class="loading"><span class="spin"></span>종목 불러오는 중…</div>';
+    try {
+      const j = await getJSON(`/api/themes?kind=${el.dataset.thKind}&no=${el.dataset.thNo}`, {});
+      box.innerHTML = `<ol class="rank">${(j.stocks || []).map((s, i) => rankRow({ market: 'KR', ticker: s.t, name: s.name, price: s.price, pct: s.pct }, i)).join('')}</ol>`;
+    } catch (e) { box.innerHTML = `<p class="muted">불러오지 못했습니다: ${esc(e.message)}</p>`; }
+  }
+  function renderThemes() {
+    const d = S.themes;
+    $$('#thSeg button').forEach((b) => b.classList.toggle('on', b.dataset.th === S.thMk));
+    if (!d) return;
+    if (d.error) { $('#thBody').innerHTML = `<div class="empty">테마 정보를 불러오지 못했습니다: ${esc(d.error)}</div>`; return; }
+    $('#thMeta').textContent = `${fmtDT(new Date(d.at)).full} 기준 · 1분마다 갱신`;
+    if (S.thMk === 'KR') {
+      const k = d.kr;
+      if (!k) { $('#thBody').innerHTML = '<div class="empty">한국 테마 데이터를 불러오지 못했습니다.</div>'; return; }
+      $('#thBody').innerHTML = `<div class="th-grid">
+        <div class="card"><div class="card-h"><h3>오늘의 주도 테마 <b>TOP ${k.themes.length}</b></h3><span class="muted sm">네이버 증권 테마 ${k.themeCount}개 · 평균 등락률</span></div><div class="th-list">${k.themes.map((g, i) => thRow(g, i, 'theme')).join('')}</div></div>
+        <div><div class="card"><div class="card-h"><h3>강한 업종 <b>TOP ${k.industries.length}</b></h3><span class="muted sm">업종 ${k.industryCount}개 중</span></div><div class="th-list">${k.industries.map((g, i) => thRow(g, i, 'industry')).join('')}</div></div>
+        <div class="card" style="margin-top:1rem"><div class="card-h"><h3>약한 테마</h3><span class="muted sm">오늘 가장 많이 내린 테마</span></div><div class="th-list">${k.worstThemes.map((g, i) => thRow(g, i, 'theme')).join('')}</div></div>
+        <div class="card" style="margin-top:1rem"><div class="card-h"><h3>약한 업종</h3></div><div class="th-list">${k.worstIndustries.map((g, i) => thRow(g, i, 'industry')).join('')}</div></div></div>
+      </div><p class="note">테마를 누르면 소속 종목 전체가 펼쳐지고, 종목을 누르면 기업 분석(오늘 주가 움직임 이유 포함)으로 이동합니다. 막대 = 테마 안 상승(빨강)·하락(파랑) 종목 비율.</p>`;
+    } else {
+      const u = d.us;
+      if (!u) { $('#thBody').innerHTML = '<div class="empty">미국 섹터 데이터를 불러오지 못했습니다.</div>'; return; }
+      const max = Math.max(1, ...u.sectors.map((x) => Math.abs(x.pct || 0)));
+      $('#thBody').innerHTML = `<div class="card"><div class="card-h"><h3>S&P 500 섹터</h3><span class="muted sm">섹터 ETF 등락률 (미국 장 기준)</span></div>
+        <div class="sec-tiles">${u.sectors.map((x) => `<div class="sec-tile ${dirCls(x.pct)}" style="--a:${Math.min(1, Math.abs(x.pct || 0) / max).toFixed(2)}"><b>${esc(x.name)}</b><em>${pctTxt(x.pct)}</em><small>${esc(x.t)}</small></div>`).join('')}</div></div>
+        <div class="card" style="margin-top:1rem"><div class="card-h"><h3>테마별 흐름</h3><span class="muted sm">테마 ETF 등락률 · 대표 종목</span></div>
+        <div class="th-list">${u.themes.map((g, i) => `<div class="th-row us"><div class="th-top"><span class="rk">${i + 1}</span><b class="th-name">${esc(g.name)}</b><span class="th-cnt mono">${esc(g.t)}</span><span class="th-rate ${dirCls(g.pct)}">${pctTxt(g.pct)}</span></div>
+          ${g.why ? `<p class="th-why"><i>AI 추정</i>${esc(g.why)}</p>` : ''}<div class="th-leaders">${(g.stocks || []).map((s) => thLeader(s, 'US')).join('')}</div></div>`).join('')}</div></div>
+        <p class="note">미국은 테마 순위 데이터가 따로 없어, 섹터·테마별 대표 ETF의 등락률로 오늘 돈이 몰린 곳을 보여줍니다. 장 시작 전·후에는 직전 거래일 기준입니다.</p>`;
+    }
+  }
+
+  // ───────────────────────── 미국 경제지표 ─────────────────────────
+  S.ecImp = load('gk_ecimp', '2');
+  S.ecSeen = null;
+  async function loadEcon(scroll) {
+    try { S.econ = await getJSON('/api/econ', {}); } catch (e) { if (!S.econ) S.econ = { error: e.message }; }
+    econAlerts();
+    if (S.view === 'econ') { renderEcon(); if (scroll) requestAnimationFrame(() => document.querySelector('#ecBody .ec-day.today')?.scrollIntoView({ block: 'start' })); }
+  }
+  // 새로 발표된 중요 지표 알림 (사이트를 열어두고 있을 때)
+  function econAlerts() {
+    const evs = (S.econ?.days || []).flatMap((d) => d.events || []).filter((e) => e.imp >= 2 && e.actual);
+    if (!S.ecSeen) { S.ecSeen = new Set(evs.map((e) => e.id)); return; }
+    const fresh = evs.filter((e) => !S.ecSeen.has(e.id) && Date.now() - e.ms < 3 * 3600e3);
+    for (const e of evs) S.ecSeen.add(e.id);
+    const top = fresh.sort((a, b) => b.imp - a.imp)[0];
+    if (top) toast(`미국 ${top.ko || top.name} 발표 · 실제 ${top.actual}${top.cons ? ` (예상 ${top.cons})` : ''} — 경제지표 메뉴에서 AI 해석 확인`, 8000);
+  }
+  const numOf = (v) => { const m = String(v || '').replace(/,/g, '').match(/-?\d+(\.\d+)?/); if (!m) return null; let x = Number(m[0]); const u = String(v).match(/[KMBT]\b/i)?.[0]?.toUpperCase(); if (u) x *= { K: 1e3, M: 1e6, B: 1e9, T: 1e12 }[u]; return x; };
+  function surprise(e) {
+    if (!e.actual || !e.cons) return '';
+    const a = numOf(e.actual), c = numOf(e.cons);
+    if (a == null || c == null) return '';
+    return a > c ? '<span class="ec-s hi">예상 상회</span>' : a < c ? '<span class="ec-s lo">예상 하회</span>' : '<span class="ec-s eq">예상 부합</span>';
+  }
+  const stars = (n) => `<span class="ec-imp i${n}">${'★'.repeat(n)}${'☆'.repeat(3 - n)}</span>`;
+  function econAI(a) {
+    const v = a.stock === '호재' ? 'pos' : a.stock === '악재' ? 'neg' : 'neu';
+    const li = (arr) => (arr?.length ? arr.map((x) => `<li><b>${esc(x.sector)}</b> — ${esc(x.why)}</li>`).join('') : '<li class="muted">뚜렷한 섹터 없음</li>');
+    return `<div class="ec-ai"><div class="ec-ai-h"><span class="ai-pill">AI 해석</span><b>${esc(a.headline)}</b>${a.surprise ? `<span class="ec-s">${esc(a.surprise)}</span>` : ''}<span class="verdict ${v}">미국 증시 ${esc(a.stock || '중립')}</span></div>
+      ${a.summary?.length ? `<ul class="ec-sum">${a.summary.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      <div class="ec-grid2">${a.impact ? `<div><h6>주가 영향 <em class="imp-size s-${a.impact.size === '큼' ? 'big' : a.impact.size === '제한적' ? 'low' : 'mid'}">${esc(a.impact.size || '')}</em></h6><p>${esc(a.impact.text || '')}</p></div>` : ''}${a.rates ? `<div><h6>금리·달러</h6><p>${esc(a.rates)}</p></div>` : ''}${a.korea ? `<div><h6>한국 증시·환율</h6><p>${esc(a.korea)}</p></div>` : ''}</div>
+      <div class="pn-big"><div class="pos"><h5><i></i>호재 섹터<em>${(a.good || []).length}</em></h5><ul>${li(a.good)}</ul></div><div class="neg"><h5><i></i>악재 섹터<em>${(a.bad || []).length}</em></h5><ul>${li(a.bad)}</ul></div></div>
+      ${a.watch ? `<p class="note">다음 체크 포인트: ${esc(a.watch)}</p>` : ''}</div>`;
+  }
+  function renderEcon() {
+    const d = S.econ;
+    $$('#ecImp button').forEach((b) => b.classList.toggle('on', b.dataset.imp === S.ecImp));
+    if (!d) return;
+    if (d.error) { $('#ecBody').innerHTML = `<div class="empty">경제지표를 불러오지 못했습니다: ${esc(d.error)}</div>`; return; }
+    $('#ecMeta').textContent = `한국 시간 기준 · ${fmtDT(new Date(d.at)).hm} 갱신 · 출처 Nasdaq 경제 일정`;
+    const min = Number(S.ecImp);
+    const evs = (d.days || []).flatMap((x) => x.events || []).filter((e) => e.imp >= min).sort((a, b) => a.ms - b.ms);
+    const byDay = new Map();
+    for (const e of evs) { const k = fmtDT(new Date(e.ms)).date; if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); }
+    const today = kstDay();
+    const next = evs.find((e) => !e.actual && e.imp >= 3 && e.ms > Date.now());
+    const shownAI = new Set();
+    $('#ecBody').innerHTML = (next ? `<div class="ec-next"><span>다음 핵심 지표</span><b>${esc(next.ko || next.name)}</b><em>${fmtDT(new Date(next.ms)).md} ${fmtDT(new Date(next.ms)).hm} (${rel2(next.ms)})</em></div>` : '') +
+      ([...byDay.entries()].map(([day, list]) => {
+        const dt = new Date(list[0].ms);
+        return `<section class="ec-day ${day === today ? 'today' : ''}"><h3>${Number(day.slice(5, 7))}월 ${Number(day.slice(8, 10))}일 (${WD[new Date(dt.getTime() + 9 * 3600e3).getUTCDay()]})${day === today ? '<i>오늘</i>' : ''}</h3>
+          ${list.map((e) => {
+            const done = !!e.actual;
+            let ai = '';
+            if (e.imp >= 2 && e.g && !shownAI.has(e.g)) {
+              if (e.ai) { ai = econAI(e.ai); shownAI.add(e.g); }
+              else if (done && Date.now() - e.ms < 3 * 3600e3) { ai = '<div class="ec-ai wait"><span class="spin"></span>발표됐습니다 · AI 해석을 준비하는 중 (1~2분)</div>'; shownAI.add(e.g); }
+            }
+            return `<div class="ec-row ${done ? 'done' : ''} i${e.imp}">
+              <span class="ec-time mono">${fmtDT(new Date(e.ms)).hm}</span>${stars(e.imp)}
+              <div class="ec-name"><b>${esc(e.ko || e.name)}</b><small>${esc(e.ko ? e.name : '')}</small>${!done && e.desc && e.imp >= 2 ? `<p>${esc(e.desc)}</p>` : ''}</div>
+              <div class="ec-vals"><span><small>실제</small><b class="${done ? 'act' : ''}">${esc(e.actual || '—')}</b></span><span><small>예상</small>${esc(e.cons || '—')}</span><span><small>이전</small>${esc(e.prev || '—')}</span>${surprise(e)}</div>
+            </div>${ai}`;
+          }).join('')}</section>`;
+      }).join('') || '<div class="empty">표시할 지표가 없습니다.</div>') +
+      '<p class="note">★★★ 시장을 크게 움직이는 핵심 지표 · ★★ 중요 · ★ 참고. 중요 지표가 발표되면 1~2분 안에 AI가 결과를 해석해 주가 영향과 호재·악재 섹터를 올려드립니다. 투자 참고용입니다.</p>';
+  }
+  function rel2(ms) { const m = Math.round((ms - Date.now()) / 60e3); return m < 60 ? `${m}분 후` : m < 1440 ? `${Math.floor(m / 60)}시간 ${m % 60}분 후` : `${Math.floor(m / 1440)}일 후`; }
+
   // ───────────────────────── 모달 ─────────────────────────
   function openModal(html) { $('#modalBody').innerHTML = html; $('#modal').hidden = false; document.body.style.overflow = 'hidden'; }
   function closeModal() { $('#modal').hidden = true; document.body.style.overflow = ''; }
@@ -1649,7 +1781,7 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
-  const PAGES = { admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
+  const PAGES = { themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
@@ -1661,6 +1793,8 @@
     if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 미국·한국 실시간 공시·보도자료'; }
     if (v === 'market') renderMarket();
     if (v === 'earnings') loadEarnings();
+    if (v === 'themes') loadThemes();
+    if (v === 'econ') loadEcon(true);
     if (v === 'admin') renderAdmin();
     if (v === 'popular') { renderPopularPage(); pollViews(); }
     if (v === 'flows') { renderFlows(); if (!S.flows || Date.now() - (S.flowsAt || 0) > 180e3) { S.flowsAt = Date.now(); pollFlows(); } }
@@ -1762,7 +1896,7 @@
       b.textContent = b.classList.contains('star') ? (on ? '★' : '☆') : on ? '★ 관심종목' : '☆ 관심종목 추가';
     });
   }
-  function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2200); }
+  function toast(msg, ms = 2200) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), ms); }
   async function setSetting(key, on, el) {
     if (key === 'notify' && on) {
       if (!('Notification' in window)) { toast('이 브라우저는 알림을 지원하지 않습니다'); if (el) el.checked = false; return; }
@@ -1907,6 +2041,8 @@
     $('#earnDays').addEventListener('click', (e) => { const b = e.target.closest('[data-eday]'); if (!b) return; S.earnDay = Number(b.dataset.eday); renderEarnings(); if (innerWidth <= 720) $('.ec-selhead')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     $('#digestMore').addEventListener('click', openDigestModal);
     $('#digestSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-dmk]'); if (b) setDigestMk(b.dataset.dmk); });
+    $('#thSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-th]'); if (!b) return; S.thMk = b.dataset.th; save('gk_thmk', S.thMk); renderThemes(); });
+    $('#ecImp').addEventListener('click', (e) => { const b = e.target.closest('[data-imp]'); if (!b) return; S.ecImp = b.dataset.imp; save('gk_ecimp', S.ecImp); renderEcon(); });
     $('#popSeg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.popTab = b.dataset.pop; save('gk_poptab', S.popTab); renderPopular(); });
     for (const id of ['#popKind', '#popKindPage']) $(id).addEventListener('click', (e) => { const b = e.target.closest('[data-kind]'); if (!b) return; S.popKind = b.dataset.kind; save('gk_popkind', S.popKind); renderPopular(); if (S.view === 'popular') renderPopularPage(); });
     $('#btnRefresh').addEventListener('click', async (e) => { const svg = e.currentTarget.querySelector('svg'); svg.style.animation = 'spin .8s linear infinite'; await Promise.all([poll('sec'), poll('dart'), poll('news'), pollPopular()]); svg.style.animation = ''; toast('새로고침 완료'); });
@@ -1971,6 +2107,8 @@
       if (mo) { openDigestModal(); return; }
       const co = t.closest('[data-open-co]');
       if (co) { const [m, tk, n] = co.dataset.openCo.split('|'); if (co.closest('#suggest')) $('#search').value = ''; $('#suggest').hidden = true; $('#coSuggest').hidden = true; openCompany(m, tk, n, { corpCode: co.dataset.corp || undefined, exchange: co.dataset.ex || undefined }); return; }
+      const thr = t.closest('[data-th-no]');
+      if (thr && !t.closest('a')) { toggleTheme(thr); return; }
       const row = t.closest('[data-id]');
       if (row && !t.closest('a')) {
         const id = row.dataset.id;
@@ -2019,6 +2157,8 @@
   every(60000, () => poll('news'));
   every(60000, pollMarket);
   every(60000, pollPopular);
+  every(60000, () => { if (S.view === 'themes') loadThemes(true); });
+  every(45000, () => loadEcon(false));
   setInterval(refreshChips, 60000);
   every(15 * 60000, loadDigest);
   every(120000, pollViews);
