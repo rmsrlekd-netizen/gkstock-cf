@@ -1201,6 +1201,12 @@
       const t = e.target;
       const sw = t.closest('[data-top]');
       if (sw) { setTop(sw.dataset.top); return; }
+      if (t.closest('[data-dg-share]')) { // AI 핵심 공시 목록 링크 (열면 이 목록·시장이 바로 보임)
+        e.stopPropagation();
+        const url = `${location.origin}/?top=digest&mk=${S.digestMk || 'ALL'}`;
+        (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => toast('링크를 복사했어요 — 카톡·오픈채팅에 붙여넣기 하세요')).catch(() => { prompt('아래 주소를 복사하세요', url); });
+        return;
+      }
       const sh = t.closest('[data-iss-share]');
       if (sh) { e.stopPropagation(); copyIssue(sh.dataset.issShare); return; }
       const pk = t.closest('[data-iss-pick]');
@@ -2542,6 +2548,10 @@
   bind();
   bindIssues();
   bindSched();
+  { // 공유 링크 (?top=digest&mk=US)로 들어오면 AI 핵심 공시를 바로 보여줌
+    const qp = new URLSearchParams(location.search);
+    if (qp.get('top') === 'digest') { S.top = 'digest'; const m = qp.get('mk'); if (['ALL', 'KR', 'US'].includes(m)) { S.digestMk = m; save('gk_dmk', m); $$('#digestSeg button').forEach((b) => b.classList.toggle('on', b.dataset.dmk === m)); } history.replaceState(null, '', '/' + location.hash); }
+  }
   setTop(S.top);
   loadSnap();
   trackPV();

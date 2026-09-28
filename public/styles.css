@@ -1342,7 +1342,6 @@ button.ic-s:hover { border-color: var(--accent); }
   .issue { padding: .8rem .8rem .75rem; }
   .ibc-top { flex-wrap: wrap; row-gap: .3rem; }
   .ibc-head { flex-basis: 100%; order: 3; font-size: .86rem; }
-  .ibc-act .btn span { display: none; }
   .ibc-act .btn.primary { display: none; }
   .ibc-list { grid-template-columns: 1fr; gap: .3rem; margin-top: .5rem; }
   .ibc-list li { padding: .4rem .5rem; }
@@ -1561,3 +1560,8 @@ button.br-mv:hover { border-color: var(--accent); }
 .sc-daybar small { font-size: .8rem; color: var(--muted); }
 .sc-dtag { align-self: center; font-size: .74rem; font-weight: 800; padding: .22rem .6rem; border-radius: 999px; color: #fff; background: linear-gradient(135deg, #8b6cff, #5d7cff); }
 .sc-dtag.kr { background: linear-gradient(135deg, #ff5a6a, #d6336c); } .sc-dtag.us { background: linear-gradient(135deg, #3ea6ff, #2f6bff); }
+
+/* ── v72: 모바일 링크 복사 글자 · 핵심 공시 링크 복사 ── */
+.dg-share svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-right: .3rem; vertical-align: -2px; }
+.ibc-act .btn svg { margin-right: .25rem; vertical-align: -2px; }
+@media (max-width: 720px) { .digest-ctl { flex-wrap: wrap; justify-content: flex-start; row-gap: .4rem; } .digest-ctl .dseg { flex-basis: 100%; } }
