@@ -616,7 +616,7 @@
     if (!S.watch.length) { bar.innerHTML = '<span class="muted">관심종목이 없습니다. 목록이나 상세 창의 ☆를 눌러 추가하세요.</span>'; return; }
     bar.innerHTML = S.watch.map((w) => {
       const q = S.quotes.get(wkey(w.m, w.t));
-      return `<span class="wchip" data-open-co="${esc(w.m)}|${esc(w.t)}|${esc(w.n || '')}">${esc(w.m === 'KR' ? w.n || w.t : w.t)}${q && q.pct != null ? ` <span class="${dirCls(q.pct)} mono">${fmtPct(q.pct)}</span>` : ''}<button data-unwatch="${esc(w.m)}|${esc(w.t)}" title="삭제">✕</button></span>`;
+      return `<span class="wchip" data-open-co="${esc(w.m)}|${esc(w.t)}|${esc(w.n || '')}">${esc(w.m === 'KR' ? w.n || w.t : w.t)}${q && q.pct != null ? ` <span class="${dirCls(q.livePct ?? q.pct)} mono">${q.session ? (q.session === 'AFTER' ? '애프터 ' : '프리 ') : ''}${fmtPct(q.livePct ?? q.pct)}</span>` : ''}<button data-unwatch="${esc(w.m)}|${esc(w.t)}" title="삭제">✕</button></span>`;
     }).join('');
     fetchQuotes(S.watch.map((w) => wkey(w.m, w.t))).then((ch) => { if (ch && S.view === 'watch') renderWatchbar(); });
   }
@@ -638,8 +638,10 @@
   function qchipInner(m, t, p0) {
     const q = quoteOf(m, t);
     if (!q || q.price == null) return '';
-    let pct = q.pct, lbl = '';
-    if (p0 > 0) { pct = ((q.price - p0) / p0) * 100; lbl = '발표후 '; }
+    // 미국 프리·애프터 시간엔 시간외 가격이 '지금 가격'
+    const cur = q.live ?? q.price;
+    let pct = q.livePct ?? q.pct, lbl = q.session ? (q.session === 'AFTER' ? '애프터 ' : '프리 ') : '';
+    if (p0 > 0) { pct = ((cur - p0) / p0) * 100; lbl = '발표후 '; }
     if (pct === null || pct === undefined || !Number.isFinite(pct)) return '';
     const big = Math.abs(pct) >= 5 ? ' big' : '';
     return `<span class="${dirCls(pct)}${big}">${lbl}${pct > 0 ? '▲' : pct < 0 ? '▼' : ''}${Math.abs(pct).toFixed(2)}%</span>`;

@@ -20,7 +20,7 @@ export async function capturePx0(items) {
   let n = 0;
   for (const x of todo) {
     const v = q[keyOf(x)];
-    if (v?.price) { map[x.id] = { p: v.price, t: now }; n++; }
+    if (v?.price) { map[x.id] = { p: v.live ?? v.price, t: now }; n++; } // 프리·애프터 시간엔 시간외 가격 기준
   }
   if (!n) return 0;
   // 10일 지난 기록은 정리

@@ -14,6 +14,13 @@ async function get(url, ms = 8000) {
 
 function parseQuote(x) {
   const code = x.compareToPreviousPrice?.code;
+  const q = parseQuoteBase(x, code);
+  // 미국 정규장이 닫혀 있고 프리·애프터 거래가 더 최근이면 '지금 가격'은 시간외 가격
+  const e = q.ext;
+  if (e && e.price != null && q.status !== 'OPEN' && Date.parse(e.at) > (Date.parse(x.localTradedAt || '') || 0)) { q.live = e.price; q.livePct = e.pct; q.session = e.session; }
+  return q;
+}
+function parseQuoteBase(x, code) {
   return {
     price: n0(x.closePriceRaw ?? x.closePrice),
     chg: signed(n0(x.compareToPreviousClosePriceRaw ?? x.compareToPreviousClosePrice), code),

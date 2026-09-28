@@ -193,7 +193,7 @@ export async function buildEdition(mk, slot, date, { prev = null, force = false 
   const keys = [...new Set(issues.flatMap((x) => x.stocks.filter((s) => s.code).map((s) => `${mk}:${s.code}`)))];
   let q = {};
   if (keys.length) { try { q = await (await import('../functions/quote.mjs')).getQuotes(keys); } catch {} }
-  for (const x of issues) for (const s of x.stocks) { const v = q[`${mk}:${s.code}`]; if (v && v.pct != null) s.pct = Math.round(Number(v.pct) * 100) / 100; }
+  for (const x of issues) for (const s of x.stocks) { const v = q[`${mk}:${s.code}`]; const vp = v?.livePct ?? v?.pct; if (vp != null) s.pct = Math.round(Number(vp) * 100) / 100; }
   return {
     id: editionId(mk, date, slot.n), mk, date, n: slot.n, hour: slot.n, slot: slot.name, short: slot.phase, fresh, sig: g.keys.slice(0, 200),
     headline: cut(j.headline, 60), keywords: (Array.isArray(j.keywords) ? j.keywords : []).map((k) => cut(k, 12)).filter(Boolean).slice(0, 4),
