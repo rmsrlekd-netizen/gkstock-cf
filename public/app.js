@@ -1520,7 +1520,7 @@
     const hit = findCorp(m, t) || {};
     const c = { m, t, name: name || hit.name || t, corpCode: extra.corpCode || hit.corpCode, exchange: extra.exchange || hit.exchange };
     if (m === 'KR' && !c.corpCode) {
-      try { const j = await getJSON(`/api/search?q=${encodeURIComponent(t)}`, {}); const x = (j.items || []).find((y) => y.market === 'KR' && y.ticker === t); if (x) { c.corpCode = x.corpCode; c.name = name || x.name; } } catch {}
+      try { const j = await getJSON(`/api/search?v=2&q=${encodeURIComponent(t)}`, {}); const x = (j.items || []).find((y) => y.market === 'KR' && y.ticker === t); if (x) { c.corpCode = x.corpCode; c.name = name || x.name; } } catch {}
     }
     S.coCur = c;
     closeModal();
@@ -1718,7 +1718,7 @@
       const my = ++seq;
       timer = setTimeout(async () => {
         let remote = [];
-        try { remote = (await getJSON(`/api/search?q=${encodeURIComponent(q)}`, {})).items || []; } catch {}
+        try { remote = (await getJSON(`/api/search?v=2&q=${encodeURIComponent(q)}`, {})).items || []; } catch {}
         if (my !== seq) return;
         const seen = new Set(local.map((x) => wkey(x.market, x.ticker)));
         render(q, [...local, ...remote.filter((x) => !seen.has(wkey(x.market, x.ticker)))].slice(0, 12), false);

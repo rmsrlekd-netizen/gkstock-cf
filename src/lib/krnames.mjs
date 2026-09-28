@@ -27,7 +27,7 @@ let mem = null;
 /** [{n: 이름, c: 종목코드, k: 고유번호}] (이름이 긴 순) */
 export async function getKrNames({ allowFetch = true } = {}) {
   if (mem && Date.now() - mem.at < 6 * 3600e3) return mem.list;
-  const saved = await getJSON('kr/names');
+  const saved = await getJSON('kr/names2');
   if (saved && Date.now() - saved.at < 7 * 86400e3) { mem = saved; return saved.list; }
   const key = process.env.DART_API_KEY;
   if (!allowFetch || !key) return saved?.list || [];
@@ -35,14 +35,26 @@ export async function getKrNames({ allowFetch = true } = {}) {
     const r = await fetchWithTimeout(`https://opendart.fss.or.kr/api/corpCode.xml?crtfc_key=${encodeURIComponent(key)}`, {}, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const xml = await unzipFirst(await r.arrayBuffer());
-    const list = [];
-    for (const m of xml.matchAll(/<list>[\s\S]*?<corp_code>(\d{8})<\/corp_code>[\s\S]*?<corp_name>([^<]+)<\/corp_name>[\s\S]*?<stock_code>\s*([0-9A-Z]{6})\s*<\/stock_code>[\s\S]*?<\/list>/g)) {
-      list.push({ n: m[2].trim(), c: m[3], k: m[1] });
+    // 회사 하나(<list>…</list>)씩 따로 읽음
+    //  ※ 예전엔 한 번에 정규식으로 읽다가, 비상장사(종목코드 빈칸) 다음 회사의 종목코드를 가져다 붙이는 오류가 있었음
+    //    (예: 394800 쓰리빌리언 → 이너스텍, 028300 HLB → 동성중공업)
+    // 같은 종목코드를 예전 회사(상장폐지 후 코드 재사용)와 함께 쓰면 최근에 수정된 회사를 씀
+    const byCode = new Map();
+    for (const block of xml.split('</list>')) {
+      const code = (block.match(/<stock_code>\s*([0-9A-Z]{6})\s*<\/stock_code>/) || [])[1];
+      if (!code) continue;
+      const k = (block.match(/<corp_code>(\d{8})<\/corp_code>/) || [])[1];
+      const n = (block.match(/<corp_name>([^<]+)<\/corp_name>/) || [])[1];
+      if (!k || !n) continue;
+      const mod = (block.match(/<modify_date>(\d{8})<\/modify_date>/) || [])[1] || '0';
+      const prev = byCode.get(code);
+      if (!prev || mod > prev.mod) byCode.set(code, { n: n.trim(), c: code, k, mod });
     }
+    const list = [...byCode.values()].map(({ mod, ...x }) => x);
     if (list.length < 1000) throw new Error('상장사 목록이 너무 적음 ' + list.length);
     list.sort((a, b) => b.n.length - a.n.length);
     mem = { at: Date.now(), list };
-    await setJSON('kr/names', mem).catch(() => {});
+    await setJSON('kr/names2', mem).catch(() => {});
     return list;
   } catch (e) {
     console.warn('krnames', e.message);
