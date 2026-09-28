@@ -1132,7 +1132,7 @@
     if (!list) { try { list = (await getJSON(`/api/issues?mk=${ed.mk}`, {})).list || []; S.iss[ed.mk] = S.iss[ed.mk] || null; } catch { list = []; } }
     const d = new Date(ed.date + 'T12:00:00Z');
     document.title = `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 ${ed.mk === 'KR' ? '국장' : '미장'} ${ed.slot} 주요 이슈 | GK의 공시레이더`;
-    el.innerHTML = `<div class="ip-bar"><button class="btn sm" data-iss-back>← 홈으로</button><span class="muted sm">오늘 주요 이슈 · ${ed.mk === 'KR' ? '한국' : '미국'}</span></div>${issBoardHTML(ed, { full: true, list })}<p class="note">GK의 공시레이더가 네이버 증권 뉴스, 공시·보도자료, 실시간 시세를 바탕으로 AI가 자동 정리한 내용입니다. 종목 등락률은 생성 시점 기준이며, 투자 권유가 아닌 참고용입니다.</p>`;
+    el.innerHTML = `<div class="ip-bar"><button class="btn sm" data-iss-back>← 홈으로</button><kbd class="esc-hint">ESC</kbd><span class="muted sm">오늘 주요 이슈 · ${ed.mk === 'KR' ? '한국' : '미국'}</span></div>${issBoardHTML(ed, { full: true, list })}<p class="note">GK의 공시레이더가 네이버 증권 뉴스, 공시·보도자료, 실시간 시세를 바탕으로 AI가 자동 정리한 내용입니다. 종목 등락률은 생성 시점 기준이며, 투자 권유가 아닌 참고용입니다.</p>`;
     if (anchor) { const a = document.getElementById(anchor); if (a) { a.scrollIntoView({ block: 'center' }); a.classList.add('flash'); } }
   }
   function openIssuePage(ref) {
@@ -2298,7 +2298,7 @@
       }
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (S.view === 'item') backToList(); $('#bellPanel').hidden = true; }
+      if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (S.view === 'item') backToList(); else if (S.view === 'issue') { if (S.fromList) { S.fromList = false; history.back(); } else { history.pushState(null, '', '/#home'); route(); } } $('#bellPanel').hidden = true; }
       if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('#search').focus(); }
     });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll('sec'); poll('dart'); poll('news'); pollMarket(); pollPopular(); } });

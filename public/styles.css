@@ -1414,3 +1414,5 @@ button.ic-s:hover { border-color: var(--accent); }
 }
 /* 미국 시간외 표시 */
 .rank .px em .sess, .px em .sess { font-style: normal; font-family: var(--sans); font-size: .62rem; font-weight: 800; color: #1b1300; background: linear-gradient(135deg, #ffd54a, #ff9f1c); padding: .05rem .3rem; border-radius: 5px; margin-right: .25rem; vertical-align: 1px; }
+.esc-hint { font: 700 .66rem/1 var(--mono); color: var(--muted); border: 1px solid var(--line2); border-radius: 5px; padding: .22rem .4rem; }
+@media (max-width: 720px) { .esc-hint { display: none; } }
