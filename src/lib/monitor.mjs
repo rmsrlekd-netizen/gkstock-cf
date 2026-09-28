@@ -48,6 +48,27 @@ async function checks() {
   const med = (a) => { a.sort((p, q) => p - q); return a[Math.floor(a.length / 2)]; };
   const lagTxt = Object.entries(bySrc).map(([k, a]) => `${k} ${Math.round(med(a))}분`).join(' · ');
   add('news', '보도자료 수집', age(news) < 15 * MIN && (prDay > 0 || !weekday(us)), `마지막 수집 ${ago(age(news))} · 24시간 보도자료 ${prDay}건${lagTxt ? ` · 발표 후 지연(중앙값) ${lagTxt}` : ''}${nErr.length ? ' · 이번 회차 응답 없음: ' + nErr.map((e) => ({ bw: 'BW', prn: 'PRN', gnw: 'GNW', aw: 'AW', nw: '뉴스와이어', prnd: 'PRN 직접' }[e.split(':')[0]] || e.split(':')[0])).join(', ') : ''}`);
+  // 출처별 멈춤 감지: 연속 실패가 길거나, 미국 평일 낮인데 새 글이 오래 안 들어오면 이상
+  // (각 출처는 막히면 직접 → 중계 서버 → 다른 접속 방식으로 알아서 우회하고, 되는 경로를 기억함)
+  const [sh, route] = await Promise.all([getJSON('news/srchealth'), getJSON('src/route')]);
+  if (sh) {
+    const NM = { gnw: 'GlobeNewswire', prn: 'PR Newswire', bw: 'Business Wire', aw: 'ACCESS Newswire', nw: '뉴스와이어', prnd: 'PRN 직접' };
+    const STALL = { gnw: 3, prn: 3, bw: 4, aw: 8, nw: 12 }; // 시간
+    const RT = ['직접', '중계', '우회'];
+    const usDay = weekday(us) && us.m >= 7 * 60 && us.m <= 20 * 60;
+    const bad = [], info = [];
+    for (const [k, h] of Object.entries(sh)) {
+      if (!NM[k] || k === 'prnd') continue;
+      const newH = h.newAt ? (now - Date.parse(h.newAt)) / 3600e3 : Infinity;
+      const failLong = (h.fails || 0) >= 20;
+      const stalled = usDay && STALL[k] && newH > STALL[k] && (h.okAt ? now - Date.parse(h.okAt) < 60 * MIN : true);
+      const r = route?.[k] ? `(${RT[route[k]] || '경로' + route[k]})` : '';
+      if (failLong) bad.push(`${NM[k]}: ${h.fails}회 연속 실패 — ${h.lastErr || ''}`.slice(0, 200));
+      else if (stalled) bad.push(`${NM[k]}: 새 보도자료가 ${newH === Infinity ? '한동안' : newH.toFixed(1) + '시간'} 없음 (사이트 형식 변경 가능성)`);
+      info.push(`${NM[k]}${r} ${h.newAt ? ago(now - Date.parse(h.newAt)) : '-'}`);
+    }
+    add('newsSrc', '보도자료 출처별 상태', !bad.length, bad.length ? bad.join(' / ') : '마지막 새 글: ' + info.join(' · '));
+  }
   const mAge = market?.at ? now - market.at : Infinity;
   const idxOk = (market?.body?.indices || []).filter((x) => !x.error).length;
   add('market', '시장 지표', mAge < 30 * MIN && idxOk >= 6, `마지막 갱신 ${ago(mAge)} · 지수 ${idxOk}개 정상${market?.body?.night?.ok === false ? ' · 야간선물 실패: ' + (market.body.night.reason || '') : ''}`);

@@ -51,7 +51,10 @@ async function rss(url, ms = 7000, opts = {}, maxBytes = 900000) {
     const reader = r.body.getReader(), dec = new TextDecoder();
     const stop = Date.now() + ms;
     while (xml.length < maxBytes && Date.now() < stop) {
-      const { done, value } = await reader.read();
+      // 서버가 중간에 멈춰도 기다리지 않게 (남은 시간 안에 안 오면 중단)
+      const chunk = await Promise.race([reader.read(), new Promise((r) => setTimeout(() => r({ timeout: true }), Math.max(500, stop - Date.now())))]);
+      if (chunk.timeout) { if (!xml) throw new Error(`${new URL(url).host} 응답 지연`); break; }
+      const { done, value } = chunk;
       if (done) break;
       xml += dec.decode(value, { stream: true });
     }
@@ -59,6 +62,34 @@ async function rss(url, ms = 7000, opts = {}, maxBytes = 900000) {
   } else xml = await r.text();
   return xml.split(/<item[\s>]/).slice(1).map((x) => x.split('</item>')[0]).filter((x) => x.includes('</title>'));
 }
+
+// ───────── 출처별 접속 경로 자동 전환 ─────────
+// 각 출처마다 여러 경로(직접 접속 / 서울 중계 서버 / 다른 형식)를 준비해 두고,
+// 막히거나 빈 응답이면 다음 경로로 자동 전환. 성공한 경로는 기억해 다음부터 먼저 사용.
+const FEED_UA = 'Mozilla/5.0 (compatible; Feedly/1.0; +http://www.feedly.com/fetcher.html; like FeedFetcher-Google)';
+const FEED_H = { 'User-Agent': FEED_UA, Accept: 'application/rss+xml, application/xml, text/xml, */*' };
+let routeMem = null, routeAt = 0;
+async function viaRoutes(name, routes) {
+  if (!routeMem || Date.now() - routeAt > 5 * 60e3) { routeMem = (await getJSON('src/route')) || {}; routeAt = Date.now(); }
+  const pref = Math.min(routeMem[name] ?? 0, routes.length - 1);
+  const order = [pref, ...routes.map((_, i) => i).filter((i) => i !== pref)];
+  let lastErr;
+  for (const i of order) {
+    try {
+      const r = await routes[i]();
+      if (!r || (Array.isArray(r) && !r.length)) throw new Error('빈 응답 (형식 변경 가능성)');
+      if (routeMem[name] !== i) { routeMem[name] = i; await setJSON('src/route', routeMem).catch(() => {}); }
+      return r;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error(name + ' 모든 경로 실패');
+}
+const hasRelay = () => !!process.env.KR_RELAY_URL;
+const rssRoutes = (url, ms, maxBytes, headers = H) => [
+  () => rss(url, ms, { headers }, maxBytes),
+  ...(hasRelay() ? [() => rss(url, ms + 5000, { headers, relay: true }, maxBytes)] : []),
+  () => rss(url, ms, { headers: headers === H ? FEED_H : H }, maxBytes), // 다른 이름표(User-Agent)로 한 번 더
+];
 
 // ───────── 보도자료 ─────────
 // GlobeNewswire: 상장사 전체 + 주제별(실적·M&A·배당·IPO·규제공시) + 업종별(바이오·은행·에너지)
@@ -73,12 +104,11 @@ const GNW_FEEDS = [
   'industry/8355-Banks',
   'industry/1-Energy',
 ].map((f) => 'https://www.globenewswire.com/RssFeed/' + f);
-let gnwViaRelay = false; // 직접 접속이 막히면 이후엔 서울 중계 서버로
+// GlobeNewswire는 Cloudflare 서버에서 직접 접속하면 응답이 멈추는 경우가 많아 중계 서버 경로를 먼저 시도
 async function gnwRss(url) {
-  if (!gnwViaRelay) {
-    try { return await rss(url, 15000); } catch (e) { if (!process.env.KR_RELAY_URL) throw e; gnwViaRelay = true; setTimeout(() => { gnwViaRelay = false; }, 30 * 60e3); }
-  }
-  return rss(url, 20000, { relay: true });
+  const routes = rssRoutes(url, 10000, 900000, FEED_H);
+  if (hasRelay()) routes.unshift(routes.splice(1, 1)[0]);
+  return viaRoutes('gnw', routes);
 }
 async function globeNewswire(idx, full) {
   const first = await Promise.allSettled([gnwRss(GNW_FEEDS[0])]);
@@ -109,7 +139,7 @@ const PRN_FEEDS = [
 ];
 async function prNewswire(idx, full) {
   // 가끔 PRN 서버가 잠깐 404를 주면 1초 뒤 한 번 더
-  const get = (u) => rss(u, 9000).catch(async (e) => { await new Promise((r) => setTimeout(r, 1000)); return rss(u + (u.includes('?') ? '&' : '?') + 'r=' + Date.now(), 9000).catch(() => { throw e; }); });
+  const get = (u) => viaRoutes('prn', rssRoutes(u, 9000, 900000));
   const all = await Promise.allSettled((full ? PRN_FEEDS : PRN_FEEDS.slice(0, 1)).map(get));
   if (all.every((r) => r.status === 'rejected')) throw all[0].reason;
   const out = [];
@@ -133,7 +163,7 @@ async function prNewswire(idx, full) {
 //  ※ 예전 주소(…WA==)는 '네트워크 기술' 분야 전용이라 비어 있었음. 뉴스룸 페이지는 봇 차단(HTTP 400)
 const BW_ALL = 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJcFVJYWQ==';
 async function businessWire(idx, { maxBytes = 350000 } = {}) {
-  const items = await rss(BW_ALL, 12000, {}, maxBytes);
+  const items = await viaRoutes('bw', rssRoutes(BW_ALL, 12000, maxBytes));
   const out = [];
   for (const x of items) {
     const link = strip(tag(x, 'link'));
@@ -206,17 +236,41 @@ export async function prnDirect(idx) {
 }
 
 // ACCESS Newswire (소형 상장사 보도자료가 많음)
-async function accessWire(idx) {
-  const items = await rss('https://www.accesswire.com/rssfeed.aspx', 8000);
+//  ※ 2026-09 RSS 서비스 종료 확인 → 뉴스룸 페이지(한 쪽 20건)를 직접 읽음
+const MON = { January: 1, February: 2, March: 3, April: 4, May: 5, June: 6, July: 7, August: 8, September: 9, October: 10, November: 11, December: 12 };
+function etWallToIso(y, mo, d, h, mi) {
+  const probe = new Date(Date.UTC(y, mo - 1, d, 12));
+  const off = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'shortOffset' }).formatToParts(probe).find((x) => x.type === 'timeZoneName')?.value || 'GMT-4';
+  const oh = Number((off.match(/GMT([+-]\d+)/) || [])[1] || -4);
+  return new Date(Date.UTC(y, mo - 1, d, h - oh, mi)).toISOString();
+}
+async function awPage(page, relay) {
+  const url = `https://www.accessnewswire.com/newsroom${page > 1 ? '?page=' + page : ''}`;
+  const r = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html' }, ...(relay ? { relay: true } : {}) }, relay ? 15000 : 10000);
+  if (!r.ok) throw new Error('ACCESS Newswire HTTP ' + r.status);
+  const html = (await r.text()).slice(0, 600000);
+  const cards = html.split('<article class="nr-card').slice(1).map((c) => {
+    const href = (c.match(/href="(https:\/\/www\.accessnewswire\.com\/newsroom\/[^"]+)"/) || [])[1];
+    const title = strip((c.match(/nr-card-title"><a[^>]*>([\s\S]*?)<\/a>/) || [])[1]);
+    const meta = strip((c.match(/nr-card-meta">([^<]+)/) || [])[1]);
+    const sum = strip((c.match(/nr-card-summary">([\s\S]*?)<\/p>/) || [])[1]);
+    const m = meta.match(/([A-Z][a-z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) (AM|PM)/);
+    let time = null;
+    if (m && MON[m[1]]) { let h = Number(m[4]) % 12; if (m[6] === 'PM') h += 12; time = etWallToIso(Number(m[3]), MON[m[1]], Number(m[2]), h, Number(m[5])); }
+    return href && title ? { href, title, sum, time } : null;
+  }).filter(Boolean);
+  if (!cards.length) throw new Error('ACCESS Newswire 목록 형식 변경');
+  return cards;
+}
+async function accessWire(idx, { pages = 1 } = {}) {
   const out = [];
-  for (const x of items) {
-    const desc = strip(tag(x, 'description'));
-    const title = strip(tag(x, 'title'));
-    const company = strip(tag(x, 'dc:creator')) || strip(tag(x, 'author')) || null;
-    const ticker = tickerOf(desc + ' ' + title, company, idx);
-    if (!ticker) continue;
-    const link = strip(tag(x, 'link'));
-    out.push({ id: 'PR-' + hash(link), src: 'PR', market: 'US', title, desc: desc.slice(0, 400), url: link, time: iso(strip(tag(x, 'pubDate'))), source: 'ACCESS Newswire', company, ticker });
+  for (let p = 1; p <= pages; p++) {
+    const cards = await viaRoutes('aw', [() => awPage(p, false), ...(hasRelay() ? [() => awPage(p, true)] : [])]);
+    for (const c of cards) {
+      const ticker = tickerOf(c.sum + ' ' + c.title, null, idx);
+      if (!ticker) continue;
+      out.push({ id: 'PR-' + hash(c.href), src: 'PR', market: 'US', title: c.title, desc: c.sum.slice(0, 400), url: c.href, time: c.time || new Date().toISOString(), source: 'ACCESS Newswire', company: null, ticker });
+    }
   }
   return out;
 }
@@ -224,7 +278,7 @@ async function accessWire(idx) {
 // 뉴스와이어: 미국 상장사 보도자료 (영문·한국어 모두, 나스닥·뉴욕 티커가 확인된 것만. 한국·비상장 기업은 제외)
 const KO_TICK_RE = /(?:나스닥|뉴욕증권거래소|뉴욕증시|NYSE American|NYSE|NASDAQ|Nasdaq)\s*(?:GS|GM|CM|글로벌\s*셀렉트\s*마켓)?\s*[:：]\s*([A-Z][A-Z.]{0,5})\b/;
 async function newswireUs(idx) {
-  const items = await rss('https://api.newswire.co.kr/rss/all');
+  const items = await viaRoutes('nw', rssRoutes('https://api.newswire.co.kr/rss/all', 8000, 900000));
   const out = [];
   for (const x of items) {
     const title = strip(tag(x, 'title'));
@@ -323,15 +377,34 @@ export async function collectNews({ full = true, direct = false } = {}) {
   const idx = await companyIndex();
   const jobs = {
     ...(direct ? { prnd: prnDirect(idx) } : {}),
-    gnw: globeNewswire(idx, full), prn: prNewswire(idx, full), bw: businessWire(idx, { maxBytes: full ? 700000 : 350000 }), aw: accessWire(idx),
+    gnw: globeNewswire(idx, full), prn: prNewswire(idx, full), bw: businessWire(idx, { maxBytes: full ? 700000 : 350000 }), aw: accessWire(idx, { pages: full ? 2 : 1 }),
     nw: newswireUs(idx), // 뉴스와이어는 미국 상장사 보도자료만 (한국 기업 보도자료는 수집 안 함 — 한국은 DART 공시가 그 역할)
   };
   const errors = [];
   const fresh = [];
+  const got = {};
   await Promise.all(Object.entries(jobs).map(async ([k, p]) => {
-    try { fresh.push(...(await p)); } catch (e) { errors.push(`${k}: ${e.message}`); }
+    try { const r = await p; got[k] = r; fresh.push(...r); } catch (e) { errors.push(`${k}: ${e.message}`); got[k] = e; }
   }));
   const prev = (await getJSON('news/feed')) || { items: [] };
+  // 출처별 건강 상태 (멈춤 감지용): 마지막 성공·실패, 마지막으로 '새 글'이 들어온 시각
+  try {
+    const hl = (await getJSON('news/srchealth')) || {};
+    const known = new Set(prev.items.map((x) => x.id));
+    const now = new Date().toISOString();
+    for (const [k, r] of Object.entries(got)) {
+      const h = hl[k] || {};
+      if (r instanceof Error) { h.lastErr = String(r.message).slice(0, 160); h.errAt = now; h.fails = (h.fails || 0) + 1; }
+      else {
+        h.okAt = now; h.fails = 0; h.count = r.length;
+        const newest = r.reduce((m, x) => Math.max(m, Date.parse(x.time) || 0), 0);
+        if (newest) h.newest = new Date(newest).toISOString();
+        if (r.some((x) => !known.has(x.id)) || !h.newAt) h.newAt = now;
+      }
+      hl[k] = h;
+    }
+    await setJSON('news/srchealth', hl);
+  } catch {}
   // 한국 보도자료는 저장하지 않음 (예전 저장분도 제거). 뉴스와이어는 미국 티커가 확인된 것만 남김
   const isKrPR = (x) => x.src !== 'PR' || x.market === 'KR' || (x.source === '뉴스와이어' && !x.usOk && !x.ko); // 뉴스·한국 보도자료 제외
   const byId = new Map(prev.items.filter((x) => !isKrPR(x)).map((x) => [x.id, x]));

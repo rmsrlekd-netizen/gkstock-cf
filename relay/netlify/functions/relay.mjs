@@ -1,6 +1,6 @@
 // DART·KRX 요청 중계 (Cloudflare Worker → 이 함수 → DART)
 //  보안: RELAY_TOKEN 이 맞는 요청만, 허용된 한국 공시 사이트로만 전달
-const ALLOW = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com|globenewswire\.com|generativelanguage\.googleapis\.com)$/i;
+const ALLOW = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com|globenewswire\.com|generativelanguage\.googleapis\.com|businesswire\.com|prnewswire\.com|accessnewswire\.com|newswire\.co\.kr)$/i;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 export default async (req) => {
