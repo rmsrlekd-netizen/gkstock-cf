@@ -85,17 +85,48 @@ export function etToday(offset = 0) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(d);
 }
 
+// Nasdaq 경제지표 API가 요청한 날짜와 다른 날(하루 전 등)의 지표를 돌려주는 경우가 있음 → 매주 정해진 요일에 나오는 지표로 실제 날짜를 판별해 보정
+const ANCHOR = [[/Initial Jobless Claims/i, 4], [/MBA Mortgage Applications/i, 3], [/Redbook/i, 2], [/API Weekly Crude/i, 2]];
+const addD = (d, n) => new Date(Date.parse(d + 'T12:00:00Z') + n * 86400e3).toISOString().slice(0, 10);
+async function nasdaqRaw(p) {
+  const r = await fetchWithTimeout(`https://api.nasdaq.com/api/calendar/economicevents?date=${p}`, { headers: NQ_H }, 9000);
+  if (!r.ok) throw new Error('Nasdaq HTTP ' + r.status);
+  return (await r.json())?.data?.rows || [];
+}
+function offsetOf(p, rows) { // 이 응답의 실제 날짜 - 요청 날짜 (판별 못 하면 null)
+  const wd = new Date(p + 'T12:00:00Z').getUTCDay();
+  const votes = {};
+  for (const [re, day] of ANCHOR) if (rows.some((x) => re.test(x.eventName || ''))) { let o = day - wd; if (o > 3) o -= 7; if (o < -3) o += 7; votes[o] = (votes[o] || 0) + 1; }
+  const best = Object.entries(votes).sort((x, y) => y[1] - x[1])[0];
+  return best ? Number(best[0]) : null;
+}
+let shiftMem = null;
+async function nasdaqShift() {
+  if (shiftMem && Date.now() - shiftMem.at < 3 * 3600e3) return shiftMem.s;
+  const c = await getJSON('econ/shift');
+  if (c && Date.now() - c.at < 3 * 3600e3) { shiftMem = c; return c.s; }
+  // 최근 평일 몇 개를 받아 요일 지표로 어긋남(보통 0)을 확인
+  const probes = [];
+  for (let i = -8; i <= 0; i++) { const d = etToday(i); const wd = new Date(d + 'T12:00:00Z').getUTCDay(); if (wd >= 2 && wd <= 5) probes.push(d); }
+  const votes = {};
+  await Promise.all(probes.slice(-5).map(async (p) => { const o = offsetOf(p, await nasdaqRaw(p).catch(() => [])); if (o !== null) votes[o] = (votes[o] || 0) + 1; }));
+  const best = Object.entries(votes).sort((x, y) => y[1] - x[1])[0];
+  const s = best && best[1] >= 2 ? Number(best[0]) : (c?.s ?? 0);
+  shiftMem = { s, at: Date.now(), votes };
+  await setJSON('econ/shift', shiftMem).catch(() => {});
+  return s;
+}
+
 /** 하루치 미국 지표 (ET 날짜 YYYY-MM-DD) */
 export async function nasdaqDay(date) {
-  const key = `econ/day/${date}`;
+  const key = `econ/day2/${date}`;
   const c = await getJSON(key);
   const today = etToday(0);
   const ttl = date < today ? 12 * 3600e3 : date === today ? 60e3 : 3 * 3600e3;
   if (c && c.asia && Date.now() - c.at < ttl) return c.list;
   try {
-    const r = await fetchWithTimeout(`https://api.nasdaq.com/api/calendar/economicevents?date=${date}`, { headers: NQ_H }, 9000);
-    if (!r.ok) throw new Error('Nasdaq HTTP ' + r.status);
-    const rows = (await r.json())?.data?.rows || [];
+    const sh = await nasdaqShift().catch(() => 0);
+    const rows = await nasdaqRaw(addD(date, -sh)); // 응답이 하루 밀려 있으면 다음 날짜로 요청해서 그날 것을 받음
     const list = rows.filter((x) => /United States/i.test(x.country || '')).map((x) => {
       const name = clean(x.eventName);
       const m = meta(name);
@@ -104,7 +135,7 @@ export async function nasdaqDay(date) {
     });
     // 한국·중국·일본 지표도 같이 보관 (내일 일정용)
     const asia = rows.filter((x) => /Korea|China|Japan/i.test(x.country || '')).map((x) => ({ country: /Korea/i.test(x.country) ? 'KR' : /China/i.test(x.country) ? 'CN' : 'JP', name: clean(x.eventName), ms: etMs(date, x.gmt), actual: clean(x.actual) || null, cons: clean(x.consensus) || null, prev: clean(x.previous) || null }));
-    await setJSON(key, { at: Date.now(), list, asia }).catch(() => {});
+    await setJSON(key, { at: Date.now(), list, asia, shift: sh }).catch(() => {});
     return list;
   } catch (e) {
     if (c) return c.list;
