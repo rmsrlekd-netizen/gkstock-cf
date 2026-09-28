@@ -109,10 +109,12 @@ const GNW_FEEDS = [
 // GlobeNewswire는 Cloudflare 서버에서 직접 접속하면 응답이 멈추는 경우가 많아 중계 서버 경로를 먼저 시도
 async function gnwRss(url) {
   // 중계(일반 브라우저 이름표) → 중계(피드 리더 이름표) → 직접 → 직접(다른 이름표)
+  // 중계로 브라우저에서 부르면 0.5초에 되는데 워커(옛 Chrome 126 이름표)는 시간 초과 → 최신 브라우저 이름표로
+  const NEW_H = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36', Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
   const routes = [
-    ...(hasRelay() ? [L('중계', () => rss(url, 15000, { headers: H, relay: true }, 900000)), L('중계2', () => rss(url, 15000, { headers: FEED_H, relay: true }, 900000))] : []),
-    L('직접', () => rss(url, 10000, { headers: FEED_H }, 900000)),
-    L('우회', () => rss(url, 10000, { headers: H }, 900000)),
+    ...(hasRelay() ? [L('중계', () => rss(url, 15000, { headers: NEW_H, relay: true }, 900000)), L('중계2', () => rss(url, 12000, { headers: FEED_H, relay: true }, 900000))] : []),
+    L('직접', () => rss(url, 8000, { headers: NEW_H }, 900000)),
+    L('우회', () => rss(url, 8000, { headers: FEED_H }, 900000)),
   ];
   return viaRoutes('gnw2', routes);
 }
