@@ -40,7 +40,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=45" />
+  <link rel="stylesheet" href="/styles.css?v=46" />
   <script>document.documentElement.classList.add('js');</script>
   <style>.js .ssr{display:none}.ssr{max-width:860px;margin:2rem auto;padding:0 1rem;color:#eef0ff;font-family:sans-serif;line-height:1.7}</style>
 </head>
@@ -93,10 +93,19 @@
   <main id="app">
     <!-- ───────── 라이브 피드 (홈·공시·보도자료·관심종목) ───────── -->
     <section id="viewFeed">
-      <section class="digest card" id="digestBox">
+      <!-- 오늘 주요 이슈 9 (AI가 시간대마다 자동 생성) — 버튼으로 'AI 핵심 공시'와 전환 -->
+      <section class="issue card" id="issueBox">
+        <div class="iss-h">
+          <div class="iss-ttl"><span class="iss-live"><i></i>LIVE</span><h2>오늘 주요 이슈</h2><span class="muted sm" id="issMeta"></span></div>
+          <div class="iss-ctl"><div class="seg xs dseg" id="issSeg"><button data-imk="KR" class="kr on">국장</button><button data-imk="US" class="us">미장</button></div><button class="btn sm iss-swap" data-top="digest"><span class="ai-pill">AI</span>핵심 공시 보기</button></div>
+        </div>
+        <div id="issBody"><div class="skel"></div><div class="skel"></div></div>
+      </section>
+
+      <section class="digest card" id="digestBox" hidden>
         <div class="digest-h">
           <div><span class="ai-pill">AI</span><h2>AI가 고른 오늘의 핵심 공시</h2><span class="muted sm" id="digestMeta">공시·보도자료 중 주가 영향이 큰 항목</span></div>
-          <div class="digest-ctl"><div class="seg xs dseg" id="digestSeg"><button data-dmk="ALL" class="on">전체</button><button data-dmk="KR" class="kr">국내</button><button data-dmk="US" class="us">미국</button></div><button class="btn sm" id="digestMore">전체 보기 →</button></div>
+          <div class="digest-ctl"><div class="seg xs dseg" id="digestSeg"><button data-dmk="ALL" class="on">전체</button><button data-dmk="KR" class="kr">국내</button><button data-dmk="US" class="us">미국</button></div><button class="btn sm" id="digestMore">전체 보기 →</button><button class="btn sm iss-swap" data-top="issue">주요 이슈 보기</button></div>
         </div>
         <p class="digest-head" id="digestHead"></p>
         <div class="digest-list" id="digestList"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
@@ -182,6 +191,9 @@
 
     <!-- ───────── 상세 페이지 ───────── -->
     <section id="viewItem" class="page" hidden><div id="itemBody"></div></section>
+
+    <!-- ───────── 오늘 주요 이슈 — 회차별 공유 주소 (/i/회차) ───────── -->
+    <section id="viewIssue" class="page" hidden><div id="issPage"></div></section>
 
     <!-- ───────── 관리자 (gk-stock.com/#admin, 비밀번호 필요) ───────── -->
     <section id="viewAdmin" class="page" hidden><div id="adminBody"></div></section>
@@ -282,6 +294,6 @@
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
   <button class="to-top" id="toTop" aria-label="맨 위로" title="맨 위로"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>맨 위로</span></button>
-  <script src="/app.js?v=45" defer></script>
+  <script src="/app.js?v=46" defer></script>
 </body>
 </html>

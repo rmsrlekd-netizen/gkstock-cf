@@ -1003,6 +1003,155 @@
     box.innerHTML = cards.join('') || (anyLoaded() ? '<p class="muted" style="margin:0">표시할 항목이 없습니다.</p>' : '<div class="skel"></div><div class="skel"></div><div class="skel"></div>');
   }
 
+  // ───────────────────────── 오늘 주요 이슈 9 (AI가 시간대마다 자동 생성) ─────────────────────────
+  const ISS_SLOTS = {
+    KR: [[1, '장 시작 전', '08:00'], [2, '오전장', '10:30'], [3, '오후장', '13:30'], [4, '장 마감 후', '15:50']],
+    US: [[1, '프리마켓', '08:30'], [2, '개장 후', '10:00'], [3, '오전장', '11:30'], [4, '장 마감 후', '16:30']],
+  };
+  const ISS_RE = /^\/i\/((?:kr|us)-\d{8}-[1-4])\/?$/;
+  const issEd = new Map();
+  S.issMk = load('gk_imk', 'KR'); S.iss = {}; S.issSel = {}; S.top = load('gk_top', 'issue');
+  const issDate = (date) => { const d = new Date(date + 'T12:00:00Z'); return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 (${'일월화수목금토'[d.getUTCDay()]})`; };
+  const issSlotTxt = (ed) => (ed.short === '장중' ? `장중 · ${ed.slot}` : ed.slot);
+  const issUrl = (id) => `${location.origin}/i/${id}`;
+
+  function setTop(v) {
+    S.top = v === 'digest' ? 'digest' : 'issue';
+    save('gk_top', S.top);
+    $('#issueBox').hidden = S.top !== 'issue';
+    $('#digestBox').hidden = S.top !== 'digest';
+    if (S.top === 'digest') { const d = S.digests[S.digestMk]; if (!d || d.error || Date.now() - (d._at || 0) > 15 * 60e3) loadDigest(); else renderDigest(); }
+    else loadIssues();
+  }
+  async function loadIssues(force) {
+    const mk = S.issMk;
+    const c = S.iss[mk];
+    if (c && !force && Date.now() - c._at < 4 * 60e3) { renderIssueBox(); return; }
+    try {
+      const j = await getJSON(`/api/issues?mk=${mk}`, {});
+      S.iss[mk] = { ...j, _at: Date.now() };
+      if (j.ed) issEd.set(j.ed.id, j.ed);
+    } catch (e) { S.iss[mk] = { error: e.message, _at: Date.now() - 3 * 60e3 }; }
+    if (mk === S.issMk) renderIssueBox();
+  }
+  async function getEd(id) {
+    if (issEd.has(id)) return issEd.get(id);
+    const j = await getJSON(`/api/issues?id=${encodeURIComponent(id)}`, {});
+    issEd.set(id, j.ed);
+    return j.ed;
+  }
+  function issCardHTML(ed, x, i, full) {
+    const tone = x.tone === '호재' ? 'pos' : x.tone === '악재' ? 'neg' : 'neu';
+    const stk = (x.stocks || []).map((s) => {
+      const pct = s.pct != null ? `<em class="${dirCls(s.pct)}">${fmtPct(s.pct)}</em>` : '';
+      return s.code ? `<button class="ic-s" data-open-co="${ed.mk}|${esc(s.code)}|${esc(s.name)}">${esc(ed.mk === 'US' && s.code !== s.name ? s.code : s.name)}${pct}</button>` : `<span class="ic-s">${esc(s.name)}</span>`;
+    }).join('');
+    return `<article class="ic t-${tone}${full ? ' full' : ''}" id="ic${i + 1}" ${full ? '' : `data-iss-open="${esc(ed.id)}#ic${i + 1}"`}>
+      <div class="ic-h"><span class="ic-n">${i + 1}</span><span class="ic-tag">${esc(x.tag)}</span><span class="ic-tone">${esc(x.tone)}</span></div>
+      <h4>${esc(x.title)}</h4>${x.sub ? `<p class="ic-sub">${esc(x.sub)}</p>` : ''}
+      ${full && x.points?.length ? `<ul class="ic-pts">${x.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
+      ${stk ? `<div class="ic-stk">${stk}</div>` : ''}
+      ${full && x.check ? `<div class="ic-chk"><b>체크포인트</b><span>${esc(x.check)}</span></div>` : ''}
+    </article>`;
+  }
+  function issBoardHTML(ed, { full = false, list = [] } = {}) {
+    const n = ed.issues.length;
+    const ix = (ed.idx || []).slice(0, full ? 6 : 4).map((x) => `<div class="ib-ix"><span>${esc(x.label)}</span><b>${x.price != null ? Number(x.price).toLocaleString('en-US', { maximumFractionDigits: x.price > 100 ? 2 : 3 }) + (x.unit || '') : '—'}</b><em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em></div>`).join('');
+    const have = new Set(list.filter((x) => x.date === ed.date).map((x) => x.n));
+    have.add(ed.n);
+    const slots = ISS_SLOTS[ed.mk].map(([k, name, tm]) => {
+      const id = `${ed.mk.toLowerCase()}-${ed.date.replace(/-/g, '')}-${k}`;
+      return have.has(k) ? `<button class="ib-sl${k === ed.n ? ' on' : ''}" data-iss-pick="${id}"><b>${esc(name)}</b><small>${tm}${ed.mk === 'US' ? ' 뉴욕' : ''}</small></button>` : `<span class="ib-sl off"><b>${esc(name)}</b><small>${tm}${ed.mk === 'US' ? ' 뉴욕' : ''}</small></span>`;
+    }).join('');
+    const past = list.filter((x) => x.date !== ed.date).slice(0, 30);
+    const pastSel = past.length ? `<select class="ib-past" data-iss-past><option value="">지난 회차</option>${past.map((x) => `<option value="${esc(x.id)}">${esc(issDate(x.date))} ${esc(x.slot)}</option>`).join('')}</select>` : '';
+    const cards = ed.issues.map((x, i) => issCardHTML(ed, x, i, full)).join('');
+    const th = (ed.themes || []).filter((x) => x.pct != null).slice(0, 6).map((x) => `<span class="ib-th">${esc(x.name)}<em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em></span>`).join('');
+    const made = ed.at ? fmtDT(new Date(ed.at)).hm : '';
+    return `<div class="ib mk-${ed.mk.toLowerCase()}${full ? ' ib-full' : ''}">
+      <div class="ib-top">
+        <div class="ib-l"><div class="ib-date">${esc(issDate(ed.date))}<span class="ib-slot">${esc(issSlotTxt(ed))}</span></div><div class="ib-title">${ed.mk === 'KR' ? '국장' : '미장'} 주요 이슈 <em>${n}</em></div></div>
+        ${ix ? `<div class="ib-ixs">${ix}</div>` : ''}
+      </div>
+      ${ed.headline ? `<p class="ib-head">${esc(ed.headline)}</p>` : ''}
+      ${ed.keywords?.length ? `<div class="ib-kw">${ed.keywords.map((k) => `<span>#${esc(k)}</span>`).join('')}</div>` : ''}
+      <div class="ib-slots">${slots}${pastSel}</div>
+      <div class="ib-grid">${cards}</div>
+      ${!full && n > 3 ? `<button class="btn block ib-more" data-iss-open="${esc(ed.id)}">나머지 ${n - 3}개 이슈 모두 보기 →</button>` : ''}
+      ${th ? `<div class="ib-ths"><b>${ed.mk === 'KR' ? '오늘 강세 테마' : '오늘 강세 테마 ETF'}</b>${th}</div>` : ''}
+      <div class="ib-foot"><span>${made ? made + ' AI 생성 · ' : ''}뉴스·공시·시세 기반 · 투자 참고용</span><div class="ib-act"><button class="btn sm" data-iss-share="${esc(ed.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>링크 복사</button>${full ? '' : `<button class="btn sm primary" data-iss-open="${esc(ed.id)}">크게 보기</button>`}</div></div>
+    </div>`;
+  }
+  async function renderIssueBox() {
+    const box = $('#issBody');
+    if (!box) return;
+    $$('#issSeg button').forEach((b) => b.classList.toggle('on', b.dataset.imk === S.issMk));
+    const c = S.iss[S.issMk];
+    if (!c) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; return; }
+    if (c.error || !c.ed) {
+      $('#issMeta').textContent = '';
+      box.innerHTML = `<div class="ib-empty">${c.error ? '주요 이슈를 불러오지 못했습니다. 잠시 후 다시 시도합니다.' : 'AI가 첫 회차를 만드는 중입니다. 1~3분 뒤 자동으로 나타납니다.'}</div>`;
+      if (c.building) setTimeout(() => { if (S.iss[S.issMk] === c) loadIssues(true); }, 60000);
+      return;
+    }
+    let ed = c.ed;
+    const sel = S.issSel[S.issMk];
+    if (sel && sel !== ed.id) { try { ed = (await getEd(sel)) || ed; } catch {} }
+    $('#issMeta').textContent = S.issMk === 'KR' ? '한국장 하루 4번 자동 업데이트' : '미국장 하루 4번 자동 업데이트';
+    box.innerHTML = issBoardHTML(ed, { list: c.list || [] });
+  }
+  function setIssMk(mk) { S.issMk = mk === 'US' ? 'US' : 'KR'; save('gk_imk', S.issMk); renderIssueBox(); loadIssues(); }
+  async function showIssuePage(id, anchor) {
+    S.view = 'issue';
+    $('#viewFeed').hidden = true;
+    for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== 'issue';
+    $$('#nav button').forEach((b) => b.classList.remove('on'));
+    const el = $('#issPage');
+    el.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+    window.scrollTo({ top: 0 });
+    let ed = null;
+    try { ed = await getEd(id); } catch {}
+    if (S.view !== 'issue') return;
+    if (!ed) { el.innerHTML = '<div class="ib-empty">이 회차를 찾을 수 없습니다. <a href="/">홈으로</a></div>'; return; }
+    let list = S.iss[ed.mk]?.list;
+    if (!list) { try { list = (await getJSON(`/api/issues?mk=${ed.mk}`, {})).list || []; S.iss[ed.mk] = S.iss[ed.mk] || null; } catch { list = []; } }
+    const d = new Date(ed.date + 'T12:00:00Z');
+    document.title = `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 ${ed.mk === 'KR' ? '국장' : '미장'} ${ed.slot} 주요 이슈 | GK의 공시레이더`;
+    el.innerHTML = `<div class="ip-bar"><button class="btn sm" data-iss-back>← 홈으로</button><span class="muted sm">오늘 주요 이슈 · ${ed.mk === 'KR' ? '한국' : '미국'}</span></div>${issBoardHTML(ed, { full: true, list })}<p class="note">GK의 공시레이더가 네이버 증권 뉴스, 공시·보도자료, 실시간 시세를 바탕으로 AI가 자동 정리한 내용입니다. 종목 등락률은 생성 시점 기준이며, 투자 권유가 아닌 참고용입니다.</p>`;
+    if (anchor) { const a = document.getElementById(anchor); if (a) { a.scrollIntoView({ block: 'center' }); a.classList.add('flash'); } }
+  }
+  function openIssuePage(ref) {
+    const [id, anchor] = String(ref).split('#');
+    if (S.view !== 'issue') { S.listScroll = window.scrollY; S.returnUrl = location.pathname === '/' ? '/' + (location.hash || '#' + (S.view || 'home')) : '/#home'; S.fromList = true; }
+    history.pushState({ issue: id }, '', '/i/' + id);
+    showIssuePage(id, anchor);
+  }
+  function copyIssue(id) {
+    const url = issUrl(id);
+    (navigator.clipboard?.writeText(url) || Promise.reject()).then(() => toast('링크를 복사했어요 — 카톡·오픈채팅에 붙여넣기 하세요')).catch(() => { prompt('아래 주소를 복사하세요', url); });
+  }
+  function bindIssues() {
+    $('#issSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-imk]'); if (b) setIssMk(b.dataset.imk); });
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      const sw = t.closest('[data-top]');
+      if (sw) { setTop(sw.dataset.top); return; }
+      const sh = t.closest('[data-iss-share]');
+      if (sh) { e.stopPropagation(); copyIssue(sh.dataset.issShare); return; }
+      const pk = t.closest('[data-iss-pick]');
+      if (pk) { e.stopPropagation(); const id = pk.dataset.issPick; if (S.view === 'issue') { history.replaceState(null, '', '/i/' + id); showIssuePage(id); } else { S.issSel[S.issMk] = id; renderIssueBox(); } return; }
+      if (t.closest('[data-iss-back]')) { e.stopPropagation(); if (S.fromList) { S.fromList = false; history.back(); } else { history.pushState(null, '', '/#home'); route(); } return; }
+      if (t.closest('[data-open-co], select')) return;
+      const op = t.closest('[data-iss-open]');
+      if (op) { e.stopPropagation(); openIssuePage(op.dataset.issOpen); }
+    }, true);
+    document.addEventListener('change', (e) => {
+      const s = e.target.closest('[data-iss-past]');
+      if (!s || !s.value) return;
+      if (S.view === 'issue') { history.replaceState(null, '', '/i/' + s.value); showIssuePage(s.value); } else { S.issSel[S.issMk] = s.value; renderIssueBox(); }
+    });
+  }
+
   // ───────────────────────── 실적 캘린더 ─────────────────────────
   async function loadEarnings() {
     if (S.earn && Date.now() - S.earn._at < 30 * 60e3) { renderEarnings(); return; }
@@ -1793,7 +1942,7 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
-  const PAGES = { themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
+  const PAGES = { issue: '#viewIssue', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
@@ -1819,6 +1968,8 @@
     $('#coQuick').innerHTML = list.map(([m, t, n]) => `<button data-open-co="${esc(m)}|${esc(t)}|${esc(n || '')}">${esc(m === 'KR' ? n || t : t)}</button>`).join('');
   }
   function route() {
+    const im = location.pathname.match(ISS_RE);
+    if (im) { showIssuePage(im[1], location.hash.slice(1) || null); return; }
     const id = itemIdFromUrl();
     if (id) {
       if (!ITEM_RE.test(location.pathname)) history.replaceState(null, '', '/p/' + id); // 예전 #item 주소 → 새 주소
@@ -2159,6 +2310,8 @@
   setupInstall();
   setupToTop();
   bind();
+  bindIssues();
+  setTop(S.top);
   loadSnap();
   trackPV();
   route();
@@ -2174,7 +2327,8 @@
   every(60000, () => { if (S.view === 'themes') loadThemes(true); });
   every(45000, () => loadEcon(false));
   setInterval(refreshChips, 60000);
-  every(15 * 60000, loadDigest);
+  every(15 * 60000, () => { if (S.top === 'digest') loadDigest(); });
+  every(5 * 60000, () => { if (S.top === 'issue' && S.view in FEED_VIEWS && !document.hidden) loadIssues(true); });
   every(120000, pollViews);
   setInterval(() => { if (S.view === 'flows' && !document.hidden) pollFlows(); }, 180000);
   setInterval(() => { if (S.view in FEED_VIEWS && !document.hidden && !S.sel) renderFeed(); }, 60000);

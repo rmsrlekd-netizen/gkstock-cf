@@ -31,16 +31,18 @@ import * as archive from './functions/archive.mjs';
 import * as why from './functions/why.mjs';
 import * as themes from './functions/themes.mjs';
 import * as econ from './functions/econ.mjs';
+import * as issues from './functions/issues.mjs';
+import { issuesWatch } from './lib/issues.mjs';
 import { econWatch } from './lib/econ.mjs';
 import { whyWatch } from './lib/why.mjs';
-import { renderItemPage, sitemap } from './lib/page.mjs';
-import { renderOgImage } from './lib/og.mjs';
+import { renderItemPage, renderIssuePage, sitemap } from './lib/page.mjs';
+import { renderOgImage, renderIssueOg } from './lib/og.mjs';
 import secWatch from './functions/sec-watch.mjs';
 import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -102,6 +104,11 @@ export default {
     if (pm && req.method === 'GET') return cached(req, ctx, () => renderItemPage(env, req, pm[1]));
     const om = url.pathname.match(/^\/og\/((?:SEC|DART)-[\d-]+|(?:NEWS|PR)-[a-z0-9]+)\.png$/);
     if (om && req.method === 'GET') return cached(req, ctx, () => renderOgImage(ctx, om[1]).catch((e) => { console.error('og', e); return env.ASSETS.fetch(new Request(new URL('/img/icon-512.png', req.url))); }));
+    // 오늘 주요 이슈 회차별 공유 주소 (/i/kr-20260928-2) · 공유 이미지
+    const im = url.pathname.match(/^\/i\/((?:kr|us)-\d{8}-[1-4])\/?$/);
+    if (im && req.method === 'GET') return cached(req, ctx, () => renderIssuePage(env, req, im[1]));
+    const iom = url.pathname.match(/^\/og\/i\/((?:kr|us)-\d{8}-[1-4])\.png$/);
+    if (iom && req.method === 'GET') return cached(req, ctx, () => renderIssueOg(ctx, iom[1]).catch((e) => { console.error('og-i', e); return env.ASSETS.fetch(new Request(new URL('/img/icon-512.png', req.url))); }));
     if (url.pathname === '/sitemap-pages.xml') return cached(req, ctx, () => sitemap());
     // www 주소로 들어오면 대표 주소로
     if (url.hostname === 'www.gk-stock.com') return Response.redirect('https://gk-stock.com' + url.pathname + url.search, 301);
@@ -149,6 +156,8 @@ export default {
     const usz = zoned(now, 'America/New_York');
     const econBusy = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 7 * 60 && usz.m <= 16 * 60 + 30;
     if (econBusy || min % 30 === 0) jobs.push(econWatch().then(async (r) => { if (r.ai || econBusy) { const { econCalendar } = await import('./lib/econ.mjs'); const { setJSON } = await import('./lib/store.mjs'); await setJSON('econ/v1', await econCalendar()); } }).catch((e) => console.warn('econ', e.message)));
+    // 오늘 주요 이슈: 회차 시각이 되면 AI가 새로 만듦 (한국 4회·미국 4회)
+    jobs.push(issuesWatch(now).then((r) => { if (Object.keys(r).length) console.log('issues', JSON.stringify(r)); }).catch((e) => console.warn('issues', e.message)));
     if (jobs.length) ctx.waitUntil(Promise.allSettled(jobs));
   },
 };

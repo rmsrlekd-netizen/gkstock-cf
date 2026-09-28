@@ -62,3 +62,35 @@ export async function sitemap() {
     ...rows.map((x) => `<url><loc>${ORIGIN}/p/${x.id}</loc>${x.ms ? `<lastmod>${new Date(x.ms).toISOString()}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.6</priority></url>`)];
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=1800', 'x-gk-edge-ttl': '1800' } });
 }
+
+/** "오늘 주요 이슈" 회차 공유 주소 (/i/kr-20260928-2) — 카톡·SNS 미리보기용 제목·이미지를 넣어 보냄 */
+export async function renderIssuePage(env, req, id) {
+  const base = await env.ASSETS.fetch(new Request(new URL('/', req.url)));
+  let html = await base.text();
+  const ed = await getJSON(`issues/ed/${id}`);
+  if (!ed) {
+    html = html.replace('<meta name="robots" content="index, follow, max-image-preview:large" />', '<meta name="robots" content="noindex" />');
+    return new Response(html, { status: 404, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=60' } });
+  }
+  const d = new Date(ed.date + 'T12:00:00Z');
+  const t = `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 ${ed.mk === 'KR' ? '국장' : '미장'} ${ed.slot} 주요 이슈 ${ed.issues.length}`;
+  const desc = `${ed.headline} — ${ed.issues.slice(0, 4).map((x) => x.title).join(' · ')}`.slice(0, 155);
+  const url = `${ORIGIN}/i/${id}`;
+  const img = `${ORIGIN}/og/i/${id}.png`;
+  const body = `<article class="ssr" id="ssr"><h1>${esc(t)}</h1><p>${esc(ed.headline)}</p><ol>${ed.issues.map((x) => `<li><h2>[${esc(x.tag)}] ${esc(x.title)}</h2><p>${esc(x.sub)}</p><ul>${x.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></li>`).join('')}</ol><p><a href="/">GK의 공시레이더</a></p></article>`;
+  html = html
+    .replace(/<title>[^<]*<\/title>/, `<title>${esc(t)} | GK의 공시레이더</title>`)
+    .replace(/<meta name="description" content="[^"]*" \/>/, `<meta name="description" content="${esc(desc)}" />`)
+    .replace(/<link rel="canonical" href="[^"]*" \/>/, `<link rel="canonical" href="${url}" />`)
+    .replace(/<meta property="og:type" content="[^"]*" \/>/, '<meta property="og:type" content="article" />')
+    .replace(/<meta property="og:url" content="[^"]*" \/>/, `<meta property="og:url" content="${url}" />`)
+    .replace(/<meta property="og:title" content="[^"]*" \/>/, `<meta property="og:title" content="${esc(t)}" />`)
+    .replace(/<meta property="og:description" content="[^"]*" \/>/, `<meta property="og:description" content="${esc(desc)}" />`)
+    .replace(/<meta name="twitter:title" content="[^"]*" \/>/, `<meta name="twitter:title" content="${esc(t)}" />`)
+    .replace(/<meta name="twitter:description" content="[^"]*" \/>/, `<meta name="twitter:description" content="${esc(desc)}" />`)
+    .replace(/<meta property="og:image" content="[^"]*" \/>/, `<meta property="og:image" content="${img}" />\n  <meta property="og:image:width" content="1200" />\n  <meta property="og:image:height" content="630" />`)
+    .replace(/<meta name="twitter:card" content="[^"]*" \/>/, '<meta name="twitter:card" content="summary_large_image" />')
+    .replace(/<meta name="twitter:image" content="[^"]*" \/>/, `<meta name="twitter:image" content="${img}" />`)
+    .replace(/<noscript>[\s\S]*?<\/noscript>/, body);
+  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=120', 'x-gk-edge-ttl': '600' } });
+}

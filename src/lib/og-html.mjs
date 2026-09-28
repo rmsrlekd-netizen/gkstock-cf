@@ -38,3 +38,38 @@ export function ogHtml(it, ai, px) {
   const allText = [...new Set(`${html.replace(/<[^>]+>/g, '')}한국미국공시보도자료뉴스AI판단긍정부정중립GK의공시레이더gk-stock.com…·`.replace(/\s+/g, ''))].join('') + ' ';
   return { html: html.replace(/>\s+</g, '><').trim(), allText };
 }
+
+// "오늘 주요 이슈" 회차 공유 카드
+export function issueOgHtml(ed) {
+  const kr = ed.mk === 'KR';
+  const d = new Date(ed.date + 'T12:00:00Z');
+  const md = `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`;
+  const accent = kr ? '#ff5a6a' : '#3e7bff';
+  const list = (ed.issues || []).slice(0, 6);
+  const ix = (ed.idx || []).slice(0, 3);
+  const pc = (v) => (v > 0 ? '#ff6b7a' : v < 0 ? '#5aa5ff' : '#c3c7e6');
+  const html = `<div style="display:flex;flex-direction:column;width:1200px;height:630px;padding:38px 56px 34px;background:linear-gradient(135deg,#1a1650 0%,#0b0d24 55%,#080a1c 100%);color:#eef0ff;font-family:'Noto Sans KR'">
+    <div style="display:flex;width:100%;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center">
+        <div style="display:flex;padding:8px 20px;border-radius:999px;background:${accent};color:#fff;font-size:26px;font-weight:700">${kr ? '국장' : '미장'} · ${esc(ed.slot)}</div>
+        <div style="display:flex;margin-left:16px;font-size:28px;font-weight:700;color:#c3c7e6">${esc(md)}</div>
+      </div>
+      <div style="display:flex;font-size:26px;font-weight:700;color:#c4b5fd">GK의 공시레이더</div>
+    </div>
+    <div style="display:flex;align-items:baseline;margin-top:12px">
+      <div style="display:flex;font-size:54px;font-weight:700;color:#fff">오늘 주요 이슈</div>
+      <div style="display:flex;margin-left:14px;font-size:54px;font-weight:700;color:#f5c542">${list.length ? (ed.issues || []).length : ''}</div>
+      <div style="display:flex;margin-left:auto;align-items:center">${ix.map((x) => `<div style="display:flex;flex-direction:column;align-items:flex-end;margin-left:26px"><div style="display:flex;font-size:20px;color:#8b90b8">${esc(x.label)}</div><div style="display:flex;font-size:26px;font-weight:700;color:${pc(x.pct)}">${x.pct > 0 ? '+' : ''}${Number(x.pct || 0).toFixed(2)}%</div></div>`).join('')}</div>
+    </div>
+    <div style="display:flex;margin-top:8px;font-size:27px;color:#c3c7e6">${esc(cut(ed.headline, 46))}</div>
+    <div style="display:flex;flex-wrap:wrap;width:100%;margin-top:18px">
+      ${list.map((x, i) => `<div style="display:flex;align-items:center;width:524px;margin:0 ${i % 2 ? 0 : 32}px 12px 0;padding:10px 16px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(139,108,255,.35)"><div style="display:flex;width:44px;height:44px;border-radius:12px;background:#f5c542;color:#1b1300;font-size:26px;font-weight:700;align-items:center;justify-content:center">${i + 1}</div><div style="display:flex;flex-direction:column;margin-left:14px;flex:1"><div style="display:flex;font-size:19px;color:#a5b4fc">${esc(x.tag)}</div><div style="display:flex;font-size:24px;font-weight:700;color:#fff">${esc(cut(x.title, 22))}</div></div></div>`).join('')}
+    </div>
+    <div style="display:flex;width:100%;margin-top:auto;justify-content:space-between;align-items:center;font-size:22px;color:#8b90b8">
+      <div style="display:flex">${esc((ed.keywords || []).map((k) => '#' + k).join('  '))}</div>
+      <div style="display:flex;color:#f5c542;font-weight:700">gk-stock.com</div>
+    </div>
+  </div>`;
+  const allText = [...new Set(`${html.replace(/<[^>]+>/g, '')}국장미장오늘주요이슈GK의공시레이더gk-stock.com0123456789+-.%#…·`.replace(/\s+/g, ''))].join('') + ' ';
+  return { html: html.replace(/>\s+</g, '><').trim(), allText };
+}

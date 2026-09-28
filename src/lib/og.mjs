@@ -22,3 +22,20 @@ export async function renderOgImage(ctx, id) {
   h.set('x-gk-edge-ttl', ai ? '604800' : '1800'); // AI 분석이 붙기 전 이미지는 30분만 보관
   return new Response(res.body, { status: res.status, headers: h });
 }
+
+// "오늘 주요 이슈" 회차 공유 이미지 (/og/i/회차ID.png)
+export async function renderIssueOg(ctx, id) {
+  cache.setExecutionContext(ctx);
+  const ed = await getJSON(`issues/ed/${id}`);
+  if (!ed) return new Response('not found', { status: 404 });
+  const { issueOgHtml } = await import('./og-html.mjs');
+  const { html, allText } = issueOgHtml(ed);
+  const res = await ImageResponse.async(t(html), {
+    width: 1200, height: 630,
+    fonts: [new GoogleFont('Noto Sans KR', { weight: 400, text: allText }), new GoogleFont('Noto Sans KR', { weight: 700, text: allText })],
+  });
+  const h = new Headers(res.headers);
+  h.set('cache-control', 'public, max-age=86400');
+  h.set('x-gk-edge-ttl', '604800');
+  return new Response(res.body, { status: res.status, headers: h });
+}
