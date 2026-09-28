@@ -7,7 +7,7 @@ import { attachPx0 } from '../lib/px0.mjs';
 
 async function liveSec() {
   const feed = await getJSON('sec/feed');
-  const { items, errors } = await collectSec({ spacing: 80, fastOnly: true, budget: 5000 });
+  const { items, errors } = await collectSec({ spacing: 80, fastOnly: true, budget: 5000, fastMs: 7000 });
   const merged = mergeFeed(feed?.items || [], items);
   await enrichForm4(merged, { max: 4, deadline: Date.now() + 1500 });
   const out = { ...(feed || {}), updatedAt: new Date().toISOString(), errors, items: merged };

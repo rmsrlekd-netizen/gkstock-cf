@@ -44,7 +44,7 @@ async function getCurrent(type, count, ms = 9000) {
 export const FAST_TYPES = ['8-K', '4', '6-K', 'SCHEDULE 13', '424B', '144'];
 const SLOW_TYPES = ['10-Q', '10-K', '20-F', 'S-1', 'F-1', 'S-3', '13F-HR', '25', 'SC 13'];
 
-export async function collectSec({ spacing = 120, all = false, budget = 12000, fastOnly = false, first = [] } = {}) {
+export async function collectSec({ spacing = 120, all = false, budget = 12000, fastOnly = false, first = [], fastMs = 20000 } = {}) {
   const map = await getTickerMap();
   const raw = [];
   const errors = [];
@@ -60,16 +60,20 @@ export async function collectSec({ spacing = 120, all = false, budget = 12000, f
     try { raw.push(...(await getCurrent(t, t === '4' ? 100 : 60, ms))); ok.push(t); failed.delete(t); }
     catch (e) { failed.set(t, `${t}: ${e.name === 'AbortError' ? '응답 지연' : e.message}`); }
   };
-  // 세 개씩 나눠서 조회 (SEC 초당 10회 제한 안)
-  for (let i = 0; i < types.length; i += 3) {
-    if (Date.now() > until) { skipped = types.slice(i); break; }
-    await Promise.all(types.slice(i, i + 3).map((t) => one(t, 9000)));
+  // 자주 나오는 서식(8-K·Form 4 등)은 SEC가 느릴 때(10~15초) 대비해 한꺼번에 넉넉히 기다림 (0.15초 간격으로 출발 → 초당 10회 제한 안)
+  const fast = types.filter((t) => FAST_TYPES.includes(t)), rest = types.filter((t) => !FAST_TYPES.includes(t));
+  await Promise.all(fast.map((t, i) => sleep(i * 150).then(() => one(t, fastMs))));
+  const until2 = Math.max(until, Date.now() + 6000); // 드문 서식도 최소 6초는 조회
+  // 드문 서식은 남은 시간 안에서 세 개씩
+  for (let i = 0; i < rest.length; i += 3) {
+    if (Date.now() > until2) { skipped = rest.slice(i); break; }
+    await Promise.all(rest.slice(i, i + 3).map((t) => one(t, 9000)));
     await sleep(spacing);
   }
   // SEC 서버가 잠깐 느려서 놓친 서식은 남은 시간 안에 한 번 더 (자주 나오는 서식 먼저)
-  const retry = [...failed.keys()].sort((a, b) => FAST_TYPES.includes(b) - FAST_TYPES.includes(a));
-  for (let i = 0; i < retry.length && until + 4000 - Date.now() > 3000; i += 3) {
-    await Promise.all(retry.slice(i, i + 3).map((t) => one(t, Math.min(8000, until + 4000 - Date.now()))));
+  const retry = [...failed.keys()].filter((t) => !FAST_TYPES.includes(t));
+  for (let i = 0; i < retry.length && until2 + 4000 - Date.now() > 3000; i += 3) {
+    await Promise.all(retry.slice(i, i + 3).map((t) => one(t, Math.min(8000, until2 + 4000 - Date.now()))));
   }
   errors.push(...failed.values());
   if (!raw.length && errors.length) throw new Error(errors.join(' / '));
@@ -169,8 +173,9 @@ export async function runSecWatch() {
   for (const t of ok || []) tok[t] = Date.now();
   await setJSON('sec/typeok', tok).catch(() => {});
   const merged = mergeFeed(prev.items, items);
-  const enriched = await enrichForm4(merged, { max: 20, deadline: started + 15000 });
-  const docs = await enrichDocs(merged, { max: 14, deadline: started + 20000 });
+  const t1 = Date.now(); // 목록 조회가 오래 걸렸어도 보강 작업 시간은 확보
+  const enriched = await enrichForm4(merged, { max: 20, deadline: t1 + 8000 });
+  const docs = await enrichDocs(merged, { max: 14, deadline: t1 + 14000 });
   const aiError = merged._aiError || null;
   delete merged._aiError;
   await setJSON('sec/feed', { updatedAt: new Date().toISOString(), errors, skipped, aiError, items: merged });
