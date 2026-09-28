@@ -155,6 +155,39 @@ export function parseJSON(text, open = '{', close = '}') {
 }
 
 /** 미국 공시 목록용 한국어 한 줄 제목 (수집기에서 사용) */
+// JSON이 망가졌을 때: 키별로 값을 따로 찾아 읽기
+export function looseParse(text) {
+  const t = String(text || '');
+  if (!t) return null;
+  const strAt = (i) => { // i 위치의 "..." 문자열 (문장 속 따옴표는 뒤에 , ] } 줄바꿈이 올 때만 끝으로 봄)
+    if (t[i] !== '"') return null;
+    let out = '';
+    for (let k = i + 1; k < t.length; k++) {
+      const c = t[k];
+      if (c === '\\') { const n = t[k + 1]; out += n === 'n' ? '\n' : n; k++; continue; }
+      if (c === '"') { let m = k + 1; while (m < t.length && /[ \t]/.test(t[m])) m++; if (m >= t.length || /[,\]}\n\r]/.test(t[m])) return { v: out, end: k + 1 }; }
+      out += c;
+    }
+    return { v: out, end: t.length };
+  };
+  const find = (key) => { const m = new RegExp(`"${key}"\\s*:\\s*`).exec(t); return m ? m.index + m[0].length : -1; };
+  const getStr = (key) => { const i = find(key); if (i < 0) return null; const r = strAt(i); return r ? r.v.trim() : null; };
+  const getArr = (key) => {
+    let i = find(key); if (i < 0 || t[i] !== '[') return [];
+    const out = []; i++;
+    while (i < t.length) {
+      while (i < t.length && /[\s,]/.test(t[i])) i++;
+      if (t[i] === ']' || i >= t.length) break;
+      if (t[i] === '"') { const r = strAt(i); out.push(r.v.trim()); i = r.end; continue; }
+      if (t[i] === '{') { const e = t.indexOf('}', i); const seg = t.slice(i, e + 1); const tt = /"t"\s*:\s*"([^"]*)"/.exec(seg), dd = /"d"\s*:\s*"([\s\S]*?)"\s*}/.exec(seg); if (tt || dd) out.push({ t: tt?.[1] || '', d: dd?.[1] || '' }); i = e + 1; continue; }
+      break;
+    }
+    return out;
+  };
+  const j = { headline: getStr('headline'), summary: getArr('summary'), positive: getArr('positive'), negative: getArr('negative'), analyst: getStr('analyst'), points: getArr('points'), watch: getArr('watch'), verdict: getStr('verdict'), overview: getStr('overview'), impact: { size: getStr('size'), short: getStr('short'), mid: getStr('mid') } };
+  return j.summary.length ? j : null;
+}
+
 export async function koreanHeadlines(batch) {
   if (!hasAI() || !batch.length) return {};
   const input = batch.map((b) => ({ id: b.id, company: b.company, ticker: b.ticker, form: b.form, items: b.items, headline: b.headline, text: (b.excerpt || '').slice(0, 1200) }));
@@ -234,12 +267,19 @@ ${lens.map((x) => '- ' + x).join('\n')}
   "overview": ${overviewRaw ? '"이 회사가 무엇을 하는 회사인지 2~3문장 한국어 요약"' : 'null'}
 }
 매수·매도 추천이나 목표주가는 쓰지 마세요.`;
-  let j;
-  try { j = parseJSON(await claude(prompt, { maxTokens: 8000, timeout: 55000, think: 2048 })); }
+  let j, raw1 = '', raw2 = '';
+  try { raw1 = await claude(prompt, { maxTokens: 8000, timeout: 55000, think: 2048 }); j = parseJSON(raw1); }
   catch (e) {
+    if (!raw1) throw e; // AI 호출 자체가 실패(한도 등)
     // 형식이 깨졌으면 한 번 더 요청 (이번엔 빠르게)
     console.warn('analyze JSON retry', e.message);
-    j = parseJSON(await claude(prompt + '\n\n주의: 반드시 올바른 JSON만 출력하세요. 문장 안에서 큰따옴표(")는 쓰지 말고 작은따옴표(\')를 쓰세요.', { maxTokens: 6000, timeout: 40000, think: 0 }));
+    try { raw2 = await claude(prompt + '\n\n주의: 반드시 올바른 JSON만 출력하세요. 문장 안에서 큰따옴표(")는 쓰지 말고 작은따옴표(\')를 쓰세요. 항목 사이 쉼표를 빠뜨리지 마세요.', { maxTokens: 6000, timeout: 40000, think: 0 }); j = parseJSON(raw2); }
+    catch (e2) {
+      // 그래도 깨졌으면 항목별로 느슨하게 뽑아냄 (요약·긍정·부정·코멘트만 있어도 충분)
+      j = looseParse(raw2) || looseParse(raw1);
+      await setJSON('ai/lastRaw', { at: Date.now(), error: String(e2.message || e2), text: String(raw2 || raw1).slice(0, 6000) }).catch(() => {});
+      if (!j) throw e2;
+    }
   }
   const arr = (v, n, len = 160) => (Array.isArray(v) ? v.filter(Boolean).map((s) => String(s).slice(0, len)).slice(0, n) : []);
   const im = j.impact || {};
