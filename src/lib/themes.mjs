@@ -23,8 +23,12 @@ export async function krGroupStocks(kind, no, n = 30) {
 }
 
 async function krGroups(kind) {
-  const j = await nget(`https://m.stock.naver.com/api/stocks/${kind}?page=1&pageSize=400`);
-  return (j.groups || []).map((g) => ({ no: g.no, name: g.name, rate: n0(g.changeRate), rise: g.riseCount || 0, fall: g.fallCount || 0, flat: g.steadyCount || 0, total: g.totalCount || 0 })).filter((g) => g.rate != null && g.total > 0);
+  // 한 번에 최대 100개까지만 줌 → 전체(테마 약 260개)를 쪽 나눠서
+  const first = await nget(`https://m.stock.naver.com/api/stocks/${kind}?page=1&pageSize=100`);
+  const pages = Math.min(5, Math.ceil((first.totalCount || 0) / 100));
+  const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => nget(`https://m.stock.naver.com/api/stocks/${kind}?page=${i + 2}&pageSize=100`).catch(() => ({ groups: [] }))));
+  const groups = [first, ...rest].flatMap((j) => j.groups || []);
+  return groups.map((g) => ({ no: g.no, name: g.name, rate: n0(g.changeRate), rise: g.riseCount || 0, fall: g.fallCount || 0, flat: g.steadyCount || 0, total: g.totalCount || 0 })).filter((g) => g.rate != null && g.total > 0);
 }
 
 export async function krThemes() {

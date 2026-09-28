@@ -1118,3 +1118,5 @@ button.ec-cell:hover { transform: translateY(-2px); border-color: rgba(160,140,2
   .ec-row { grid-template-columns: auto minmax(0, 1fr); }
   .ec-time { grid-column: 1; grid-row: 1; }
 }
+.ec-sep { display: flex; align-items: center; gap: .7rem; margin: 1.4rem 0 .8rem; font-size: .8rem; font-weight: 800; color: var(--muted); letter-spacing: .02em; }
+.ec-sep::after { content: ''; flex: 1; height: 1px; background: var(--line2); }

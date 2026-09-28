@@ -1156,7 +1156,7 @@
   async function loadEcon(scroll) {
     try { S.econ = await getJSON('/api/econ', {}); } catch (e) { if (!S.econ) S.econ = { error: e.message }; }
     econAlerts();
-    if (S.view === 'econ') { renderEcon(); if (scroll) requestAnimationFrame(() => document.querySelector('#ecBody .ec-day.today')?.scrollIntoView({ block: 'start' })); }
+    if (S.view === 'econ') renderEcon();
   }
   // 새로 발표된 중요 지표 알림 (사이트를 열어두고 있을 때)
   function econAlerts() {
@@ -1198,9 +1198,12 @@
     const next = evs.find((e) => !e.actual && e.imp >= 3 && e.ms > Date.now());
     const shownAI = new Set();
     $('#ecBody').innerHTML = (next ? `<div class="ec-next"><span>다음 핵심 지표</span><b>${esc(next.ko || next.name)}</b><em>${fmtDT(new Date(next.ms)).md} ${fmtDT(new Date(next.ms)).hm} (${rel2(next.ms)})</em></div>` : '') +
-      ([...byDay.entries()].map(([day, list]) => {
+      // 순서: 오늘 → 앞으로 발표될 날(가까운 순) → 지난 날(최근 순)
+      ([...byDay.entries()].sort(([a], [b]) => { const r = (d) => (d === today ? 0 : d > today ? 1 : 2); return r(a) - r(b) || (r(a) === 2 ? b.localeCompare(a) : a.localeCompare(b)); }).map(([day, list], i, arr) => {
+        const grp = day === today ? 0 : day > today ? 1 : 2, prevGrp = i ? (arr[i - 1][0] === today ? 0 : arr[i - 1][0] > today ? 1 : 2) : -1;
+        const label = grp !== prevGrp && grp !== 0 ? `<div class="ec-sep">${grp === 1 ? '앞으로 발표 예정' : '지난 발표'}</div>` : '';
         const dt = new Date(list[0].ms);
-        return `<section class="ec-day ${day === today ? 'today' : ''}"><h3>${Number(day.slice(5, 7))}월 ${Number(day.slice(8, 10))}일 (${WD[new Date(dt.getTime() + 9 * 3600e3).getUTCDay()]})${day === today ? '<i>오늘</i>' : ''}</h3>
+        return `${label}<section class="ec-day ${day === today ? 'today' : ''}"><h3>${Number(day.slice(5, 7))}월 ${Number(day.slice(8, 10))}일 (${WD[new Date(dt.getTime() + 9 * 3600e3).getUTCDay()]})${day === today ? '<i>오늘</i>' : ''}</h3>
           ${list.map((e) => {
             const done = !!e.actual;
             let ai = '';
