@@ -1,6 +1,6 @@
 // SEC 수집 로직 (예약 함수와 /api/sec 대체 경로에서 공용)
 import { fetchWithTimeout, sleep } from './util.mjs';
-import { parseAtom, buildFeed, buildTickerMap, parseForm4 } from './sec-parse.mjs';
+import { parseAtom, buildFeed, buildTickerMap, parseForm4, impactByText } from './sec-parse.mjs';
 import { getJSON, setJSON } from './store.mjs';
 import { fetchFilingText } from './sec-doc.mjs';
 import { hasAI, koreanHeadlines } from './ai.mjs';
@@ -125,6 +125,7 @@ export async function enrichDocs(items, { max = 8, deadline = Date.now() + 12000
     try {
       const r = await fetchFilingText(it.url, fetcher);
       it.pr = { headline: r.headline || null, deck: r.deck || null, itemText: r.itemText || null, doc: r.doc || null };
+      it.impact = Math.max(it.impact || 0, impactByText(`${r.headline || ''} ${r.deck || ''} ${(r.itemText || '').slice(0, 1500)}`));
       if (r.excerpt) it._excerpt = r.excerpt;
     } catch {
       it.docTries = (it.docTries || 0) + 1;

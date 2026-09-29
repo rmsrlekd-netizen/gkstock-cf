@@ -4,7 +4,9 @@
 import { getJSON, setJSON } from './store.mjs';
 import { fetchWithTimeout } from './util.mjs';
 
-export const DEFAULT_CFG = { on: true, minImp: 4, perHour: 12, kr: true, us: true, issues: true, digest: true };
+export const DEFAULT_CFG = { on: true, minImp: 4, perHour: 12, kr: true, us: true, issues: true, digest: true, surge: true };
+// 공시 후 급등 기준 (발표 시점 주가 대비): 국장 +10%, 미장 +15%
+export const SURGE = { KR: 10, US: 15 };
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const kst = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(5, 16).replace('T', ' ').replace('-', '/');
 
@@ -149,4 +151,52 @@ export async function digestWatch() {
     } catch (e) { out[mk] = 'error: ' + e.message; }
   }
   return out;
+}
+
+// ───── 공시 후 급등: 발표 뒤 6시간 안에 발표 시점 주가 대비 크게 오른 종목을 알림 (중요도와 상관없이) ─────
+export async function surgeWatch() {
+  const chat = process.env.TELEGRAM_CHANNEL_ID;
+  if (!chat || !process.env.TELEGRAM_BOT_TOKEN) return null;
+  const cfg = { ...DEFAULT_CFG, ...((await getJSON('tgch/cfg')) || {}) };
+  if (!cfg.on || !cfg.surge) return null;
+  const now = Date.now();
+  const map = (await getJSON('px0/map')) || {};
+  const recent = Object.entries(map).filter(([, v]) => v?.p > 0 && now - v.t < 6 * 3600e3);
+  if (!recent.length) return { n: 0 };
+  const [sec, dart, news] = await Promise.all(['sec/feed', 'dart/feed', 'news/feed'].map((k) => getJSON(k).catch(() => null)));
+  const all = new Map([...(sec?.items || []), ...(dart?.items || []), ...(news?.items || [])].map((x) => [x.id, x]));
+  const mkOf = (x) => (x.src === 'DART' || x.market === 'KR' ? 'KR' : 'US');
+  const qk = (x) => `${mkOf(x)}:${String(x.ticker || '').toUpperCase()}`;
+  const cand = recent.map(([id, v]) => ({ x: all.get(id), v })).filter(({ x }) => x?.ticker && (mkOf(x) === 'KR' ? cfg.kr : cfg.us) && x.src !== 'NEWS');
+  if (!cand.length) return { n: 0 };
+  const { getQuotes } = await import('../functions/quote.mjs');
+  const q = await getQuotes([...new Set(cand.map(({ x }) => qk(x)))].slice(0, 60)).catch(() => ({}));
+  const st = (await getJSON('tgch/surge')) || {};
+  const day = new Date(now + 9 * 3600e3).toISOString().slice(0, 10);
+  if (st.day !== day) { st.day = day; st.done = {}; st.n = 0; }
+  const hits = [];
+  for (const { x, v } of cand) {
+    const k = qk(x), cur = q[k]?.live ?? q[k]?.price;
+    if (!cur || st.done[k]) continue; // 같은 종목은 하루 한 번
+    const r = (cur / v.p - 1) * 100;
+    if (r >= SURGE[mkOf(x)] && r < 1000) hits.push({ x, v, k, r, cur, sess: q[k]?.session || null, day: q[k]?.livePct ?? q[k]?.pct });
+  }
+  hits.sort((a, b) => b.r - a.r);
+  let n = 0;
+  for (const h of hits) {
+    if (n >= 3 || (st.n || 0) >= 40) break; // 한 번에 3건, 하루 40건까지
+    const x = h.x, mk = mkOf(x);
+    const ai = (await getJSON(`ai3/${x.id}`)) || (await getJSON(`aiq/${x.id}`));
+    const mins = Math.round((now - h.v.t) / 60e3);
+    const ago = mins < 60 ? `${mins}분` : `${Math.floor(mins / 60)}시간 ${mins % 60}분`;
+    const px = mk === 'KR' ? `${Math.round(h.cur).toLocaleString('ko-KR')}원` : `$${h.cur < 1 ? h.cur.toFixed(4) : h.cur.toFixed(2)}`;
+    const sess = h.sess === 'PRE' ? ' (프리)' : h.sess === 'AFTER' ? ' (애프터)' : h.sess === 'DAY' ? ' (데이)' : '';
+    const kind = x.src === 'DART' ? 'DART 공시' : x.src === 'SEC' ? `SEC ${x.form || '공시'}` : x.source || '보도자료';
+    const pt = (ai?.summary || [])[0];
+    const text = `🚀 <b>공시 후 급등</b>  ${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>  <b>+${h.r.toFixed(1)}%</b>\n발표 후 ${ago} · 지금 ${px}${sess}\n\n${esc(String(ai?.headline || titleOf(x)).slice(0, 140))}${pt ? `\n• ${esc(String(pt).slice(0, 110))}` : ''}\n\n<i>${esc(kind)} · ${kst(h.v.t)} KST 주가 대비</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
+    try { await tgSend(chat, text, { preview: false }); st.done[h.k] = { id: x.id, r: Math.round(h.r * 10) / 10, at: now }; st.n = (st.n || 0) + 1; n++; }
+    catch (e) { st.lastErr = e.message; if (/429|Too Many|403|chat not found/i.test(e.message)) break; }
+  }
+  await setJSON('tgch/surge', st).catch(() => {});
+  return { n, hits: hits.length };
 }

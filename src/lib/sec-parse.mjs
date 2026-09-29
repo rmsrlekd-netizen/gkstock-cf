@@ -33,6 +33,16 @@ export const ITEM_8K = {
 
 // 서식 → [한국어, 카테고리, 기본 중요도]
 // 카테고리: earnings 실적 / current 수시·계약 / offering 증자·희석 / insider 내부자 / inst 기관·5%지분 / periodic 정기 / other
+/** 8-K·6-K 첨부 보도자료 내용으로 중요도 올리기 (항목 번호만으론 '기타 사건'이라 놓치는 FDA 승인·수주·인수합병) */
+export function impactByText(text) {
+  const t = String(text || '');
+  if (/to be acquired|definitive (merger|agreement to be acquired)|agreed to be acquired|tender offer|merger agreement|take[- ]private|going[- ]private/i.test(t)) return 5;
+  if (/FDA (approv|clear|grant)|approval (of|from) the (U\.S\. )?FDA|receives? (FDA|EMA|CE)|marketing authori[sz]ation|breakthrough therapy|fast track|topline|pivotal|phase (2|3|ii|iii)|primary endpoint/i.test(t)) return 4;
+  if (/acqui(re|sition)|merger|combination agreement|to acquire|strategic alternatives/i.test(t)) return 4;
+  if (/(contract|order|award|purchase order|supply agreement|license agreement|collaboration|partnership)\b.*\$?\d|awarded|wins? .*contract|selected by|multi-year (contract|agreement)/i.test(t)) return 4;
+  return 0;
+}
+
 export function classifyForm(form) {
   const f = form.toUpperCase();
   if (f.startsWith('8-K')) return ['수시공시', 'current', 2];

@@ -45,7 +45,7 @@ export default async (req) => {
       const mi = n('minImp', 3, 5), ph = n('perHour', 1, 180);
       if (mi !== undefined) cfg.minImp = mi;
       if (ph !== undefined) cfg.perHour = ph;
-      for (const k of ['kr', 'us', 'issues', 'digest']) if (u.searchParams.has(k)) cfg[k] = u.searchParams.get(k) === '1';
+      for (const k of ['kr', 'us', 'issues', 'digest', 'surge']) if (u.searchParams.has(k)) cfg[k] = u.searchParams.get(k) === '1';
     }
     await setJSON('tgch/cfg', cfg);
     return J({ ok: true, cfg });
