@@ -4,7 +4,7 @@
 //  · AI 추정은 뉴스가 바뀌었을 때만 새로 (하루 최대 WHY_DAILY_MAX건, 기본 300)
 import { fetchWithTimeout, kstDate } from './util.mjs';
 import { getJSON, setJSON } from './store.mjs';
-import { hasAI, askAI, parseJSON, aiPauseInfo } from './ai.mjs';
+import { hasAI, askAI, parseJSON, aiPauseInfo, translateTitles } from './ai.mjs';
 import { queryArchive } from './archive.mjs';
 
 const H = { Accept: 'application/json', Referer: 'https://m.stock.naver.com/' };
@@ -66,6 +66,26 @@ async function ownNews(mk, t) {
     .filter((x) => x.title);
 }
 
+/** 영어 뉴스 제목 → 한국어 (AI 번역, 한 번 번역한 제목은 저장해 모두 재사용). 바뀐 게 있으면 true */
+export async function koNews(news) {
+  const en = (news || []).filter((x) => x.title && !x.titleKo && !/[가-힣]/.test(x.title));
+  if (!en.length) return false;
+  const map = (await getJSON('tr/why')) || {};
+  let changed = false;
+  const need = [];
+  for (const x of en) { if (map[x.id]) { x.titleKo = map[x.id]; changed = true; } else need.push(x); }
+  if (need.length && hasAI() && !(await aiPauseInfo())) {
+    try {
+      const ko = await translateTitles(need.slice(0, 12).map((x) => ({ id: x.id, title: x.title.slice(0, 200), desc: (x.sum || '').slice(0, 160) })));
+      for (const x of need) if (ko[x.id]) { x.titleKo = map[x.id] = ko[x.id]; changed = true; }
+      const keys = Object.keys(map);
+      if (keys.length > 3000) for (const k of keys.slice(0, keys.length - 3000)) delete map[k];
+      await setJSON('tr/why', map).catch(() => {});
+    } catch (e) { console.warn('why tr', e.message); }
+  }
+  return changed;
+}
+
 async function stockNews(mk, t, reuters) {
   const own = await ownNews(mk, t);
   return [...own, ...(await extNews(mk, t, reuters))].slice(0, 10);
@@ -116,12 +136,15 @@ ${newsTxt || '(없음)'}`;
  * 한 종목의 "오늘 움직임 이유"
  * opts: { mk, t, name, pct, reuters, peers, allowAI=true, force=false }
  */
-export async function whyFor({ mk, t, name, pct = null, reuters = null, peers = null, allowAI = true, force = false, minMove = 2 }) {
+export async function whyFor({ mk, t, name, pct = null, reuters = null, peers = null, allowAI = true, force = false, minMove = 2, translate = false }) {
   t = String(t || '').toUpperCase();
   const key = `why/${mk}/${t}`;
   const prev = await getJSON(key);
   const now = Date.now();
-  if (prev && !force && now - prev.at < (prev.reason ? 8 : 3) * 60e3) return { ...prev, pct: pct ?? prev.pct, peers: peers || prev.peers, cached: true };
+  if (prev && !force && now - prev.at < (prev.reason ? 8 : 3) * 60e3) {
+    if (translate && mk === 'US' && (await koNews(prev.news).catch(() => false))) await setJSON(key, prev).catch(() => {}); // 제목 번역이 새로 붙었으면 저장
+    return { ...prev, pct: pct ?? prev.pct, peers: peers || prev.peers, cached: true };
+  }
   const news = await stockNews(mk, t, reuters);
   const sig = news.map((x) => x.id + ':' + String(x.title || '').length).join('|'); // 같은 공시라도 AI 요약이 새로 붙어 제목이 바뀌면 다시 판단
   const out = { mk, t, name: name || prev?.name || t, pct: pct ?? prev?.pct ?? null, news, peers: peers || prev?.peers || null, at: now, sig, reason: null, conf: null, basis: [], aiAt: null, aiPct: null };
@@ -141,6 +164,8 @@ export async function whyFor({ mk, t, name, pct = null, reuters = null, peers = 
       } catch (e) { out.aiError = String(e.message || e).slice(0, 160); }
     }
   }
+  if (translate && mk === 'US') await koNews(out.news).catch(() => false); // 미국 뉴스 제목 한국어로 (화면에서 직접 열 때만 — AI 호출 절약)
+  else if (mk === 'US' && prev?.news) { const pm = new Map(prev.news.filter((x) => x.titleKo).map((x) => [x.id, x.titleKo])); for (const x of out.news) if (pm.has(x.id)) x.titleKo = pm.get(x.id); }
   await setJSON(key, out).catch(() => {});
   return out;
 }

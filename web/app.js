@@ -2341,7 +2341,7 @@
       : `<div class="why-reason low"><b>${d.pct != null && Math.abs(d.pct) < 1 ? '오늘은 큰 움직임이 없습니다.' : news.length ? '아래 최근 뉴스를 참고하세요.' : '관련 뉴스를 찾지 못했습니다.'}</b></div>`;
     return `<div class="box why-box"><h4><span>오늘 주가 움직임 ${pct}</span><small>공시 외 뉴스 · 동반 움직임 기준</small></h4>
       ${reason}${hint.length ? `<div class="why-hint">${hint.map((h) => `<span>${esc(h)}</span>`).join('')}</div>` : ''}
-      ${news.length ? `<ul class="why-news">${news.slice(0, 6).map((x, i) => `<li class="${used.has(i) ? 'used' : ''}"><a href="${esc(x.url || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><small>${esc(x.src || '')} · ${rel(Date.parse(x.at))}</small></li>`).join('')}</ul>` : ''}
+      ${news.length ? `<ul class="why-news">${news.slice(0, 6).map((x, i) => `<li class="${used.has(i) ? 'used' : ''}"><a href="${esc(x.url || '#')}" target="_blank" rel="noopener"${x.titleKo ? ` title="${esc(x.title)}"` : ''}>${esc(x.titleKo || x.title)}</a><small>${esc(x.src || '')} · ${rel(Date.parse(x.at))}</small></li>`).join('')}</ul>` : ''}
       <p class="note">뉴스 제목과 동반 움직임을 바탕으로 AI가 추정한 내용입니다. 실제 원인과 다를 수 있으니 원문 기사를 확인하세요.</p></div>`;
   }
   function coLinks(c) {
@@ -2512,6 +2512,7 @@
     return out;
   }
   function bindSearch(input, box, { feed }) {
+    if (!S.koName) S.koName = new Map();
     let timer, seq = 0, act = -1;
     const render = (q, list, loading) => {
       const opts = [];
@@ -2526,15 +2527,21 @@
       const q = input.value.trim();
       clearTimeout(timer);
       if (!q) { box.hidden = true; if (feed && S.q) { S.q = ''; renderAll(); } return; }
-      const local = localCompanies(q);
+      const local = localCompanies(q).map((x) => { const n = x.market === 'US' ? (S.koName.get(x.ticker) || S.quotes.get(wkey('US', x.ticker))?.nameKo) : null; return n && hasKo(n) ? { ...x, name: n } : x; });
       render(q, local, true);
       const my = ++seq;
       timer = setTimeout(async () => {
         let remote = [];
         try { remote = (await getJSON(`/api/search?v=2&q=${encodeURIComponent(q)}`, {})).items || []; } catch {}
         if (my !== seq) return;
-        const seen = new Set(local.map((x) => wkey(x.market, x.ticker)));
-        render(q, [...local, ...remote.filter((x) => !seen.has(wkey(x.market, x.ticker)))].slice(0, 12), false);
+        // 서버가 준 한글 이름으로 바꿔서 보여줌 (미국 종목)
+        for (const x of remote) if (x.market === 'US' && hasKo(x.name)) S.koName.set(x.ticker, x.name);
+        const loc = local.map((x) => (x.market === 'US' && S.koName.has(x.ticker) ? { ...x, name: S.koName.get(x.ticker) } : x));
+        const seen = new Set(loc.map((x) => wkey(x.market, x.ticker)));
+        render(q, [...loc, ...remote.filter((x) => !seen.has(wkey(x.market, x.ticker)))].slice(0, 12), false);
+        // 목록에 먼저 뜬 종목 중 한글 이름을 아직 모르는 건 한 번 더 받아서 바꿈
+        const miss = loc.filter((x) => x.market === 'US' && !hasKo(x.name)).map((x) => wkey('US', x.ticker));
+        if (miss.length) fetchQuotes(miss).then(() => { if (my !== seq) return; let ch = false; const l2 = loc.map((x) => { const n = x.market === 'US' ? S.quotes.get(wkey('US', x.ticker))?.nameKo : null; if (n && hasKo(n)) { S.koName.set(x.ticker, n); ch = true; return { ...x, name: n }; } return x; }); if (ch) render(q, [...l2, ...remote.filter((x) => !seen.has(wkey(x.market, x.ticker)))].slice(0, 12), false); });
       }, 250);
     });
     input.addEventListener('keydown', (e) => {

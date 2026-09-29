@@ -9,6 +9,7 @@ const n0 = (s) => { const x = Number(String(s ?? '').replace(/[,%+\s]/g, '')); r
 // 등락 부호: 4 하한, 5 하락
 const signed = (v, code) => (v === null ? null : ['4', '5'].includes(String(code)) ? -Math.abs(v) : Math.abs(v));
 
+export async function naverGet(url, ms = 8000) { return get(url, ms); }
 async function get(url, ms = 8000) {
   const r = await fetchWithTimeout(url, { headers: H }, ms);
   if (!r.ok) throw new Error(`네이버 HTTP ${r.status}`);

@@ -20,7 +20,7 @@ export default async (req) => {
       if (x) { pct = x.pct; reuters = x.reuters || null; if (/Up|Down/.test(k)) peers = peersIn(list, x, null); break; }
     }
     if (pct == null) { const q = await getQuotes([`${mk}:${t}`]).catch(() => ({})); pct = q[`${mk}:${t}`]?.pct ?? null; }
-    const r = await whyFor({ mk, t, name, pct, reuters, peers, minMove: 1 }); // 직접 열어본 종목은 1% 이상 움직여도 AI 추정
+    const r = await whyFor({ mk, t, name, pct, reuters, peers, minMove: 1, translate: true }); // 직접 열어본 종목은 1% 이상 움직여도 AI 추정
     return json({ ok: true, ...r }, { cdnSeconds: 120, swr: 300 });
   } catch (e) {
     return json({ ok: false, error: String(e.message || e) }, { status: 502, cdnSeconds: 20 });
