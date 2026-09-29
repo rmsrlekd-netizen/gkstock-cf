@@ -196,7 +196,7 @@ export async function tvUsExtMovers(session, n = 10) {
   const pre = session !== 'AFTER';
   const chg = pre ? 'premarket_change' : 'postmarket_change', px = pre ? 'premarket_close' : 'postmarket_close', vol = pre ? 'premarket_volume' : 'postmarket_volume';
   const scan = async (order) => {
-    const body = JSON.stringify({ columns: ['name', 'description', chg, px, 'close', 'change', 'market_cap_basic', vol, 'exchange'], filter: [{ left: 'type', operation: 'equal', right: 'stock' }, { left: 'exchange', operation: 'in_range', right: ['NASDAQ', 'NYSE', 'AMEX'] }, { left: vol, operation: 'greater', right: 5000 }, { left: chg, operation: order === 'desc' ? 'greater' : 'less', right: 0 }], sort: { sortBy: chg, sortOrder: order }, range: [0, n + 20] });
+    const body = JSON.stringify({ columns: ['name', 'description', chg, px, 'close', 'change', 'market_cap_basic', vol, 'exchange'], filter: [{ left: 'type', operation: 'in_range', right: ['stock', 'dr'] }, { left: 'exchange', operation: 'in_range', right: ['NASDAQ', 'NYSE', 'AMEX'] }, { left: vol, operation: 'greater', right: 5000 }, { left: chg, operation: order === 'desc' ? 'greater' : 'less', right: 0 }], sort: { sortBy: chg, sortOrder: order }, range: [0, n + 20] });
     const opt = { method: 'POST', headers: { 'content-type': 'application/json', Origin: 'https://www.tradingview.com', Referer: 'https://www.tradingview.com/' }, body };
     let r = await fetchWithTimeout('https://scanner.tradingview.com/america/scan', opt, 8000).catch(() => null);
     if (!r?.ok && process.env.KR_RELAY_URL) r = await fetchWithTimeout('https://scanner.tradingview.com/america/scan', { ...opt, relay: true }, 9000);
