@@ -19,9 +19,11 @@ const LIST = [
   ['원/달러', 'USD-KRW'],
   ['미 10년물 금리', 'TNX:INDEXCBOE'],
   ['니케이225', 'NI225:INDEXNIKKEI'],
+  ['비트코인', 'BTC-USD', null, 'BTC-USD'],
+  ['금 선물', 'GCW00:COMEX', null, 'GC=F'],
 ];
 // 이 페이지들 안에 위 지수들이 함께 들어 있음
-const PAGES = ['KOSPI:KRX', 'SOX:INDEXNASDAQ', 'NQW00:CME_EMINIS', 'TNX:INDEXCBOE', 'USD-KRW'];
+const PAGES = ['KOSPI:KRX', 'SOX:INDEXNASDAQ', 'NQW00:CME_EMINIS', 'TNX:INDEXCBOE', 'USD-KRW', 'BTC-USD', 'GCW00:COMEX'];
 
 const NQ_H = { 'User-Agent': BROWSER_UA, Accept: 'application/json', Origin: 'https://www.nasdaq.com', Referer: 'https://www.nasdaq.com/' };
 async function nasdaqQuote(sym, cls) {
@@ -30,6 +32,21 @@ async function nasdaqQuote(sym, cls) {
   if (!d) throw new Error('nasdaq ' + sym);
   const price = num(d.lastSalePrice), chg = num(d.netChange);
   return { price, chg, pct: num(d.percentageChange), prev: price !== null && chg !== null ? price - chg : null };
+}
+
+// 야후 파이낸스 시세 (구글에서 못 받은 비트코인·금 보조)
+async function yahooQuote(sym) {
+  const path = `/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
+  const opt = { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' } };
+  let r = await fetchWithTimeout('https://query1.finance.yahoo.com' + path, opt, 6000).catch(() => null);
+  if (!r?.ok && process.env.KR_RELAY_URL) r = await fetchWithTimeout('https://query1.finance.yahoo.com' + path, { ...opt, relay: true }, 8000).catch(() => null);
+  if (!r?.ok) throw new Error('yahoo ' + sym);
+  const res = (await r.json())?.chart?.result?.[0];
+  const price = res?.meta?.regularMarketPrice;
+  const cl = (res?.indicators?.quote?.[0]?.close || []).filter((v) => v != null);
+  const prev = cl.length >= 2 ? cl[cl.length - 2] : res?.meta?.chartPreviousClose;
+  if (price == null || prev == null) throw new Error('yahoo ' + sym);
+  return { price, chg: price - prev, pct: Math.round(((price - prev) / prev) * 10000) / 100, prev };
 }
 
 async function fearGreed() {
@@ -64,12 +81,13 @@ async function build() {
     hasKis() ? kisIndex('0001').catch(() => null) : Promise.resolve(null), // 코스피: 한국투자증권 (거의 실시간)
   ]);
   const q = g.quotes;
-  const indices = await Promise.all(LIST.map(async ([label, key, nq]) => {
+  const indices = await Promise.all(LIST.map(async ([label, key, nq, yh]) => {
     let v = q[key] || null;
     let src = v ? 'Google' : null;
     if (key === 'KOSDAQ' && kosdaq) { v = kosdaq; src = 'KIS'; }
     if (key === 'KOSPI:KRX' && kospi) { v = kospi; src = 'KIS'; }
     if (!v && nq) { try { v = await nasdaqQuote(nq, 'index'); src = 'Nasdaq'; } catch {} }
+    if ((!v || v.price == null) && yh) { try { v = await yahooQuote(yh); src = 'Yahoo'; } catch {} }
     if (!v || v.price === null) return { label, key, error: true };
     const out = { label, key, price: v.price, chg: v.chg, pct: v.pct, prev: v.prev, src };
     if (key === 'TNX:INDEXCBOE' && v.price > 20) { out.price /= 10; out.chg /= 10; out.prev = out.prev !== null ? out.prev / 10 : null; out.unit = '%'; }

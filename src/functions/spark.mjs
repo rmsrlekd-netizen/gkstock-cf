@@ -7,7 +7,7 @@ import { getJSON, setJSON } from '../lib/store.mjs';
 const SYM = {
   '.INX:INDEXSP': '^GSPC', '.IXIC:INDEXNASDAQ': '^IXIC', '.DJI:INDEXDJX': '^DJI', 'NQW00:CME_EMINIS': 'NQ=F',
   'SOX:INDEXNASDAQ': '^SOX', 'VIX:INDEXCBOE': '^VIX', 'RUT:INDEXRUSSELL': '^RUT', 'KOSPI:KRX': '^KS11',
-  KOSDAQ: '^KQ11', 'USD-KRW': 'KRW=X', 'TNX:INDEXCBOE': '^TNX', 'NI225:INDEXNIKKEI': '^N225',
+  KOSDAQ: '^KQ11', 'USD-KRW': 'KRW=X', 'TNX:INDEXCBOE': '^TNX', 'NI225:INDEXNIKKEI': '^N225', 'BTC-USD': 'BTC-USD', 'GCW00:COMEX': 'GC=F',
 };
 
 async function chart(sym) {
