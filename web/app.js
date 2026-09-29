@@ -605,11 +605,11 @@
     for (const n of cand) { const g = trendGain(n); if (g == null) continue; const k = wkey(n.market, n.ticker); if (!best.has(k) || g > best.get(k).g) best.set(k, { n, g }); }
     const prim = trendPrimary();
     const ranked = [...best.values()].sort((a, b) => ((prim && b.n.market === prim) - (prim && a.n.market === prim)) || b.g - a.g);
-    const pick = ranked.filter((x) => x.g > 0).slice(0, 10).map((x) => x.n);
+    const pick = ranked.filter((x) => x.g > 0).slice(0, 6).map((x) => x.n); // 6개 (PC 한 줄에 딱 맞게, 모바일은 슬라이드)
     if (pick.length < 6) { // 오른 종목이 적으면 기존 기준(중요도·최신)으로 채움
       const seen = new Set(pick.map((n) => wkey(n.market, n.ticker)));
       const arr = pool.filter((n) => n.ms > since && n.ticker && n.impact >= 3).sort((a, b) => ((prim && b.market === prim) - (prim && a.market === prim)) || b.impact - a.impact || b.ms - a.ms);
-      for (const n of arr) { const k = wkey(n.market, n.ticker); if (seen.has(k)) continue; seen.add(k); pick.push(n); if (pick.length >= 8) break; }
+      for (const n of arr) { const k = wkey(n.market, n.ticker); if (seen.has(k)) continue; seen.add(k); pick.push(n); if (pick.length >= 6) break; }
     }
     // 시세가 없는 후보는 뒤에서 받아 와서 다시 정렬
     //  후보가 많을 때 앞쪽 80개만 계속 받던 문제 → 시세를 한 번도 안 받은 종목 먼저, 그다음 오래된 순 (지금 장이 열린 시장 우선)
@@ -984,8 +984,9 @@
     const n = m?.night, ni = nightInfo();
     if (ni) {
       $('#nightCard').innerHTML = `<div class="lbl">${n.session === 'night' ? '코스피200 야간선물' : '코스피200 선물(주간)'} <small class="muted">${esc(n.code || '')}</small></div>
-        <div class="night-price">${ni.price}</div><div class="night-chg ${dirCls(ni.chg)}">${ni.chg > 0 ? '▲' : ni.chg < 0 ? '▼' : ''} ${fmtPx(Math.abs(ni.chg || 0))} (${fmtPct(ni.pct)})</div>
-        <p class="foot-note">${ni.note ? esc(ni.note) + ' · ' : ''}한국투자증권 · 야간 18:00~05:00 KST</p>`;
+        <div class="night-body"><div class="night-info"><div class="night-price">${ni.price}</div><div class="night-chg ${dirCls(ni.chg)}">${ni.chg > 0 ? '▲' : ni.chg < 0 ? '▼' : ''} ${fmtPx(Math.abs(ni.chg || 0))} (${fmtPct(ni.pct)})</div></div>
+        ${n.series?.length >= 3 ? sparkSVG({ t: n.series.map((p) => p[0]), c: n.series.map((p) => p[1]) }, { key: 'night', price: n.price, prev: n.chg != null ? n.price - n.chg : null }, dirCls(ni.chg)) : ''}</div>
+        <p class="foot-note">${ni.note ? esc(ni.note) + ' · ' : ''}한국투자증권 · 야간 18:00~05:00 KST${n.series?.length >= 3 ? ' · 차트: 이번 세션 5분 간격' : ''}</p>`;
     } else $('#nightCard').innerHTML = `<div class="lbl">코스피200 야간선물</div><div class="night-price muted">—</div><p class="foot-note">${m ? esc(n?.reason || '시세 없음') : '불러오는 중'}</p>`;
     const list = (m?.indices || []).filter((x) => !x.error && x.price !== null && x.price !== undefined);
     const sp = S.spark?.data || {};
@@ -2779,7 +2780,16 @@
       S.limit = 80; renderAll();
       $('.feed-wrap').scrollIntoView({ behavior: 'smooth' });
     }));
-    $('.trend-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-trend]'); if (b) $('#trend').scrollBy({ left: Number(b.dataset.trend) * $('#trend').clientWidth * 0.8, behavior: 'smooth' }); });
+    // 모바일 트렌딩 슬라이드: 점 표시 + 5초마다 다음 카드 (손으로 넘기는 중엔 멈춤)
+    { const tr = $('#trend'), dots = $('#trendDots'); let hold = 0;
+      const cur = () => { const w = tr.firstElementChild?.getBoundingClientRect().width || 1; return Math.round(tr.scrollLeft / (w + 10)); };
+      const paint = () => { const n = tr.children.length, i = cur(); if (dots.childElementCount !== n) dots.innerHTML = Array.from({ length: n }, (_, k) => `<i data-k="${k}"></i>`).join(''); [...dots.children].forEach((d, k) => d.classList.toggle('on', k === i)); };
+      const go = (i) => { const c = tr.children[i]; if (c) tr.scrollTo({ left: c.offsetLeft - tr.firstElementChild.offsetLeft, behavior: 'smooth' }); };
+      tr.addEventListener('scroll', () => requestAnimationFrame(paint), { passive: true });
+      ['touchstart', 'pointerdown'].forEach((ev) => tr.addEventListener(ev, () => { hold = Date.now(); }, { passive: true }));
+      dots.addEventListener('click', (e) => { const d = e.target.closest('[data-k]'); if (d) { hold = Date.now(); go(Number(d.dataset.k)); } });
+      new MutationObserver(paint).observe(tr, { childList: true });
+      setInterval(() => { if (!matchMedia('(max-width: 720px)').matches || document.hidden || S.view !== 'home' || Date.now() - hold < 8000 || tr.children.length < 2) return; const i = cur(); go(i + 1 >= tr.children.length ? 0 : i + 1); }, 5000); }
     bindSearch($('#search'), $('#suggest'), { feed: true });
     bindSearch($('#search2'), $('#suggest2'), { feed: true });
     bindSearch($('#coSearch'), $('#coSuggest'), { feed: false });
