@@ -633,7 +633,8 @@
     if (S.type !== 'FILING') S.prAuto = false;
     const prBtn = $('#tabs [data-type="PR"]');
     if (prBtn) prBtn.hidden = S.mk === 'KR';
-    $$('#mkSeg button').forEach((b) => b.classList.toggle('on', b.dataset.mk === S.mk));
+    $$('#mkSeg button[data-mk]').forEach((b) => b.classList.toggle('on', b.dataset.mk === S.mk));
+    $('#mkSeg [data-watch]')?.classList.toggle('on', S.view === 'watch');
     $$('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.type === S.type));
     $$('#themeChips button').forEach((b) => b.classList.toggle('on', b.dataset.theme === S.theme));
     $('#sortSel').value = S.sort;
@@ -1223,6 +1224,93 @@
       if (!s || !s.value) return;
       if (S.view === 'issue') { history.replaceState(null, '', '/i/' + s.value); showIssuePage(s.value); } else { S.issSel[S.issMk] = s.value; renderIssueBox(); }
     });
+  }
+
+  // ───────────────────────── VI·서킷 (국장 VI 발동·해제 / 미장 거래정지·재개) ─────────────────────────
+  S.htMk = load('gk_htmk', 'KR'); S.ht = {}; S.htF = 'all';
+  const HT_INFO = {
+    KR: '<b>VI(변동성완화장치)</b> 주가가 짧은 시간에 크게 움직이면 2분 동안 단일가 매매로 바뀌어요. <em>정적 VI</em>는 시가·직전 단일가 대비 ±10% 안팎, <em>동적 VI</em>는 직전 체결가 대비 순간 급변 때 걸려요.',
+    US: '<b>거래정지(서킷브레이커)</b> 개별 종목은 5분 사이 급등락하면 <em>LULD 5분 정지</em>, 중요 뉴스를 앞두면 <em>뉴스 대기 정지</em>가 걸려요. S&P500이 7·13·20% 빠지면 <em>시장 전체 서킷브레이커</em>가 걸려요.',
+  };
+  // 뉴욕 시각 → 한국 시각
+  function etToKst(date, t) {
+    if (!date || !t) return '';
+    try {
+      const probe = new Date(`${date}T12:00:00Z`);
+      const off = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'shortOffset' }).formatToParts(probe).find((x) => x.type === 'timeZoneName')?.value || 'GMT-4';
+      const oh = Number((off.match(/GMT([+-]\d+)/) || [])[1] || -4);
+      const ms = Date.parse(`${date}T${t}Z`) - oh * 3600e3;
+      return new Date(ms + 9 * 3600e3).toISOString().slice(11, 16);
+    } catch { return ''; }
+  }
+  const secOf = (t) => { const m = String(t || '').match(/(\d+):(\d+):(\d+)/); return m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : null; };
+  const durTxt = (a, b) => { const x = secOf(a), y = secOf(b); if (x == null || y == null || y < x) return ''; const d = y - x; return d < 60 ? `${d}초` : d < 3600 ? `${Math.round(d / 60)}분` : `${Math.floor(d / 3600)}시간 ${Math.round((d % 3600) / 60)}분`; };
+  async function loadHalts(quiet) {
+    const mk = S.htMk;
+    if (!quiet) renderHalts();
+    try { S.ht[mk] = { ...(await getJSON(`/api/halts?mk=${mk}`, {})), _at: Date.now() }; } catch (e) { S.ht[mk] = { error: e.message, _at: Date.now() }; }
+    if (S.view === 'halt' && S.htMk === mk) renderHalts();
+    clearTimeout(loadHalts._t);
+    loadHalts._t = setTimeout(() => { if (S.view === 'halt' && !document.hidden) loadHalts(true); }, 20000); // 20초마다
+  }
+  function htName(x, mk) { return mk === 'KR' ? x.name || x.code : x.sym; }
+  function htActiveCard(x, mk) {
+    const nm = htName(x, mk), code = mk === 'KR' ? x.code : x.sym;
+    const sub = mk === 'KR' ? `${esc(x.code)}${x.kind ? ' · ' + esc(x.kind) + ' VI' : ''}` : `${esc(x.ko || x.name || '')}`;
+    const onTxt = mk === 'KR' ? x.on?.slice(0, 5) : `뉴욕 ${x.on?.slice(0, 5)} · 한국 ${etToKst(x.date, x.on)}`;
+    const tag = mk === 'KR'
+      ? `<span class="ht-kind ${x.dir === 'down' ? 'down' : 'up'}">${x.dir === 'down' ? '하락 VI' : '상승 VI'}</span>`
+      : `<span class="ht-kind ${x.luld ? 'luld' : 'news'}">${esc(x.reason || x.code || '정지')}</span>`;
+    const until = mk === 'US' && x.off ? `<span class="ht-until">재개 예정 ${esc(x.off.slice(0, 5))}${x.rdate && x.rdate !== x.date ? ' (' + esc(x.rdate.slice(5)) + ')' : ''}</span>` : mk === 'KR' ? '<span class="ht-until">약 2분 뒤 해제</span>' : '<span class="ht-until">재개 시각 미정</span>';
+    return `<button class="ht-live" data-open-co="${esc(mk)}|${esc(code)}|${esc(nm)}">${logoHTML(mk, code, nm, 'md')}<div class="ht-lm"><div class="ht-lt"><b>${esc(nm)}</b>${tag}</div><small>${sub}</small><div class="ht-lx"><span><i class="ht-dot"></i>${esc(onTxt)} 발동</span>${until}</div></div>
+      <div class="ht-lp">${x.gap != null ? `<b class="${dirCls(x.gap)}">${fmtPct(x.gap)}</b><small>기준가 대비</small>` : x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>오늘</small>` : ''}${x.times > 1 ? `<em class="ht-times">오늘 ${x.times}회</em>` : ''}</div></button>`;
+  }
+  function htRow(x, mk) {
+    const nm = htName(x, mk), code = mk === 'KR' ? x.code : x.sym;
+    const on = x.on ? x.on.slice(0, 5) : '—', off = x.off ? x.off.slice(0, 5) : '';
+    const dur = x.off ? durTxt(x.on, x.off) : '';
+    const time = `<div class="ht-t"><b>${esc(on)}</b>${x.active ? '<span class="ht-on">발동 중</span>' : off ? `<small>→ ${esc(off)}${x.est ? '쯤' : ''}${dur ? ' · ' + dur : ''}</small>` : ''}${mk === 'US' ? `<small class="ht-kst">한국 ${etToKst(x.date, x.on)}</small>` : ''}</div>`;
+    const what = mk === 'KR'
+      ? `<span class="ht-kind sm ${x.dir === 'down' ? 'down' : 'up'}">${x.dir === 'down' ? '하락' : '상승'}${x.kind ? ' · ' + esc(x.kind) : ''}</span>`
+      : `<span class="ht-kind sm ${x.luld ? 'luld' : x.mwc ? 'mwc' : 'news'}">${esc(x.reason || x.code)}</span>`;
+    const right = mk === 'KR'
+      ? (x.gap != null ? `<b class="${dirCls(x.gap)}">${fmtPct(x.gap)}</b>` : '') + (x.price ? `<small>${fmtInt(x.price)}원</small>` : '')
+      : (x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>지금</small>` : x.price ? `<small>기준 $${esc(fmtPx(x.price))}</small>` : '');
+    return `<li class="${x.active ? 'is-on' : ''}" data-open-co="${esc(mk)}|${esc(code)}|${esc(nm)}">${time}<div class="ht-n"><b>${esc(nm)}${x.times > 1 ? ` <em class="ht-times">${x.times}회</em>` : ''}</b><small>${mk === 'KR' ? esc(x.code) : esc(x.ko || x.name || '')}</small>${what}</div><div class="ht-r">${right}</div></li>`;
+  }
+  function renderHalts() {
+    const mk = S.htMk, d = S.ht[mk];
+    $$('#htSeg button').forEach((b) => b.classList.toggle('on', b.dataset.ht === mk));
+    const box = $('#htBody');
+    if (!box) return;
+    if (!d) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; $('#htMeta').textContent = ''; return; }
+    if (d.error) { box.innerHTML = `<div class="card"><p class="err">불러오지 못했습니다: ${esc(d.error)}</p></div>`; return; }
+    const dd = new Date(d.date + 'T12:00:00Z');
+    const dateTxt = `${dd.getUTCMonth() + 1}월 ${dd.getUTCDate()}일 (${'일월화수목금토'[dd.getUTCDay()]})`;
+    $('#htMeta').textContent = `${d.today ? '오늘' : '최근 거래일'} ${dateTxt}${mk === 'US' ? ' · 뉴욕 기준' : ''}${d.at ? ' · ' + fmtDT(new Date(d.at)).hm + ' 확인 · 1분마다 기록' : ''}`;
+    const hist = d.history || [];
+    const f = S.htF;
+    const pick = (x) => f === 'all' || (mk === 'KR' ? (f === 'up' ? x.dir !== 'down' : x.dir === 'down') : f === 'luld' ? x.luld : !x.luld);
+    const shown = hist.filter(pick);
+    const nUp = hist.filter((x) => x.dir !== 'down').length, nDn = hist.length - nUp, nL = hist.filter((x) => x.luld).length;
+    const chips = mk === 'KR'
+      ? [['all', '전체', hist.length], ['up', '상승 VI', nUp], ['down', '하락 VI', nDn]]
+      : [['all', '전체', hist.length], ['luld', '급등락(LULD)', nL], ['etc', '뉴스·기타', hist.length - nL]];
+    const mwc = (d.stats?.mwc || [])[0];
+    box.innerHTML = `
+      ${mwc ? `<div class="ht-mwc"><b>⚠ ${esc(mwc.reason)}</b><span>뉴욕 ${esc(mwc.on?.slice(0, 5))} 발동${mwc.off ? ' · ' + esc(mwc.off.slice(0, 5)) + ' 재개' : ''}</span></div>` : ''}
+      <div class="ht-info">${HT_INFO[mk]}</div>
+      ${d.err ? `<p class="note err">최근 확인 중 오류: ${esc(d.err)}</p>` : ''}
+      <div class="card ht-now"><div class="card-h"><h3><i class="ht-pulse"></i>지금 걸려 있는 종목 <b>${d.active?.length || 0}</b></h3></div>
+        ${d.active?.length ? `<div class="ht-lives">${d.active.map((x) => htActiveCard(x, mk)).join('')}</div>` : `<p class="muted ht-empty">${d.today ? (mk === 'KR' ? '지금 VI가 걸린 종목이 없어요.' : '지금 거래정지된 종목이 없어요.') : '지금은 장이 열려 있지 않아요.'}</p>`}</div>
+      <div class="card ht-hist"><div class="card-h"><h3>${d.today ? '오늘' : dateTxt} ${mk === 'KR' ? 'VI 발동 내역' : '거래정지 내역'} <b>${hist.length}</b></h3><span class="muted sm">${d.stats?.stocks || 0}종목</span></div>
+        <div class="chips ht-f">${chips.map(([k, l, n]) => `<button class="${f === k ? 'on' : ''}" data-htf="${k}">${l} ${n}</button>`).join('')}</div>
+        ${shown.length ? `<ul class="ht-list">${shown.map((x) => htRow(x, mk)).join('')}</ul>` : `<p class="muted ht-empty">${hist.length ? '해당하는 내역이 없어요.' : mk === 'KR' ? '아직 VI 발동 내역이 없어요. 장중(9:00~15:30)에 1분마다 기록해요.' : '아직 거래정지 내역이 없어요. 뉴욕 4:00~20:00에 1분마다 기록해요.'}</p>`}
+        <p class="note">${mk === 'KR' ? '출처: 한국투자증권 · 괴리율은 VI 기준가 대비 · 종목을 누르면 기업 분석' : '출처: 나스닥 공식 거래정지 목록(나스닥·뉴욕·아멕스 전체) · 시각은 뉴욕 기준, 아래는 한국 시각 · 종목을 누르면 기업 분석'}</p></div>`;
+  }
+  function bindHalts() {
+    $('#htSeg')?.addEventListener('click', (e) => { const b = e.target.closest('[data-ht]'); if (!b) return; S.htMk = b.dataset.ht; S.htF = 'all'; save('gk_htmk', S.htMk); if (S.ht[S.htMk] && Date.now() - S.ht[S.htMk]._at < 20e3) renderHalts(); else loadHalts(); });
+    $('#htBody')?.addEventListener('click', (e) => { const b = e.target.closest('[data-htf]'); if (!b) return; S.htF = b.dataset.htf; renderHalts(); });
   }
 
   // ───────────────────────── 내일 일정 (경제지표·실적·공모주/IPO + AI 요약) ─────────────────────────
@@ -2193,7 +2281,7 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
-  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide' };
+  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt' };
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
@@ -2207,6 +2295,7 @@
     if (v === 'earnings') loadEarnings();
     if (v === 'themes') loadThemes();
     if (v === 'sched') loadSched();
+    if (v === 'halt') loadHalts();
     if (v === 'econ') loadEcon(true);
     if (v === 'admin') renderAdmin();
     if (v === 'popular') { renderPopularPage(); pollViews(); }
@@ -2467,7 +2556,11 @@
 
   // ───────────────────────── 이벤트 ─────────────────────────
   function bind() {
-    $('#mkSeg').addEventListener('click', (e) => { const b = e.target.closest('button[data-mk]'); if (!b) return; S.mk = b.dataset.mk; S.limit = 80; renderAll(); });
+    $('#mkSeg').addEventListener('click', (e) => {
+      // ★ 관심종목: 누르면 목록이 관심종목 공시·보도자료로 바뀌고, 다시 누르면 전체로
+      if (e.target.closest('[data-watch]')) { const y = $('.feed-wrap')?.getBoundingClientRect().top + window.scrollY - 120; setView(S.view === 'watch' ? 'home' : 'watch'); if (y > 0) window.scrollTo({ top: y }); return; }
+      const b = e.target.closest('button[data-mk]'); if (!b) return; S.mk = b.dataset.mk; S.limit = 80; renderAll();
+    });
     $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.type = b.dataset.type; if (S.view === 'home') S.homeType = S.type; S.limit = 80; renderAll(); });
     $('#themeChips').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.theme = S.theme === b.dataset.theme ? null : b.dataset.theme; S.limit = 80; renderAll(); });
     $('#themes').addEventListener('click', (e) => { const li = e.target.closest('li'); if (!li) return; S.theme = S.theme === li.dataset.theme ? null : li.dataset.theme; S.limit = 80; renderAll(); $('.feed-wrap').scrollIntoView({ behavior: 'smooth' }); });
@@ -2584,6 +2677,7 @@
   bind();
   bindIssues();
   bindSched();
+  bindHalts();
   { // 공유 링크 (?top=digest&mk=US)로 들어오면 AI 핵심 공시를 바로 보여줌
     const qp = new URLSearchParams(location.search);
     if (qp.get('top') === 'digest') { S.top = 'digest'; const m = qp.get('mk'); if (['ALL', 'KR', 'US'].includes(m)) { S.digestMk = m; save('gk_dmk', m); $$('#digestSeg button').forEach((b) => b.classList.toggle('on', b.dataset.dmk === m)); } history.replaceState(null, '', '/' + location.hash); }

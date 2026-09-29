@@ -1,7 +1,7 @@
 // Vercel용 DART·KRX 중계 (주소: https://프로젝트.vercel.app/api/relay)
 //  Cloudflare Worker → 이 함수(서울 리전) → DART
 // 보도자료 사이트는 Cloudflare에서 막힐 때 우회용
-const ALLOW = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com|globenewswire\.com|generativelanguage\.googleapis\.com|businesswire\.com|prnewswire\.com|accessnewswire\.com|newswire\.co\.kr|tradingview\.com|38\.co\.kr)$/i;
+const ALLOW = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com|globenewswire\.com|generativelanguage\.googleapis\.com|businesswire\.com|prnewswire\.com|accessnewswire\.com|newswire\.co\.kr|tradingview\.com|38\.co\.kr|nasdaqtrader\.com)$/i;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 async function handle(req) {

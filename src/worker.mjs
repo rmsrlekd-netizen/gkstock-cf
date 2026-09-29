@@ -33,6 +33,8 @@ import * as themes from './functions/themes.mjs';
 import * as econ from './functions/econ.mjs';
 import * as issues from './functions/issues.mjs';
 import * as schedule from './functions/schedule.mjs';
+import * as halts from './functions/halts.mjs';
+import { haltsWatch } from './lib/halts.mjs';
 import { scheduleWatch } from './lib/schedule.mjs';
 import { briefWatch } from './lib/brief.mjs';
 import { issuesWatch } from './lib/issues.mjs';
@@ -45,7 +47,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -163,6 +165,8 @@ export default {
     const usz = zoned(now, 'America/New_York');
     const econBusy = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 7 * 60 && usz.m <= 16 * 60 + 30;
     if (econBusy || min % 30 === 0) jobs.push(econWatch().then(async (r) => { if (r.ai || econBusy) { const { econCalendar } = await import('./lib/econ.mjs'); const { setJSON } = await import('./lib/store.mjs'); await setJSON('econ/v1', await econCalendar()); } }).catch((e) => console.warn('econ', e.message)));
+    // VI·서킷: 국장 VI 발동·해제 (장중) · 미장 거래정지·재개 (뉴욕 4:00~20:00) 매분 기록
+    jobs.push(haltsWatch(now).then((r) => { if (r.kr || r.us) console.log('halts', JSON.stringify(r)); }).catch((e) => console.warn('halts', e.message)));
     // 오늘 주요 이슈: 회차 시각이 되면 AI가 새로 만듦 (한국 4회·미국 4회)
     jobs.push(issuesWatch(now, ctx).then((r) => { if (Object.keys(r).length) console.log('issues', JSON.stringify(r)); }).catch((e) => console.warn('issues', e.message)));
     if (jobs.length) ctx.waitUntil(Promise.allSettled(jobs));
