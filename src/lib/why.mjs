@@ -50,7 +50,7 @@ async function usFinnhub(t) {
 /** 우리 사이트에 올라온 이 종목의 최근 공시·보도자료 (가장 직접적인 근거) */
 export function ownTitle(n) {
   const its = (n.items || []).map((x) => x.ko).filter(Boolean).slice(0, 2).join('·');
-  return clean(n.titleKo || n.summaryKo || n.title || [n.formKo || n.form, its].filter(Boolean).join(' ') || '');
+  return clean(n.ko?.title || n.titleKo || n.summaryKo || n.title || [n.formKo || n.form, its].filter(Boolean).join(' ') || '');
 }
 async function ownNews(mk, t) {
   const arr = await queryArchive({ market: mk, ticker: t, limit: 8 }).catch(() => []);

@@ -728,9 +728,9 @@
     const px = x.price != null ? (x.market === 'KR' ? `${fmtInt(x.price)}원` : `$${fmtPx(x.price)}`) : '';
     // 오늘 움직임 이유(AI 추정): 오른쪽 작은 목록에선 종목코드 줄 대신, 큰 목록에선 아래 줄에
     const rs0 = x.reason && !/^뚜렷한 개별 뉴스 없음/.test(x.reason) ? x.reason : null;
-    const rs = rs0 || (x.pr?.t ? `${x.pr.kind} · ${x.pr.t}` : null); // AI 이유가 아직 없으면 최근 공시·보도자료 제목
+    const rs = rs0 || x.pr?.t || null; // AI 이유가 아직 없으면 최근 공시·보도자료 제목
     const subHTML = !big && rs ? `<small class="rs" title="${rs0 ? 'AI 추정 · ' + esc(x.reason) : esc(rs)}">${esc(rs)}</small>` : `<small>${esc(sub)}${sec ? ' · ' + esc(sec) : ''}</small>`;
-    const whyHTML = big && rs0 ? `<span class="why rwhy"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.pr?.t ? `<span class="why rwhy"><i>${esc(x.pr.kind)}</i>${esc(x.pr.t)}</span>` : big && x.reason ? `<span class="why rwhy none"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.why ? `<span class="why">${esc(x.why)}</span>` : '';
+    const whyHTML = big && rs0 ? `<span class="why rwhy"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.pr?.t ? `<span class="why rwhy">${esc(x.pr.t)}</span>` : big && x.reason ? `<span class="why rwhy none"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.why ? `<span class="why">${esc(x.why)}</span>` : '';
     return `<li data-open-co="${esc(x.market)}|${esc(x.ticker)}|${esc(x.name || '')}"><span class="rk">${i + 1}</span>${logoHTML(x.market, x.ticker, x.name, big ? 'md' : 'sm')}<span class="nm"><b>${esc(label)}${x.ipo ? ' <i class="ipo-tag" title="오늘 신규 상장 · 공모가 대비 등락">신규상장</i>' : ''}</b>${subHTML}</span><span class="px">${px ? `<b>${px}</b>` : ''}${x.pct != null ? `<em class="${dirCls(x.pct)}"${x.session ? ` title="정규장 ${fmtPct(x.regPct)}"` : ''}>${x.session ? `<i class="sess">${x.session === 'AFTER' ? '애프터' : x.session === 'DAY' ? '데이' : '프리'}</i>` : ''}${fmtPct(x.pct)}</em>` : ''}</span>${whyHTML}</li>`;
   }
   // 인기 / 상승 / 하락 × 국내 / 미국

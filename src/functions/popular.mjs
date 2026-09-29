@@ -211,9 +211,12 @@ async function build(cached) {
     for (const mk of ['US', 'KR']) for (const n of await queryArchive({ market: mk, limit: 200 }).catch(() => [])) {
       const ms = Date.parse(n.time || '');
       const k = `${mk}|${String(n.ticker || '').toUpperCase()}`;
-      if (!n.ticker || !(ms > since) || pm[k] || /^(3|4|5|144)(\/A)?$/.test(String(n.form || ''))) continue; // 내부자 거래 보고는 제외
+      if (!n.ticker || !(ms > since) || /^(3|4|5|144)(\/A)?$/.test(String(n.form || ''))) continue; // 내부자 거래 보고는 제외
       const t = ownTitle(n);
-      if (t) pm[k] = { t: t.slice(0, 80), kind: n.src === 'PR' ? '보도자료' : '공시', at: ms };
+      if (!t) continue;
+      //  한국어 핵심 제목이 있는 것 > 보도자료 > 최신 순 ("수시공시 기타 주요 사항" 같은 서식 이름만 있는 건 뒤로)
+      const sc = (mk === 'KR' || n.ko?.title || n.titleKo ? 2 : 0) + (n.src === 'PR' ? 1 : 0);
+      if (!pm[k] || sc > pm[k].sc) pm[k] = { t: t.slice(0, 80), kind: n.src === 'PR' ? '보도자료' : '공시', at: ms, sc };
     }
     for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const p = pm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (p) x.pr = p; }
   } catch {}
