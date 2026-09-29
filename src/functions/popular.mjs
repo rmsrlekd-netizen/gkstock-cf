@@ -3,7 +3,8 @@
 //  미국: StockTwits 실시간 트렌딩(미국 상장 주식만) → 실패 시 Nasdaq 거래량 상위
 import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num, refreshInBackground } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
-import { us as usQuote } from './quote.mjs';
+import { us as usQuote, getQuotes } from './quote.mjs';
+import { queryArchive } from '../lib/archive.mjs';
 import { usDaySession, usDayMovers, usDayQuotes } from '../lib/usday.mjs';
 import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers, naverKrExtMovers, naverKrQuotes } from '../lib/naver.mjs';
 
@@ -149,6 +150,8 @@ async function build(cached) {
         errors.push('usExtTV: ' + e.message);
         try { const nx = await naverUsExtMovers(10); const ok = (x) => x.session === sess; ext = { ...nx, up: nx.up.filter(ok), down: nx.down.filter(ok), session: sess, src: 'naver', at: Date.now() }; } catch (e2) { errors.push('usExt: ' + e2.message); }
       }
+      // 최근 36시간 공시·보도자료 종목도 후보로 (트레이딩뷰는 프리장 초반 몇십 분간 시세가 늦음 → 발표로 급등한 종목이 빠지는 문제)
+      try { ext = await addNewsMovers(ext, sess); } catch (e) { errors.push('usExtNews: ' + e.message); }
     }
     if (ext?.up?.length) { out.usExt = ext; out.usUp = ext.up; out.usDown = ext.down; out.usSession = sess; }
     // 인기 종목도 시간외 등락률을 함께 표시
@@ -206,3 +209,25 @@ async function build(cached) {
 }
 
 export const config = { path: '/api/popular' };
+
+// 최근 공시·보도자료가 나온 미국 종목의 시간외 등락률을 상승·하락 순위에 합침
+async function addNewsMovers(ext, sess) {
+  const since = Date.now() - 36 * 3600e3;
+  const items = await queryArchive({ market: 'US', limit: 200 });
+  const tickers = [...new Set(items.filter((n) => n.ms > since && n.ticker && !/OTC/i.test(n.exchange || '')).map((n) => String(n.ticker).toUpperCase()))].slice(0, 120);
+  if (!tickers.length) return ext;
+  const q = await getQuotes(tickers.map((t) => 'US:' + t));
+  const add = [];
+  for (const t of tickers) {
+    const x = q['US:' + t];
+    if (!x || x.session !== sess || x.livePct == null || x.live == null) continue;
+    add.push({ market: 'US', ticker: t, name: x.nameKo || t, price: x.live, pct: x.livePct, regPrice: x.price, regPct: x.pct, session: sess, cur: 'USD', status: sess, news: true });
+  }
+  const up0 = ext?.up || [], down0 = ext?.down || [];
+  const merge = (base, dir) => {
+    const m = new Map(base.map((x) => [x.ticker, x]));
+    for (const x of add) if (dir > 0 ? x.pct > 0 : x.pct < 0) { const o = m.get(x.ticker); m.set(x.ticker, o ? { ...o, price: x.price, pct: x.pct } : x); }
+    return [...m.values()].sort((a, b) => dir * (b.pct - a.pct)).slice(0, 10);
+  };
+  return { ...(ext || { session: sess, src: 'news' }), up: merge(up0, 1), down: merge(down0, -1), at: ext?.at || Date.now() };
+}
