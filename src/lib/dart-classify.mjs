@@ -9,7 +9,9 @@ export function classifyDart(nm) {
   if (/최대주주변경을수반|경영권|공개매수/.test(n)) return ['current', 5];
   // 바이오: 임상·품목허가·FDA·기술수출 소식은 '투자판단 관련 주요경영사항' 등으로 나옴 → 4점
   if (/임상|품목허가|허가승인|FDA|EMA|신약|기술수출|기술이전|라이선스아웃|판매승인|시판허가|IND승인|NDA|BLA/i.test(n)) return ['current', 4];
-  if (/유상증자|전환사채|신주인수권부사채|교환사채|증권신고서|투자설명서|감자/.test(n)) return ['offering', 4];
+  // 증자 결정 뒤에 따라 나오는 서류(증권신고서·투자설명서·발행실적·일괄신고 추가서류)는 같은 건의 후속이라 2점 (채널·중요 필터에서 제외)
+  if (/증권신고서|투자설명서|증권발행실적|발행실적보고서|일괄신고추가서류|일괄신고서|소액공모/.test(n)) return ['offering', 2];
+  if (/유상증자|전환사채|신주인수권부사채|교환사채|감자/.test(n)) return ['offering', 4];
   if (/임원ㆍ주요주주|임원·주요주주|특정증권등소유상황/.test(n)) return ['insider', 3];
   if (/대량보유|주식등의대량보유/.test(n)) return ['inst', 3];
   if (/단일판매|공급계약|기술이전|기술도입|라이선스/.test(n)) return ['current', 4];
