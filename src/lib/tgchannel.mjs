@@ -4,7 +4,7 @@
 import { getJSON, setJSON } from './store.mjs';
 import { fetchWithTimeout } from './util.mjs';
 
-export const DEFAULT_CFG = { on: true, minImp: 4, perHour: 12, kr: true, us: true };
+export const DEFAULT_CFG = { on: true, minImp: 4, perHour: 12, kr: true, us: true, issues: true, digest: true };
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const kst = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(5, 16).replace('T', ' ').replace('-', '/');
 
@@ -89,4 +89,64 @@ export async function channelWatch() {
   if (errs.length) st.lastErr = { at: now, msg: errs[0].slice(0, 200) };
   await setJSON('tgch/state', st).catch(() => {});
   return { sent: n, errs };
+}
+
+// ───── 오늘 주요 이슈: 새 회차가 만들어지면 채널에 올림 (사이트 회차 시간 그대로) ─────
+export async function postIssue(ed) {
+  const chat = process.env.TELEGRAM_CHANNEL_ID;
+  if (!chat || !process.env.TELEGRAM_BOT_TOKEN || !ed?.issues?.length) return false;
+  const cfg = { ...DEFAULT_CFG, ...((await getJSON('tgch/cfg')) || {}) };
+  if (!cfg.on || !cfg.issues || (ed.mk === 'KR' ? !cfg.kr : !cfg.us)) return false;
+  const key = `tgch/iss/${ed.id}`;
+  if (await getJSON(key)) return false; // 같은 회차는 한 번만
+  const pct = (v) => (v == null ? '' : ` ${v > 0 ? '▲' : v < 0 ? '▼' : ''}${Math.abs(v).toFixed(2)}%`);
+  const lines = ed.issues.slice(0, 6).map((x, i) => {
+    const s0 = (x.stocks || []).find((s) => s.pct != null);
+    return `${i + 1}. ${x.tone === '호재' ? '🟢' : x.tone === '악재' ? '🔴' : '⚪'} <b>${esc(x.title)}</b>${s0 ? `  <i>${esc(s0.name)}${pct(s0.pct)}</i>` : ''}`;
+  }).join('\n');
+  const text = `📰 <b>${ed.mk === 'KR' ? '국장' : '미장'} 주요 이슈 · ${esc(ed.slot || '')}</b>\n${esc(ed.headline || '')}\n\n${lines}\n\n<a href="https://gk-stock.com/i/${encodeURIComponent(ed.id)}">이슈 ${ed.issues.length}개 자세히 보기 →</a>`;
+  await tgSend(chat, text, { preview: true });
+  await setJSON(key, { at: Date.now() });
+  return true;
+}
+
+// ───── AI가 고른 핵심 공시: 하루 3번씩 (국장 장 전·점심·마감 / 미장 개장 전·장중·마감) ─────
+const DG_TIMES = { KR: [[8, 40], [12, 10], [15, 45]], US: [[8, 50], [12, 30], [16, 15]] };
+function zoned(tz) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, wd: p.weekday, m: Number(p.hour) * 60 + Number(p.minute) };
+}
+export async function digestWatch() {
+  const chat = process.env.TELEGRAM_CHANNEL_ID;
+  if (!chat || !process.env.TELEGRAM_BOT_TOKEN) return null;
+  const cfg = { ...DEFAULT_CFG, ...((await getJSON('tgch/cfg')) || {}) };
+  if (!cfg.on || !cfg.digest) return null;
+  const out = {};
+  for (const mk of ['KR', 'US']) {
+    if (mk === 'KR' ? !cfg.kr : !cfg.us) continue;
+    const z = zoned(mk === 'KR' ? 'Asia/Seoul' : 'America/New_York');
+    if (['Sat', 'Sun'].includes(z.wd)) continue;
+    const slot = DG_TIMES[mk].find(([h, mi]) => z.m >= h * 60 + mi && z.m < h * 60 + mi + 10);
+    if (!slot) continue;
+    const key = `tgch/dg/${mk}/${z.date}-${slot[0]}${slot[1]}`;
+    if (await getJSON(key)) continue;
+    await setJSON(key, { at: Date.now() }); // 실패해도 이 회차는 다시 안 보냄 (중복 방지)
+    try {
+      const res = await (await import('../functions/digest.mjs')).default(new Request(`http://x/api/digest?mk=${mk}`));
+      const d = await res.json();
+      if (!d?.ok || !d.items?.length) { out[mk] = 'empty'; continue; }
+      const [sec, dart, news] = await Promise.all(['sec/feed', 'dart/feed', 'news/feed'].map((k) => getJSON(k).catch(() => null)));
+      const all = new Map([...(sec?.items || []), ...(dart?.items || []), ...(news?.items || [])].map((x) => [x.id, x]));
+      const lines = d.items.slice(0, 6).map((x, i) => {
+        const it = all.get(x.id);
+        const nm = it ? (mk === 'KR' ? it.name || it.ticker : it.ticker || it.company || '') : '';
+        return `${i + 1}. ${x.verdict === '긍정' ? '🟢' : x.verdict === '부정' ? '🔴' : '⚪'} <b>${esc(nm)}</b> ${esc(x.title)}${x.why ? `\n    └ ${esc(String(x.why).slice(0, 90))}` : ''}`;
+      }).join('\n');
+      const when = mk === 'KR' ? ['장 시작 전', '점심', '장 마감'][DG_TIMES.KR.indexOf(slot)] : ['개장 전', '장중', '장 마감'][DG_TIMES.US.indexOf(slot)];
+      const text = `🤖 <b>AI가 고른 ${mk === 'KR' ? '국장' : '미장'} 핵심 공시</b> · ${when}\n${esc(d.headline || '')}\n\n${lines}\n\n<a href="https://gk-stock.com/?top=digest&mk=${mk}">전체 보기 →</a>`;
+      await tgSend(chat, text, { preview: false });
+      out[mk] = 'sent';
+    } catch (e) { out[mk] = 'error: ' + e.message; }
+  }
+  return out;
 }

@@ -1669,7 +1669,7 @@ button.br-mv:hover { border-color: var(--accent); }
 .nav-pop[hidden] { display: none; }
 .nav-pop button { text-align: left; padding: .65rem .8rem; border-radius: 10px; font-weight: 700; font-size: .92rem; color: var(--text2); }
 .nav-pop button:hover, .nav-pop button.on { color: #fff; background: var(--accent-soft); }
-@media (min-width: 1101px) and (max-width: 1580px) { .nav > button.dx { display: none; } .nav-more { display: inline-flex; } }
+@media (min-width: 1101px) { .nav > button.dx { display: none; } .nav-more { display: inline-flex; } }
 @media (max-width: 1100px) {
   .nav { overflow: visible; }
   .nav > button.mx { display: none; }
@@ -1702,4 +1702,14 @@ button.br-mv:hover { border-color: var(--accent); }
   .rc-c small { display: none; }
   .rc-t th:first-child, .rc-t td:first-child { display: none; }
 }
-@media (min-width: 1101px) and (max-width: 1400px) { .nav > button.dx2 { display: none; } }
+
+/* ── v84: 텔레그램 채널 버튼 · 컴퓨터 메뉴도 더보기 ── */
+.tgc { display: flex; align-items: center; gap: .4rem; flex: none; padding: .32rem .7rem .32rem .5rem; border-radius: 12px; border: 1px solid rgba(56, 170, 235, .45); background: linear-gradient(135deg, rgba(56, 170, 235, .22), rgba(56, 170, 235, .06)); text-decoration: none; transition: .15s; }
+.tgc:hover { background: linear-gradient(135deg, rgba(56, 170, 235, .35), rgba(56, 170, 235, .12)); transform: translateY(-1px); }
+.tg-ico { width: 1.25rem; height: 1.25rem; flex: none; fill: none !important; stroke: #5cc4ff !important; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+.tgc span { display: flex; flex-direction: column; line-height: 1.15; }
+.tgc b { font-size: .8rem; color: #fff; white-space: nowrap; } .tgc small { font-size: .66rem; color: #9fdcff; font-weight: 700; white-space: nowrap; }
+.tgm { display: none !important; }
+@media (max-width: 1700px) { .tgc span { display: none; } .tgc { padding: .32rem .5rem; } }
+@media (min-width: 1101px) and (max-width: 1240px) { .nav > button.dx2 { display: none; } .hdr-right .search { width: 180px; } }
+@media (max-width: 720px) { .tgc { display: none !important; } .tgm { display: grid !important; place-items: center; border-color: rgba(56, 170, 235, .45) !important; } }

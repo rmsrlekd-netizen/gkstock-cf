@@ -258,6 +258,8 @@ export async function issuesWatch(now = new Date(), ctx = null) {
       out[mk] = ed.id;
       // 카톡 공유 미리보기 이미지를 미리 그려 둠
       try { await (await import('./og.mjs')).issueOgPng(ctx, ed.id, ed); } catch (e) { console.warn('issue-og', e.message); }
+      // 텔레그램 채널에도 올림 (채널 설정돼 있을 때)
+      try { await (await import('./tgchannel.mjs')).postIssue(ed); } catch (e) { console.warn('issue-tg', e.message); }
     } catch (e) {
       out[mk] = (e.skip ? 'skip: ' : 'error: ') + e.message;
       await setJSON(tk, { n: e.skip ? 9 : t.n + 1, at: Date.now(), err: String(e.message).slice(0, 200) }).catch(() => {});

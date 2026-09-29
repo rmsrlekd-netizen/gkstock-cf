@@ -36,7 +36,7 @@ import * as schedule from './functions/schedule.mjs';
 import * as halts from './functions/halts.mjs';
 import * as reaction from './functions/reaction.mjs';
 import { reactWatch } from './lib/react.mjs';
-import { channelWatch } from './lib/tgchannel.mjs';
+import { channelWatch, digestWatch } from './lib/tgchannel.mjs';
 import { haltsWatch } from './lib/halts.mjs';
 import { scheduleWatch } from './lib/schedule.mjs';
 import { briefWatch } from './lib/brief.mjs';
@@ -172,6 +172,7 @@ export default {
     if (econBusy || min % 30 === 0) jobs.push(econWatch().then(async (r) => { if (r.ai || econBusy) { const { econCalendar } = await import('./lib/econ.mjs'); const { setJSON } = await import('./lib/store.mjs'); await setJSON('econ/v1', await econCalendar()); } }).catch((e) => console.warn('econ', e.message)));
     // 텔레그램 채널: 중요 공시 자동 게시 (채널이 설정돼 있을 때만)
     jobs.push(channelWatch().then((r) => { if (r?.sent) console.log('tgch', JSON.stringify(r)); }).catch((e) => console.warn('tgch', e.message)));
+    jobs.push(digestWatch().then((r) => { if (r && Object.keys(r).length) console.log('tgdg', JSON.stringify(r)); }).catch((e) => console.warn('tgdg', e.message)));
     // VI·서킷: 국장 VI 발동·해제 (장중) · 미장 거래정지·재개 (뉴욕 4:00~20:00) 매분 기록
     jobs.push(haltsWatch(now).then((r) => { if (r.kr || r.us) console.log('halts', JSON.stringify(r)); }).catch((e) => console.warn('halts', e.message)));
     // 오늘 주요 이슈: 회차 시각이 되면 AI가 새로 만듦 (한국 4회·미국 4회)

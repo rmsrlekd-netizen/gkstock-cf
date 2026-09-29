@@ -42,10 +42,10 @@ export default async (req) => {
     if (ch === 'on' || ch === 'off') cfg.on = ch === 'on';
     if (ch === 'set') {
       const n = (k, lo, hi) => { const v = Number(u.searchParams.get(k)); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : undefined; };
-      const mi = n('minImp', 3, 5), ph = n('perHour', 1, 30);
+      const mi = n('minImp', 3, 5), ph = n('perHour', 1, 180);
       if (mi !== undefined) cfg.minImp = mi;
       if (ph !== undefined) cfg.perHour = ph;
-      for (const k of ['kr', 'us']) if (u.searchParams.has(k)) cfg[k] = u.searchParams.get(k) === '1';
+      for (const k of ['kr', 'us', 'issues', 'digest']) if (u.searchParams.has(k)) cfg[k] = u.searchParams.get(k) === '1';
     }
     await setJSON('tgch/cfg', cfg);
     return J({ ok: true, cfg });

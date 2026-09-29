@@ -2586,12 +2586,13 @@
           <li>Cloudflare 변수에 <code>TELEGRAM_CHANNEL_ID</code>를 등록하세요. 값: <code>@채널주소</code> (비공개 채널이면 -100으로 시작하는 숫자)</li>
           <li>저장 후 이 화면을 새로고침하면 설정 버튼이 나와요.</li></ol></div>`;
         return `<div class="card" style="margin-top:.8rem"><h3>텔레그램 채널 자동 게시 <small class="muted">${esc(c.id)} · 오늘 ${c.today || 0}건 게시</small></h3>
-          <p class="note" style="margin:.2rem 0 .6rem">중요 공시·보도자료가 나오면 AI 요약(호재·악재, 핵심 2줄)과 사이트 링크를 채널에 자동으로 올려요. 켠 뒤에 새로 나온 것만 올라가요.</p>
+          <p class="note" style="margin:.2rem 0 .6rem">① 중요 공시·보도자료가 나오면 AI 요약(호재·악재, 핵심 2줄)과 링크를 바로 올려요. ② <b>오늘 주요 이슈</b>는 사이트에 새 회차가 만들어질 때마다(국장 8~16시, 개장 직후 30분 간격 · 미장 뉴욕 8~17시) 올려요. ③ <b>AI 핵심 공시</b>는 하루 3번(국장 8:40·12:10·15:45 / 미장 뉴욕 8:50·12:30·16:15) 올려요. 시간당 최대 건수는 ①에만 적용돼요.</p>
           <div class="chips" style="align-items:center;gap:.4rem">
             <button class="btn sm ${g.on ? 'primary' : ''}" data-admin-act="${g.on ? 'choff' : 'chon'}">${g.on ? '● 게시 중 (끄기)' : '○ 꺼짐 (켜기)'}</button>
             <label class="muted sm">기준 <select id="chImp"><option value="5"${g.minImp === 5 ? ' selected' : ''}>최중요만</option><option value="4"${g.minImp === 4 ? ' selected' : ''}>중요 이상</option><option value="3"${g.minImp === 3 ? ' selected' : ''}>보통 이상 (많음)</option></select></label>
-            <label class="muted sm">시간당 최대 <select id="chPer">${[4, 8, 12, 20, 30].map((v) => `<option value="${v}"${g.perHour === v ? ' selected' : ''}>${v}건</option>`).join('')}</select></label>
+            <label class="muted sm">시간당 최대 <select id="chPer">${[4, 8, 12, 20, 30, 60, 120].map((v) => `<option value="${v}"${g.perHour === v ? ' selected' : ''}>${v}건</option>`).join('')}</select></label>
             <label class="muted sm"><input type="checkbox" id="chKr"${g.kr ? ' checked' : ''}> 국장</label><label class="muted sm"><input type="checkbox" id="chUs"${g.us ? ' checked' : ''}> 미장</label>
+            <label class="muted sm"><input type="checkbox" id="chIss"${g.issues !== false ? ' checked' : ''}> 오늘 주요 이슈</label><label class="muted sm"><input type="checkbox" id="chDg"${g.digest !== false ? ' checked' : ''}> AI 핵심 공시</label>
             <button class="btn sm" data-admin-act="chset">설정 저장</button><button class="btn sm" data-admin-act="chtest">테스트 발송</button>
           </div>
           <p class="note">${c.last ? `마지막 게시: ${fmtDT(new Date(c.last.at)).full} · ${esc(c.last.title || '')}` : '아직 게시한 글이 없어요.'}${c.err ? `<br><b class="err">⚠ ${esc(c.err)}</b> — 봇이 채널 관리자인지, 채널 주소가 맞는지 확인하세요.` : ''}${c.lastErr && !c.err ? `<br><span class="muted">최근 오류(${fmtDT(new Date(c.lastErr.at)).hm}): ${esc(c.lastErr.msg)}</span>` : ''}</p></div>`;
@@ -2614,7 +2615,7 @@
       }
       if (act === 'chtest') { msg('채널로 테스트 메시지를 보내는 중…'); const j = await getJSON(`/api/admin?key=${k}&ch=test`, { cache: 'no-store' }).catch((e) => ({ ok: false, error: e.message })); msg(j.ok ? '채널에 테스트 메시지를 보냈어요. 텔레그램 채널을 확인하세요.' : '보내지 못했어요: ' + (j.error || '')); return; }
       if (act === 'chon' || act === 'choff') { await getJSON(`/api/admin?key=${k}&ch=${act.slice(2)}`, { cache: 'no-store' }); return renderAdmin(); }
-      if (act === 'chset') { const q = `minImp=${$('#chImp').value}&perHour=${$('#chPer').value}&kr=${$('#chKr').checked ? 1 : 0}&us=${$('#chUs').checked ? 1 : 0}`; await getJSON(`/api/admin?key=${k}&ch=set&${q}`, { cache: 'no-store' }); msg('채널 설정을 저장했어요.'); return renderAdmin(); }
+      if (act === 'chset') { const q = `minImp=${$('#chImp').value}&perHour=${$('#chPer').value}&kr=${$('#chKr').checked ? 1 : 0}&us=${$('#chUs').checked ? 1 : 0}&issues=${$('#chIss').checked ? 1 : 0}&digest=${$('#chDg').checked ? 1 : 0}`; await getJSON(`/api/admin?key=${k}&ch=set&${q}`, { cache: 'no-store' }); msg('채널 설정을 저장했어요.'); return renderAdmin(); }
       if (act === 'tgfind') { const j = await getJSON(`/api/admin?key=${k}&tg=find`, { cache: 'no-store' }); msg(j.error || (j.chats?.length ? '찾은 채팅 ID: ' + j.chats.map((c) => `${c.id} (${c.name || ''})`).join(', ') + ' → 이 숫자를 Cloudflare 변수 TELEGRAM_CHAT_ID로 등록하세요.' : j.hint)); return; }
       if (act === 'tgtest') { const j = await getJSON(`/api/admin?key=${k}&tg=test`, { cache: 'no-store' }); msg(j.ok ? '텔레그램으로 테스트 알림을 보냈습니다.' : '보내지 못했습니다. 봇 토큰과 채팅 ID를 확인하세요.'); }
     } catch (e) { msg(e.message); }
