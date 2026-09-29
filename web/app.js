@@ -2344,6 +2344,26 @@
   function fRow(i, m, t, name, sub, val, small, cls, attr) {
     return `<div class="f-row" ${attr}><span class="f-rk">${i}</span>${logoHTML(m, t, name, 'sm')}<div style="min-width:0"><div class="f-name">${esc(name)}</div><div class="f-sub">${sub}</div></div><div class="f-val ${cls || ''}">${val}${small ? `<small>${small}</small>` : ''}</div></div>`;
   }
+  // 미국 회사 이름 한글로 (네이버 한글 종목명, 시세 받을 때 같이 옴)
+  const usKo = (t, name) => { const q = t ? S.quotes.get(wkey('US', t)) : null; return q?.nameKo && hasKo(q.nameKo) ? q.nameKo : name; };
+  const flowKoTried = new Set();
+  function flowKoFetch(list) {
+    const keys = [...new Set(list.filter((n) => n.ticker).map((n) => wkey('US', n.ticker)))].filter((k) => !S.quotes.get(k)?.nameKo && !flowKoTried.has(k));
+    if (!keys.length) return;
+    keys.forEach((k) => flowKoTried.add(k));
+    (async () => { let ch = false; for (let i = 0; i < keys.length; i += 40) ch = (await fetchQuotes(keys.slice(i, i + 40))) || ch; if (ch && S.view === 'flows') renderFlows(); })();
+  }
+  // 임원 직함 한글로
+  const ROLE_KO = [
+    [/Chief Executive Officer/gi, 'CEO'], [/Chief Financial Officer/gi, 'CFO'], [/Chief Operating Officer/gi, 'COO'], [/Chief Technology Officer/gi, 'CTO'],
+    [/Chief Investment Officer/gi, '최고투자책임자'], [/Chief Accounting Officer/gi, '최고회계책임자'], [/Chief Legal Officer|General Counsel/gi, '법무총괄'], [/Chief Medical Officer/gi, '최고의학책임자'],
+    [/Chief Scientific Officer/gi, '최고과학책임자'], [/Chief Commercial Officer/gi, '최고사업책임자'], [/Chief Revenue Officer/gi, '최고매출책임자'], [/Chief People Officer|Chief Human Resources Officer/gi, '최고인사책임자'],
+    [/Chief Information Officer/gi, '최고정보책임자'], [/Chief Marketing Officer/gi, '최고마케팅책임자'], [/Chief Risk Officer/gi, '최고위험관리책임자'], [/Chief Credit Officer/gi, '최고여신책임자'], [/Chief Strategy Officer/gi, '최고전략책임자'],
+    [/Executive Vice President|\bEVP\b/gi, '수석부사장'], [/Senior Vice President|\bSVP\b/gi, '전무'], [/Vice President|\bVP\b/gi, '부사장'],
+    [/Executive Chair(man|person)?/gi, '집행의장'], [/Chair(man|person|woman)? of the Board|Board Chair/gi, '이사회 의장'], [/\bChair(man|person|woman)?\b/gi, '의장'],
+    [/President/gi, '사장'], [/\bDirector\b/gi, '이사'], [/Treasurer/gi, '재무담당'], [/Secretary/gi, '총무이사'], [/Controller/gi, '회계책임자'], [/\bOfficer\b/gi, '임원'], [/\bFounder\b/gi, '창업자'], [/\band\b/gi, '·'], [/\bCo-/gi, '공동 '],
+  ];
+  const roleKo = (s) => ROLE_KO.reduce((a, [re, k]) => a.replace(re, k), String(s || '')).replace(/\s*·\s*/g, '·').replace(/\s{2,}/g, ' ').trim();
   function renderFlows() {
     const box = $('#flows'), tab = S.flowTab;
     $$('#flowTabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
@@ -2358,13 +2378,15 @@
       if (S.insiderSide !== 'all') list = list.filter((n) => n.raw.tx.main.code === S.insiderSide);
       list.sort(byTime);
       $('#flowMeta').textContent = `Form 4 ${list.length}건`;
-      box.innerHTML = list.length ? list.slice(0, 100).map((n, i) => { const m = n.raw.tx.main, buy = m.code === 'P', k = fmtDT(new Date(n.ms)); return fRow(i + 1, 'US', n.ticker, `${n.ticker} · ${n.name}`, `${esc(personName(n.raw.tx.owner))}${n.raw.tx.relation ? ' · ' + esc(n.raw.tx.relation) : ''}`, `${buy ? '+' : '-'}${usd(m.value)}`, `${fmtInt(m.shares)}주 · ${k.md} ${k.hm}:${k.s}`, buy ? 'buy' : 'sell', `data-id="${esc(n.id)}"`); }).join('') : `<div class="empty">${S.loaded.sec ? '아직 매수·매도가 파악된 Form 4가 없습니다.' : '불러오는 중…'}</div>`;
+      flowKoFetch(list.slice(0, 100));
+      box.innerHTML = list.length ? list.slice(0, 100).map((n, i) => { const m = n.raw.tx.main, buy = m.code === 'P', k = fmtDT(new Date(n.ms)); return fRow(i + 1, 'US', n.ticker, `${n.ticker} · ${usKo(n.ticker, n.name)}`, `${esc(personName(n.raw.tx.owner))}${n.raw.tx.relation ? ' · ' + esc(roleKo(n.raw.tx.relation)) : ''}`, `${buy ? '+' : '-'}${usd(m.value)}`, `${fmtInt(m.shares)}주 · ${k.md} ${k.hm}:${k.s}`, buy ? 'buy' : 'sell', `data-id="${esc(n.id)}"`); }).join('') : `<div class="empty">${S.loaded.sec ? '아직 매수·매도가 파악된 Form 4가 없습니다.' : '불러오는 중…'}</div>`;
       return;
     }
     if (tab === 'usInst') {
       const list = all.filter((n) => n.src === 'SEC' && n.raw.category === 'inst').sort(byTime);
       $('#flowMeta').textContent = `${list.length}건`;
-      box.innerHTML = list.length ? list.slice(0, 100).map((n, i) => { const k = fmtDT(new Date(n.ms)); return fRow(i + 1, 'US', n.ticker, n.ticker ? `${n.ticker} · ${n.name}` : n.name, esc(n.head), esc(n.raw.form.replace('SCHEDULE ', 'SC ')), `${k.md} ${k.hm}:${k.s}`, '', `data-id="${esc(n.id)}"`); }).join('') : '<div class="empty">불러오는 중…</div>';
+      flowKoFetch(list.slice(0, 100));
+      box.innerHTML = list.length ? list.slice(0, 100).map((n, i) => { const k = fmtDT(new Date(n.ms)); return fRow(i + 1, 'US', n.ticker, n.ticker ? `${n.ticker} · ${usKo(n.ticker, n.name)}` : n.name, esc(n.head), esc(n.raw.form.replace('SCHEDULE ', 'SC ')), `${k.md} ${k.hm}:${k.s}`, '', `data-id="${esc(n.id)}"`); }).join('') : '<div class="empty">불러오는 중…</div>';
       return;
     }
     if (tab === 'krInsider') {
@@ -2404,7 +2426,8 @@
     for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== v;
     $$('#nav button[data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
     syncNavMore();
-    if (hash !== false) { const u = '/' + (hash || '#' + v); if (location.pathname !== '/') history.pushState(null, '', u); else history.replaceState(null, '', u); }
+    //  화면을 옮길 때마다 방문 기록을 남김 (예전엔 같은 페이지 안에선 덮어써서, 모바일 앱에서 뒤로 가기를 누르면 앱이 꺼졌음)
+    if (hash !== false) { const u = '/' + (hash || '#' + v); if (location.pathname + location.hash !== u) history.pushState(null, '', u); }
     if (feed) { S.type = v === 'home' ? S.homeType || 'ALL' : FEED_VIEWS[v]; S.limit = 80; renderAll(); }
     if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 미국·한국 실시간 공시·보도자료'; }
     if (v === 'market') renderMarket();
@@ -2438,6 +2461,7 @@
     const m = h.match(/^company\/(US|KR)\/([A-Z0-9.\-]+)/i);
     if (m) { openCompany(m[1].toUpperCase(), m[2]); return; }
     if (/^item\//.test(h)) { showItem(h.slice(5)); return; }
+    if (h === 'company') { S.coCur = null; $('#coBody').innerHTML = CO_EMPTY; } // 종목 화면에서 뒤로 → 기업 분석 첫 화면
     setView(h in FEED_VIEWS || h in PAGES ? h : 'home', false); // (#news 등 없어진 메뉴는 홈으로)
   }
 
