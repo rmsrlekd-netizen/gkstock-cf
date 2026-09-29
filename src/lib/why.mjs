@@ -53,9 +53,15 @@ export function ownTitle(n) {
   return clean(n.ko?.title || n.titleKo || n.summaryKo || n.title || [n.formKo || n.form, its].filter(Boolean).join(' ') || '');
 }
 async function ownNews(mk, t) {
-  const arr = await queryArchive({ market: mk, ticker: t, limit: 8 }).catch(() => []);
-  return arr.filter((n) => n.time && Date.now() - Date.parse(n.time) < 48 * 3600e3)
-    .map((n) => ({ id: 'own-' + n.id, title: ownTitle(n), sum: clean(n.desc || '').slice(0, 160), src: n.src === 'PR' ? (n.source || '보도자료') : n.src === 'SEC' ? 'SEC 공시' : 'DART 공시', at: new Date(Date.parse(n.time)).toISOString(), url: n.url || null, n: 1, own: true }))
+  const arr = (await queryArchive({ market: mk, ticker: t, limit: 8 }).catch(() => [])).filter((n) => n.time && Date.now() - Date.parse(n.time) < 48 * 3600e3 && !/^(3|4|5|144)(\/A)?$/.test(String(n.form || '')));
+  //  한국어 제목이 없는 공시("해외기업 수시공시" 등)는 저장된 AI 요약(한 줄 + 핵심 3줄)을 근거로 씀
+  const ai = {};
+  await Promise.all(arr.filter((n) => mk === 'US' && !n.ko?.title && !n.titleKo).map(async (n) => {
+    const a = (await getJSON(`ai3/${n.id}`)) || (await getJSON(`aiq/${n.id}`));
+    if (a?.headline && !a.fallback) ai[n.id] = { title: a.headline, sum: (a.summary || []).join(' / ').slice(0, 200) };
+  }));
+  return arr
+    .map((n) => ({ id: 'own-' + n.id, title: ai[n.id]?.title || ownTitle(n), sum: ai[n.id]?.sum || clean(n.desc || '').slice(0, 160), src: n.src === 'PR' ? (n.source || '보도자료') : n.src === 'SEC' ? 'SEC 공시' : 'DART 공시', at: new Date(Date.parse(n.time)).toISOString(), url: n.url || null, n: 1, own: true }))
     .filter((x) => x.title);
 }
 
@@ -116,12 +122,13 @@ export async function whyFor({ mk, t, name, pct = null, reuters = null, peers = 
   const now = Date.now();
   if (prev && !force && now - prev.at < (prev.reason ? 8 : 3) * 60e3) return { ...prev, pct: pct ?? prev.pct, peers: peers || prev.peers, cached: true };
   const news = await stockNews(mk, t, reuters);
-  const sig = news.map((x) => x.id).join('|');
+  const sig = news.map((x) => x.id + ':' + String(x.title || '').length).join('|'); // 같은 공시라도 AI 요약이 새로 붙어 제목이 바뀌면 다시 판단
   const out = { mk, t, name: name || prev?.name || t, pct: pct ?? prev?.pct ?? null, news, peers: peers || prev?.peers || null, at: now, sig, reason: null, conf: null, basis: [], aiAt: null, aiPct: null };
   // 오늘(20시간 안) 만든 AI 이유는 그대로 이어 씀
   if (prev?.reason && prev.aiAt && now - prev.aiAt < 20 * 3600e3) Object.assign(out, { reason: prev.reason, conf: prev.conf, basis: prev.basis || [], aiAt: prev.aiAt, aiPct: prev.aiPct });
   const moved = out.pct != null && Math.abs(out.pct) >= minMove;
-  const changed = sig !== prev?.sig || !out.reason || (out.aiPct != null && out.pct != null && Math.abs(out.pct - out.aiPct) >= 6 && now - out.aiAt > 60 * 60e3);
+  const oldSig = news.map((x) => x.id).join('|'); // 예전 방식 기록은 '근거 부족'이었던 것만 다시 판단 (AI 호출 절약)
+  const changed = (sig !== prev?.sig && !(prev?.sig === oldSig && prev?.conf !== '낮음')) || !out.reason || (out.aiPct != null && out.pct != null && Math.abs(out.pct - out.aiPct) >= 6 && now - out.aiAt > 60 * 60e3);
   if (allowAI && moved && changed && hasAI() && !(await aiPauseInfo())) {
     const dayKey = `why/count/${kstDate(0)}/${mk}`; // 한국·미국 따로 (국장에서 다 써서 미장 프리마켓에 AI가 멈추던 문제)
     const cnt = (await getJSON(dayKey))?.n || 0;
