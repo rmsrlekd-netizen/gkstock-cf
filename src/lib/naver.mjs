@@ -196,7 +196,7 @@ export async function tvUsExtMovers(session, n = 10) {
   const pre = session !== 'AFTER';
   const chg = pre ? 'premarket_change' : 'postmarket_change', px = pre ? 'premarket_close' : 'postmarket_close', vol = pre ? 'premarket_volume' : 'postmarket_volume';
   const scan = async (order) => {
-    const body = JSON.stringify({ columns: ['name', 'description', chg, px, 'close', 'change', 'market_cap_basic', vol, 'exchange'], filter: [{ left: 'type', operation: 'equal', right: 'stock' }, { left: 'exchange', operation: 'in_range', right: ['NASDAQ', 'NYSE', 'AMEX'] }, { left: vol, operation: 'greater', right: 5000 }, { left: chg, operation: order === 'desc' ? 'greater' : 'less', right: 0 }], sort: { sortBy: chg, sortOrder: order }, range: [0, n + 5] });
+    const body = JSON.stringify({ columns: ['name', 'description', chg, px, 'close', 'change', 'market_cap_basic', vol, 'exchange'], filter: [{ left: 'type', operation: 'equal', right: 'stock' }, { left: 'exchange', operation: 'in_range', right: ['NASDAQ', 'NYSE', 'AMEX'] }, { left: vol, operation: 'greater', right: 5000 }, { left: chg, operation: order === 'desc' ? 'greater' : 'less', right: 0 }], sort: { sortBy: chg, sortOrder: order }, range: [0, n + 20] });
     const opt = { method: 'POST', headers: { 'content-type': 'application/json', Origin: 'https://www.tradingview.com', Referer: 'https://www.tradingview.com/' }, body };
     let r = await fetchWithTimeout('https://scanner.tradingview.com/america/scan', opt, 8000).catch(() => null);
     if (!r?.ok && process.env.KR_RELAY_URL) r = await fetchWithTimeout('https://scanner.tradingview.com/america/scan', { ...opt, relay: true }, 9000);
@@ -216,7 +216,14 @@ export async function tvUsExtMovers(session, n = 10) {
     const nq = q[rc[x.ticker]];
     const e = nq?.ext && nq.ext.session === (pre ? 'PRE' : 'AFTER') ? nq.ext : null;
     const capU = x.cap ? x.cap / 1e8 : null;
-    return { market: 'US', ticker: x.ticker, reuters: rc[x.ticker] || null, name: nq?.nameKo || x.name, price: e?.price ?? x.price, pct: e?.pct ?? x.pct, regPrice: x.regPrice, regPct: nq?.pct ?? x.regPct, session: pre ? 'PRE' : 'AFTER', cur: 'USD', mcapText: capU != null ? `${capU >= 10 ? Math.round(capU).toLocaleString('en-US') : capU.toFixed(2)}억 USD` : null, status: pre ? 'PRE' : 'AFTER' };
+    return { _live: !!e, market: 'US', ticker: x.ticker, reuters: rc[x.ticker] || null, name: nq?.nameKo || x.name, price: e?.price ?? x.price, pct: e?.pct ?? x.pct, regPrice: x.regPrice, regPct: nq?.pct ?? x.regPct, session: pre ? 'PRE' : 'AFTER', cur: 'USD', mcapText: capU != null ? `${capU >= 10 ? Math.round(capU).toLocaleString('en-US') : capU.toFixed(2)}억 USD` : null, status: pre ? 'PRE' : 'AFTER' };
   };
-  return { up: up.slice(0, n).map(fmt).sort((a, b) => b.pct - a.pct), down: down.slice(0, n).map(fmt).sort((a, b) => a.pct - b.pct), session: pre ? 'PRE' : 'AFTER', src: 'tv' };
+  //  프리장 시작 직후(오후 5시 무렵)엔 트레이딩뷰 값이 전날 것으로 남아 있음 → 네이버 오늘 시세로 확인된 것만, 방향이 맞는 것만
+  const hasQ = Object.keys(q).length > 0;
+  const keep = (dir) => (x) => (!hasQ || x._live) && (dir > 0 ? x.pct > 0 : x.pct < 0);
+  const clean = ({ _live, ...x }) => x;
+  const U = up.map(fmt).filter(keep(1)).sort((a, b) => b.pct - a.pct).slice(0, n).map(clean);
+  const D = down.map(fmt).filter(keep(-1)).sort((a, b) => a.pct - b.pct).slice(0, n).map(clean);
+  if (U.length < 3 || D.length < 3) throw new Error('트레이딩뷰 시간외 데이터가 아직 오늘 것 아님');
+  return { up: U, down: D, session: pre ? 'PRE' : 'AFTER', src: 'tv' };
 }

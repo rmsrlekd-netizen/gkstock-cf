@@ -147,7 +147,7 @@ async function build(cached) {
       // 1순위: 트레이딩뷰 전체 종목 스캔 (소형주까지 전부) → 실패하면 네이버 시총 상위 + 전일 급등락 종목으로 계산
       try { ext = { ...(await tvUsExtMovers(sess, 10)), at: Date.now() }; } catch (e) {
         errors.push('usExtTV: ' + e.message);
-        try { ext = { ...(await naverUsExtMovers(10)), session: sess, src: 'naver', at: Date.now() }; } catch (e2) { errors.push('usExt: ' + e2.message); }
+        try { const nx = await naverUsExtMovers(10); const ok = (x) => x.session === sess; ext = { ...nx, up: nx.up.filter(ok), down: nx.down.filter(ok), session: sess, src: 'naver', at: Date.now() }; } catch (e2) { errors.push('usExt: ' + e2.message); }
       }
     }
     if (ext?.up?.length) { out.usExt = ext; out.usUp = ext.up; out.usDown = ext.down; out.usSession = sess; }
