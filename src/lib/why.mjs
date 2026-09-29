@@ -189,6 +189,14 @@ export async function whyWatch({ budgetMs = 45000, maxAI = 10 } = {}) {
       map[`${x.market}|${String(x.ticker).toUpperCase()}`] = { r: r.reason, c: r.conf, n: r.news?.length || 0, at: r.aiAt || r.at };
     }));
   }
+  // 급등락 종목의 공시가 서식 이름뿐("해외기업 수시공시" 등)이면 원문을 읽고 한 줄 요약을 미리 만들어 둠 (한 번에 최대 4건)
+  try {
+    const need = [...new Set(['usUp', 'usDown', 'krUp', 'krDown', 'us', 'kr'].flatMap((k) => (pop[k] || []).map((x) => x.prNeed).filter(Boolean)))].slice(0, 4);
+    if (need.length && hasAI() && Date.now() - started < budgetMs + 10000) {
+      const { quickSummary } = await import('../functions/analyze.mjs');
+      await Promise.all(need.map((id) => quickSummary(id).catch(() => null)));
+    }
+  } catch {}
   // 오래된 것 정리
   for (const [k, v] of Object.entries(map)) if (Date.now() - (v.at || 0) > 24 * 3600e3) delete map[k];
   await setJSON('why/map', map).catch(() => {});

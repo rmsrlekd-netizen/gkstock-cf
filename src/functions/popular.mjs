@@ -5,6 +5,7 @@ import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num, re
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { us as usQuote, getQuotes } from './quote.mjs';
 import { queryArchive } from '../lib/archive.mjs';
+import { savedHeadline } from './analyze.mjs';
 import { usDaySession, usDayMovers, usDayQuotes } from '../lib/usday.mjs';
 import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers, naverKrExtMovers, naverKrQuotes } from '../lib/naver.mjs';
 
@@ -219,10 +220,17 @@ async function build(cached) {
         if (!tt) continue;
         //  한국어 핵심 제목이 있는 것 > 보도자료 > 최신 순 ("수시공시 기타 주요 사항" 같은 서식 이름만 있는 건 뒤로)
         const sc = (mk === 'KR' || n.ko?.title || n.titleKo ? 2 : 0) + (n.src === 'PR' ? 1 : 0);
-        if (!pm[key] || sc > pm[key].sc) pm[key] = { t: tt.slice(0, 80), kind: n.src === 'PR' ? '보도자료' : '공시', at: ms, sc };
+        if (!pm[key] || sc > pm[key].sc) pm[key] = { t: tt.slice(0, 80), kind: n.src === 'PR' ? '보도자료' : '공시', at: ms, sc, id: n.id };
+      }
+      //  "해외기업 수시공시"처럼 서식 이름뿐이면 → AI 한 줄 요약이 있으면 그걸, 없으면 표시하지 않고 뒤에서 요약을 만들어 둠
+      const p = pm[key];
+      if (p && p.sc === 0) {
+        const h = await savedHeadline(p.id).catch(() => null);
+        if (h) Object.assign(p, { t: h.slice(0, 80), sc: 2 });
+        else pm[key] = { need: p.id };
       }
     }));
-    for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const p = pm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (p) x.pr = p; }
+    for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const p = pm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (p?.t) x.pr = p; else if (p?.need) x.prNeed = p.need; }
   } catch {}
   if (kr.length || usList.length) await setJSON('popular/v2', out).catch(() => {});
   return out;

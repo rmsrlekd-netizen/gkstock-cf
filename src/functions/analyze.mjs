@@ -91,6 +91,12 @@ export function analyzeId(id) {
 
 // 빠른 요약: 처음 여는 공시는 심층 분석(20~40초) 전에 3~5초 안에 핵심 3줄 + 주가 영향을 먼저 보여줌
 const qInflight = new Map();
+/** 공시 한 줄 핵심 (저장된 심층·빠른 요약에서, 없으면 null) */
+export async function savedHeadline(id) {
+  const a = (await getJSON(`ai3/${id}`)) || (await getJSON(`aiq/${id}`));
+  return a?.headline && !a.fallback ? a.headline : null;
+}
+export { quick as quickSummary };
 async function quick(id) {
   const c = await getJSON(`aiq/${id}`);
   if (c) return c;
