@@ -204,20 +204,24 @@ async function build(cached) {
   // 저장된 "오늘 움직임 이유" 붙이기 (3분마다 따로 만들어 둠)
   const wm = (await getJSON('why/map')) || {};
   for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const w = wm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (w?.r && Date.now() - w.at < 20 * 3600e3) { x.reason = w.r; x.rconf = w.c; } }
-  // AI 이유가 아직 없으면 우리 사이트의 최근(36시간) 공시·보도자료 제목을 대신 보여줌
+  // AI 이유가 아직 없으면 우리 사이트의 최근(48시간 = 전날까지) 공시·보도자료 핵심 제목을 대신 보여줌
+  //  (전체 최신 200건만 보면 공시가 많은 날엔 12시간 전 것도 빠짐 → 순위에 오른 종목별로 따로 조회)
   try {
     const { ownTitle } = await import('../lib/why.mjs');
-    const since = Date.now() - 36 * 3600e3, pm = {};
-    for (const mk of ['US', 'KR']) for (const n of await queryArchive({ market: mk, limit: 200 }).catch(() => [])) {
-      const ms = Date.parse(n.time || '');
-      const k = `${mk}|${String(n.ticker || '').toUpperCase()}`;
-      if (!n.ticker || !(ms > since) || /^(3|4|5|144)(\/A)?$/.test(String(n.form || ''))) continue; // 내부자 거래 보고는 제외
-      const t = ownTitle(n);
-      if (!t) continue;
-      //  한국어 핵심 제목이 있는 것 > 보도자료 > 최신 순 ("수시공시 기타 주요 사항" 같은 서식 이름만 있는 건 뒤로)
-      const sc = (mk === 'KR' || n.ko?.title || n.titleKo ? 2 : 0) + (n.src === 'PR' ? 1 : 0);
-      if (!pm[k] || sc > pm[k].sc) pm[k] = { t: t.slice(0, 80), kind: n.src === 'PR' ? '보도자료' : '공시', at: ms, sc };
-    }
+    const since = Date.now() - 48 * 3600e3, pm = {};
+    const keys = [...new Set(['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown'].flatMap((k) => (out[k] || []).map((x) => `${x.market}|${String(x.ticker).toUpperCase()}`)))];
+    await Promise.all(keys.map(async (key) => {
+      const [mk, t] = key.split('|');
+      for (const n of await queryArchive({ market: mk, ticker: t, limit: 8 }).catch(() => [])) {
+        const ms = Date.parse(n.time || '');
+        if (!(ms > since) || /^(3|4|5|144)(\/A)?$/.test(String(n.form || ''))) continue; // 내부자 거래 보고는 제외
+        const tt = ownTitle(n);
+        if (!tt) continue;
+        //  한국어 핵심 제목이 있는 것 > 보도자료 > 최신 순 ("수시공시 기타 주요 사항" 같은 서식 이름만 있는 건 뒤로)
+        const sc = (mk === 'KR' || n.ko?.title || n.titleKo ? 2 : 0) + (n.src === 'PR' ? 1 : 0);
+        if (!pm[key] || sc > pm[key].sc) pm[key] = { t: tt.slice(0, 80), kind: n.src === 'PR' ? '보도자료' : '공시', at: ms, sc };
+      }
+    }));
     for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const p = pm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (p) x.pr = p; }
   } catch {}
   if (kr.length || usList.length) await setJSON('popular/v2', out).catch(() => {});
