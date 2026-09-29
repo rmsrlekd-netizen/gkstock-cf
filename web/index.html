@@ -10,7 +10,9 @@
   <meta name="author" content="GK의 미국 주식" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
   <link rel="canonical" href="https://gk-stock.com/" />
+  <!-- 검색엔진 소유 확인 (네이버 서치어드바이저·구글 서치콘솔 코드) -->
   <meta name="naver-site-verification" content="26b5ed4af80e3e25e672a7aa6361e99364031138" />
+  <!--GOOGLE_VERIFY-->
   <meta name="theme-color" content="#0a0b1e" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="GK의 공시레이더" />
@@ -48,6 +50,7 @@
     <p>미국 SEC 공시(8-K, 10-Q, Form 4 등)와 GlobeNewswire·PR Newswire·Business Wire 보도자료, 한국 DART 공시를 실시간으로 모아 보여주는 공시 터미널입니다. 공시마다 섹터 전문 애널리스트 관점의 AI 핵심 요약, 긍정·부정 요인, 주가 영향 판단을 제공하며, 실적 발표 캘린더, 네이버 증권 기준 실시간 인기 종목, 공매도 잔고·내부자 거래·기관 보유 정보를 함께 볼 수 있습니다.</p>
     <p>유튜브 <a href="https://www.youtube.com/@GK_Stock">GK의 미국 주식</a>이 운영합니다. 이 사이트는 자바스크립트를 켜야 이용할 수 있습니다.</p>
   </noscript>
+  <!-- ───────── 헤더 ───────── -->
   <header class="hdr">
     <div class="hdr-in">
       <div class="brand-wrap">
@@ -83,10 +86,14 @@
         <button class="ico" id="btnUser" title="설정"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
       </div>
     </div>
+    <!-- 시장 지표 띠 -->
     <div class="tape"><div class="tape-in" id="tapeIn"></div></div>
   </header>
+
   <main id="app">
+    <!-- ───────── 라이브 피드 (홈·공시·보도자료·관심종목) ───────── -->
     <section id="viewFeed">
+      <!-- 오늘 주요 이슈 9 (AI가 시간대마다 자동 생성) — 버튼으로 'AI 핵심 공시'와 전환 -->
       <section class="issue card" id="issueBox">
         <div class="iss-h">
           <div class="iss-ttl"><span class="iss-live"><i></i>LIVE</span><h2>오늘 주요 이슈</h2><span class="muted sm" id="issMeta"></span></div>
@@ -94,6 +101,7 @@
         </div>
         <div id="issBody"><div class="skel"></div><div class="skel"></div></div>
       </section>
+
       <section class="digest card" id="digestBox" hidden>
         <div class="digest-h">
           <div><span class="ai-pill">AI</span><h2>AI가 고른 오늘의 핵심 공시</h2><span class="muted sm" id="digestMeta">공시·보도자료 중 주가 영향이 큰 항목</span></div>
@@ -102,11 +110,13 @@
         <p class="digest-head" id="digestHead"></p>
         <div class="digest-list" id="digestList"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       </section>
+
       <div class="trend-head">
         <h2 class="sec-title">트렌딩 <span>공시·보도자료 발표 후 가장 많이 오른 종목</span></h2>
         <div class="trend-nav"><button class="ico sm" data-trend="-1" aria-label="이전">‹</button><button class="ico sm" data-trend="1" aria-label="다음">›</button></div>
       </div>
       <div class="trend" id="trend"></div>
+
       <div class="layout">
         <section class="feed-wrap">
           <div class="feed-top">
@@ -120,6 +130,7 @@
               <button class="ico sm" id="btnRefresh" title="새로고침"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
             </div>
           </div>
+          <!-- 휴대폰 전용: 목록 위 종목·티커 검색 (맨 위로 올라가지 않아도 되게) -->
           <div class="search feed-search">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             <input id="search2" type="search" placeholder="종목명·티커·키워드 검색" autocomplete="off" />
@@ -146,6 +157,7 @@
           <div class="feed-head-row" aria-hidden="true"><span></span><span>영향 · 심리</span><span>시각 · 종목 · 헤드라인</span><span></span></div>
           <div class="list" id="list"></div>
         </section>
+
         <aside class="side">
           <div class="card pop-card">
             <div class="card-h">
@@ -156,6 +168,7 @@
             <ol class="rank" id="popList"><li class="muted">불러오는 중…</li></ol>
             <div class="card-f" id="popSrc"></div>
           </div>
+
           <div class="card">
             <div class="card-h"><h3>오늘의 수집 현황</h3><span class="muted sm" id="statUpd"></span></div>
             <div class="stats4">
@@ -165,6 +178,9 @@
               <button data-stat="WATCH"><span>관심종목 소식</span><b id="stWATCH">–</b><em id="stWATCHd"></em></button>
             </div>
           </div>
+
+
+
           <div class="card">
             <div class="card-h"><h3>주요 테마</h3></div>
             <ul class="themes" id="themes"></ul>
@@ -172,25 +188,39 @@
         </aside>
       </div>
     </section>
+
+    <!-- ───────── 상세 페이지 ───────── -->
     <section id="viewItem" class="page" hidden><div id="itemBody"></div></section>
+
+    <!-- ───────── 오늘 주요 이슈 — 회차별 공유 주소 (/i/회차) ───────── -->
     <section id="viewIssue" class="page" hidden><div id="issPage"></div></section>
+
+    <!-- ───────── 관리자 (gk-stock.com/#admin, 비밀번호 필요) ───────── -->
     <section id="viewAdmin" class="page" hidden><div id="adminBody"></div></section>
+
+    <!-- ───────── 오늘의 주도 테마·섹터 ───────── -->
     <section id="viewThemes" class="page" hidden>
       <div class="page-head"><h2>오늘의 주도 테마·섹터</h2><span class="muted" id="thMeta"></span></div>
       <div class="filter-row"><div class="mkseg" id="thSeg"><button data-th="KR" class="on kr"><i>KR</i>한국</button><button data-th="US" class="us"><i>US</i>미국</button></div></div>
       <div id="thBody"><div class="skel"></div><div class="skel"></div></div>
     </section>
+
+    <!-- ───────── 내일 일정 (경제지표·실적·공모주/IPO + AI 요약) ───────── -->
     <section id="viewSched" class="page" hidden>
       <div class="page-head"><h2>오늘 일정</h2><span class="muted" id="scMeta"></span></div>
       <div class="filter-row"><div class="mkseg" id="scSeg"><button data-sc="KR" class="on kr"><i>KR</i>국장</button><button data-sc="US" class="us"><i>US</i>미장</button></div></div>
       <div class="sc-days" id="scDays"></div>
       <div id="scBody"><div class="skel"></div><div class="skel"></div></div>
     </section>
+
+    <!-- ───────── 미국 경제지표 ───────── -->
     <section id="viewEcon" class="page" hidden>
       <div class="page-head"><h2>미국 경제지표</h2><span class="muted" id="ecMeta"></span></div>
       <div class="filter-row"><div class="chips" id="ecImp" style="margin:0"><button data-imp="2" class="on">중요 지표만</button><button data-imp="1">전체</button></div></div>
       <div id="ecBody"><div class="skel"></div><div class="skel"></div></div>
     </section>
+
+    <!-- ───────── 실적 캘린더 ───────── -->
     <section id="viewEarnings" class="page" hidden>
       <div class="page-head"><h2>실적 발표 캘린더</h2><span class="muted" id="earnMeta"></span></div>
       <div class="filter-row">
@@ -200,6 +230,8 @@
       <div class="ecal" id="earnDays"></div>
       <div id="earnBody"><div class="skel"></div><div class="skel"></div></div>
     </section>
+
+    <!-- ───────── 인기 종목 ───────── -->
     <section id="viewPopular" class="page" hidden>
       <div class="page-head"><h2 id="popPageTitle">실시간 인기 종목 TOP 10</h2><span class="muted" id="popMeta"></span></div>
       <div class="pop-kind big" id="popKindPage"><button data-kind="pop" class="on">인기 종목</button><button data-kind="up" class="k-up">상승 종목</button><button data-kind="down" class="k-down">하락 종목</button></div>
@@ -209,6 +241,8 @@
       </div>
       <div class="card" style="margin-top:1rem"><div class="card-h"><h3>GK의 공시레이더 오늘 많이 본 종목</h3><span class="muted sm" id="viewsMeta"></span></div><ol class="rank big" id="popViews"></ol></div>
     </section>
+
+    <!-- ───────── 기업 분석 ───────── -->
     <section id="viewCompany" class="page" hidden>
       <div class="page-head">
         <h2>기업 분석</h2>
@@ -216,6 +250,8 @@
       </div>
       <div id="coBody"><div class="empty-big">분석할 종목을 검색하거나, 공시 상세 창의 <b>기업 상세보기</b>를 누르세요.<div class="chips center" id="coQuick"></div></div></div>
     </section>
+
+    <!-- ───────── 수급 ───────── -->
     <section id="viewFlows" class="page" hidden>
       <div class="page-head"><h2>수급 레이더</h2><span class="muted" id="flowMeta"></span></div>
       <div class="tabs" id="flowTabs">
@@ -225,11 +261,15 @@
       <div id="flowSub" class="subbar"></div>
       <div class="card"><div class="flows" id="flows"></div><div class="foot-note" id="flowFoot"></div></div>
     </section>
+
+    <!-- ───────── 시장 지표 ───────── -->
     <section id="viewMarket" class="page" hidden>
       <div class="page-head"><h2>시장 지표</h2><span class="muted" id="mktMeta"></span></div>
       <div class="mkt-top"><div class="card fg" id="fgCard"></div><div class="card night" id="nightCard"></div></div>
       <div class="idx-grid" id="idxGrid"></div>
     </section>
+
+    <!-- ───────── 이용 안내 ───────── -->
     <section id="viewGuide" class="page" hidden>
       <div class="page-head"><h2>이용 안내</h2></div>
       <div class="card prose">
@@ -248,6 +288,7 @@
       </div>
     </section>
   </main>
+
   <footer class="footer">
     <div class="footer-in">
       <div class="f-brand"><b>GK의 공시레이더</b><span>by <a href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener">GK의 미국 주식</a></span></div>
@@ -255,6 +296,8 @@
       <p>본 사이트의 정보와 AI 요약은 투자 참고용이며 투자 권유가 아닙니다. <button class="link" data-go="guide">이용 안내</button></p>
     </div>
   </footer>
+
+  <!-- 상세 창 / 모달 / 알림 -->
   <div class="modal" id="modal" hidden><div class="modal-card"><button class="ico sm m-close" data-close-modal aria-label="닫기">✕</button><div id="modalBody"></div></div></div>
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
