@@ -1713,3 +1713,28 @@ button.br-mv:hover { border-color: var(--accent); }
 @media (max-width: 1700px) { .tgc span { display: none; } .tgc { padding: .32rem .5rem; } }
 @media (min-width: 1101px) and (max-width: 1240px) { .nav > button.dx2 { display: none; } .hdr-right .search { width: 180px; } }
 @media (max-width: 720px) { .tgc { display: none !important; } .tgm { display: grid !important; place-items: center; border-color: rgba(56, 170, 235, .45) !important; } }
+
+/* ── v86: 휴대폰 — 유튜브 옆에 텔레그램 버튼(글씨 포함), 앱 설치는 아랫줄 아이콘으로 ── */
+@media (max-width: 720px) {
+  .brand-wrap { padding-right: 0 !important; }
+  .tgc { display: flex !important; gap: .3rem; padding: .22rem .5rem .22rem .4rem; border-radius: 10px; }
+  .tgc span { display: flex !important; }
+  .tgc .tg-ico { width: 1.1rem; height: 1.1rem; }
+  .tgc b { font-size: .66rem; } .tgc small { font-size: .56rem; }
+  .tgm { display: none !important; }
+  .hdr-right .btn-install { position: static !important; width: 2.3rem; height: 2.3rem !important; padding: 0 !important; justify-content: center; border-radius: 11px !important; }
+  .hdr-right .btn-install span { display: none !important; }
+  .hdr-right .btn-install svg { width: 1.1rem; height: 1.1rem; }
+}
+@media (max-width: 400px) {
+  .brand-txt b { font-size: .9rem; }
+  .brand-logo { width: 1.9rem !important; height: 1.9rem !important; }
+  .brand-wrap { gap: .35rem; }
+  .yt, .tgc { padding: .2rem .38rem .2rem .3rem; gap: .25rem; }
+  .yt b, .tgc b { font-size: .62rem; } .yt small, .tgc small { font-size: .52rem; }
+}
+@media (max-width: 365px) {
+  .brand-txt b { font-size: .82rem; }
+  .yt small, .tgc small { display: none; }
+  .nav button { padding: .38rem .4rem; font-size: .8rem; }
+}
