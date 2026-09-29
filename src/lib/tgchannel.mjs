@@ -32,19 +32,68 @@ function itemMs(x) {
 const titleOf = (x) => x.ko?.title || x.summary?.title || x.titleKo || x.pr?.headline || x.title || x.titleClean || x.formKo || x.form || '';
 const nameOf = (x) => (x.src === 'DART' || x.market === 'KR' ? x.name || x.ticker : `${x.ticker}${x.name ? ' · ' + x.name : x.company ? ' · ' + x.company : ''}`);
 
+// ───── 관심 우량주 목록 (실적 발표는 이 종목들만 채널에 올림) ─────
+//  국장: 코스피 시가총액 상위 200 + 코스닥 상위 100 · 미장: 시가총액 상위 300 + 지금 인기 종목 (하루 한 번 갱신)
+let blueMem = null;
+export async function blueSet() {
+  if (blueMem && Date.now() - blueMem.at < 3600e3) return blueMem;
+  let c = await getJSON('tgch/blue');
+  if (!c || Date.now() - c.at > 20 * 3600e3) {
+    const H = { Accept: 'application/json', Referer: 'https://m.stock.naver.com/' };
+    const get = (u) => fetchWithTimeout(u, { headers: H }, 9000).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const kr = [], us = [];
+    const pages = await Promise.all([
+      ...[1, 2].map((i) => get(`https://m.stock.naver.com/api/stocks/marketValue/KOSPI?page=${i}&pageSize=100`)),
+      get('https://m.stock.naver.com/api/stocks/marketValue/KOSDAQ?page=1&pageSize=100'),
+      ...[1, 2, 3].map((i) => get(`https://api.stock.naver.com/stock/nation/USA/marketValue?page=${i}&pageSize=100`)),
+    ]);
+    pages.slice(0, 3).forEach((j) => { for (const x of j?.stocks || []) if (x.itemCode) kr.push(x.itemCode); });
+    pages.slice(3).forEach((j) => { for (const x of j?.stocks || []) if (x.symbolCode) us.push(String(x.symbolCode).toUpperCase()); });
+    if (kr.length > 100 && us.length > 100) { c = { at: Date.now(), kr, us }; await setJSON('tgch/blue', c).catch(() => {}); }
+    else if (!c) c = { at: Date.now() - 19 * 3600e3, kr, us }; // 실패하면 1시간 뒤 다시
+  }
+  // 지금 인기 종목(네이버 검색 상위)도 관심 종목으로
+  const pop = (await getJSON('popular/v2').catch(() => null)) || {};
+  const set = { KR: new Set([...(c.kr || []), ...(pop.kr || []).map((x) => x.ticker)]), US: new Set([...(c.us || []), ...(pop.us || []).map((x) => String(x.ticker || '').toUpperCase())]), at: Date.now() };
+  blueMem = set;
+  return set;
+}
+const isEarnings = (x) => x.category === 'earnings' || (x.items || []).some((i) => i.code === '2.02') || /잠정\s*실적|영업\(잠정\)|손익구조/.test(`${x.titleClean || ''}${x.formKo || ''}`);
+
 /** 올릴 만한 항목인지 (중요도 기준) */
 async function worth(x, cfg) {
   const mk = x.src === 'DART' || x.market === 'KR' ? 'KR' : 'US';
   if (!x.ticker || (mk === 'KR' ? !cfg.kr : !cfg.us)) return false;
   if (/^(4|144|13F|3|5|SC 13G|SCHEDULE 13G|10-Q|10-K|20-F|40-F|DEF|ARS)/i.test(x.form || '')) return false;
   if (x.src === 'DART' && x.category === 'insider') return false;
-  if (x.src === 'PR' || x.src === 'NEWS') {
-    // 보도자료: AI가 호재·악재로 판정한 것 중 유형이 뚜렷한 것만
-    if (x.src === 'NEWS') return false;
-    const { typeOf } = await import('./react.mjs');
-    return !!typeOf(x);
+  if (x.src === 'NEWS') return false;
+  const { typeOf } = await import('./react.mjs');
+  const tp = typeOf(x);
+  // 실적 발표: 모든 회사가 아니라 관심 우량주(시총 상위·인기 종목)만
+  if (isEarnings(x) || tp === 'us_earn' || tp === 'kr_earn') {
+    const b = await blueSet();
+    return b[mk].has(String(x.ticker).toUpperCase());
   }
+  // 보도자료: AI가 호재·악재로 판정한 것 중 유형이 뚜렷한 것만
+  if (x.src === 'PR') return !!tp;
   return (x.impact ?? 0) >= cfg.minImp;
+}
+
+// ───── 한국어 제목: 미국 공시·보도자료 영어 제목은 AI 번역 (한 번 번역하면 저장) ─────
+const hasKo = (s) => /[가-힣]/.test(String(s || ''));
+export async function koTitle(x, ai) {
+  for (const c of [ai?.headline, x.ko?.title, x.titleKo, x.summary?.title, x.rk?.title]) if (c && hasKo(c)) return String(c);
+  const raw = titleOf(x);
+  if (hasKo(raw)) return raw;
+  const ck = `tgch/ko/${x.id}`;
+  const c = await getJSON(ck).catch(() => null);
+  if (c?.ko) return c.ko;
+  try {
+    const { translateTitles } = await import('./ai.mjs');
+    const m = await translateTitles([{ id: x.id, title: raw, desc: x.pr?.deck || x.desc || '' }]);
+    if (m[x.id]) { await setJSON(ck, { ko: m[x.id] }).catch(() => {}); return m[x.id]; }
+  } catch {}
+  return raw;
 }
 
 /** 크론(매분) */
@@ -78,7 +127,8 @@ export async function channelWatch() {
     const vt = v === '긍정' ? '🟢 호재' : v === '부정' ? '🔴 악재' : v ? '⚪ 중립' : '';
     const pts = (ai?.summary || []).slice(0, 2).map((s) => `• ${esc(String(s).slice(0, 110))}`).join('\n');
     const kind = x.src === 'DART' ? 'DART 공시' : x.src === 'SEC' ? `SEC ${x.form || '공시'}` : x.source || '보도자료';
-    const text = `${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>${vt ? '  ' + vt : ''}\n${esc(String(ai?.headline || titleOf(x)).slice(0, 140))}${pts ? '\n\n' + pts : ''}\n\n<i>${esc(kind)} · ${kst(ms)} KST</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
+    const earn = isEarnings(x) ? '📊 <b>실적 발표</b>  ' : '';
+    const text = `${earn}${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>${vt ? '  ' + vt : ''}\n${esc(String(await koTitle(x, ai)).slice(0, 140))}${pts ? '\n\n' + pts : ''}\n\n<i>${esc(kind)} · ${kst(ms)} KST</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
     try { await tgSend(chat, text); sent.add(x.id); hist.push(Date.now()); n++; st.last = { id: x.id, at: Date.now(), title: titleOf(x).slice(0, 80) }; }
     catch (e) { errs.push(e.message); if (/429|Too Many/i.test(e.message)) break; if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) { st.err = e.message; break; } }
   }
@@ -193,7 +243,7 @@ export async function surgeWatch() {
     const sess = h.sess === 'PRE' ? ' (프리)' : h.sess === 'AFTER' ? ' (애프터)' : h.sess === 'DAY' ? ' (데이)' : '';
     const kind = x.src === 'DART' ? 'DART 공시' : x.src === 'SEC' ? `SEC ${x.form || '공시'}` : x.source || '보도자료';
     const pt = (ai?.summary || [])[0];
-    const text = `🚀 <b>공시 후 급등</b>  ${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>  <b>+${h.r.toFixed(1)}%</b>\n발표 후 ${ago} · 지금 ${px}${sess}\n\n${esc(String(ai?.headline || titleOf(x)).slice(0, 140))}${pt ? `\n• ${esc(String(pt).slice(0, 110))}` : ''}\n\n<i>${esc(kind)} · ${kst(h.v.t)} KST 주가 대비</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
+    const text = `🚀 <b>공시 후 급등</b>  ${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>  <b>+${h.r.toFixed(1)}%</b>\n발표 후 ${ago} · 지금 ${px}${sess}\n\n${esc(String(await koTitle(x, ai)).slice(0, 140))}${pt ? `\n• ${esc(String(pt).slice(0, 110))}` : ''}\n\n<i>${esc(kind)} · ${kst(h.v.t)} KST 주가 대비</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
     try { await tgSend(chat, text, { preview: false }); st.done[h.k] = { id: x.id, r: Math.round(h.r * 10) / 10, at: now }; st.n = (st.n || 0) + 1; n++; }
     catch (e) { st.lastErr = e.message; if (/429|Too Many|403|chat not found/i.test(e.message)) break; }
   }
