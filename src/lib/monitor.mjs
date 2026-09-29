@@ -81,6 +81,44 @@ async function checks() {
   const flaky = /JSON|형식 오류|Unexpected token|Unterminated|Expected/.test(String(aiErr?.error || ''));
   const errRecent = aiErr?.at && now - aiErr.at < 60 * MIN && (!aiOk?.at || aiErr.at > aiOk.at) && !(flaky && aiOk?.at && now - aiOk.at < 30 * MIN);
   const paused = aiPause?.until > now;
+  // ── API 키 상태: 실제로 한 번씩 호출해 봄 (키 정지·만료·한도 초과를 바로 알 수 있게) ──
+  const env = globalThis.process?.env || {};
+  const keyErr = /token|토큰|인증|appkey|appsecret|권한|유효하지|만료|invalid|unauthori|forbidden|EGW0012|EGW0013|EGW0010/i;
+  await Promise.all([
+    (async () => { // 한국투자증권
+      if (!env.KIS_APP_KEY || !env.KIS_APP_SECRET) return add('keyKis', 'API 키 · 한국투자증권', true, '미등록 (VI·주간거래·수급 기능 꺼짐)');
+      const { kisGet, resetKisToken } = await import('./kis.mjs');
+      const t = () => kisGet('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: '005930' });
+      try { const j = await t(); return add('keyKis', 'API 키 · 한국투자증권', true, `정상 · 삼성전자 현재가 ${Number(j.output?.stck_prpr || 0).toLocaleString('ko-KR')}원 조회 성공`); }
+      catch (e) {
+        let msg = String(e.message || e);
+        if (keyErr.test(msg)) { try { await resetKisToken(); await t(); return add('keyKis', 'API 키 · 한국투자증권', true, '정상 (접속 토큰 새로 발급함)'); } catch (e2) { msg = String(e2.message || e2); } }
+        if (/초당|거래건수|EGW00201/.test(msg)) return add('keyKis', 'API 키 · 한국투자증권', true, '정상 (점검 순간 호출이 몰려 잠깐 대기) ');
+        return add('keyKis', 'API 키 · 한국투자증권', false, `${keyErr.test(msg) ? '⚠ 키 오류 — 이용 정지·만료 가능성. ' : '호출 실패: '}${msg.slice(0, 160)} (VI·미국 주간거래·수급·야간선물이 멈춤)`);
+      }
+    })(),
+    (async () => { // Finnhub
+      if (!env.FINNHUB_API_KEY) return add('keyFinnhub', 'API 키 · Finnhub', true, '미등록 (월가 시각·일부 뉴스 꺼짐)');
+      try {
+        const r = await fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${env.FINNHUB_API_KEY}`, {}, 8000);
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j.c) return add('keyFinnhub', 'API 키 · Finnhub', true, `정상 · 애플 $${j.c} 조회 성공`);
+        if (r.status === 429) return add('keyFinnhub', 'API 키 · Finnhub', true, '정상 (분당 호출 한도에 잠깐 걸림)');
+        return add('keyFinnhub', 'API 키 · Finnhub', false, `${r.status === 401 || r.status === 403 ? '⚠ 키 오류 — ' : '호출 실패 — '}HTTP ${r.status} ${String(j.error || '').slice(0, 120)} (월가 시각·재무지표 일부가 멈춤)`);
+      } catch (e) { return add('keyFinnhub', 'API 키 · Finnhub', false, '호출 실패: ' + String(e.message || e).slice(0, 160)); }
+    })(),
+    (async () => { // DART
+      if (!env.DART_API_KEY) return add('keyDart', 'API 키 · DART', false, '미등록 — 한국 공시 수집이 안 됨');
+      try {
+        const r = await fetchWithTimeout(`https://opendart.fss.or.kr/api/list.json?crtfc_key=${encodeURIComponent(env.DART_API_KEY)}&page_count=1`, {}, 10000);
+        const j = await r.json().catch(() => ({}));
+        const st = String(j.status || '');
+        if (st === '000' || st === '013') return add('keyDart', 'API 키 · DART', true, '정상');
+        const why = { '010': '등록되지 않은 키', '011': '사용할 수 없는 키', '012': '접근할 수 없는 IP', '020': '하루 요청 한도(2만 건) 초과 — 자정에 풀림', '800': 'DART 점검 중', '900': 'DART 오류' }[st] || j.message || `HTTP ${r.status}`;
+        return add('keyDart', 'API 키 · DART', st === '800' || st === '900', `${['010', '011', '012'].includes(st) ? '⚠ 키 오류 — ' : ''}${why}`);
+      } catch (e) { return add('keyDart', 'API 키 · DART', false, '호출 실패: ' + String(e.message || e).slice(0, 160)); }
+    })(),
+  ]);
   add('ai', 'AI 분석 (Gemini)', !errRecent && !paused, paused ? `${aiPause.reason || '한도 초과'} → ${Math.ceil((aiPause.until - now) / 60e3)}분 동안 AI 호출 중지 (그동안은 자동 요약). 반복되면 Gemini 결제(유료 전환) 필요` : errRecent ? `최근 실패 ${ago(now - aiErr.at)}: ${String(aiErr.error).slice(0, 180)}` : `마지막 성공 ${aiOk?.at ? ago(now - aiOk.at) : '기록 없음'}`);
   return out;
 }

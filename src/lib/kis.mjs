@@ -21,6 +21,9 @@ async function issueToken() {
   return { token: j.access_token, exp };
 }
 
+/** 저장된 토큰 버리기 (키가 바뀌었거나 토큰이 무효일 때 새로 발급받게) */
+export async function resetKisToken() { mem = null; await setJSON('kis/token', { token: null, exp: 0 }).catch(() => {}); }
+
 export async function kisToken() {
   if (mem && mem.exp > Date.now()) return mem.token;
   const saved = await getJSON('kis/token');
