@@ -612,7 +612,10 @@
       for (const n of arr) { const k = wkey(n.market, n.ticker); if (seen.has(k)) continue; seen.add(k); pick.push(n); if (pick.length >= 8) break; }
     }
     // 시세가 없는 후보는 뒤에서 받아 와서 다시 정렬
-    const need = [...new Set(cand.map((n) => wkey(n.market, n.ticker)))].filter((k) => { const q = S.quotes.get(k); return !q || Date.now() - q._at > 90e3; }).slice(0, 80);
+    //  후보가 많을 때 앞쪽 80개만 계속 받던 문제 → 시세를 한 번도 안 받은 종목 먼저, 그다음 오래된 순 (지금 장이 열린 시장 우선)
+    const age = (k) => { const q = S.quotes.get(k); return q ? Date.now() - q._at : Infinity; };
+    const need = [...new Set([...cand].sort((a, b) => b.ms - a.ms).map((n) => wkey(n.market, n.ticker)))].filter((k) => age(k) > 90e3)
+      .sort((a, b) => ((prim && b.startsWith(prim + ':')) - (prim && a.startsWith(prim + ':'))) || (age(b) === age(a) ? 0 : age(b) > age(a) ? 1 : -1)).slice(0, 120);
     if (need.length && Date.now() - trendBusy > 60e3) {
       trendBusy = Date.now();
       (async () => { for (let i = 0; i < need.length; i += 40) await fetchQuotes(need.slice(i, i + 40)); renderTrend(); })();
@@ -724,9 +727,10 @@
     const sec = sectorOf(x.market, x.ticker);
     const px = x.price != null ? (x.market === 'KR' ? `${fmtInt(x.price)}원` : `$${fmtPx(x.price)}`) : '';
     // 오늘 움직임 이유(AI 추정): 오른쪽 작은 목록에선 종목코드 줄 대신, 큰 목록에선 아래 줄에
-    const rs = x.reason && !/^뚜렷한 개별 뉴스 없음/.test(x.reason) ? x.reason : null;
-    const subHTML = !big && rs ? `<small class="rs" title="AI 추정 · ${esc(x.reason)}">${esc(rs)}</small>` : `<small>${esc(sub)}${sec ? ' · ' + esc(sec) : ''}</small>`;
-    const whyHTML = big && x.reason ? `<span class="why rwhy ${rs ? '' : 'none'}"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.why ? `<span class="why">${esc(x.why)}</span>` : '';
+    const rs0 = x.reason && !/^뚜렷한 개별 뉴스 없음/.test(x.reason) ? x.reason : null;
+    const rs = rs0 || (x.pr?.t ? `${x.pr.kind} · ${x.pr.t}` : null); // AI 이유가 아직 없으면 최근 공시·보도자료 제목
+    const subHTML = !big && rs ? `<small class="rs" title="${rs0 ? 'AI 추정 · ' + esc(x.reason) : esc(rs)}">${esc(rs)}</small>` : `<small>${esc(sub)}${sec ? ' · ' + esc(sec) : ''}</small>`;
+    const whyHTML = big && rs0 ? `<span class="why rwhy"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.pr?.t ? `<span class="why rwhy"><i>${esc(x.pr.kind)}</i>${esc(x.pr.t)}</span>` : big && x.reason ? `<span class="why rwhy none"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.why ? `<span class="why">${esc(x.why)}</span>` : '';
     return `<li data-open-co="${esc(x.market)}|${esc(x.ticker)}|${esc(x.name || '')}"><span class="rk">${i + 1}</span>${logoHTML(x.market, x.ticker, x.name, big ? 'md' : 'sm')}<span class="nm"><b>${esc(label)}${x.ipo ? ' <i class="ipo-tag" title="오늘 신규 상장 · 공모가 대비 등락">신규상장</i>' : ''}</b>${subHTML}</span><span class="px">${px ? `<b>${px}</b>` : ''}${x.pct != null ? `<em class="${dirCls(x.pct)}"${x.session ? ` title="정규장 ${fmtPct(x.regPct)}"` : ''}>${x.session ? `<i class="sess">${x.session === 'AFTER' ? '애프터' : x.session === 'DAY' ? '데이' : '프리'}</i>` : ''}${fmtPct(x.pct)}</em>` : ''}</span>${whyHTML}</li>`;
   }
   // 인기 / 상승 / 하락 × 국내 / 미국

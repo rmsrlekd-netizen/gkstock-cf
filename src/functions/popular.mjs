@@ -204,6 +204,19 @@ async function build(cached) {
   // 저장된 "오늘 움직임 이유" 붙이기 (3분마다 따로 만들어 둠)
   const wm = (await getJSON('why/map')) || {};
   for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const w = wm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (w?.r && Date.now() - w.at < 20 * 3600e3) { x.reason = w.r; x.rconf = w.c; } }
+  // AI 이유가 아직 없으면 우리 사이트의 최근(36시간) 공시·보도자료 제목을 대신 보여줌
+  try {
+    const { ownTitle } = await import('../lib/why.mjs');
+    const since = Date.now() - 36 * 3600e3, pm = {};
+    for (const mk of ['US', 'KR']) for (const n of await queryArchive({ market: mk, limit: 200 }).catch(() => [])) {
+      const ms = Date.parse(n.time || '');
+      const k = `${mk}|${String(n.ticker || '').toUpperCase()}`;
+      if (!n.ticker || !(ms > since) || pm[k] || /^(3|4|5|144)(\/A)?$/.test(String(n.form || ''))) continue; // 내부자 거래 보고는 제외
+      const t = ownTitle(n);
+      if (t) pm[k] = { t: t.slice(0, 80), kind: n.src === 'PR' ? '보도자료' : '공시', at: ms };
+    }
+    for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const p = pm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (p) x.pr = p; }
+  } catch {}
   if (kr.length || usList.length) await setJSON('popular/v2', out).catch(() => {});
   return out;
 }

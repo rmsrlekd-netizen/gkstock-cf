@@ -5,6 +5,7 @@
 import { fetchWithTimeout, kstDate } from './util.mjs';
 import { getJSON, setJSON } from './store.mjs';
 import { hasAI, askAI, parseJSON, aiPauseInfo } from './ai.mjs';
+import { queryArchive } from './archive.mjs';
 
 const H = { Accept: 'application/json', Referer: 'https://m.stock.naver.com/' };
 const DAILY_MAX = () => Number(process.env.WHY_DAILY_MAX || 200);
@@ -46,7 +47,23 @@ async function usFinnhub(t) {
   return (Array.isArray(arr) ? arr : []).slice(0, 10).map((x) => ({ id: 'fh' + x.id, title: clean(x.headline), sum: clean(x.summary).slice(0, 160), src: x.source || '', at: new Date((x.datetime || 0) * 1000).toISOString(), url: x.url || null, n: 1 }));
 }
 
+/** 우리 사이트에 올라온 이 종목의 최근 공시·보도자료 (가장 직접적인 근거) */
+export function ownTitle(n) {
+  const its = (n.items || []).map((x) => x.ko).filter(Boolean).slice(0, 2).join('·');
+  return clean(n.titleKo || n.summaryKo || n.title || [n.formKo || n.form, its].filter(Boolean).join(' ') || '');
+}
+async function ownNews(mk, t) {
+  const arr = await queryArchive({ market: mk, ticker: t, limit: 8 }).catch(() => []);
+  return arr.filter((n) => n.time && Date.now() - Date.parse(n.time) < 48 * 3600e3)
+    .map((n) => ({ id: 'own-' + n.id, title: ownTitle(n), sum: clean(n.desc || '').slice(0, 160), src: n.src === 'PR' ? (n.source || '보도자료') : n.src === 'SEC' ? 'SEC 공시' : 'DART 공시', at: new Date(Date.parse(n.time)).toISOString(), url: n.url || null, n: 1, own: true }))
+    .filter((x) => x.title);
+}
+
 async function stockNews(mk, t, reuters) {
+  const own = await ownNews(mk, t);
+  return [...own, ...(await extNews(mk, t, reuters))].slice(0, 10);
+}
+async function extNews(mk, t, reuters) {
   let list = [];
   if (mk === 'KR') list = await krNews(t).catch(() => []);
   else {
@@ -97,7 +114,7 @@ export async function whyFor({ mk, t, name, pct = null, reuters = null, peers = 
   const key = `why/${mk}/${t}`;
   const prev = await getJSON(key);
   const now = Date.now();
-  if (prev && !force && now - prev.at < 8 * 60e3) return { ...prev, pct: pct ?? prev.pct, peers: peers || prev.peers, cached: true };
+  if (prev && !force && now - prev.at < (prev.reason ? 8 : 3) * 60e3) return { ...prev, pct: pct ?? prev.pct, peers: peers || prev.peers, cached: true };
   const news = await stockNews(mk, t, reuters);
   const sig = news.map((x) => x.id).join('|');
   const out = { mk, t, name: name || prev?.name || t, pct: pct ?? prev?.pct ?? null, news, peers: peers || prev?.peers || null, at: now, sig, reason: null, conf: null, basis: [], aiAt: null, aiPct: null };
@@ -106,7 +123,7 @@ export async function whyFor({ mk, t, name, pct = null, reuters = null, peers = 
   const moved = out.pct != null && Math.abs(out.pct) >= minMove;
   const changed = sig !== prev?.sig || !out.reason || (out.aiPct != null && out.pct != null && Math.abs(out.pct - out.aiPct) >= 6 && now - out.aiAt > 60 * 60e3);
   if (allowAI && moved && changed && hasAI() && !(await aiPauseInfo())) {
-    const dayKey = `why/count/${kstDate(0)}`;
+    const dayKey = `why/count/${kstDate(0)}/${mk}`; // 한국·미국 따로 (국장에서 다 써서 미장 프리마켓에 AI가 멈추던 문제)
     const cnt = (await getJSON(dayKey))?.n || 0;
     if (cnt < DAILY_MAX()) {
       try {
