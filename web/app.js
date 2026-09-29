@@ -988,8 +988,38 @@
         <p class="foot-note">${ni.note ? esc(ni.note) + ' · ' : ''}한국투자증권 · 야간 18:00~05:00 KST</p>`;
     } else $('#nightCard').innerHTML = `<div class="lbl">코스피200 야간선물</div><div class="night-price muted">—</div><p class="foot-note">${m ? esc(n?.reason || '시세 없음') : '불러오는 중'}</p>`;
     const list = (m?.indices || []).filter((x) => !x.error && x.price !== null && x.price !== undefined);
-    $('#idxGrid').innerHTML = list.map((x) => { const f = idxFmt(x); return `<div class="idx" title="${esc(x.src || '')}"><div class="l">${esc(x.label)}</div><div class="p">${f.px}</div><div class="c ${f.dir}">${f.ch}</div></div>`; }).join('') || '<div class="muted">지수 데이터를 불러오는 중이거나 가져오지 못했습니다.</div>';
+    const sp = S.spark?.data || {};
+    $('#sparkNote').hidden = !Object.keys(sp).length;
+    $('#idxGrid').innerHTML = list.map((x) => { const f = idxFmt(x); return `<div class="idx" title="${esc(x.src || '')}"><div class="l">${esc(x.label)}</div><div class="p">${f.px}</div><div class="c ${f.dir}">${f.ch}</div>${sparkSVG(sp[x.key], x, f.dir)}</div>`; }).join('') || '<div class="muted">지수 데이터를 불러오는 중이거나 가져오지 못했습니다.</div>';
     $('#mktMeta').textContent = m?.fetchedAt ? `${fmtDT(new Date(m.fetchedAt)).hm} 갱신` : '';
+  }
+  // 시장 지표 카드 속 작은 차트 (최근 5거래일 · 60분봉). 점선 = 전일 종가, 옅은 세로선 = 날짜 경계
+  function sparkSVG(d, x, dir) {
+    if (!d?.c?.length) return '';
+    let c = d.c.slice();
+    if (x.key === 'TNX:INDEXCBOE' && c[c.length - 1] > 20) c = c.map((v) => v / 10); // 금리 단위 맞춤
+    // 마지막 점을 지금 시세로 (차트가 몇 분 늦어도 카드 숫자와 끝이 맞게)
+    const last = c[c.length - 1];
+    if (x.price != null && Number.isFinite(x.price) && Math.abs(x.price - last) / Math.abs(last || 1) < 0.03) c[c.length - 1] = x.price; // 단위가 다르면(3% 넘게 차이) 건드리지 않음
+    const prev = x.prev != null && Number.isFinite(x.prev) && Math.abs(x.prev - last) / Math.abs(last || 1) < 0.15 ? x.prev : null;
+    const W = 200, H = 44, P = 3;
+    let lo = Math.min(...c), hi = Math.max(...c);
+    if (prev != null && prev > lo - (hi - lo) * 0.5 && prev < hi + (hi - lo) * 0.5) { lo = Math.min(lo, prev); hi = Math.max(hi, prev); }
+    if (hi === lo) { hi += 1; lo -= 1; }
+    const X = (i) => (i / (c.length - 1)) * W, Y = (v) => P + (1 - (v - lo) / (hi - lo)) * (H - P * 2);
+    const pts = c.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+    const days = [];
+    for (let i = 1; i < d.t.length && i < c.length; i++) if (d.t[i] - d.t[i - 1] > 3 * 3600) days.push(X(i).toFixed(1));
+    const cls = dir === 'up' ? 'up' : dir === 'down' ? 'down' : 'flat';
+    return `<svg class="spark ${cls}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      ${days.map((xx) => `<line class="sp-day" x1="${xx}" x2="${xx}" y1="0" y2="${H}"/>`).join('')}
+      ${prev != null && prev >= lo && prev <= hi ? `<line class="sp-prev" x1="0" x2="${W}" y1="${Y(prev).toFixed(1)}" y2="${Y(prev).toFixed(1)}"/>` : ''}
+      <polygon class="sp-fill" points="0,${H} ${pts} ${W},${H}"/><polyline class="sp-line" points="${pts}"/></svg>`;
+  }
+  async function pollSpark() {
+    if (S.spark && Date.now() - S.spark._at < 5 * 60e3) return;
+    try { S.spark = { ...(await getJSON('/api/spark')), _at: Date.now() }; } catch { return; }
+    if (S.view === 'market') { renderMarket(); pollSpark(); }
   }
   async function pollMarket() {
     if (document.hidden && S.market) return;
@@ -2433,7 +2463,7 @@
     if (hash !== false) { const u = '/' + (hash || '#' + v); if (location.pathname + location.hash !== u) history.pushState(null, '', u); }
     if (feed) { S.type = v === 'home' ? S.homeType || 'ALL' : FEED_VIEWS[v]; S.limit = 80; renderAll(); }
     if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 미국·한국 실시간 공시·보도자료'; }
-    if (v === 'market') renderMarket();
+    if (v === 'market') { renderMarket(); pollSpark(); }
     if (v === 'earnings') loadEarnings();
     if (v === 'themes') loadThemes();
     if (v === 'sched') loadSched();

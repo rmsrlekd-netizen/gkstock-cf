@@ -1728,3 +1728,11 @@ button.br-mv:hover { border-color: var(--accent); }
   .th-quad { grid-template-columns: minmax(0, 1fr); }
   .th-quad > .q-tt { order: 1; } .th-quad > .q-st { order: 2; } .th-quad > .q-wt { order: 3; } .th-quad > .q-ws { order: 4; }
 }
+
+/* ── v96: 시장 지표 카드 속 작은 차트 ── */
+.idx .spark { display: block; width: 100%; height: 44px; margin-top: .55rem; overflow: visible; }
+.spark .sp-line { fill: none; stroke: currentColor; stroke-width: 1.6; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.spark .sp-fill { fill: currentColor; opacity: .09; stroke: none; }
+.spark .sp-prev { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; opacity: .55; vector-effect: non-scaling-stroke; }
+.spark .sp-day { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.spark.up { color: var(--up); } .spark.down { color: var(--down); } .spark.flat { color: var(--muted); }

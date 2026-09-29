@@ -13,6 +13,7 @@ import * as flows from './functions/flows.mjs';
 import * as health from './functions/health.mjs';
 import * as logo from './functions/logo.mjs';
 import * as market from './functions/market.mjs';
+import * as spark from './functions/spark.mjs';
 import * as news from './functions/news.mjs';
 import * as popular from './functions/popular.mjs';
 import * as sectors from './functions/sectors.mjs';
@@ -50,7 +51,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts, reaction]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, spark, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts, reaction]) {
   ROUTES[m.config.path] = m.default;
 }
 
