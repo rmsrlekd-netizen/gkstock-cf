@@ -30,6 +30,7 @@ const normNm = (s) => String(s || '').replace(/\(.*?\)|㈜|주식회사|\s/g, ''
 async function krNewListings(today) {
   const ipo = await getJSON('sched/kripo');
   const names = (ipo?.list || []).filter((x) => x.sub === '상장' && x.start === today).map((x) => ({ name: x.name, offer: x.price }));
+  krNewListings.names = names;
   if (!names.length) return [];
   const ck = `ipo/codes/${today}`;
   const known = (await getJSON(ck)) || {};
@@ -44,7 +45,7 @@ async function krNewListings(today) {
         try {
           const r = await fetchWithTimeout(`https://ac.stock.naver.com/ac?q=${encodeURIComponent(x.name)}&target=stock`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://m.stock.naver.com/' } }, 6000);
           const j = await r.json();
-          const it = (j.items || []).find((y) => /^\d{6}$/.test(y.code || '') && (y.nationCode === 'KOR' || !y.nationCode));
+          const it = (j.items || []).find((y) => /^\d{6}$/.test(y.code || '') && (y.nationCode === 'KOR' || !y.nationCode) && (normNm(y.name) === nn || normNm(y.name).startsWith(nn) || nn.startsWith(normNm(y.name))));
           if (it) hit = { c: it.code };
         } catch {}
       }
@@ -55,7 +56,8 @@ async function krNewListings(today) {
   const codes = names.map((x) => known[x.name]).filter(Boolean);
   if (!codes.length) return [];
   const q = await naverKrQuotes(codes).catch(() => ({}));
-  return names.filter((x) => q[known[x.name]]?.price != null).map((x) => { const v = q[known[x.name]]; return { market: 'KR', ticker: known[x.name], name: v.nameKo || x.name, ...v, cur: 'KRW', ipo: true, offer: x.offer || null }; });
+  const seenC = new Set();
+  return names.filter((x) => q[known[x.name]]?.price != null && !seenC.has(known[x.name]) && seenC.add(known[x.name])).map((x) => { const v = q[known[x.name]]; return { market: 'KR', ticker: known[x.name], name: v.nameKo || x.name, ...v, cur: 'KRW', ipo: true, offer: x.offer || null }; });
 }
 
 const n0 = (s) => { const x = Number(String(s ?? '').replace(/[,%+\s]/g, '')); return Number.isFinite(x) ? x : null; };
@@ -148,7 +150,11 @@ export default async () => {
     const today = `${kz.year}-${kz.month}-${kz.day}`;
     if (Number(kz.hour) >= 9) {
       const nl = cached?.krNew?.date === today && Date.now() - cached.krNew.at < 60e3 ? cached.krNew.list : await krNewListings(today).catch((e) => { errors.push('krNew: ' + e.message); return []; });
-      out.krNew = { date: today, at: Date.now(), list: nl };
+      out.krNew = { date: today, at: Date.now(), list: nl, names: cached?.krNew?.date === today && Date.now() - cached.krNew.at < 60e3 ? cached.krNew.names || [] : (krNewListings.names || []).map((x) => x.name) };
+      // 네이버 순위에 이미 들어 있는 오늘 상장 종목도 '신규상장' 표시 (종목코드나 이름으로 확인)
+      const nlCodes = new Set(nl.map((x) => x.ticker)), nlNames = new Set(out.krNew.names.map(normNm));
+      const offerOf = new Map(nl.map((x) => [x.ticker, x.offer]));
+      for (const k of ['kr', 'krUp', 'krDown']) for (const x of out[k] || []) if (nlCodes.has(x.ticker) || nlNames.has(normNm(x.name))) { x.ipo = true; if (offerOf.get(x.ticker)) x.offer = offerOf.get(x.ticker); }
       if (nl.length) {
         const ids = new Set(nl.map((x) => x.ticker));
         const put = (k, keep, cmp) => { out[k] = [...(out[k] || []).filter((x) => !ids.has(x.ticker)), ...nl.filter(keep)].sort(cmp).slice(0, 10); };
