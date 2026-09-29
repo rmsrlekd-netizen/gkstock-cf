@@ -24,6 +24,8 @@ export default async (req, ctx) => {
     const rd = x.rdate || x.date;
     return today && (rd > z.date || (rd === z.date && x.off > z.hms)); // 재개 예정 시각 전
   };
+  // (예전 기록 보정) 발동가·기준가로 괴리율·방향 다시 계산
+  for (const x of doc.items) if (mk === 'KR' && x.price && x.base) { x.gap = Math.round(((x.price - x.base) / x.base) * 10000) / 100; x.dir = x.gap >= 0 ? 'up' : 'down'; }
   const items = doc.items.map((x) => ({ ...x, active: isActive(x) })).sort((a, b) => ((b.date || '') + b.on < (a.date || '') + a.on ? -1 : 1)); // 최근 발동 순
   // 지금 가격 (최대 40종목)
   const keys = [...new Set(items.slice(0, 60).map((x) => `${mk}:${mk === 'KR' ? x.code : x.sym}`))].slice(0, 40);

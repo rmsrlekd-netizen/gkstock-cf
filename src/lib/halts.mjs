@@ -28,10 +28,13 @@ function viRow(x) {
   const code = String(x.mksc_shrn_iscd || x.stck_shrn_iscd || '').trim();
   const on = hms(x.cntg_vi_hour || x.vi_hour || x.stnd_hour);
   if (!/^[0-9A-Z]{6}$/.test(code) || !on) return null;
-  const price = n0(x.vi_prc);
-  const base = n0(x.vi_dmc_stnd_prc) || n0(x.vi_stnd_prc) || null;
-  let gap = n0(x.vi_dmc_dprt) ?? n0(x.vi_dprt);
-  if (gap == null && price && base) gap = Math.round(((price - base) / base) * 10000) / 100;
+  const price = n0(x.vi_prc) || null;
+  // 정적 VI는 vi_stnd_prc(정적 기준가), 동적 VI는 vi_dmc_stnd_prc(동적 기준가) — 해당 없는 쪽은 0으로 옴
+  const k = String(x.vi_kind_code);
+  const sBase = n0(x.vi_stnd_prc) || null, dBase = n0(x.vi_dmc_stnd_prc) || null;
+  const base = k === '2' ? dBase || sBase : sBase || dBase;
+  let gap = price && base ? Math.round(((price - base) / base) * 10000) / 100 : null;
+  if (gap == null) { const g = n0(k === '2' ? x.vi_dmc_dprt : x.vi_dprt) || n0(x.vi_dprt) || n0(x.vi_dmc_dprt); gap = g || null; }
   return {
     id: `${code}|${on}`, code, name: clean(x.hts_kor_isnm) || code, kind: VI_KIND[String(x.vi_kind_code)] || null,
     on, off: hms(x.vi_cncl_hour), price, base, gap, dir: gap == null ? null : gap >= 0 ? 'up' : 'down', count: n0(x.vi_count),

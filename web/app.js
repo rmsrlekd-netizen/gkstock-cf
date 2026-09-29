@@ -1263,7 +1263,7 @@
       : `<span class="ht-kind ${x.luld ? 'luld' : 'news'}">${esc(x.reason || x.code || '정지')}</span>`;
     const until = mk === 'US' && x.off ? `<span class="ht-until">재개 예정 ${esc(x.off.slice(0, 5))}${x.rdate && x.rdate !== x.date ? ' (' + esc(x.rdate.slice(5)) + ')' : ''}</span>` : mk === 'KR' ? '<span class="ht-until">약 2분 뒤 해제</span>' : '<span class="ht-until">재개 시각 미정</span>';
     return `<button class="ht-live" data-open-co="${esc(mk)}|${esc(code)}|${esc(nm)}">${logoHTML(mk, code, nm, 'md')}<div class="ht-lm"><div class="ht-lt"><b>${esc(nm)}</b>${tag}</div><small>${sub}</small><div class="ht-lx"><span><i class="ht-dot"></i>${esc(onTxt)} 발동</span>${until}</div></div>
-      <div class="ht-lp">${x.gap != null ? `<b class="${dirCls(x.gap)}">${fmtPct(x.gap)}</b><small>기준가 대비</small>` : x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>오늘</small>` : ''}${x.times > 1 ? `<em class="ht-times">오늘 ${x.times}회</em>` : ''}</div></button>`;
+      <div class="ht-lp">${x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>오늘 등락</small>` : ''}${mk === 'KR' && x.gap != null ? `<small>기준가 대비 <span class="${dirCls(x.gap)}">${fmtPct(x.gap)}</span></small>` : ''}${x.times > 1 ? `<em class="ht-times">오늘 ${x.times}회</em>` : ''}</div></button>`;
   }
   function htRow(x, mk) {
     const nm = htName(x, mk), code = mk === 'KR' ? x.code : x.sym;
@@ -1274,7 +1274,7 @@
       ? `<span class="ht-kind sm ${x.dir === 'down' ? 'down' : 'up'}">${x.dir === 'down' ? '하락' : '상승'}${x.kind ? ' · ' + esc(x.kind) : ''}</span>`
       : `<span class="ht-kind sm ${x.luld ? 'luld' : x.mwc ? 'mwc' : 'news'}">${esc(x.reason || x.code)}</span>`;
     const right = mk === 'KR'
-      ? (x.gap != null ? `<b class="${dirCls(x.gap)}">${fmtPct(x.gap)}</b>` : '') + (x.price ? `<small>${fmtInt(x.price)}원</small>` : '')
+      ? (x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>오늘 등락</small>` : '') + (x.price ? `<small class="ht-vp">발동가 ${fmtInt(x.price)}원${x.gap != null ? ` <span class="${dirCls(x.gap)}">(${fmtPct(x.gap)})</span>` : ''}</small>` : '')
       : (x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>지금</small>` : x.price ? `<small>기준 $${esc(fmtPx(x.price))}</small>` : '');
     return `<li class="${x.active ? 'is-on' : ''}" data-open-co="${esc(mk)}|${esc(code)}|${esc(nm)}">${time}<div class="ht-n"><b>${esc(nm)}${x.times > 1 ? ` <em class="ht-times">${x.times}회</em>` : ''}</b><small>${mk === 'KR' ? esc(x.code) : esc(x.ko || x.name || '')}</small>${what}</div><div class="ht-r">${right}</div></li>`;
   }

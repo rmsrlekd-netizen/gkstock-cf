@@ -1658,3 +1658,5 @@ button.br-mv:hover { border-color: var(--accent); }
   #mkSeg button { flex: 1; justify-content: center; padding: .5rem .3rem; font-size: .84rem; gap: .25rem; min-width: 0; white-space: nowrap; }
   #mkSeg button i { font-size: .58rem; padding: .08rem .25rem; }
 }
+
+.ht-r .ht-vp { white-space: nowrap; } .ht-r .ht-vp span { font-family: var(--mono); }
