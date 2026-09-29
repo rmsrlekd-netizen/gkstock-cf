@@ -2,6 +2,7 @@
 //  네이버·트레이딩뷰에는 이 시간 시세가 없어서 한국투자증권 Open API로 받음
 //  거래소 코드: BAQ 나스닥 주간 · BAY 뉴욕 주간 · BAA 아멕스 주간
 import { hasKis, kisGet } from './kis.mjs';
+import { getJSON, setJSON } from './store.mjs';
 
 const DAY_EX = ['BAQ', 'BAY', 'BAA'];
 const n0 = (s) => { const x = Number(String(s ?? '').replace(/[,%+\s]/g, '')); return Number.isFinite(x) ? x : null; };
@@ -39,6 +40,7 @@ export async function usDayMovers(n = 10) {
   const seen = new Map();
   for (const r of got) if (!seen.has(r.ticker) && /^[A-Z][A-Z.]{0,5}$/.test(r.ticker)) seen.set(r.ticker, r);
   const all = [...seen.values()].filter((x) => (x.vol ?? 1) > 0);
+  await saveDayQuotes(all).catch(() => {}); // 순위에 나온 종목 시세는 다른 화면(관심종목·발표후 등락)에서도 재사용
   if (all.length < 5) throw new Error('주간거래 순위 없음' + (errs.length ? ' — ' + errs[0].slice(0, 120) : ''));
   return {
     up: all.filter((x) => x.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, n),
@@ -53,7 +55,9 @@ export async function usDayQuotes(tickers, exOf = new Map()) {
   if (!hasKis()) return out;
   for (const t of tickers.slice(0, 12)) {
     const e = String(exOf.get(t) || '').toUpperCase();
-    const tries = e.includes('NASDAQ') ? ['BAQ'] : e.includes('NYSE') && !/AMERICAN|MKT/.test(e) ? ['BAY'] : /AMEX|AMERICAN|MKT/.test(e) ? ['BAA'] : ['BAQ', 'BAY'];
+    // 아는 거래소를 먼저, 안 되면 나머지 주간 거래소도 시도 (네이버 코드 접미사가 거래소와 다를 때가 있음)
+    const first = e.includes('NASDAQ') ? 'BAQ' : /AMEX|AMERICAN|MKT/.test(e) ? 'BAA' : e.includes('NYSE') ? 'BAY' : null;
+    const tries = [...new Set([first, 'BAQ', 'BAY', 'BAA'].filter(Boolean))];
     for (const ex of tries) {
       try {
         const j = await kisGet('/uapi/overseas-price/v1/quotations/price', 'HHDFS00000300', { AUTH: '', EXCD: ex, SYMB: t });
@@ -63,4 +67,37 @@ export async function usDayQuotes(tickers, exOf = new Map()) {
     }
   }
   return out;
+}
+
+// ── 주간거래 시세 공유 저장소: 종목별 최근 시세 (여러 화면·방문자가 같이 씀) ──
+const QK = 'usday/q';
+let qmem = null;
+export async function dayQuoteCache() {
+  if (qmem && Date.now() - qmem.at < 20e3) return qmem.map;
+  const m = (await getJSON(QK).catch(() => null)) || {};
+  qmem = { at: Date.now(), map: m };
+  return m;
+}
+export async function saveDayQuotes(rows) {
+  if (!rows.length) return;
+  const m = (await getJSON(QK).catch(() => null)) || {};
+  const now = Date.now();
+  for (const r of rows) if (r?.ticker && r.price != null && r.pct != null) m[r.ticker] = { p: r.price, c: r.pct, at: now };
+  for (const [k, v] of Object.entries(m)) if (now - v.at > 12 * 3600e3) delete m[k]; // 오래된 것 정리
+  await setJSON(QK, m);
+  qmem = { at: now, map: m };
+}
+// 저장소에 없거나 오래된 종목은 뒤에서 조금씩 받아 채움 (한국투자증권 초당 호출 제한 때문에 한 번에 최대 6종목)
+const pending = new Set();
+export async function refreshDayQuotes(tickers, exOf = new Map()) {
+  const todo = tickers.filter((t) => !pending.has(t)).slice(0, 6);
+  if (!todo.length) return;
+  todo.forEach((t) => pending.add(t));
+  try {
+    const q = await usDayQuotes(todo, exOf);
+    await saveDayQuotes(Object.values(q));
+    // 주간거래가 안 되는 종목은 빈 기록으로 남겨 10분간 다시 묻지 않음
+    const miss = todo.filter((t) => !q[t]);
+    if (miss.length) { const m = (await getJSON(QK).catch(() => null)) || {}; for (const t of miss) m[t] = { none: 1, at: Date.now() }; await setJSON(QK, m).catch(() => {}); qmem = null; }
+  } finally { todo.forEach((t) => pending.delete(t)); }
 }

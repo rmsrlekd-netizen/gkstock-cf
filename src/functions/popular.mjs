@@ -151,15 +151,16 @@ export default async () => {
     if (!day) {
       try { day = { ...(await usDayMovers(10)), at: Date.now() }; } catch (e) { errors.push('usDay: ' + e.message); }
       if (day) {
-        const exOf = new Map(usList.map((x) => [x.ticker, /\.O$/.test(x.reuters || '') ? 'NASDAQ' : /\.N$/.test(x.reuters || '') ? 'NYSE' : /\.(A|K)$/.test(x.reuters || '') ? 'AMEX' : '']));
+        const exOf = new Map(usList.map((x) => [x.ticker, /\.O$/.test(x.reuters || '') ? 'NASDAQ' : '']));
         day.pop = await usDayQuotes(usList.map((x) => x.ticker), exOf).catch(() => ({}));
       }
     }
     if (day?.up?.length || day?.down?.length) { out.usDay = day; out.usUp = day.up; out.usDown = day.down; out.usSession = 'DAY'; }
-    for (const x of usList) { const d = day?.pop?.[x.ticker]; if (d?.pct != null) { x.regPct = x.pct; x.regPrice = x.price; x.pct = d.pct; x.price = d.price; x.session = 'DAY'; } }
+    // 주간거래 시세가 있으면 그 등락률, 없으면(주간거래 안 되는 종목) 정규장 등락률 그대로 · 표시 없이
+    for (const x of usList) { const d = day?.pop?.[x.ticker]; if (d?.pct != null) { x.regPct = x.pct; x.regPrice = x.price; x.pct = d.pct; x.price = d.price; x.session = 'DAY'; } else if (x.session !== 'DAY') delete x.session; }
   } else if (!sess) {
     // 정규장·휴장 시간에 네이버 목록에 남은 '애프터' 표시는 떼어냄 (등락률은 정규장 기준이라 헷갈림)
-    for (const k of ['usUp', 'usDown']) for (const x of out[k] || []) if (x.status !== 'OPEN') delete x.session;
+    for (const k of ['us', 'usUp', 'usDown']) for (const x of out[k] || []) if (x.status !== 'OPEN') delete x.session;
   }
   // 오늘 상장한 종목을 국내 상승·하락 순위에 끼워 넣음 (정규장 9시 이후)
   try {
