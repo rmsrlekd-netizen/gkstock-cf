@@ -1,7 +1,7 @@
 // /api/popular — 실시간 인기 종목 TOP 10 + 상승·하락 상위 10 (국내·미국)
 //  한국: 네이버 증권 "검색 상위 종목"
 //  미국: StockTwits 실시간 트렌딩(미국 상장 주식만) → 실패 시 Nasdaq 거래량 상위
-import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num } from '../lib/util.mjs';
+import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num, refreshInBackground } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { us as usQuote } from './quote.mjs';
 import { usDaySession, usDayMovers, usDayQuotes } from '../lib/usday.mjs';
@@ -103,9 +103,18 @@ async function nasdaqActive() {
   return rows.slice(0, 10).map((x) => ({ market: 'US', ticker: x.symbol, name: x.name, price: num(String(x.lastSalePrice || '').replace('$', '')), pct: num(String(x.change || x.percentageChange || '').replace('%', '')) }));
 }
 
-export default async () => {
+// 방문자는 저장된 목록을 바로 받고, 1분 넘게 지났으면 뒤에서 새로 계산 (새로 계산은 10초 넘게 걸릴 때가 있어서 기다리게 하지 않음)
+export default async (req, ctx) => {
   const cached = await getJSON('popular/v2');
   if (cached && Date.now() - cached.at < 60e3) return json({ ok: true, ...cached }, { cdnSeconds: 60, swr: 120 });
+  if (cached && Date.now() - cached.at < 15 * 60e3 && ctx?.waitUntil) {
+    refreshInBackground(ctx, 'popular', () => build(cached));
+    return json({ ok: true, ...cached }, { cdnSeconds: 20, swr: 60 });
+  }
+  return json({ ok: true, ...(await build(cached)) }, { cdnSeconds: 60, swr: 120 });
+};
+
+async function build(cached) {
   const errors = [];
   let kr = [], krSrc = '네이버 증권 검색 상위';
   try { kr = await naverKrTop(10); } catch (e) {
@@ -193,7 +202,7 @@ export default async () => {
   const wm = (await getJSON('why/map')) || {};
   for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const w = wm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (w?.r && Date.now() - w.at < 20 * 3600e3) { x.reason = w.r; x.rconf = w.c; } }
   if (kr.length || usList.length) await setJSON('popular/v2', out).catch(() => {});
-  return json({ ok: true, ...out }, { cdnSeconds: 60, swr: 120 });
-};
+  return out;
+}
 
 export const config = { path: '/api/popular' };
