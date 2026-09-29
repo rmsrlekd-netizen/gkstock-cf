@@ -4,6 +4,7 @@
 import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { us as usQuote } from './quote.mjs';
+import { usDaySession, usDayMovers, usDayQuotes } from '../lib/usday.mjs';
 import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers, naverKrExtMovers, naverKrQuotes } from '../lib/naver.mjs';
 
 // 미국 시간외(프리마켓 04:00~09:30 · 애프터마켓 16:00~20:00, 뉴욕시간 평일)인지
@@ -143,6 +144,22 @@ export default async () => {
     if (ext?.up?.length) { out.usExt = ext; out.usUp = ext.up; out.usDown = ext.down; out.usSession = sess; }
     // 인기 종목도 시간외 등락률을 함께 표시
     for (const x of usList) if (x.ext && x.ext.session === sess) { x.regPct = x.pct; x.regPrice = x.price; x.pct = x.ext.pct; x.price = x.ext.price ?? x.price; x.session = sess; }
+  }
+  // 미국 주간거래(데이마켓, 한국 낮 시간): 한국투자증권 시세로 상승·하락 순위와 인기 종목 등락률 (2분마다 새로)
+  if (!sess && usDaySession()) {
+    let day = cached?.usDay && Date.now() - cached.usDay.at < 2 * 60e3 ? cached.usDay : null;
+    if (!day) {
+      try { day = { ...(await usDayMovers(10)), at: Date.now() }; } catch (e) { errors.push('usDay: ' + e.message); }
+      if (day) {
+        const exOf = new Map(usList.map((x) => [x.ticker, /\.O$/.test(x.reuters || '') ? 'NASDAQ' : /\.N$/.test(x.reuters || '') ? 'NYSE' : /\.(A|K)$/.test(x.reuters || '') ? 'AMEX' : '']));
+        day.pop = await usDayQuotes(usList.map((x) => x.ticker), exOf).catch(() => ({}));
+      }
+    }
+    if (day?.up?.length || day?.down?.length) { out.usDay = day; out.usUp = day.up; out.usDown = day.down; out.usSession = 'DAY'; }
+    for (const x of usList) { const d = day?.pop?.[x.ticker]; if (d?.pct != null) { x.regPct = x.pct; x.regPrice = x.price; x.pct = d.pct; x.price = d.price; x.session = 'DAY'; } }
+  } else if (!sess) {
+    // 정규장·휴장 시간에 네이버 목록에 남은 '애프터' 표시는 떼어냄 (등락률은 정규장 기준이라 헷갈림)
+    for (const k of ['usUp', 'usDown']) for (const x of out[k] || []) if (x.status !== 'OPEN') delete x.session;
   }
   // 오늘 상장한 종목을 국내 상승·하락 순위에 끼워 넣음 (정규장 9시 이후)
   try {
