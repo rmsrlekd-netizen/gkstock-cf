@@ -7,7 +7,7 @@ import { us as usQuote, getQuotes } from './quote.mjs';
 import { queryArchive } from '../lib/archive.mjs';
 import { savedHeadline } from './analyze.mjs';
 import { usDaySession, usDayMovers, usDayQuotes } from '../lib/usday.mjs';
-import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers, naverKrExtMovers, naverKrQuotes } from '../lib/naver.mjs';
+import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers, tvUsRegMovers, naverKrExtMovers, naverKrQuotes } from '../lib/naver.mjs';
 
 // 미국 시간외(프리마켓 04:00~09:30 · 애프터마켓 16:00~20:00, 뉴욕시간 평일)인지
 function usExtSession(now = new Date()) {
@@ -143,6 +143,20 @@ async function build(cached) {
   const out = { at: Date.now(), kr, us: usList, krSrc, usSrc, ...Object.fromEntries(mv), errors };
   // 미국 프리마켓·애프터마켓 시간엔 상승·하락을 시간외 등락률 기준으로 (3분마다 새로 계산)
   const sess = usExtSession();
+  // 미국 정규장: 네이버 순위 + 트레이딩뷰 전체 스캔 + 최근 공시 종목을 합침 (네이버 순위에서 빠지는 급등주 보완, 2분마다)
+  if (!sess && !usDaySession()) {
+    let reg = cached?.usReg && Date.now() - cached.usReg.at < 2 * 60e3 ? cached.usReg : null;
+    if (!reg) {
+      reg = { up: out.usUp || [], down: out.usDown || [], at: Date.now() };
+      try {
+        const tv = await tvUsRegMovers(10);
+        const merge = (a, b, dir) => { const m = new Map(a.map((x) => [x.ticker, x])); for (const x of b) if (!m.has(x.ticker)) m.set(x.ticker, x); return [...m.values()].sort((p, q) => dir * (q.pct - p.pct)).slice(0, 10); };
+        reg = { up: merge(reg.up, tv.up, 1), down: merge(reg.down, tv.down, -1), at: Date.now() };
+      } catch (e) { errors.push('usRegTV: ' + e.message); }
+      try { const r2 = await addNewsMovers(reg, null); reg = { up: r2.up, down: r2.down, at: reg.at }; } catch (e) { errors.push('usRegNews: ' + e.message); }
+    }
+    out.usReg = reg; out.usUp = reg.up; out.usDown = reg.down;
+  }
   if (sess) {
     let ext = cached?.usExt && cached.usExt.session === sess && Date.now() - cached.usExt.at < 2 * 60e3 ? cached.usExt : null;
     if (!ext) {
@@ -252,6 +266,11 @@ async function addNewsMovers(ext, sess) {
   const add = [];
   for (const t of tickers) {
     const x = q['US:' + t];
+    if (!sess) { // 정규장
+      if (!x || x.price == null || x.pct == null || x.session) continue;
+      add.push({ market: 'US', ticker: t, name: x.nameKo || t, price: x.price, pct: x.pct, cur: 'USD', status: x.status || null, news: true });
+      continue;
+    }
     if (!x || x.session !== sess || x.livePct == null || x.live == null) continue;
     add.push({ market: 'US', ticker: t, name: x.nameKo || t, price: x.live, pct: x.livePct, regPrice: x.price, regPct: x.pct, session: sess, cur: 'USD', status: sess, news: true });
   }

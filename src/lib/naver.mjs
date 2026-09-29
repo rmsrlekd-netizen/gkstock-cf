@@ -227,3 +227,24 @@ export async function tvUsExtMovers(session, n = 10) {
   if (U.length < 3 || D.length < 3) throw new Error('트레이딩뷰 시간외 데이터가 아직 오늘 것 아님');
   return { up: U, down: D, session: pre ? 'PRE' : 'AFTER', src: 'tv' };
 }
+
+/** 미국 정규장 상승·하락 (트레이딩뷰 전체 종목 스캔 + 네이버 시세로 확인). 네이버 순위에서 빠지는 급등주(ADR·거래정지 직후 등) 보완 */
+export async function tvUsRegMovers(n = 10) {
+  const scan = async (order) => {
+    const body = JSON.stringify({ columns: ['name', 'description', 'close', 'change', 'volume', 'exchange'], filter: [{ left: 'type', operation: 'in_range', right: ['stock', 'dr'] }, { left: 'exchange', operation: 'in_range', right: ['NASDAQ', 'NYSE', 'AMEX'] }, { left: 'volume', operation: 'greater', right: 50000 }, { left: 'change', operation: order === 'desc' ? 'greater' : 'less', right: 0 }], sort: { sortBy: 'change', sortOrder: order }, range: [0, n + 10] });
+    const opt = { method: 'POST', headers: { 'content-type': 'application/json', Origin: 'https://www.tradingview.com', Referer: 'https://www.tradingview.com/' }, body };
+    let r = await fetchWithTimeout('https://scanner.tradingview.com/america/scan', opt, 8000).catch(() => null);
+    if (!r?.ok && process.env.KR_RELAY_URL) r = await fetchWithTimeout('https://scanner.tradingview.com/america/scan', { ...opt, relay: true }, 9000);
+    if (!r?.ok) throw new Error('트레이딩뷰 HTTP ' + (r?.status || '오류'));
+    const j = await r.json();
+    return (j.data || []).map((x) => { const [t, desc, close, chg, vol, ex] = x.d; return { ticker: String(t).replace('/', '.'), name: desc, price: close, pct: chg != null ? Math.round(chg * 100) / 100 : null, vol, ex }; })
+      .filter((x) => /^[A-Z][A-Z.]{0,5}$/.test(x.ticker) && x.pct != null && x.price != null);
+  };
+  const [up, down] = await Promise.all([scan('desc'), scan('asc')]);
+  const all = [...up, ...down];
+  const rc = Object.fromEntries(all.map((x) => [x.ticker, reutersOf(x.ticker, x.ex)]).filter((a) => a[1]));
+  let q = {};
+  try { q = await naverUsQuotes([...new Set(Object.values(rc))]); } catch {}
+  const fmt = (x) => { const nq = q[rc[x.ticker]]; return { market: 'US', ticker: x.ticker, reuters: rc[x.ticker] || null, name: nq?.nameKo || x.name, price: nq?.price ?? x.price, pct: nq?.pct ?? x.pct, cur: 'USD', status: nq?.status || null }; };
+  return { up: up.map(fmt).filter((x) => x.pct > 0), down: down.map(fmt).filter((x) => x.pct < 0) };
+}
