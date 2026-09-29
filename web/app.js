@@ -1230,7 +1230,7 @@
   S.htMk = load('gk_htmk', 'KR'); S.ht = {}; S.htF = 'all';
   const HT_INFO = {
     KR: '<b>VI(변동성완화장치)</b> 주가가 짧은 시간에 크게 움직이면 2분 동안 단일가 매매로 바뀌어요. <em>정적 VI</em>는 시가·직전 단일가 대비 ±10% 안팎, <em>동적 VI</em>는 직전 체결가 대비 순간 급변 때 걸려요.',
-    US: '<b>거래정지(서킷브레이커)</b> 개별 종목은 5분 사이 급등락하면 <em>LULD 5분 정지</em>, 중요 뉴스를 앞두면 <em>뉴스 대기 정지</em>가 걸려요. S&P500이 7·13·20% 빠지면 <em>시장 전체 서킷브레이커</em>가 걸려요.',
+    US: '<b>거래정지(서킷브레이커)</b> 미장 정규장(뉴욕 9:30~16:00)에 걸려요. 개별 종목은 5분 사이 급등락하면 <em>LULD 5분 정지</em>, 중요 뉴스를 앞두면 <em>뉴스 대기 정지</em>가 걸려요. S&P500이 7·13·20% 빠지면 <em>시장 전체 서킷브레이커</em>가 걸려요.',
   };
   // 뉴욕 시각 → 한국 시각
   function etToKst(date, t) {
@@ -1263,7 +1263,7 @@
       : `<span class="ht-kind ${x.luld ? 'luld' : 'news'}">${esc(x.reason || x.code || '정지')}</span>`;
     const until = mk === 'US' && x.off ? `<span class="ht-until">재개 예정 ${esc(x.off.slice(0, 5))}${x.rdate && x.rdate !== x.date ? ' (' + esc(x.rdate.slice(5)) + ')' : ''}</span>` : mk === 'KR' ? '<span class="ht-until">약 2분 뒤 해제</span>' : '<span class="ht-until">재개 시각 미정</span>';
     return `<button class="ht-live" data-open-co="${esc(mk)}|${esc(code)}|${esc(nm)}">${logoHTML(mk, code, nm, 'md')}<div class="ht-lm"><div class="ht-lt"><b>${esc(nm)}</b>${tag}</div><small>${sub}</small><div class="ht-lx"><span><i class="ht-dot"></i>${esc(onTxt)} 발동</span>${until}</div></div>
-      <div class="ht-lp">${x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>오늘 등락</small>` : ''}${mk === 'KR' && x.gap != null ? `<small>기준가 대비 <span class="${dirCls(x.gap)}">${fmtPct(x.gap)}</span></small>` : ''}${x.times > 1 ? `<em class="ht-times">오늘 ${x.times}회</em>` : ''}</div></button>`;
+      <div class="ht-lp">${x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>${mk === 'US' ? '정규장 등락' : '오늘 등락'}</small>` : ''}${mk === 'KR' && x.gap != null ? `<small>기준가 대비 <span class="${dirCls(x.gap)}">${fmtPct(x.gap)}</span></small>` : ''}${x.times > 1 ? `<em class="ht-times">오늘 ${x.times}회</em>` : ''}</div></button>`;
   }
   function htRow(x, mk) {
     const nm = htName(x, mk), code = mk === 'KR' ? x.code : x.sym;
@@ -1275,7 +1275,7 @@
       : `<span class="ht-kind sm ${x.luld ? 'luld' : x.mwc ? 'mwc' : 'news'}">${esc(x.reason || x.code)}</span>`;
     const right = mk === 'KR'
       ? (x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>오늘 등락</small>` : '') + (x.price ? `<small class="ht-vp">발동가 ${fmtInt(x.price)}원${x.gap != null ? ` <span class="${dirCls(x.gap)}">(${fmtPct(x.gap)})</span>` : ''}</small>` : '')
-      : (x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>지금</small>` : x.price ? `<small>기준 $${esc(fmtPx(x.price))}</small>` : '');
+      : (x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>정규장 등락</small>` : '') + (x.price ? `<small class="ht-vp">정지 기준가 $${esc(fmtPx(x.price))}</small>` : x.now != null ? `<small class="ht-vp">$${esc(fmtPx(x.now))}</small>` : '');
     return `<li class="${x.active ? 'is-on' : ''}" data-open-co="${esc(mk)}|${esc(code)}|${esc(nm)}">${time}<div class="ht-n"><b>${esc(nm)}${x.times > 1 ? ` <em class="ht-times">${x.times}회</em>` : ''}</b><small>${mk === 'KR' ? esc(x.code) : esc(x.ko || x.name || '')}</small>${what}</div><div class="ht-r">${right}</div></li>`;
   }
   function renderHalts() {
@@ -1302,10 +1302,10 @@
       <div class="ht-info">${HT_INFO[mk]}</div>
       ${d.err ? `<p class="note err">최근 확인 중 오류: ${esc(d.err)}</p>` : ''}
       <div class="card ht-now"><div class="card-h"><h3><i class="ht-pulse"></i>지금 걸려 있는 종목 <b>${d.active?.length || 0}</b></h3></div>
-        ${d.active?.length ? `<div class="ht-lives">${d.active.map((x) => htActiveCard(x, mk)).join('')}</div>` : `<p class="muted ht-empty">${d.today ? (mk === 'KR' ? '지금 VI가 걸린 종목이 없어요.' : '지금 거래정지된 종목이 없어요.') : '지금은 장이 열려 있지 않아요.'}</p>`}</div>
+        ${d.active?.length ? `<div class="ht-lives">${d.active.map((x) => htActiveCard(x, mk)).join('')}</div>` : `<p class="muted ht-empty">${d.open ? (mk === 'KR' ? '지금 VI가 걸린 종목이 없어요.' : '지금 거래정지된 종목이 없어요.') : mk === 'KR' ? '지금은 정규장(9:00~15:30) 시간이 아니에요.' : `지금은 미장 정규장 시간이 아니에요. 정규장: 뉴욕 9:30~16:00 (한국 ${etToKst(d.date, '09:30:00')}~${etToKst(d.date, '16:00:00')})`}</p>`}</div>
       <div class="card ht-hist"><div class="card-h"><h3>${d.today ? '오늘' : dateTxt} ${mk === 'KR' ? 'VI 발동 내역' : '거래정지 내역'} <b>${hist.length}</b></h3><span class="muted sm">${d.stats?.stocks || 0}종목</span></div>
         <div class="chips ht-f">${chips.map(([k, l, n]) => `<button class="${f === k ? 'on' : ''}" data-htf="${k}">${l} ${n}</button>`).join('')}</div>
-        ${shown.length ? `<ul class="ht-list">${shown.map((x) => htRow(x, mk)).join('')}</ul>` : `<p class="muted ht-empty">${hist.length ? '해당하는 내역이 없어요.' : mk === 'KR' ? '아직 VI 발동 내역이 없어요. 장중(9:00~15:30)에 1분마다 기록해요.' : '아직 거래정지 내역이 없어요. 뉴욕 4:00~20:00에 1분마다 기록해요.'}</p>`}
+        ${shown.length ? `<ul class="ht-list">${shown.map((x) => htRow(x, mk)).join('')}</ul>` : `<p class="muted ht-empty">${hist.length ? '해당하는 내역이 없어요.' : mk === 'KR' ? '아직 VI 발동 내역이 없어요. 장중(9:00~15:30)에 1분마다 기록해요.' : '아직 거래정지 내역이 없어요. 미장 정규장(뉴욕 9:30~16:00)에 1분마다 기록해요.'}</p>`}
         <p class="note">${mk === 'KR' ? '출처: 한국투자증권 · 괴리율은 VI 기준가 대비 · 종목을 누르면 기업 분석' : '출처: 나스닥 공식 거래정지 목록(나스닥·뉴욕·아멕스 전체) · 시각은 뉴욕 기준, 아래는 한국 시각 · 종목을 누르면 기업 분석'}</p></div>`;
   }
   function bindHalts() {

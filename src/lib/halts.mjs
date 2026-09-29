@@ -1,6 +1,6 @@
 // VI·서킷 — 국장 변동성완화장치(VI) 발동·해제 / 미장 거래정지(서킷브레이커·LULD) 발동·재개 내역
 //  국장: 한국투자증권 Open API "변동성완화장치(VI) 현황" (장중 1분마다)
-//  미장: 나스닥 공식 거래정지 목록(Nasdaq Trader Trade Halts, 나스닥·뉴욕·아멕스 전체) (뉴욕 4:00~20:00 1분마다)
+//  미장: 나스닥 공식 거래정지 목록(Nasdaq Trader Trade Halts, 나스닥·뉴욕·아멕스 전체) (뉴욕 정규장 9:25~16:30 1분마다)
 import { fetchWithTimeout } from './util.mjs';
 import { getJSON, setJSON } from './store.mjs';
 import { hasKis, kisGet } from './kis.mjs';
@@ -89,7 +89,9 @@ async function nasdaqHalts() {
 }
 export async function usHaltWatch(now = new Date()) {
   const z = zoned(now, 'America/New_York');
-  if (['Sat', 'Sun'].includes(z.wd) || z.m < 3 * 60 + 55 || z.m > 20 * 60 + 10) return null;
+  // 미장 거래정지(LULD 등)는 정규장(뉴욕 9:30~16:00)에 걸림 → 개장 직전부터 마감 30분 뒤까지 기록
+  //  (개장 전에 걸린 뉴스 대기 정지도 목록에 남아 있어서 9:25에 함께 잡힘)
+  if (['Sat', 'Sun'].includes(z.wd) || z.m < 9 * 60 + 25 || z.m > 16 * 60 + 30) return null;
   const key = `halts/us/${z.date}`;
   const doc = (await getJSON(key)) || { date: z.date, items: [] };
   let rows;
