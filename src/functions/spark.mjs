@@ -38,7 +38,8 @@ async function build() {
 export default async (req, ctx) => {
   const c = await getJSON('spark/v1');
   if (c) {
-    if (Date.now() - c.at > 10 * 60e3) refreshInBackground(ctx, 'spark', build);
+    const missing = Object.keys(SYM).some((k) => !c.data?.[k]); // 새 지표가 추가됐으면 10분 안 기다리고 바로 새로
+    if (Date.now() - c.at > (missing ? 60e3 : 10 * 60e3)) refreshInBackground(ctx, 'spark', build);
     return json(c, { cdnSeconds: 300, swr: 600 });
   }
   return json(await build(), { cdnSeconds: 120, swr: 300 });
