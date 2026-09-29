@@ -1226,6 +1226,93 @@
     });
   }
 
+  // ───────────────────────── 메뉴 '더보기' (화면이 좁을 때 숨는 메뉴를 묶음) ─────────────────────────
+  const navHidden = () => $$('#nav > button[data-go]').filter((b) => getComputedStyle(b).display === 'none');
+  function syncNavMore() {
+    const mb = $('#nav [data-nav-more]');
+    if (!mb) return;
+    const hid = navHidden();
+    mb.hidden = !hid.length;
+    const act = hid.find((b) => b.classList.contains('on'));
+    mb.classList.toggle('on', !!act);
+    mb.firstChild.textContent = act ? act.textContent : '더보기';
+  }
+  function toggleNavPop(open) {
+    const pop = $('#navPop');
+    if (!pop) return;
+    const show = open ?? pop.hidden;
+    if (show) {
+      pop.innerHTML = navHidden().map((b) => `<button data-go="${esc(b.dataset.go)}" class="${b.classList.contains('on') ? 'on' : ''}">${esc(b.textContent)}</button>`).join('');
+      const mb = $('#nav [data-nav-more]').getBoundingClientRect();
+      pop.style.top = `${mb.bottom + 6}px`;
+      pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 200, mb.right - 190))}px`;
+    }
+    pop.hidden = !show;
+  }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-nav-more]')) { e.preventDefault(); e.stopPropagation(); toggleNavPop(); return; }
+    if (!e.target.closest('#navPop')) toggleNavPop(false);
+    else if (e.target.closest('[data-go]')) setTimeout(() => toggleNavPop(false), 0);
+  }, true);
+  addEventListener('resize', () => { toggleNavPop(false); syncNavMore(); });
+  addEventListener('scroll', () => { if (!$('#navPop')?.hidden) toggleNavPop(false); }, { passive: true });
+
+  // ───────────────────────── 공시 반응 통계 (이런 공시 뒤 주가는 보통 어떻게 됐나) ─────────────────────────
+  S.rcMk = load('gk_rcmk', 'KR'); S.rc = {}; S.rcOpen = null;
+  async function loadReact() {
+    const mk = S.rcMk;
+    renderReact();
+    if (!S.rc[mk] || Date.now() - S.rc[mk]._at > 10 * 60e3) {
+      try { S.rc[mk] = { ...(await getJSON(`/api/reaction?mk=${mk}`, {})), _at: Date.now() }; } catch (e) { S.rc[mk] = { error: e.message, _at: Date.now() }; }
+      if (S.view === 'react' && S.rcMk === mk) renderReact();
+    }
+  }
+  const rcPct = (v) => (v == null ? '—' : `<b class="${dirCls(v)}">${fmtPct(v)}</b>`);
+  function rcBar(v, max) { if (v == null) return ''; const w = Math.min(50, (Math.abs(v) / max) * 50); return `<span class="rc-bar"><i class="${v >= 0 ? 'p' : 'n'}" style="${v >= 0 ? 'left:50%' : `left:${50 - w}%`};width:${w}%"></i></span>`; }
+  function renderReact() {
+    const mk = S.rcMk, d = S.rc[mk];
+    $$('#rcSeg button').forEach((b) => b.classList.toggle('on', b.dataset.rc === mk));
+    const box = $('#rcBody');
+    if (!box) return;
+    if (!d) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; return; }
+    if (d.error) { box.innerHTML = `<div class="card"><p class="err">불러오지 못했습니다: ${esc(d.error)}</p></div>`; return; }
+    const types = d.types || [];
+    $('#rcMeta').textContent = `${fmtInt(d.total || 0)}건 분석 · 최근 1년`;
+    const max = Math.max(5, ...types.map((t) => Math.abs(t.avg1 ?? 0)), ...types.map((t) => Math.abs(t.avg5 ?? 0)));
+    box.innerHTML = `<div class="ht-info"><b>이런 공시가 나오면 주가는 보통 어떻게 됐을까?</b> 지난 공시·보도자료마다 <em>발표 직전 종가</em> 대비 <em>다음 거래일 종가</em>와 <em>5거래일 뒤 종가</em> 수익률을 계산해 유형별로 모았어요. 평균은 극단값을 잘라 계산하고, <em>상승 비율</em>은 오른 경우의 비율이에요. 과거 통계일 뿐 앞으로를 보장하지 않아요.</div>
+      ${types.length ? `<div class="card rc-card"><div class="rc-head"><span>공시 유형</span><span>다음 날</span><span>5일 뒤</span></div>
+        <ul class="rc-list">${types.map((t) => `<li data-rck="${esc(t.k)}" class="${S.rcOpen === t.k ? 'open' : ''}"><div class="rc-n"><b>${esc(t.label)}</b><small>${fmtInt(t.n)}건</small></div>
+          <div class="rc-c">${rcPct(t.avg1)}${rcBar(t.avg1, max)}<small>상승 ${t.up1 ?? '—'}% · 중간값 ${fmtPct(t.med1)}</small></div>
+          <div class="rc-c">${rcPct(t.avg5)}${rcBar(t.avg5, max)}<small>상승 ${t.up5 ?? '—'}% · 중간값 ${fmtPct(t.med5)}</small></div></li>${S.rcOpen === t.k ? `<li class="rc-cases" id="rcCases"><div class="skel"></div></li>` : ''}`).join('')}</ul>
+        <p class="note">유형을 누르면 최근 사례를 볼 수 있어요. 3건 이상 모인 유형만 보여요 · 매일 조금씩 쌓여요.</p></div>`
+      : `<div class="card"><p class="muted" style="margin:.2rem 0">아직 통계를 모으는 중이에요. 지난 공시의 발표 후 주가를 하루 수백 건씩 계산하고 있어서, 며칠 안에 유형별 통계가 채워져요.</p></div>`}`;
+    if (S.rcOpen) loadRcCases(mk, S.rcOpen);
+  }
+  async function loadRcCases(mk, k) {
+    let j;
+    try { j = await getJSON(`/api/reaction?mk=${mk}&k=${encodeURIComponent(k)}`, {}); } catch (e) { j = { cases: [], error: e.message }; }
+    const el = $('#rcCases');
+    if (!el || S.rcOpen !== k) return;
+    el.innerHTML = (j.cases || []).length ? `<table class="tbl rc-t"><tr><th>발표</th><th>종목·내용</th><th>다음 날</th><th>5일 뒤</th></tr>${j.cases.map((c) => `<tr data-id="${esc(c.id)}"><td class="mono">${esc(fmtDT(new Date(c.ms)).date)}</td><td><b>${esc(c.tk)}</b> <span class="muted">${esc(c.title || '')}</span></td><td>${rcPct(c.r1)}</td><td>${rcPct(c.r5)}</td></tr>`).join('')}</table>` : `<p class="muted">사례가 없어요.${j.error ? ' ' + esc(j.error) : ''}</p>`;
+  }
+  // 공시 상세: 같은 유형 공시의 과거 반응
+  async function loadItemReact(n) {
+    const el = $('#aReact');
+    if (!el || !n.ticker) return;
+    let j;
+    try { j = await getJSON(`/api/reaction?id=${encodeURIComponent(n.id)}`, {}); } catch { return; }
+    if (S.sel !== n.id || !j.k || (!j.stat && !j.own)) return;
+    const t = j.stat;
+    el.hidden = false;
+    el.innerHTML = `<div class="box rc-item"><h4>이런 공시 뒤 주가는? <small>${esc(j.label)} · ${j.mk === 'KR' ? '국장' : '미장'} 과거 통계</small></h4>
+      ${t ? `<div class="rc-row"><div><span>다음 날 평균</span>${rcPct(t.avg1)}<small>상승 ${t.up1 ?? '—'}%</small></div><div><span>5일 뒤 평균</span>${rcPct(t.avg5)}<small>상승 ${t.up5 ?? '—'}%</small></div><div><span>표본</span><b>${fmtInt(t.n)}건</b><small>최근 1년</small></div>${j.own ? `<div class="own"><span>이 공시 실제</span><b>${j.own.r1 != null ? fmtPct(j.own.r1) : '—'} / ${j.own.r5 != null ? fmtPct(j.own.r5) : '—'}</b><small>다음 날 / 5일 뒤</small></div>` : ''}</div>` : `<p class="muted" style="margin:.3rem 0">이 유형은 아직 표본이 모이는 중이에요.${j.own ? ` 이 공시 실제: 다음 날 ${fmtPct(j.own.r1)}, 5일 뒤 ${fmtPct(j.own.r5)}` : ''}</p>`}
+      <p class="note">발표 직전 종가 대비 수익률 · 과거 통계일 뿐 앞으로를 보장하지 않아요 · <button class="link" data-go="react">유형별 전체 보기 →</button></p></div>`;
+  }
+  function bindReact() {
+    $('#rcSeg')?.addEventListener('click', (e) => { const b = e.target.closest('[data-rc]'); if (!b) return; S.rcMk = b.dataset.rc; S.rcOpen = null; save('gk_rcmk', S.rcMk); loadReact(); });
+    $('#rcBody')?.addEventListener('click', (e) => { const li = e.target.closest('[data-rck]'); if (!li) return; S.rcOpen = S.rcOpen === li.dataset.rck ? null : li.dataset.rck; renderReact(); });
+  }
+
   // ───────────────────────── VI·서킷 (국장 VI 발동·해제 / 미장 거래정지·재개) ─────────────────────────
   S.htMk = load('gk_htmk', 'KR'); S.ht = {}; S.htF = 'all';
   const HT_INFO = {
@@ -1738,6 +1825,7 @@
     S.aTab = 'fin';
     trackItem(id);
     $('#itemBody').innerHTML = articleHTML(n);
+    loadItemReact(n);
     loadAdminViews(id);
     queueTranslate([n]);
     window.scrollTo({ top: 0 });
@@ -1776,6 +1864,7 @@
       </header>
       <div class="article">
         <section class="a-sec"><h3>AI 애널리스트 분석 <small>섹터 전문 애널리스트 관점의 핵심 요약 · 호재/악재 · 체크포인트</small></h3><div id="aAI">${aiPane(n)}</div></section>
+        <section class="a-sec" id="aReact" hidden></section>
         ${extraCards(n) ? `<section class="a-sec">${extraCards(n)}</section>` : ''}
         ${n.ticker ? `<section class="a-sec a-fin"><h3>기업 정보 <small>${n.market === 'KR' ? 'DART' : 'Nasdaq'} 기준</small></h3><div id="aCo">${coPane(n, null, { chart: false, metrics: false })}</div>
           <div class="box ftabs-box"><div class="ftabs" id="aTabs" role="tablist">${finTabs(n).map(([k, l]) => `<button role="tab" data-ftab="${k}" class="${(S.aTab || 'fin') === k ? 'on' : ''}">${l}</button>`).join('')}</div><div id="aTab">${finTabBody(n)}</div></div></section>
@@ -2281,13 +2370,14 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
-  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt' };
+  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact' };
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
     $('#viewFeed').hidden = !feed;
     for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== v;
-    $$('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
+    $$('#nav button[data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
+    syncNavMore();
     if (hash !== false) { const u = '/' + (hash || '#' + v); if (location.pathname !== '/') history.pushState(null, '', u); else history.replaceState(null, '', u); }
     if (feed) { S.type = v === 'home' ? S.homeType || 'ALL' : FEED_VIEWS[v]; S.limit = 80; renderAll(); }
     if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 미국·한국 실시간 공시·보도자료'; }
@@ -2296,6 +2386,7 @@
     if (v === 'themes') loadThemes();
     if (v === 'sched') loadSched();
     if (v === 'halt') loadHalts();
+    if (v === 'react') loadReact();
     if (v === 'econ') loadEcon(true);
     if (v === 'admin') renderAdmin();
     if (v === 'popular') { renderPopularPage(); pollViews(); }
@@ -2487,7 +2578,24 @@
       <div class="card"><h3>고장 자동 감시 <small class="muted">${d.monitor?.at ? fmtDT(new Date(d.monitor.at)).full + ' 점검 · 약 9분마다 자동 점검' : '아직 점검 기록 없음'}</small></h3>
         <table class="tbl adm-mon"><tr><th>항목</th><th>상태</th><th>내용</th></tr>${mon.map((c) => `<tr><td>${esc(c.name)}</td><td><span class="mon ${c.ok ? 'ok' : c.fails >= 2 ? 'bad' : 'warn'}">${c.ok ? '정상' : c.fails >= 2 ? '이상' : '확인 중'}</span></td><td>${esc(c.msg)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">점검 기록이 없습니다. 아래 "지금 점검"을 눌러보세요.</td></tr>'}</table>
         <div class="chips" style="margin-top:.8rem"><button class="btn sm" data-admin-act="monitor">지금 점검</button><button class="btn sm" data-admin-act="issKR">주요 이슈 다시 만들기 (국장)</button><button class="btn sm" data-admin-act="issUS">주요 이슈 다시 만들기 (미장)</button><button class="btn sm" data-admin-act="tgfind">텔레그램 채팅 ID 찾기</button><button class="btn sm" data-admin-act="tgtest">텔레그램 테스트 알림</button></div>
-        <p class="note">텔레그램 알림: ${d.telegram?.token ? '봇 토큰 등록됨' : '봇 토큰(TELEGRAM_BOT_TOKEN) 미등록'} · ${d.telegram?.chat ? '채팅 ID 등록됨' : '채팅 ID(TELEGRAM_CHAT_ID) 미등록'}. 둘 다 등록하면 이상이 생길 때 텔레그램으로 알려줍니다.</p><p class="note" id="admMsg"></p></div>`;
+        <p class="note">텔레그램 알림: ${d.telegram?.token ? '봇 토큰 등록됨' : '봇 토큰(TELEGRAM_BOT_TOKEN) 미등록'} · ${d.telegram?.chat ? '채팅 ID 등록됨' : '채팅 ID(TELEGRAM_CHAT_ID) 미등록'}. 둘 다 등록하면 이상이 생길 때 텔레그램으로 알려줍니다.</p><p class="note" id="admMsg"></p></div>
+      ${(() => { // 텔레그램 채널 자동 게시
+        const c = d.channel || {}, g = c.cfg || {};
+        if (!c.id) return `<div class="card" style="margin-top:.8rem"><h3>텔레그램 채널 자동 게시 <small class="muted">미설정</small></h3><ol class="note" style="line-height:1.8;padding-left:1.1rem;margin:.4rem 0 0">
+          <li>텔레그램에서 <b>채널</b>을 만들고(공개 채널이면 @주소 지정), 알림용 봇을 <b>채널 관리자</b>로 추가하세요. (봇은 고장 알림에 쓰는 봇과 같은 것이어도 돼요)</li>
+          <li>Cloudflare 변수에 <code>TELEGRAM_CHANNEL_ID</code>를 등록하세요. 값: <code>@채널주소</code> (비공개 채널이면 -100으로 시작하는 숫자)</li>
+          <li>저장 후 이 화면을 새로고침하면 설정 버튼이 나와요.</li></ol></div>`;
+        return `<div class="card" style="margin-top:.8rem"><h3>텔레그램 채널 자동 게시 <small class="muted">${esc(c.id)} · 오늘 ${c.today || 0}건 게시</small></h3>
+          <p class="note" style="margin:.2rem 0 .6rem">중요 공시·보도자료가 나오면 AI 요약(호재·악재, 핵심 2줄)과 사이트 링크를 채널에 자동으로 올려요. 켠 뒤에 새로 나온 것만 올라가요.</p>
+          <div class="chips" style="align-items:center;gap:.4rem">
+            <button class="btn sm ${g.on ? 'primary' : ''}" data-admin-act="${g.on ? 'choff' : 'chon'}">${g.on ? '● 게시 중 (끄기)' : '○ 꺼짐 (켜기)'}</button>
+            <label class="muted sm">기준 <select id="chImp"><option value="5"${g.minImp === 5 ? ' selected' : ''}>최중요만</option><option value="4"${g.minImp === 4 ? ' selected' : ''}>중요 이상</option><option value="3"${g.minImp === 3 ? ' selected' : ''}>보통 이상 (많음)</option></select></label>
+            <label class="muted sm">시간당 최대 <select id="chPer">${[4, 8, 12, 20, 30].map((v) => `<option value="${v}"${g.perHour === v ? ' selected' : ''}>${v}건</option>`).join('')}</select></label>
+            <label class="muted sm"><input type="checkbox" id="chKr"${g.kr ? ' checked' : ''}> 국장</label><label class="muted sm"><input type="checkbox" id="chUs"${g.us ? ' checked' : ''}> 미장</label>
+            <button class="btn sm" data-admin-act="chset">설정 저장</button><button class="btn sm" data-admin-act="chtest">테스트 발송</button>
+          </div>
+          <p class="note">${c.last ? `마지막 게시: ${fmtDT(new Date(c.last.at)).full} · ${esc(c.last.title || '')}` : '아직 게시한 글이 없어요.'}${c.err ? `<br><b class="err">⚠ ${esc(c.err)}</b> — 봇이 채널 관리자인지, 채널 주소가 맞는지 확인하세요.` : ''}${c.lastErr && !c.err ? `<br><span class="muted">최근 오류(${fmtDT(new Date(c.lastErr.at)).hm}): ${esc(c.lastErr.msg)}</span>` : ''}</p></div>`;
+      })()}`;
   }
   async function adminAct(act) {
     const msg = (t) => { if ($('#admMsg')) $('#admMsg').textContent = t; };
@@ -2504,6 +2612,9 @@
         S.iss = S.iss || {}; S.iss[mk] = null;
         msg(`완료: "${j.ed.headline || ''}" 로 바뀌었습니다. 메인 화면은 1~2분 안에 새 내용으로 보입니다.`); return;
       }
+      if (act === 'chtest') { msg('채널로 테스트 메시지를 보내는 중…'); const j = await getJSON(`/api/admin?key=${k}&ch=test`, { cache: 'no-store' }).catch((e) => ({ ok: false, error: e.message })); msg(j.ok ? '채널에 테스트 메시지를 보냈어요. 텔레그램 채널을 확인하세요.' : '보내지 못했어요: ' + (j.error || '')); return; }
+      if (act === 'chon' || act === 'choff') { await getJSON(`/api/admin?key=${k}&ch=${act.slice(2)}`, { cache: 'no-store' }); return renderAdmin(); }
+      if (act === 'chset') { const q = `minImp=${$('#chImp').value}&perHour=${$('#chPer').value}&kr=${$('#chKr').checked ? 1 : 0}&us=${$('#chUs').checked ? 1 : 0}`; await getJSON(`/api/admin?key=${k}&ch=set&${q}`, { cache: 'no-store' }); msg('채널 설정을 저장했어요.'); return renderAdmin(); }
       if (act === 'tgfind') { const j = await getJSON(`/api/admin?key=${k}&tg=find`, { cache: 'no-store' }); msg(j.error || (j.chats?.length ? '찾은 채팅 ID: ' + j.chats.map((c) => `${c.id} (${c.name || ''})`).join(', ') + ' → 이 숫자를 Cloudflare 변수 TELEGRAM_CHAT_ID로 등록하세요.' : j.hint)); return; }
       if (act === 'tgtest') { const j = await getJSON(`/api/admin?key=${k}&tg=test`, { cache: 'no-store' }); msg(j.ok ? '텔레그램으로 테스트 알림을 보냈습니다.' : '보내지 못했습니다. 봇 토큰과 채팅 ID를 확인하세요.'); }
     } catch (e) { msg(e.message); }
@@ -2678,6 +2789,8 @@
   bindIssues();
   bindSched();
   bindHalts();
+  bindReact();
+  syncNavMore();
   { // 공유 링크 (?top=digest&mk=US)로 들어오면 AI 핵심 공시를 바로 보여줌
     const qp = new URLSearchParams(location.search);
     if (qp.get('top') === 'digest') { S.top = 'digest'; const m = qp.get('mk'); if (['ALL', 'KR', 'US'].includes(m)) { S.digestMk = m; save('gk_dmk', m); $$('#digestSeg button').forEach((b) => b.classList.toggle('on', b.dataset.dmk === m)); } history.replaceState(null, '', '/' + location.hash); }

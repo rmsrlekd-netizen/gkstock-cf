@@ -34,6 +34,9 @@ import * as econ from './functions/econ.mjs';
 import * as issues from './functions/issues.mjs';
 import * as schedule from './functions/schedule.mjs';
 import * as halts from './functions/halts.mjs';
+import * as reaction from './functions/reaction.mjs';
+import { reactWatch } from './lib/react.mjs';
+import { channelWatch } from './lib/tgchannel.mjs';
 import { haltsWatch } from './lib/halts.mjs';
 import { scheduleWatch } from './lib/schedule.mjs';
 import { briefWatch } from './lib/brief.mjs';
@@ -47,7 +50,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts, reaction]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -146,6 +149,8 @@ export default {
       if (krOpen || usOpen || min % 30 < 3) jobs3.push(whyWatch().then((r) => console.log('why', JSON.stringify(r))).catch((e) => console.warn('why', e.message)));
       // 내일 일정 (20분마다 새로 모으고, 새 거래일이 되면 AI 요약)
       // (장 마감 브리핑은 메인 화면 AI 요약과 겹쳐서 중지)
+      // 공시 반응 통계: 지난 공시의 발표 후 1일·5일 주가를 조금씩 계산 (9분마다)
+      if (min % 9 < 3) jobs3.push(reactWatch().then((r) => { if (r) console.log('react', JSON.stringify(r)); }).catch((e) => console.warn('react', e.message)));
       if (min % 6 < 3) jobs3.push(scheduleWatch().then((r) => console.log('sched', JSON.stringify(r))).catch((e) => console.warn('sched', e.message)));
       if (jobs3.length) ctx.waitUntil(Promise.allSettled(jobs3));
       return;
@@ -165,6 +170,8 @@ export default {
     const usz = zoned(now, 'America/New_York');
     const econBusy = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 7 * 60 && usz.m <= 16 * 60 + 30;
     if (econBusy || min % 30 === 0) jobs.push(econWatch().then(async (r) => { if (r.ai || econBusy) { const { econCalendar } = await import('./lib/econ.mjs'); const { setJSON } = await import('./lib/store.mjs'); await setJSON('econ/v1', await econCalendar()); } }).catch((e) => console.warn('econ', e.message)));
+    // 텔레그램 채널: 중요 공시 자동 게시 (채널이 설정돼 있을 때만)
+    jobs.push(channelWatch().then((r) => { if (r?.sent) console.log('tgch', JSON.stringify(r)); }).catch((e) => console.warn('tgch', e.message)));
     // VI·서킷: 국장 VI 발동·해제 (장중) · 미장 거래정지·재개 (뉴욕 4:00~20:00) 매분 기록
     jobs.push(haltsWatch(now).then((r) => { if (r.kr || r.us) console.log('halts', JSON.stringify(r)); }).catch((e) => console.warn('halts', e.message)));
     // 오늘 주요 이슈: 회차 시각이 되면 AI가 새로 만듦 (한국 4회·미국 4회)

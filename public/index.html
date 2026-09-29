@@ -38,7 +38,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=82" />
+  <link rel="stylesheet" href="/styles.css?v=83" />
   <script>document.documentElement.classList.add('js');</script>
   <style>.js .ssr{display:none}.ssr{max-width:860px;margin:2rem auto;padding:0 1rem;color:#eef0ff;font-family:sans-serif;line-height:1.7}</style>
 </head>
@@ -64,12 +64,15 @@
         <button data-go="home" class="on">라이브 피드</button>
         <button data-go="sched">오늘 일정</button>
         <button data-go="themes">테마·섹터</button>
-        <button data-go="econ">경제지표</button>
-        <button data-go="earnings">실적 캘린더</button>
-        <button data-go="flows">수급</button>
-        <button data-go="market">시장 지표</button>
-        <button data-go="company">기업 분석</button>
-        <button data-go="halt">VI·서킷</button>
+        <button data-go="halt" class="nav-halt">VI·서킷</button>
+        <button data-go="econ" class="mx">경제지표</button>
+        <button data-go="earnings" class="mx dx2">실적 캘린더</button>
+        <button data-go="react" class="mx">공시 반응</button>
+        <button data-go="company" class="mx dx2">기업 분석</button>
+        <button data-go="flows" class="mx dx">수급</button>
+        <button data-go="market" class="mx dx">시장 지표</button>
+        <button class="nav-more" data-nav-more aria-haspopup="true">더보기<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="nav-pop" id="navPop" hidden></div>
       </nav>
       <div class="hdr-right">
         <div class="search">
@@ -192,6 +195,11 @@
       <div class="filter-row"><div class="mkseg" id="htSeg"><button data-ht="KR" class="on kr"><i>KR</i>국장 VI</button><button data-ht="US" class="us"><i>US</i>미장 거래정지</button></div></div>
       <div id="htBody"><div class="skel"></div><div class="skel"></div></div>
     </section>
+    <section id="viewReact" class="page" hidden>
+      <div class="page-head"><h2>공시 반응</h2><span class="muted" id="rcMeta"></span></div>
+      <div class="filter-row"><div class="mkseg" id="rcSeg"><button data-rc="KR" class="on kr"><i>KR</i>국장</button><button data-rc="US" class="us"><i>US</i>미장</button></div></div>
+      <div id="rcBody"><div class="skel"></div><div class="skel"></div></div>
+    </section>
     <section id="viewEcon" class="page" hidden>
       <div class="page-head"><h2>미국 경제지표</h2><span class="muted" id="ecMeta"></span></div>
       <div class="filter-row"><div class="chips" id="ecImp" style="margin:0"><button data-imp="2" class="on">중요 지표만</button><button data-imp="1">전체</button></div></div>
@@ -265,6 +273,6 @@
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
   <button class="to-top" id="toTop" aria-label="맨 위로" title="맨 위로"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>맨 위로</span></button>
-  <script src="/app.js?v=82" defer></script>
+  <script src="/app.js?v=83" defer></script>
 </body>
 </html>
