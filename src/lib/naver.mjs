@@ -21,7 +21,8 @@ function parseQuote(x) {
   // 미국 정규장이 닫혀 있고 프리·애프터 거래가 더 최근이면 '지금 가격'은 시간외 가격
   const e = q.ext;
   // (국내는 넥스트레이드 프리마켓 08:00~08:50 · 애프터마켓 15:30~20:00, 시간외 거래가 열려 있으면 그 가격)
-  if (e && e.price != null && e.pct != null && q.status !== 'OPEN' && (e.open || Date.parse(e.at) > (Date.parse(x.localTradedAt || '') || 0))) { q.live = e.price; q.livePct = e.pct; q.session = e.session; }
+  //  국내 넥스트레이드 애프터마켓(15:30~20:00)은 네이버가 장 상태를 'OPEN'으로 줘서 따로 확인
+  if (e && e.price != null && e.pct != null && (q.status !== 'OPEN' || (e.open && e.session === 'AFTER')) && (e.open || Date.parse(e.at) > (Date.parse(x.localTradedAt || '') || 0))) { q.live = e.price; q.livePct = e.pct; q.session = e.session; }
   return q;
 }
 function parseQuoteBase(x, code) {

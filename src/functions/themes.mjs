@@ -17,6 +17,7 @@ async function build() {
   const why = (mk, t) => { const w = wm[`${mk}|${String(t).toUpperCase()}`]; return w?.r && !/^뚜렷한/.test(w.r) && Date.now() - w.at < 20 * 3600e3 ? w.r : null; };
   for (const g of [...(kr?.themes || []), ...(kr?.worstThemes || []), ...(kr?.industries || [])]) g.why = (g.leaders || []).map((s) => why('KR', s.t)).find(Boolean) || null;
   for (const g of us?.themes || []) g.why = (g.stocks || []).map((s) => why('US', s.t)).find(Boolean) || null;
+  for (const g of [...(us?.groups || []), ...(us?.sectorGroups || []), ...(us?.indexGroups || [])]) g.why = (g.leaders || []).map((s) => why('US', s.t)).find(Boolean) || null;
   const out = { at: Date.now(), kr, us, errors };
   if (kr || us) await setJSON('themes/v1', out).catch(() => {});
   return out;

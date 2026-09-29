@@ -1713,3 +1713,9 @@ button.br-mv:hover { border-color: var(--accent); }
 @media (max-width: 1700px) { .tgc span { display: none; } .tgc { padding: .32rem .5rem; } }
 @media (min-width: 1101px) and (max-width: 1240px) { .nav > button.dx2 { display: none; } .hdr-right .search { width: 180px; } }
 @media (max-width: 720px) { .tgc { display: none !important; } .tgm { display: grid !important; place-items: center; border-color: rgba(56, 170, 235, .45) !important; } }
+
+/* ── v89: 미국 지수 흐름 (나스닥100 · S&P 500) ── */
+.th-idx { margin-bottom: 1rem; }
+.th-idx-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: .6rem; }
+.th-idx-list .th-row .rk { display: none; }
+@media (max-width: 720px) { .th-idx-list { grid-template-columns: 1fr; } }

@@ -1619,13 +1619,14 @@
     const label = mk === 'KR' ? s.name : s.t;
     return `<button class="th-chip" data-open-co="${mk}|${esc(s.t)}|${esc(s.name || s.nameKo || '')}">${esc(label)} <em class="${dirCls(s.pct)}">${pctTxt(s.pct)}</em>${lim}</button>`;
   }
-  function thRow(g, i, kind) {
+  function thRow(g, i, kind, key) {
     const tot = Math.max(1, g.rise + g.fall + g.flat);
-    return `<div class="th-row" data-th-no="${g.no}" data-th-kind="${kind}">
-      <div class="th-top"><span class="rk">${i + 1}</span><b class="th-name">${esc(g.name)}</b><span class="th-cnt">${g.total}종목</span><span class="th-rate ${dirCls(g.rate)}">${pctTxt(g.rate)}</span><span class="th-caret">▾</span></div>
+    const us = kind === 'us';
+    return `<div class="th-row" ${us ? `data-th-us="${esc(key)}"` : `data-th-no="${g.no}" data-th-kind="${kind}"`}>
+      <div class="th-top"><span class="rk">${i + 1}</span><b class="th-name">${esc(g.name)}</b><span class="th-cnt">${g.total}종목${us && g.etf ? ` · <span class="mono">${esc(g.etf)}</span>${g.etfPct != null ? ` <em class="${dirCls(g.etfPct)}">${pctTxt(g.etfPct)}</em>` : ''}` : ''}</span><span class="th-rate ${dirCls(g.rate)}">${pctTxt(g.rate)}</span><span class="th-caret">▾</span></div>
       <div class="th-breadth" title="상승 ${g.rise} · 하락 ${g.fall} · 보합 ${g.flat}"><i class="r" style="width:${(g.rise / tot) * 100}%"></i><i class="f" style="width:${(g.fall / tot) * 100}%"></i></div>
       ${g.why ? `<p class="th-why"><i>AI 추정</i>${esc(g.why)}</p>` : ''}
-      ${g.leaders?.length ? `<div class="th-leaders">${g.leaders.map((s) => thLeader(s, 'KR')).join('')}</div>` : ''}
+      ${g.leaders?.length ? `<div class="th-leaders">${g.leaders.map((s) => thLeader(s, us ? 'US' : 'KR')).join('')}</div>` : ''}
       <div class="th-more" hidden></div></div>`;
   }
   async function toggleTheme(el) {
@@ -1633,6 +1634,12 @@
     if (!box) return;
     if (!box.hidden) { box.hidden = true; el.classList.remove('open'); return; }
     box.hidden = false; el.classList.add('open');
+    if (el.dataset.thUs) { // 미국: 소속 종목은 이미 받아 둠
+      const [k, i] = el.dataset.thUs.split(':');
+      const g = (S.themes?.us?.[k] || [])[Number(i)];
+      box.innerHTML = `<ol class="rank">${(g?.members || []).map((s, j) => rankRow({ market: 'US', ticker: s.t, name: s.name, price: s.price, pct: s.pct }, j)).join('')}</ol>`;
+      return;
+    }
     box.innerHTML = '<div class="loading"><span class="spin"></span>종목 불러오는 중…</div>';
     try {
       const j = await getJSON(`/api/themes?kind=${el.dataset.thKind}&no=${el.dataset.thNo}`, {});
@@ -1657,6 +1664,21 @@
     } else {
       const u = d.us;
       if (!u) { $('#thBody').innerHTML = '<div class="empty">미국 섹터 데이터를 불러오지 못했습니다.</div>'; return; }
+      if (u.groups?.length) { // 국장과 같은 모양: 테마·섹터별 평균 등락률 + 상승/하락 비율 + 대장주 (누르면 소속 종목 전체)
+        const G = u.groups, SG = u.sectorGroups || [];
+        const idx = (arr, g) => arr.indexOf(g);
+        const up = G.filter((g) => g.rate >= 0).slice(0, 15), down = [...G].reverse().filter((g) => g.rate < 0).slice(0, 6);
+        const sUp = SG.filter((g) => g.rate >= 0), sDown = [...SG].reverse().filter((g) => g.rate < 0);
+        const IG = u.indexGroups || [];
+        $('#thBody').innerHTML = `${IG.length ? `<div class="card th-idx"><div class="card-h"><h3>지수 흐름</h3><span class="muted sm">구성 종목 중 오른 종목·내린 종목 비율 · 누르면 전체 종목</span></div><div class="th-list th-idx-list">${IG.map((g, i) => thRow(g, i, 'us', 'indexGroups:' + i)).join('')}</div></div>` : ''}
+          <div class="th-grid">
+          <div class="card"><div class="card-h"><h3>오늘의 주도 테마 <b>TOP ${up.length}</b></h3><span class="muted sm">미국 테마 ${u.groupCount || G.length}개 · 소속 종목 평균 등락률</span></div><div class="th-list">${up.map((g, i) => thRow(g, i, 'us', 'groups:' + idx(G, g))).join('') || '<p class="muted">오른 테마가 없어요.</p>'}</div></div>
+          <div><div class="card"><div class="card-h"><h3>강한 섹터</h3><span class="muted sm">섹터 11개 · S&P 500 대형주 + 나스닥100 평균</span></div><div class="th-list">${sUp.map((g, i) => thRow(g, i, 'us', 'sectorGroups:' + idx(SG, g))).join('') || '<p class="muted">오른 섹터가 없어요.</p>'}</div></div>
+          <div class="card" style="margin-top:1rem"><div class="card-h"><h3>약한 테마</h3><span class="muted sm">오늘 가장 많이 내린 테마</span></div><div class="th-list">${down.map((g, i) => thRow(g, i, 'us', 'groups:' + idx(G, g))).join('') || '<p class="muted">내린 테마가 없어요.</p>'}</div></div>
+          <div class="card" style="margin-top:1rem"><div class="card-h"><h3>약한 섹터</h3></div><div class="th-list">${sDown.map((g, i) => thRow(g, i, 'us', 'sectorGroups:' + idx(SG, g))).join('') || '<p class="muted">내린 섹터가 없어요.</p>'}</div></div></div>
+        </div><p class="note">미국 테마는 대표 종목들의 평균 등락률이에요(직전 정규장 기준). 테마를 누르면 소속 종목이 펼쳐지고, 종목을 누르면 기업 분석으로 이동합니다. 막대 = 상승(빨강)·하락(파랑) 종목 비율 · 옆 숫자는 대표 ETF 등락률.</p>`;
+        return;
+      }
       const max = Math.max(1, ...u.sectors.map((x) => Math.abs(x.pct || 0)));
       $('#thBody').innerHTML = `<div class="card"><div class="card-h"><h3>S&P 500 섹터</h3><span class="muted sm">섹터 ETF 등락률 (미국 장 기준)</span></div>
         <div class="sec-tiles">${u.sectors.map((x) => `<div class="sec-tile ${dirCls(x.pct)}" style="--a:${Math.min(1, Math.abs(x.pct || 0) / max).toFixed(2)}"><b>${esc(x.name)}</b><em>${pctTxt(x.pct)}</em><small>${esc(x.t)}</small></div>`).join('')}</div></div>
@@ -2749,7 +2771,7 @@
       if (mo) { openDigestModal(); return; }
       const co = t.closest('[data-open-co]');
       if (co) { const [m, tk, n] = co.dataset.openCo.split('|'); if (co.closest('#suggest')) $('#search').value = ''; if (co.closest('#suggest2')) $('#search2').value = ''; $('#suggest').hidden = true; $('#suggest2').hidden = true; $('#coSuggest').hidden = true; openCompany(m, tk, n, { corpCode: co.dataset.corp || undefined, exchange: co.dataset.ex || undefined }); return; }
-      const thr = t.closest('[data-th-no]');
+      const thr = t.closest('[data-th-no], [data-th-us]');
       if (thr && !t.closest('a')) { toggleTheme(thr); return; }
       const row = t.closest('[data-id]');
       if (row && !t.closest('a')) {
