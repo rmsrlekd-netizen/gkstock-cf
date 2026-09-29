@@ -72,13 +72,13 @@ async function nightFutures() {
   }
 }
 
-// 야간선물 작은 차트용: 5분마다 시세를 모아 둠 (차트 API 대신 직접 기록, 최근 30시간)
+// 야간선물 작은 차트용: 1분마다 시세를 모아 둠 (차트 API 대신 직접 기록, 최근 30시간)
 export async function sampleNight(n) {
   if (!n) n = await nightFutures();
   if (!n?.ok || n.price == null) return false;
   const s = (await getJSON('night/series')) || { pts: [] };
   const now = Date.now(), last = s.pts[s.pts.length - 1];
-  if (last && now - last[0] < Number(process.env.NIGHT_SAMPLE_MS || 4.5 * 60e3)) return false;
+  if (last && now - last[0] < Number(process.env.NIGHT_SAMPLE_MS || 50e3)) return false;
   s.pts.push([now, n.price, n.session === 'night' ? 'N' : 'D']);
   s.pts = s.pts.filter((p) => now - p[0] < 30 * 3600e3);
   await setJSON('night/series', s).catch(() => {});
@@ -114,7 +114,8 @@ async function build() {
     const tag = night.session === 'night' ? 'N' : 'D';
     const pts = [];
     for (let i = ser.length - 1; i >= 0; i--) { const p = ser[i]; if (p[2] !== tag || (pts.length && pts[0][0] - p[0] > 2 * 3600e3)) break; pts.unshift(p); }
-    if (pts.length >= 3) night.series = pts.map((p) => [Math.round(p[0] / 1000), p[1]]);
+    night.samples = pts.length;
+    if (pts.length >= 2) night.series = pts.map((p) => [Math.round(p[0] / 1000), p[1]]);
   }
   const body = { ok: true, fetchedAt: new Date().toISOString(), errors: g.errors, fearGreed: fg, night, indices };
   if (ok) await setJSON('market/v1', { at: Date.now(), body }).catch(() => {});

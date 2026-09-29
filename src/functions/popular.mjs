@@ -206,30 +206,34 @@ async function build(cached) {
   const wm = (await getJSON('why/map')) || {};
   for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const w = wm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (w?.r && Date.now() - w.at < 20 * 3600e3) { x.reason = w.r; x.rconf = w.c; } }
   // AI 이유가 아직 없으면 우리 사이트의 최근(48시간 = 전날까지) 공시·보도자료 핵심 제목을 대신 보여줌
-  //  (전체 최신 200건만 보면 공시가 많은 날엔 12시간 전 것도 빠짐 → 순위에 오른 종목별로 따로 조회)
+  //  (순위에 오른 종목들을 시장별로 한 번에 조회 — 종목마다 따로 조회하면 DB에 부하)
   try {
     const { ownTitle } = await import('../lib/why.mjs');
+    const { recentByTickers, itemMs } = await import('../lib/archive.mjs');
     const since = Date.now() - 48 * 3600e3, pm = {};
-    const keys = [...new Set(['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown'].flatMap((k) => (out[k] || []).map((x) => `${x.market}|${String(x.ticker).toUpperCase()}`)))];
-    await Promise.all(keys.map(async (key) => {
-      const [mk, t] = key.split('|');
-      for (const n of await queryArchive({ market: mk, ticker: t, limit: 8 }).catch(() => [])) {
-        const ms = Date.parse(n.time || '');
-        if (!(ms > since) || /^(3|4|5|144)(\/A)?$/.test(String(n.form || ''))) continue; // 내부자 거래 보고는 제외
-        const tt = ownTitle(n);
-        if (!tt) continue;
-        //  한국어 핵심 제목이 있는 것 > 보도자료 > 최신 순 ("수시공시 기타 주요 사항" 같은 서식 이름만 있는 건 뒤로)
-        const sc = (mk === 'KR' || n.ko?.title || n.titleKo ? 2 : 0) + (n.src === 'PR' ? 1 : 0);
-        if (!pm[key] || sc > pm[key].sc) pm[key] = { t: tt.slice(0, 80), kind: n.src === 'PR' ? '보도자료' : '공시', at: ms, sc, id: n.id };
+    const lists = ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown'].flatMap((k) => out[k] || []);
+    for (const mk of ['US', 'KR']) {
+      const got = await recentByTickers(mk, lists.filter((x) => x.market === mk).map((x) => x.ticker), since).catch(() => ({}));
+      for (const [t, arr] of Object.entries(got)) {
+        const key = `${mk}|${t}`;
+        for (const n of arr) {
+          const ms = itemMs(n);
+          if (!(ms > since) || /^(3|4|5|144)(\/A)?$/.test(String(n.form || ''))) continue; // 내부자 거래 보고는 제외
+          const tt = ownTitle(n);
+          if (!tt) continue;
+          //  한국어 핵심 제목이 있는 것 > 보도자료 > 최신 순 ("수시공시 기타 주요 사항" 같은 서식 이름만 있는 건 뒤로)
+          const sc = (mk === 'KR' || n.ko?.title || n.titleKo ? 2 : 0) + (n.src === 'PR' ? 1 : 0);
+          if (!pm[key] || sc > pm[key].sc) pm[key] = { t: tt.slice(0, 80), kind: n.src === 'PR' ? '보도자료' : '공시', at: ms, sc, id: n.id };
+        }
+        //  "해외기업 수시공시"처럼 서식 이름뿐이면 → AI 한 줄 요약이 있으면 그걸, 없으면 표시하지 않고 뒤에서 요약을 만들어 둠
+        const p = pm[key];
+        if (p && p.sc === 0) {
+          const h = await savedHeadline(p.id).catch(() => null);
+          if (h) Object.assign(p, { t: h.slice(0, 80), sc: 2 });
+          else pm[key] = { need: p.id };
+        }
       }
-      //  "해외기업 수시공시"처럼 서식 이름뿐이면 → AI 한 줄 요약이 있으면 그걸, 없으면 표시하지 않고 뒤에서 요약을 만들어 둠
-      const p = pm[key];
-      if (p && p.sc === 0) {
-        const h = await savedHeadline(p.id).catch(() => null);
-        if (h) Object.assign(p, { t: h.slice(0, 80), sc: 2 });
-        else pm[key] = { need: p.id };
-      }
-    }));
+    }
     for (const k of ['kr', 'us', 'krUp', 'krDown', 'usUp', 'usDown']) for (const x of out[k] || []) { const p = pm[`${x.market}|${String(x.ticker).toUpperCase()}`]; if (p?.t) x.pr = p; else if (p?.need) x.prNeed = p.need; }
   } catch {}
   if (kr.length || usList.length) await setJSON('popular/v2', out).catch(() => {});

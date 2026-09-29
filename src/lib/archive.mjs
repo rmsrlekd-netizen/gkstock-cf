@@ -108,6 +108,26 @@ export async function queryArchive({ kind = 'ALL', market = 'ALL', before = 0, t
   return (r.results || []).map((x) => JSON.parse(x.data));
 }
 
+/** 여러 종목의 최근 공시·보도자료를 한 번에 (종목마다 따로 조회하면 DB 부하가 커서) → { TICKER: [항목…최신순] } */
+export async function recentByTickers(market, tickers, since, per = 8) {
+  const tks = [...new Set(tickers.map((t) => String(t || '').toUpperCase()).filter(Boolean))].slice(0, 150);
+  const out = {};
+  if (!tks.length) return out;
+  const d = await db();
+  if (!d) {
+    for (const r of [...mem.values()].filter((r) => r.market === market && tks.includes(String(r.ticker || '').toUpperCase()) && r.ms > since && r.kind !== 'NEWS').sort((a, b) => b.ms - a.ms)) {
+      const k = String(r.ticker).toUpperCase(); (out[k] ||= []); if (out[k].length < per) out[k].push(JSON.parse(r.data));
+    }
+    return out;
+  }
+  for (let i = 0; i < tks.length; i += 50) {
+    const part = tks.slice(i, i + 50);
+    const r = await d.prepare(`SELECT ticker, data FROM items WHERE market = ? AND ticker IN (${part.map(() => '?').join(',')}) AND ms > ? AND kind != 'NEWS' ORDER BY ms DESC LIMIT 600`).bind(market, ...part, since).all();
+    for (const x of r.results || []) { const k = String(x.ticker).toUpperCase(); (out[k] ||= []); if (out[k].length < per) out[k].push(JSON.parse(x.data)); }
+  }
+  return out;
+}
+
 /** 보강이 필요한 항목 (과거 자료 채우기에서 8-K 항목 번호 등이 빠진 것) */
 export async function needEnrich(limit = 15) {
   const d = await db();

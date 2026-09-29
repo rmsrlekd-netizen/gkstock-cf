@@ -6,6 +6,12 @@ import { reactStats, reactCases, reactOf, typeOf, TYPES } from '../lib/react.mjs
 import { findFiling } from '../lib/filing-doc.mjs';
 
 export default async (req) => {
+  try { return await handle(req); } catch (e) {
+    // DB 일시 오류: 짧게만 캐시해서 곧 다시 시도되게
+    return json({ ok: false, error: '잠시 후 다시 시도해 주세요 (' + String(e.message || e).slice(0, 60) + ')' }, { status: 503, cdnSeconds: 15 });
+  }
+};
+async function handle(req) {
   const u = new URL(req.url);
   const id = u.searchParams.get('id');
   if (id) {
@@ -26,7 +32,7 @@ export default async (req) => {
     return json({ ok: true, mk, k, label: TYPES[k], cases: await reactCases(mk, k, 40) }, { cdnSeconds: 600, swr: 1800 });
   }
   const st = await reactStats(mk);
-  return json({ ok: true, ...st }, { cdnSeconds: 600, swr: 1800 });
-};
+  return json({ ok: true, ...st }, { cdnSeconds: st.stale ? 60 : 600, swr: 1800 });
+}
 
 export const config = { path: '/api/reaction' };

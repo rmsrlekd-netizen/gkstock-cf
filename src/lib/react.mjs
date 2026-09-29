@@ -152,9 +152,16 @@ export async function reactStats(mk) {
   const ck = `react/stats/${mk}`;
   const c = await getJSON(ck);
   if (c && Date.now() - c.at < 30 * 60e3) return c;
-  const d = await db();
-  if (!d) return { at: Date.now(), mk, types: [] };
-  const rows = (await d.prepare("SELECT k, r1, r5 FROM react WHERE mk = ? AND ms > ? AND k NOT IN ('skip','nodata')").bind(mk, Date.now() - 365 * 86400e3).all()).results || [];
+  let rows;
+  try {
+    const d = await db();
+    if (!d) return { at: Date.now(), mk, types: [] };
+    const q = () => d.prepare("SELECT k, r1, r5 FROM react WHERE mk = ? AND ms > ? AND k NOT IN ('skip','nodata')").bind(mk, Date.now() - 365 * 86400e3).all();
+    rows = (await q().catch(async () => { await new Promise((r) => setTimeout(r, 400)); return q(); })).results || []; // DB 일시 오류면 한 번 더
+  } catch (e) {
+    if (c) return { ...c, stale: true }; // 그래도 안 되면 저장해 둔 통계를 그대로 보여줌
+    throw e;
+  }
   const by = {};
   for (const r of rows) (by[r.k] ||= []).push(r);
   const types = Object.entries(by).map(([k, list]) => ({ k, label: TYPES[k] || k, ...agg(list) })).filter((x) => x.n >= 3).sort((a, b) => b.n - a.n);
@@ -166,7 +173,8 @@ export async function reactStats(mk) {
 export async function reactCases(mk, k, limit = 30) {
   const d = await db();
   if (!d) return [];
-  return (await d.prepare('SELECT id, tk, ms, r1, r5, title FROM react WHERE mk = ? AND k = ? ORDER BY ms DESC LIMIT ?').bind(mk, k, limit).all()).results || [];
+  const q = () => d.prepare('SELECT id, tk, ms, r1, r5, title FROM react WHERE mk = ? AND k = ? ORDER BY ms DESC LIMIT ?').bind(mk, k, limit).all();
+  return (await q().catch(async () => { await new Promise((r) => setTimeout(r, 400)); return q(); })).results || [];
 }
 /** 한 공시의 결과(있으면) */
 export async function reactOf(id) {

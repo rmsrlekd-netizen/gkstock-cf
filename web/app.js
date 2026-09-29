@@ -985,8 +985,8 @@
     if (ni) {
       $('#nightCard').innerHTML = `<div class="lbl">${n.session === 'night' ? '코스피200 야간선물' : '코스피200 선물(주간)'} <small class="muted">${esc(n.code || '')}</small></div>
         <div class="night-body"><div class="night-info"><div class="night-price">${ni.price}</div><div class="night-chg ${dirCls(ni.chg)}">${ni.chg > 0 ? '▲' : ni.chg < 0 ? '▼' : ''} ${fmtPx(Math.abs(ni.chg || 0))} (${fmtPct(ni.pct)})</div></div>
-        ${n.series?.length >= 3 ? sparkSVG({ t: n.series.map((p) => p[0]), c: n.series.map((p) => p[1]) }, { key: 'night', price: n.price, prev: n.chg != null ? n.price - n.chg : null }, dirCls(ni.chg)) : ''}</div>
-        <p class="foot-note">${ni.note ? esc(ni.note) + ' · ' : ''}한국투자증권 · 야간 18:00~05:00 KST${n.series?.length >= 3 ? ' · 차트: 이번 세션 5분 간격' : ''}</p>`;
+        ${n.series?.length >= 2 ? sparkSVG({ t: n.series.map((p) => p[0]), c: n.series.map((p) => p[1]) }, { key: 'night', price: n.price, prev: n.chg != null ? n.price - n.chg : null }, dirCls(ni.chg)) : ''}</div>
+        <p class="foot-note">${ni.note ? esc(ni.note) + ' · ' : ''}한국투자증권 · 야간 18:00~05:00 KST${n.series?.length >= 2 ? ' · 차트: 이번 세션 1분 간격' : ''}</p>`;
     } else $('#nightCard').innerHTML = `<div class="lbl">코스피200 야간선물</div><div class="night-price muted">—</div><p class="foot-note">${m ? esc(n?.reason || '시세 없음') : '불러오는 중'}</p>`;
     const list = (m?.indices || []).filter((x) => !x.error && x.price !== null && x.price !== undefined);
     const sp = S.spark?.data || {};

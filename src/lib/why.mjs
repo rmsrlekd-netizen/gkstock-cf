@@ -53,7 +53,8 @@ export function ownTitle(n) {
   return clean(n.ko?.title || n.titleKo || n.summaryKo || n.title || [n.formKo || n.form, its].filter(Boolean).join(' ') || '');
 }
 async function ownNews(mk, t) {
-  const arr = (await queryArchive({ market: mk, ticker: t, limit: 8 }).catch(() => [])).filter((n) => n.time && Date.now() - Date.parse(n.time) < 48 * 3600e3 && !/^(3|4|5|144)(\/A)?$/.test(String(n.form || '')));
+  const { itemMs } = await import('./archive.mjs');
+  const arr = (await queryArchive({ market: mk, ticker: t, limit: 8 }).catch(() => [])).filter((n) => Date.now() - itemMs(n) < 48 * 3600e3 && !/^(3|4|5|144)(\/A)?$/.test(String(n.form || '')));
   //  한국어 제목이 없는 공시("해외기업 수시공시" 등)는 저장된 AI 요약(한 줄 + 핵심 3줄)을 근거로 씀
   const ai = {};
   await Promise.all(arr.filter((n) => mk === 'US' && !n.ko?.title && !n.titleKo).map(async (n) => {
@@ -61,7 +62,7 @@ async function ownNews(mk, t) {
     if (a?.headline && !a.fallback) ai[n.id] = { title: a.headline, sum: (a.summary || []).join(' / ').slice(0, 200) };
   }));
   return arr
-    .map((n) => ({ id: 'own-' + n.id, title: ai[n.id]?.title || ownTitle(n), sum: ai[n.id]?.sum || clean(n.desc || '').slice(0, 160), src: n.src === 'PR' ? (n.source || '보도자료') : n.src === 'SEC' ? 'SEC 공시' : 'DART 공시', at: new Date(Date.parse(n.time)).toISOString(), url: n.url || null, n: 1, own: true }))
+    .map((n) => ({ id: 'own-' + n.id, title: ai[n.id]?.title || ownTitle(n), sum: ai[n.id]?.sum || clean(n.desc || '').slice(0, 160), src: n.src === 'PR' ? (n.source || '보도자료') : n.src === 'SEC' ? 'SEC 공시' : 'DART 공시', at: new Date(itemMs(n)).toISOString(), url: n.url || null, n: 1, own: true }))
     .filter((x) => x.title);
 }
 
