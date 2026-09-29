@@ -8,7 +8,13 @@ import { fetchWithTimeout } from './util.mjs';
 import { getJSON, setJSON } from './store.mjs';
 import { hasAI, askAI, parseJSON, aiPauseInfo } from './ai.mjs';
 
-const HOURS = { KR: [8, 9, 10, 11, 12, 13, 14, 15, 16], US: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17] };
+// 회차 시각 (현지 시각, 분 단위). 국장은 변동성이 큰 개장 직후(9:00~10:30)엔 30분마다
+const hm2 = (h, m = 0) => h * 60 + m;
+const SLOTS = {
+  KR: [hm2(8), hm2(9), hm2(9, 30), hm2(10), hm2(10, 30), hm2(11), hm2(12), hm2(13), hm2(14), hm2(15), hm2(16)],
+  US: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17].map((h) => hm2(h)),
+};
+const FAST = { KR: [hm2(9), hm2(9, 30), hm2(10), hm2(10, 30)], US: [] }; // 개장 직후: 새 소식 수와 상관없이 매 회차 갱신 (시세가 크게 움직이는 시간)
 const TZ = { KR: 'Asia/Seoul', US: 'America/New_York' };
 const MIN_NEW = 3; // 직전 회차 이후 새 뉴스·공시가 이만큼은 있어야 새로 만듦
 
@@ -16,30 +22,39 @@ function local(mk, d = new Date()) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: TZ[mk], year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(d).map((x) => [x.type, x.value]));
   return { date: `${p.year}-${p.month}-${p.day}`, wd: p.weekday, m: Number(p.hour) * 60 + Number(p.minute) };
 }
-export const editionId = (mk, date, h) => `${mk.toLowerCase()}-${date.replace(/-/g, '')}-${String(h).padStart(2, '0')}`;
+export const editionId = (mk, date, h, mi = 0) => `${mk.toLowerCase()}-${date.replace(/-/g, '')}-${String(h).padStart(2, '0')}${mi ? String(mi).padStart(2, '0') : ''}`;
 export function parseId(id) {
-  const m = String(id || '').match(/^(kr|us)-(\d{4})(\d{2})(\d{2})-(\d{1,2})$/);
-  return m ? { mk: m[1].toUpperCase(), date: `${m[2]}-${m[3]}-${m[4]}`, n: Number(m[5]) } : null;
+  const m = String(id || '').match(/^(kr|us)-(\d{4})(\d{2})(\d{2})-(\d{1,2}|\d{4})$/);
+  if (!m) return null;
+  const n = m[5].length === 4 ? Number(m[5].slice(0, 2)) : Number(m[5]);
+  return { mk: m[1].toUpperCase(), date: `${m[2]}-${m[3]}-${m[4]}`, n, min: m[5].length === 4 ? Number(m[5].slice(2)) : 0 };
 }
 export function phaseOf(mk, h) {
   if (mk === 'KR') return h < 9 ? '장 시작 전' : h <= 15 ? '장중' : '장 마감 후';
   return h <= 9 ? '프리마켓' : h <= 15 ? '장중' : '장 마감 후';
 }
-function slotFor(mk, h, date) {
+function slotFor(mk, t, date) {
+  const h = Math.floor(t / 60), mi = t % 60;
   const phase = phaseOf(mk, h);
-  return { n: h, phase, name: mk === 'KR' ? `${phase} · ${h}시` : `${phase} · 뉴욕 ${h}시`, date, id: editionId(mk, date, h) };
+  const hm = mi ? `${h}시 ${mi}분` : `${h}시`;
+  return { n: h, min: mi, t, phase, fast: FAST[mk].includes(t), name: mk === 'KR' ? `${phase} · ${hm}` : `${phase} · 뉴욕 ${hm}`, date, id: editionId(mk, date, h, mi) };
 }
 
-/** 지금 만들어야 할 회차 (없으면 null). force면 오늘 가장 최근 시간 */
+/** 지금 만들어야 할 회차 (없으면 null). force면 오늘 가장 최근 회차 */
 export function dueSlot(mk, now = new Date(), { force = false } = {}) {
   const z = local(mk, now);
-  const h = Math.floor(z.m / 60), min = z.m % 60;
+  const L = SLOTS[mk];
+  const past = L.filter((x) => x <= z.m);
   if (!force) {
-    if (['Sat', 'Sun'].includes(z.wd) || !HOURS[mk].includes(h) || min < 4 || min > 55) return null;
-    return slotFor(mk, h, z.date);
+    if (['Sat', 'Sun'].includes(z.wd) || !past.length) return null;
+    const t = past[past.length - 1];
+    const next = L[L.indexOf(t) + 1] ?? t + 60;
+    const gap = Math.min(60, next - t);
+    // 회차 시각 4분 뒤부터 (다음 회차 5분 전까지) 만듦
+    if (z.m - t < 4 || z.m - t > gap - 5) return null;
+    return slotFor(mk, t, z.date);
   }
-  const past = HOURS[mk].filter((x) => x <= h);
-  return slotFor(mk, past.length ? past[past.length - 1] : HOURS[mk][0], z.date);
+  return slotFor(mk, past.length ? past[past.length - 1] : L[0], z.date);
 }
 
 const clean = (s) => String(s || '').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
@@ -135,10 +150,10 @@ export async function gather(mk, slot, opts = {}) {
 function prompt(mk, slot, date, text, prev) {
   const d = new Date(date + 'T12:00:00Z');
   const md = `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`;
-  const h = slot.n;
+  const h = slot.min ? `${slot.n}시 ${slot.min}분` : `${slot.n}시`;
   const when = mk === 'KR'
-    ? { '장 시작 전': '한국 증시 개장 전 (전날 미국장·밤사이 뉴스·오늘 일정 중심)', 장중: `한국 증시 장중 (한국시간 ${h}시 현재)`, '장 마감 후': '한국 증시 마감 직후 (오늘 장 정리)' }[slot.phase]
-    : { 프리마켓: `미국 증시 개장 전 프리마켓 (뉴욕시간 ${h}시, 밤사이 뉴스·실적·경제지표 중심)`, 장중: `미국 증시 장중 (뉴욕시간 ${h}시 현재)`, '장 마감 후': '미국 증시 마감 직후 (오늘 장 정리)' }[slot.phase];
+    ? { '장 시작 전': '한국 증시 개장 전 (전날 미국장·밤사이 뉴스·오늘 일정 중심)', 장중: `한국 증시 장중 (한국시간 ${h} 현재${slot.fast ? ' · 개장 직후라 30분마다 갱신, 지금 시세 흐름·수급 변화 중심' : ''})`, '장 마감 후': '한국 증시 마감 직후 (오늘 장 정리)' }[slot.phase]
+    : { 프리마켓: `미국 증시 개장 전 프리마켓 (뉴욕시간 ${h}, 밤사이 뉴스·실적·경제지표 중심)`, 장중: `미국 증시 장중 (뉴욕시간 ${h} 현재)`, '장 마감 후': '미국 증시 마감 직후 (오늘 장 정리)' }[slot.phase];
   const prevTxt = prev?.issues?.length ? `\n[직전 회차 (${prev.slot}) 이슈]\n${prev.issues.map((x, i) => `${i + 1}. [${x.tag}] ${x.title}`).join('\n')}\n` : '';
   return `너는 증권사 리서치센터의 시황 에디터다. 한국 개인투자자를 위해 "${md} ${mk === 'KR' ? '국장' : '미장'} ${slot.name} 주요 이슈 6"을 만든다. 매시간 새로 갱신되는 시황판이다.
 시점: ${when}
@@ -175,7 +190,7 @@ export async function buildEdition(mk, slot, date, { prev = null, force = false 
   // 같은 날 직전 회차와 비교해 새 뉴스·공시가 거의 없으면 이번 시간은 건너뜀
   const same = prev && prev.date === date ? prev : null;
   const fresh = same?.sig ? g.keys.filter((k) => !same.sig.includes(k)).length : g.keys.length;
-  if (same && !force && fresh < MIN_NEW) { const e = new Error(`새 이슈 없음 (새 소식 ${fresh}건)`); e.skip = true; throw e; }
+  if (same && !force && !slot.fast && fresh < MIN_NEW) { const e = new Error(`새 이슈 없음 (새 소식 ${fresh}건)`); e.skip = true; throw e; }
   const txt = await askAI(prompt(mk, slot, date, g.text, same), { maxTokens: 7000, timeout: 110000, think: 512, tag: '오늘 주요 이슈' });
   const j = parseJSON(txt);
   const okCode = (c) => (mk === 'KR' ? /^\d{6}$/.test(c) : /^[A-Z][A-Z0-9.\-]{0,6}$/.test(c));
@@ -199,7 +214,7 @@ export async function buildEdition(mk, slot, date, { prev = null, force = false 
   if (keys.length) { try { q = await (await import('../functions/quote.mjs')).getQuotes(keys); } catch {} }
   for (const x of issues) for (const s of x.stocks) { const v = q[`${mk}:${s.code}`]; const vp = v?.livePct ?? v?.pct; if (vp != null) s.pct = Math.round(Number(vp) * 100) / 100; }
   return {
-    id: editionId(mk, date, slot.n), mk, date, n: slot.n, hour: slot.n, slot: slot.name, short: slot.phase, fresh, sig: g.keys.slice(0, 200),
+    id: editionId(mk, date, slot.n, slot.min || 0), mk, date, n: slot.n, hour: slot.n, min: slot.min || 0, slot: slot.name, short: slot.phase, fresh, sig: g.keys.slice(0, 200),
     headline: cut(j.headline, 60), keywords: (Array.isArray(j.keywords) ? j.keywords : []).map((k) => cut(k, 12)).filter(Boolean).slice(0, 4),
     issues, idx: g.ix, themes: g.themeStrip, at: Date.now(),
   };
@@ -209,8 +224,9 @@ export async function saveEdition(ed) {
   await setJSON(`issues/ed/${ed.id}`, ed);
   const key = `issues/idx/${ed.mk}`;
   const idx = ((await getJSON(key)) || []).filter((x) => x.id !== ed.id);
-  idx.unshift({ id: ed.id, date: ed.date, n: ed.n, hour: ed.hour, slot: ed.slot, short: ed.short, headline: ed.headline, at: ed.at });
-  idx.sort((a, b) => b.date.localeCompare(a.date) || (b.hour ?? -1) - (a.hour ?? -1));
+  idx.unshift({ id: ed.id, date: ed.date, n: ed.n, hour: ed.hour, min: ed.min || 0, slot: ed.slot, short: ed.short, headline: ed.headline, at: ed.at });
+  const tm = (x) => (x.hour ?? -1) * 60 + (x.min || 0);
+  idx.sort((a, b) => b.date.localeCompare(a.date) || tm(b) - tm(a));
   await setJSON(key, idx.slice(0, 150));
 }
 

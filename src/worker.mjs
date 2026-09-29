@@ -108,9 +108,9 @@ export default {
     const om = url.pathname.match(/^\/og\/((?:SEC|DART)-[\d-]+|(?:NEWS|PR)-[a-z0-9]+)\.png$/);
     if (om && req.method === 'GET') return cached(req, ctx, () => renderOgImage(ctx, om[1]).catch((e) => { console.error('og', e); return env.ASSETS.fetch(new Request(new URL('/img/icon-512.png', req.url))); }));
     // 오늘 주요 이슈 회차별 공유 주소 (/i/kr-20260928-2) · 공유 이미지
-    const im = url.pathname.match(/^\/i\/((?:kr|us)-\d{8}-\d{1,2})\/?$/);
+    const im = url.pathname.match(/^\/i\/((?:kr|us)-\d{8}-(?:\d{4}|\d{1,2}))\/?$/);
     if (im && req.method === 'GET') return cached(req, ctx, () => renderIssuePage(env, req, im[1]));
-    const iom = url.pathname.match(/^\/og\/i\/((?:kr|us)-\d{8}-\d{1,2})\.png$/);
+    const iom = url.pathname.match(/^\/og\/i\/((?:kr|us)-\d{8}-(?:\d{4}|\d{1,2}))\.png$/);
     if (iom && req.method === 'GET') return cached(req, ctx, () => renderIssueOg(ctx, iom[1]).catch((e) => { console.error('og-i', e); return env.ASSETS.fetch(new Request(new URL('/img/icon-512.png', req.url))); }));
     if (url.pathname === '/sitemap-pages.xml') return cached(req, ctx, () => sitemap());
     // www 주소로 들어오면 대표 주소로

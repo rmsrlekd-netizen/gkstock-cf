@@ -25,10 +25,10 @@ export async function unzipFirst(buf, { bytes = false } = {}) {
 let mem = null;
 
 /** [{n: 이름, c: 종목코드, k: 고유번호}] (이름이 긴 순) */
-export async function getKrNames({ allowFetch = true } = {}) {
-  if (mem && Date.now() - mem.at < 6 * 3600e3) return mem.list;
+export async function getKrNames({ allowFetch = true, maxAge = 7 * 86400e3 } = {}) {
+  if (mem && Date.now() - mem.at < Math.min(6 * 3600e3, maxAge)) return mem.list;
   const saved = await getJSON('kr/names2');
-  if (saved && Date.now() - saved.at < 7 * 86400e3) { mem = saved; return saved.list; }
+  if (saved && Date.now() - saved.at < maxAge) { mem = saved; return saved.list; }
   const key = process.env.DART_API_KEY;
   if (!allowFetch || !key) return saved?.list || [];
   try {

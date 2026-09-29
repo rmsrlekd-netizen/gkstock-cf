@@ -4,7 +4,7 @@
 import { json, fetchWithTimeout, BROWSER_UA, decodeText, decodeEntities, num } from '../lib/util.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { us as usQuote } from './quote.mjs';
-import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers, naverKrExtMovers } from '../lib/naver.mjs';
+import { naverKrTop, naverUsTop, naverKrMovers, naverUsMovers, naverUsExtMovers, tvUsExtMovers, naverKrExtMovers, naverKrQuotes } from '../lib/naver.mjs';
 
 // 미국 시간외(프리마켓 04:00~09:30 · 애프터마켓 16:00~20:00, 뉴욕시간 평일)인지
 function usExtSession(now = new Date()) {
@@ -23,6 +23,40 @@ function krExtSession(now = new Date()) {
 }
 // 시간외 가격이 있으면 표시 등락률·가격을 시간외 기준으로 (정규장 값은 regPct·regPrice로 보관)
 const useExt = (x) => { if (x && x.session && x.livePct != null && x.regPct === undefined) { x.regPct = x.pct; x.regPrice = x.price; x.pct = x.livePct; x.price = x.live ?? x.price; } return x; };
+
+// 오늘 새로 상장한 종목 (38커뮤니케이션 신규상장 일정 → 종목코드 → 실시간 시세)
+//  네이버 상승·하락 순위에는 상장 첫날 종목이 빠져 있어서 따로 붙임
+const normNm = (s) => String(s || '').replace(/\(.*?\)|㈜|주식회사|\s/g, '').toUpperCase();
+async function krNewListings(today) {
+  const ipo = await getJSON('sched/kripo');
+  const names = (ipo?.list || []).filter((x) => x.sub === '상장' && x.start === today).map((x) => ({ name: x.name, offer: x.price }));
+  if (!names.length) return [];
+  const ck = `ipo/codes/${today}`;
+  const known = (await getJSON(ck)) || {};
+  const need = names.filter((x) => !known[x.name]);
+  if (need.length) {
+    const { getKrNames } = await import('../lib/krnames.mjs');
+    let list = await getKrNames({ maxAge: 20 * 3600e3 }).catch(() => []); // 상장 첫날이라 하루 안에 받은 목록으로
+    for (const x of need) {
+      const nn = normNm(x.name);
+      let hit = list.find((y) => normNm(y.n) === nn) || list.find((y) => normNm(y.n).startsWith(nn) || nn.startsWith(normNm(y.n)));
+      if (!hit) { // 네이버 종목 검색으로 한 번 더
+        try {
+          const r = await fetchWithTimeout(`https://ac.stock.naver.com/ac?q=${encodeURIComponent(x.name)}&target=stock`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://m.stock.naver.com/' } }, 6000);
+          const j = await r.json();
+          const it = (j.items || []).find((y) => /^\d{6}$/.test(y.code || '') && (y.nationCode === 'KOR' || !y.nationCode));
+          if (it) hit = { c: it.code };
+        } catch {}
+      }
+      if (hit?.c) known[x.name] = hit.c;
+    }
+    await setJSON(ck, known).catch(() => {});
+  }
+  const codes = names.map((x) => known[x.name]).filter(Boolean);
+  if (!codes.length) return [];
+  const q = await naverKrQuotes(codes).catch(() => ({}));
+  return names.filter((x) => q[known[x.name]]?.price != null).map((x) => { const v = q[known[x.name]]; return { market: 'KR', ticker: known[x.name], name: v.nameKo || x.name, ...v, cur: 'KRW', ipo: true, offer: x.offer || null }; });
+}
 
 const n0 = (s) => { const x = Number(String(s ?? '').replace(/[,%+\s]/g, '')); return Number.isFinite(x) ? x : null; };
 
@@ -108,6 +142,21 @@ export default async () => {
     // 인기 종목도 시간외 등락률을 함께 표시
     for (const x of usList) if (x.ext && x.ext.session === sess) { x.regPct = x.pct; x.regPrice = x.price; x.pct = x.ext.pct; x.price = x.ext.price ?? x.price; x.session = sess; }
   }
+  // 오늘 상장한 종목을 국내 상승·하락 순위에 끼워 넣음 (정규장 9시 이후)
+  try {
+    const kz = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+    const today = `${kz.year}-${kz.month}-${kz.day}`;
+    if (Number(kz.hour) >= 9) {
+      const nl = cached?.krNew?.date === today && Date.now() - cached.krNew.at < 60e3 ? cached.krNew.list : await krNewListings(today).catch((e) => { errors.push('krNew: ' + e.message); return []; });
+      out.krNew = { date: today, at: Date.now(), list: nl };
+      if (nl.length) {
+        const ids = new Set(nl.map((x) => x.ticker));
+        const put = (k, keep, cmp) => { out[k] = [...(out[k] || []).filter((x) => !ids.has(x.ticker)), ...nl.filter(keep)].sort(cmp).slice(0, 10); };
+        put('krUp', (x) => x.pct > 0, (a, b) => b.pct - a.pct);
+        put('krDown', (x) => x.pct < 0, (a, b) => a.pct - b.pct);
+      }
+    }
+  } catch (e) { errors.push('krNew: ' + e.message); }
   // 국내 넥스트레이드 프리·애프터마켓 시간엔 인기·상승·하락을 시간외 등락률 기준으로
   for (const k of ['kr', 'krUp', 'krDown']) for (const x of out[k] || []) useExt(x);
   const ks = krExtSession();

@@ -726,7 +726,7 @@
     const rs = x.reason && !/^뚜렷한 개별 뉴스 없음/.test(x.reason) ? x.reason : null;
     const subHTML = !big && rs ? `<small class="rs" title="AI 추정 · ${esc(x.reason)}">${esc(rs)}</small>` : `<small>${esc(sub)}${sec ? ' · ' + esc(sec) : ''}</small>`;
     const whyHTML = big && x.reason ? `<span class="why rwhy ${rs ? '' : 'none'}"><i>AI 추정</i>${esc(x.reason)}</span>` : big && x.why ? `<span class="why">${esc(x.why)}</span>` : '';
-    return `<li data-open-co="${esc(x.market)}|${esc(x.ticker)}|${esc(x.name || '')}"><span class="rk">${i + 1}</span>${logoHTML(x.market, x.ticker, x.name, big ? 'md' : 'sm')}<span class="nm"><b>${esc(label)}</b>${subHTML}</span><span class="px">${px ? `<b>${px}</b>` : ''}${x.pct != null ? `<em class="${dirCls(x.pct)}"${x.session ? ` title="정규장 ${fmtPct(x.regPct)}"` : ''}>${x.session ? `<i class="sess">${x.session === 'AFTER' ? '애프터' : '프리'}</i>` : ''}${fmtPct(x.pct)}</em>` : ''}</span>${whyHTML}</li>`;
+    return `<li data-open-co="${esc(x.market)}|${esc(x.ticker)}|${esc(x.name || '')}"><span class="rk">${i + 1}</span>${logoHTML(x.market, x.ticker, x.name, big ? 'md' : 'sm')}<span class="nm"><b>${esc(label)}${x.ipo ? ' <i class="ipo-tag" title="오늘 신규 상장 · 공모가 대비 등락">신규상장</i>' : ''}</b>${subHTML}</span><span class="px">${px ? `<b>${px}</b>` : ''}${x.pct != null ? `<em class="${dirCls(x.pct)}"${x.session ? ` title="정규장 ${fmtPct(x.regPct)}"` : ''}>${x.session ? `<i class="sess">${x.session === 'AFTER' ? '애프터' : '프리'}</i>` : ''}${fmtPct(x.pct)}</em>` : ''}</span>${whyHTML}</li>`;
   }
   // 인기 / 상승 / 하락 × 국내 / 미국
   const KIND_NAME = { pop: '인기', up: '상승', down: '하락' };
@@ -1057,7 +1057,7 @@
   }
 
   // ───────────────────────── 오늘 주요 이슈 9 (AI가 시간대마다 자동 생성) ─────────────────────────
-  const ISS_RE = /^\/i\/((?:kr|us)-\d{8}-\d{1,2})\/?$/;
+  const ISS_RE = /^\/i\/((?:kr|us)-\d{8}-(?:\d{4}|\d{1,2}))\/?$/;
   const issEd = new Map();
   S.issMk = load('gk_imk', 'KR'); S.iss = {}; S.issSel = {}; S.top = load('gk_top', 'issue');
   const issDate = (date) => { const d = new Date(date + 'T12:00:00Z'); return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 (${'일월화수목금토'[d.getUTCDay()]})`; };
@@ -1107,9 +1107,10 @@
     const n = ed.issues.length;
     const ix = (ed.idx || []).slice(0, full ? 6 : 4).map((x) => `<div class="ib-ix"><span>${esc(x.label)}</span><b>${x.price != null ? Number(x.price).toLocaleString('en-US', { maximumFractionDigits: x.price > 100 ? 2 : 3 }) + (x.unit || '') : '—'}</b><em class="${dirCls(x.pct)}">${fmtPct(x.pct)}</em></div>`).join('');
     const today = list.filter((x) => x.date === ed.date);
-    if (!today.some((x) => x.id === ed.id)) today.push({ id: ed.id, date: ed.date, n: ed.n, hour: ed.hour, slot: ed.slot, short: ed.short });
-    today.sort((a, b) => (a.hour ?? a.n ?? 0) - (b.hour ?? b.n ?? 0));
-    const slots = today.map((x) => `<button class="ib-sl${x.id === ed.id ? ' on' : ''}" data-iss-pick="${esc(x.id)}"><b>${x.hour != null ? (ed.mk === 'US' ? '뉴욕 ' : '') + x.hour + '시' : esc(x.slot)}</b><small>${esc(x.hour != null ? x.short || '' : '')}</small></button>`).join('');
+    if (!today.some((x) => x.id === ed.id)) today.push({ id: ed.id, date: ed.date, n: ed.n, hour: ed.hour, min: ed.min, slot: ed.slot, short: ed.short });
+    const tm = (x) => (x.hour ?? x.n ?? 0) * 60 + (x.min || 0);
+    today.sort((a, b) => tm(a) - tm(b));
+    const slots = today.map((x) => `<button class="ib-sl${x.id === ed.id ? ' on' : ''}" data-iss-pick="${esc(x.id)}"><b>${x.hour != null ? (ed.mk === 'US' ? '뉴욕 ' : '') + (x.min ? `${x.hour}:${String(x.min).padStart(2, '0')}` : x.hour + '시') : esc(x.slot)}</b><small>${esc(x.hour != null ? x.short || '' : '')}</small></button>`).join('');
     const past = list.filter((x) => x.date !== ed.date).slice(0, 30);
     const pastSel = past.length ? `<select class="ib-past" data-iss-past><option value="">지난 회차</option>${past.map((x) => `<option value="${esc(x.id)}">${esc(issDate(x.date))} ${esc(x.slot)}</option>`).join('')}</select>` : '';
     const cards = ed.issues.map((x, i) => issCardHTML(ed, x, i, full)).join('');

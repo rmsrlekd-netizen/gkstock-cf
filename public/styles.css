@@ -1591,3 +1591,6 @@ button.br-mv:hover { border-color: var(--accent); }
 .ip-share { margin-left: auto; }
 .ip-share svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; margin-right: .3rem; vertical-align: -2px; }
 @media (max-width: 720px) { .ip-bar { gap: .5rem; } .ip-bar .esc-hint, .ip-bar .ip-what { display: none; } }
+
+/* ── v76: 신규 상장 배지 ── */
+.ipo-tag { font-style: normal; font-size: .62rem; font-weight: 800; color: #fbbf24; background: rgba(251, 191, 36, .14); border: 1px solid rgba(251, 191, 36, .35); border-radius: 5px; padding: .05rem .3rem; margin-left: .25rem; vertical-align: 1px; white-space: nowrap; }
