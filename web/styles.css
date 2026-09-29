@@ -1719,3 +1719,12 @@ button.br-mv:hover { border-color: var(--accent); }
 .th-idx-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: .6rem; }
 .th-idx-list .th-row .rk { display: none; }
 @media (max-width: 720px) { .th-idx-list { grid-template-columns: 1fr; } }
+
+/* ── v95: 미국 테마 PC 배치 정리 (윗줄 강한·약한 테마, 아랫줄 강한·약한 섹터, 칸 높이 맞춤) ── */
+.th-quad { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; align-items: stretch; }
+.th-quad > .card { min-width: 0; margin: 0; display: flex; flex-direction: column; }
+.th-quad > .card > .th-list { flex: 1; align-content: start; }
+@media (max-width: 1100px) {
+  .th-quad { grid-template-columns: minmax(0, 1fr); }
+  .th-quad > .q-tt { order: 1; } .th-quad > .q-st { order: 2; } .th-quad > .q-wt { order: 3; } .th-quad > .q-ws { order: 4; }
+}

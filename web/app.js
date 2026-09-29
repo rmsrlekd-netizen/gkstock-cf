@@ -1650,6 +1650,7 @@
       box.innerHTML = `<ol class="rank">${(j.stocks || []).map((s, i) => rankRow({ market: 'KR', ticker: s.t, name: s.name, price: s.price, pct: s.pct }, i)).join('')}</ol>`;
     } catch (e) { box.innerHTML = `<p class="muted">불러오지 못했습니다: ${esc(e.message)}</p>`; }
   }
+  try { matchMedia('(min-width: 1101px)').addEventListener('change', () => { if (S.view === 'themes' && S.themes) renderThemes(); }); } catch {}
   function renderThemes() {
     const d = S.themes;
     $$('#thSeg button').forEach((b) => b.classList.toggle('on', b.dataset.th === S.thMk));
@@ -1671,15 +1672,17 @@
       if (u.groups?.length) { // 국장과 같은 모양: 테마·섹터별 평균 등락률 + 상승/하락 비율 + 대장주 (누르면 소속 종목 전체)
         const G = u.groups, SG = u.sectorGroups || [];
         const idx = (arr, g) => arr.indexOf(g);
-        const up = G.filter((g) => g.rate >= 0).slice(0, 15), down = [...G].reverse().filter((g) => g.rate < 0).slice(0, 6);
-        const sUp = SG.filter((g) => g.rate >= 0), sDown = [...SG].reverse().filter((g) => g.rate < 0);
+        //  PC는 좌우 칸 길이를 맞춤: 테마 위 8개 | 아래 8개, 섹터 위 6개 | 아래 5개 (모바일은 기존 그대로)
+        const pc = matchMedia('(min-width: 1101px)').matches;
+        const up = pc ? G.slice(0, 8) : G.filter((g) => g.rate >= 0).slice(0, 15), down = pc ? [...G].reverse().slice(0, 8) : [...G].reverse().filter((g) => g.rate < 0).slice(0, 6);
+        const sUp = pc ? SG.slice(0, 6) : SG.filter((g) => g.rate >= 0), sDown = pc ? [...SG].reverse().slice(0, Math.max(0, SG.length - 6)) : [...SG].reverse().filter((g) => g.rate < 0);
         const IG = u.indexGroups || [];
         $('#thBody').innerHTML = `${IG.length ? `<div class="card th-idx"><div class="card-h"><h3>지수 흐름</h3><span class="muted sm">구성 종목 중 오른 종목·내린 종목 비율 · 누르면 전체 종목</span></div><div class="th-list th-idx-list">${IG.map((g, i) => thRow(g, i, 'us', 'indexGroups:' + i)).join('')}</div></div>` : ''}
-          <div class="th-grid">
-          <div class="card"><div class="card-h"><h3>오늘의 주도 테마 <b>TOP ${up.length}</b></h3><span class="muted sm">미국 테마 ${u.groupCount || G.length}개 · 소속 종목 평균 등락률</span></div><div class="th-list">${up.map((g, i) => thRow(g, i, 'us', 'groups:' + idx(G, g))).join('') || '<p class="muted">오른 테마가 없어요.</p>'}</div></div>
-          <div><div class="card"><div class="card-h"><h3>강한 섹터</h3><span class="muted sm">섹터 11개 · S&P 500 대형주 + 나스닥100 평균</span></div><div class="th-list">${sUp.map((g, i) => thRow(g, i, 'us', 'sectorGroups:' + idx(SG, g))).join('') || '<p class="muted">오른 섹터가 없어요.</p>'}</div></div>
-          <div class="card" style="margin-top:1rem"><div class="card-h"><h3>약한 테마</h3><span class="muted sm">오늘 가장 많이 내린 테마</span></div><div class="th-list">${down.map((g, i) => thRow(g, i, 'us', 'groups:' + idx(G, g))).join('') || '<p class="muted">내린 테마가 없어요.</p>'}</div></div>
-          <div class="card" style="margin-top:1rem"><div class="card-h"><h3>약한 섹터</h3></div><div class="th-list">${sDown.map((g, i) => thRow(g, i, 'us', 'sectorGroups:' + idx(SG, g))).join('') || '<p class="muted">내린 섹터가 없어요.</p>'}</div></div></div>
+          <div class="th-quad">
+          <div class="card q-tt"><div class="card-h"><h3>오늘의 주도 테마 <b>TOP ${up.length}</b></h3><span class="muted sm">미국 테마 ${u.groupCount || G.length}개 · 소속 종목 평균 등락률</span></div><div class="th-list">${up.map((g, i) => thRow(g, i, 'us', 'groups:' + idx(G, g))).join('') || '<p class="muted">오른 테마가 없어요.</p>'}</div></div>
+          <div class="card q-wt"><div class="card-h"><h3>약한 테마</h3><span class="muted sm">오늘 가장 많이 내린 테마</span></div><div class="th-list">${down.map((g, i) => thRow(g, i, 'us', 'groups:' + idx(G, g))).join('') || '<p class="muted">내린 테마가 없어요.</p>'}</div></div>
+          <div class="card q-st"><div class="card-h"><h3>강한 섹터</h3><span class="muted sm">섹터 11개 · S&P 500 대형주 + 나스닥100 평균</span></div><div class="th-list">${sUp.map((g, i) => thRow(g, i, 'us', 'sectorGroups:' + idx(SG, g))).join('') || '<p class="muted">오른 섹터가 없어요.</p>'}</div></div>
+          <div class="card q-ws"><div class="card-h"><h3>약한 섹터</h3></div><div class="th-list">${sDown.map((g, i) => thRow(g, i, 'us', 'sectorGroups:' + idx(SG, g))).join('') || '<p class="muted">내린 섹터가 없어요.</p>'}</div></div>
         </div><p class="note">미국 테마는 대표 종목들의 평균 등락률이에요(직전 정규장 기준). 테마를 누르면 소속 종목이 펼쳐지고, 종목을 누르면 기업 분석으로 이동합니다. 막대 = 상승(빨강)·하락(파랑) 종목 비율 · 옆 숫자는 대표 ETF 등락률.</p>`;
         return;
       }
