@@ -26,10 +26,13 @@ export async function resetKisToken() { mem = null; await setJSON('kis/token', {
 
 export async function kisToken() {
   if (mem && mem.exp > Date.now()) return mem.token;
-  const saved = await getJSON('kis/token');
+  let saved = await getJSON('kis/token');
+  if (!saved) { await sleep(400); saved = await getJSON('kis/token'); } // DB가 잠깐 응답을 못 한 경우 → 새로 발급하기 전에 한 번 더 확인 (불필요한 재발급·문자 방지)
   if (saved && saved.exp > Date.now()) { mem = saved; return mem.token; }
   try {
     mem = await issueToken();
+    // 발급 기록 (하루 몇 번 발급되는지 확인용, 최근 20건)
+    try { const log = (await getJSON('kis/issued')) || []; log.push(new Date().toISOString()); await setJSON('kis/issued', log.slice(-20)); } catch {}
   } catch (e) {
     // 토큰 발급은 1분에 1회 제한 → 다른 함수가 방금 발급했을 수 있으니 잠시 후 저장본 재확인
     await sleep(1500);
@@ -57,7 +60,7 @@ function slot() {
 }
 const RATE = /초당|EGW00201|거래건수/;
 
-export async function kisGet(path, trId, params) {
+export async function kisGet(path, trId, params, _retried = false) {
   const token = await kisToken();
   const url = `${BASE}${path}?${new URLSearchParams(params)}`;
   let lastErr;
@@ -76,6 +79,8 @@ export async function kisGet(path, trId, params) {
     const j = await r.json().catch(() => null);
     if (j && j.rt_cd === '0') return j;
     lastErr = new Error(j ? `KIS ${trId}: ${j.msg1 || j.msg_cd}` : `KIS ${trId} HTTP ${r.status}`);
+    // 토큰이 정말 만료·무효일 때만 새로 발급 (EGW00121 무효, EGW00123 만료)
+    if (/EGW00121|EGW00123/.test(`${j?.msg_cd || ''} ${j?.msg1 || ''}`) && !_retried) { await resetKisToken(); return kisGet(path, trId, params, true); }
     if (!(RATE.test(`${j?.msg1 || ''} ${j?.msg_cd || ''}`) || r.status === 500 || r.status === 429)) break;
     await sleep(700 + attempt * 600); // 초과 → 잠깐 쉬고 재시도
   }

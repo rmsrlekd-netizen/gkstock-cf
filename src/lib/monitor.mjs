@@ -92,7 +92,7 @@ async function checks() {
       try { const j = await t(); return add('keyKis', 'API 키 · 한국투자증권', true, `정상 · 삼성전자 현재가 ${Number(j.output?.stck_prpr || 0).toLocaleString('ko-KR')}원 조회 성공`); }
       catch (e) {
         let msg = String(e.message || e);
-        if (keyErr.test(msg)) { try { await resetKisToken(); await t(); return add('keyKis', 'API 키 · 한국투자증권', true, '정상 (접속 토큰 새로 발급함)'); } catch (e2) { msg = String(e2.message || e2); } }
+        if (/EGW00121|EGW00123|만료된 token|유효하지 않은 token/i.test(msg)) { try { await resetKisToken(); await t(); return add('keyKis', 'API 키 · 한국투자증권', true, '정상 (접속 토큰 새로 발급함)'); } catch (e2) { msg = String(e2.message || e2); } }
         if (/초당|거래건수|EGW00201/.test(msg)) return add('keyKis', 'API 키 · 한국투자증권', true, '정상 (점검 순간 호출이 몰려 잠깐 대기) ');
         return add('keyKis', 'API 키 · 한국투자증권', false, `${keyErr.test(msg) ? '⚠ 키 오류 — 이용 정지·만료 가능성. ' : '호출 실패: '}${msg.slice(0, 160)} (VI·미국 주간거래·수급·야간선물이 멈춤)`);
       }
