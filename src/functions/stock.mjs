@@ -4,6 +4,7 @@
 import { json, fetchWithTimeout, num, BROWSER_UA, kstYmd } from '../lib/util.mjs';
 import { hasKis, kisGet } from '../lib/kis.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
+import { shortVolOf } from '../lib/shortvol.mjs';
 
 const NQ = {
   'User-Agent': BROWSER_UA,
@@ -35,6 +36,7 @@ async function us(t) {
       date: r.settlementDate, interest: num(r.interest), avgVol: num(r.avgDailyShareVolume), days: num(r.daysToCover),
     }));
   } else out.errors.short = si.reason.message;
+  try { out.shortVol = await shortVolOf(t); } catch {} // FINRA 일별 공매도 거래 비중 (매일)
 
   if (ins.status === 'fulfilled') {
     const d = ins.value;

@@ -45,6 +45,24 @@ export async function getJSON(key, fallback = null) {
   }
 }
 
+/** 여러 키를 한 번에 (없는 키는 빠짐) */
+export async function getManyJSON(keys) {
+  const out = {};
+  if (!keys.length) return out;
+  if (useMem()) { for (const k of keys) if (mem.has(k)) out[k] = structuredClone(mem.get(k)); return out; }
+  try {
+    await init();
+    for (let i = 0; i < keys.length; i += 50) {
+      const part = keys.slice(i, i + 50);
+      const r = await db.prepare(`SELECT k, v FROM kv WHERE k IN (${part.map(() => '?').join(',')})`).bind(...part).all();
+      for (const row of r.results || []) {
+        try { const v = row.v; const text = typeof v === 'string' ? v : await gunzip(v instanceof Uint8Array ? v : new Uint8Array(v)); out[row.k] = JSON.parse(text); } catch {}
+      }
+    }
+  } catch (e) { console.warn('store getMany', e.message); }
+  return out;
+}
+
 export async function setJSON(key, value) {
   if (useMem()) { mem.set(key, structuredClone(value)); return; }
   await init();

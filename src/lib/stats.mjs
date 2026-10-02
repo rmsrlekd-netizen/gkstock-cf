@@ -43,16 +43,16 @@ export async function track(req, body) {
     return;
   }
   if (body.t !== 'pv') return;
-  const keys = ['pv', `hr:${String(hr).padStart(2, '0')}`, `dev:${body.m ? 'm' : 'd'}`];
+  const keys = ['pv', `hr:${String(hr).padStart(2, '0')}`];
   let ref = String(body.ref || '').toLowerCase().replace(/^www\./, '').slice(0, 60);
-  if (ref && !/gk-stock\.com|workers\.dev/.test(ref)) keys.push(`ref:${ref}`);
-  else if (!ref) keys.push('ref:(직접 방문)');
+  //  유입 경로·기기는 '방문자 1명당 하루 1번'만 셈 (예전엔 페이지를 넘길 때마다 세서 방문자 수보다 훨씬 많았음)
+  const refKey = ref && !/gk-stock\.com|workers\.dev/.test(ref) ? `rv:${ref}` : !ref ? 'rv:(직접 방문)' : null;
   const ip = req.headers.get('cf-connecting-ip') || '';
   const h = await sha(`${day}|${ip}|${ua}`);
   let isNew = false;
   if (d) isNew = ((await d.prepare('INSERT OR IGNORE INTO uv (d, h) VALUES (?, ?)').bind(day, h).run())?.meta?.changes || 0) > 0;
   else if (!mem.uv.has(day + h)) { mem.uv.add(day + h); isNew = true; }
-  if (isNew) keys.push('uv');
+  if (isNew) { keys.push('uv', `dv:${body.m ? 'm' : 'd'}`); if (refKey) keys.push(refKey); }
   await inc(d, day, keys);
 }
 
@@ -70,7 +70,11 @@ export async function report() {
   for (let i = 29; i >= 0; i--) { const dd = kstDate(-i); days.push({ d: dd, uv: 0, pv: 0, iv: 0 }); }
   const byDay = Object.fromEntries(days.map((x) => [x.d, x]));
   const items = {}, refs = {}, dev = { m: 0, d: 0 }, hours = Array(24).fill(0);
+  // 새 방식(방문자 기준 rv:/dv:)이 기록된 날은 그것만, 그 전 날은 예전 기록(ref:/dev:)
+  const newDays = new Set(all.filter((r) => r.k.startsWith('rv:') || r.k.startsWith('dv:')).map((r) => r.d));
   for (const r of all) {
+    if (newDays.has(r.d) ? r.k.startsWith('ref:') || r.k.startsWith('dev:') : r.k.startsWith('rv:') || r.k.startsWith('dv:')) continue;
+    if (r.k.startsWith('rv:')) r.k = 'ref:' + r.k.slice(3); else if (r.k.startsWith('dv:')) r.k = 'dev:' + r.k.slice(3);
     const day = byDay[r.d];
     if (!day) continue;
     if (r.k === 'uv' || r.k === 'pv' || r.k === 'iv') day[r.k] += r.n;

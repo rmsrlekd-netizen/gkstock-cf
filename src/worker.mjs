@@ -14,6 +14,7 @@ import * as health from './functions/health.mjs';
 import * as logo from './functions/logo.mjs';
 import * as market from './functions/market.mjs';
 import * as spark from './functions/spark.mjs';
+import * as verdicts from './functions/verdicts.mjs';
 import * as news from './functions/news.mjs';
 import * as popular from './functions/popular.mjs';
 import * as sectors from './functions/sectors.mjs';
@@ -51,7 +52,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, spark, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts, reaction]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, spark, verdicts, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts, reaction]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -181,6 +182,7 @@ export default {
       const night = (m >= 18 * 60 && !['Sat', 'Sun'].includes(wd)) || (m < 5 * 60 + 5 && !['Sun', 'Mon'].includes(wd));
       const day = !['Sat', 'Sun'].includes(wd) && m >= 8 * 60 + 45 && m <= 15 * 60 + 45;
       if (night || day) jobs.push(import('./functions/market.mjs').then((x) => x.sampleNight()).catch((e) => console.warn('night', e.message))); }
+    if (min === 7 || min === 37) jobs.push(import('./lib/shortvol.mjs').then((x) => x.shortVolWatch()).then((r) => { if (r?.got) console.log('shvol', JSON.stringify(r)); }).catch((e) => console.warn('shvol', e.message))); // FINRA 일별 공매도 (30분마다 확인)
     jobs.push(haltsWatch(now).then((r) => { if (r.kr || r.us) console.log('halts', JSON.stringify(r)); }).catch((e) => console.warn('halts', e.message)));
     // 오늘 주요 이슈: 회차 시각이 되면 AI가 새로 만듦 (한국 4회·미국 4회)
     jobs.push(issuesWatch(now, ctx).then((r) => { if (Object.keys(r).length) console.log('issues', JSON.stringify(r)); }).catch((e) => console.warn('issues', e.message)));

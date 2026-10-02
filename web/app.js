@@ -306,7 +306,8 @@
   }
   function applyAI(n) {
     const a = S.ai.get(n.id);
-    if (!a || a.error) return;
+    if (!a || a.error) { const v = S.verd?.[n.id]; if (v) { n.sent = v === '긍정' ? 'pos' : v === '부정' ? 'neg' : null; n.aiDone = true; } return; } // 서버에 저장된 AI 판단 (상세 화면과 같은 호재·악재)
+    if (a.quick && S.verd?.[n.id]) { n.sent = S.verd[n.id] === '긍정' ? 'pos' : S.verd[n.id] === '부정' ? 'neg' : null; n.aiDone = true; return; }
     if (!a.fallback) { n.sent = a.verdict === '긍정' ? 'pos' : a.verdict === '부정' ? 'neg' : null; n.aiDone = true; }
     if (a.headline && !a.fallback && !n.raw.tx) { if (!n.orig) n.orig = n.head; n.head = a.headline; }
   }
@@ -314,6 +315,26 @@
   function applyTr(n) {
     const t = S.tr[n.id];
     if (t && !hasKo(n.head) && !n.raw.tx) { if (!n.orig) n.orig = n.head; n.head = t; }
+  }
+  // 목록·트렌딩에 보이는 항목의 AI 호재·악재 판단을 서버에서 받아 반영 (상세 화면과 표시가 다르지 않게)
+  S.verd = {};
+  const verdAsked = new Map();
+  let verdTimer = null;
+  function queueVerdicts(list) {
+    for (const n of list) if (n && n.kind !== 'NEWS' && !(n.id in S.verd) && Date.now() - (verdAsked.get(n.id) || 0) > 5 * 60e3) verdAsked.set(n.id, -1);
+    if (verdTimer) return;
+    verdTimer = setTimeout(async () => {
+      verdTimer = null;
+      const ids = [...verdAsked].filter(([, t]) => t === -1).map(([id]) => id).slice(0, 80);
+      if (!ids.length) return;
+      ids.forEach((id) => verdAsked.set(id, Date.now()));
+      try {
+        const j = await getJSON('/api/verdicts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids }) });
+        let ch = false;
+        for (const [id, v] of Object.entries(j.v || {})) { if (S.verd[id] === v) continue; S.verd[id] = v; const n = S.items.get(id); if (n) { applyAI(n); ch = true; } }
+        if (ch && S.view in FEED_VIEWS) { renderFeed(); renderTrend(); }
+      } catch {}
+    }, 600);
   }
   // 화면에 보이는 영어 제목을 모아 한국어 번역 요청 (결과는 서버에 저장되어 모두가 재사용)
   let trTimer = null;
@@ -528,7 +549,7 @@
         ? '<div class="empty">관심종목이 없습니다.<br>목록의 ☆ 또는 상세 창의 ☆를 눌러 추가하세요.</div>'
         : `<div class="empty">조건에 맞는 항목이 없습니다.${errs.length ? `<br><small>${esc(errs.join(' / '))}</small>` : ''}</div>`;
     } else {
-      queueTranslate(arr.slice(0, S.limit));
+      queueTranslate(arr.slice(0, S.limit)); queueVerdicts(arr.slice(0, 60));
       const canOlder = S.type !== 'NEWS' && !S.olderDone[olderKey()];
       patchList(list, arr.slice(0, S.limit), arr.length > S.limit ? `더 보기 (${fmtInt(arr.length - S.limit)}건 남음)` : canOlder ? (S.olderBusy ? '불러오는 중…' : '⏷ 이전 공시·보도자료 더 보기') : '');
     }
@@ -620,8 +641,8 @@
       trendBusy = Date.now();
       (async () => { for (let i = 0; i < need.length; i += 40) await fetchQuotes(need.slice(i, i + 40)); renderTrend(); })();
     }
-    queueTranslate(pick);
-    const sig = pick.map((n) => n.id).join('|');
+    queueTranslate(pick); queueVerdicts(pick);
+    const sig = pick.map((n) => n.id + (n.sent || '')).join('|');
     if (box.dataset.sig === sig && box.children.length) { paintChips(); return; }
     box.dataset.sig = sig;
     box.innerHTML = pick.map((n) => `<button class="tcard" data-id="${esc(n.id)}"><div class="t-top">${logoHTML(n.market, n.ticker, n.name, 'sm')}<span class="t-tk">${esc(n.market === 'KR' ? n.name : n.ticker)}</span><span class="mk ${n.market === 'KR' ? 'kr' : 'us'}">${n.market === 'KR' ? '한국' : '미국'}</span><span style="margin-left:auto">${rel(n.ms)}</span></div><div class="t-h">${esc(n.head)}</div><div class="t-f">${tagsHTML(n, 2, true)}${qchip(n)}</div></button>`).join('') || '<div class="empty">아직 표시할 항목이 없습니다.</div>';
@@ -2159,12 +2180,22 @@
     if (d.error) return `<div class="box"><p class="err">불러오지 못했습니다: ${esc(d.error)}</p></div>`;
     return m === 'KR' ? krStockHTML(d) : usStockHTML(d);
   }
+  // FINRA 일별 공매도 거래 비중 (매일 발표 · 잔고가 아니라 그날 거래 중 공매도 비율)
+  function usShortVolHTML(d) {
+    const v = d.shortVol || [];
+    if (!v.length) return '';
+    const avg = v.reduce((a, x) => a + x.pct, 0) / v.length, v0 = v[0];
+    return `<h4 style="margin-top:1.2rem">일별 공매도 거래 비중 <small>FINRA · 매 거래일 발표 · ${esc(v0.date)} 기준</small></h4>
+      <div class="mini-stats"><div><span>최근 거래일 비중</span><b class="${v0.pct >= 50 ? 'down' : ''}">${v0.pct.toFixed(1)}%</b></div><div><span>${v.length}일 평균</span><b>${avg.toFixed(1)}%</b></div><div><span>공매도 거래량</span><b>${fmtBig(v0.short)}주</b></div></div>
+      <table class="tbl"><tr><th>일자</th><th>공매도 거래량</th><th class="hide-m">전체 거래량</th><th>비중</th></tr>${v.map((r) => `<tr><td>${esc(r.date)}</td><td>${nx(r.short, false)}</td><td class="hide-m">${nx(r.total, false)}</td><td class="${r.pct >= 50 ? 'down' : ''}">${r.pct.toFixed(1)}%</td></tr>`).join('')}</table>
+      <p class="note">장외 거래소(FINRA 보고분) 기준이라 전체 시장 거래량과 다를 수 있어요. 50%가 넘으면 공매도 거래가 많은 날이에요.</p>`;
+  }
   function usShortHTML(d) {
-    if (!d.short?.length) return `<h4>공매도 잔고</h4>${note(d.errors?.short || '데이터 없음')}`;
+    if (!d.short?.length) return `<h4>공매도 잔고</h4>${note(d.errors?.short || '데이터 없음')}` + usShortVolHTML(d);
     const s0 = d.short[0], s1 = d.short[1];
     const chg = s1 && s1.interest ? ((s0.interest - s1.interest) / s1.interest) * 100 : null;
     return `<h4>공매도 잔고 <small>FINRA · ${esc(s0.date)} 결제일 기준 · 월 2회 발표</small></h4><div class="mini-stats"><div><span>공매도 잔고</span><b>${fmtBig(s0.interest)}주</b></div><div><span>직전 대비</span><b class="${dirCls(chg)}">${fmtPct(chg)}</b></div><div><span>숏커버 소요일</span><b>${s0.days !== null && s0.days !== undefined ? s0.days.toFixed(1) + '일' : '—'}</b></div></div>
-      <table class="tbl"><tr><th>결제일</th><th>잔고</th><th class="hide-m">일평균 거래량</th><th>커버일</th></tr>${d.short.map((r) => `<tr><td>${esc(r.date)}</td><td>${nx(r.interest, false)}</td><td class="hide-m">${nx(r.avgVol, false)}</td><td>${r.days !== null && r.days !== undefined ? r.days.toFixed(2) : '—'}</td></tr>`).join('')}</table>`;
+      <table class="tbl"><tr><th>결제일</th><th>잔고</th><th class="hide-m">일평균 거래량</th><th>커버일</th></tr>${d.short.map((r) => `<tr><td>${esc(r.date)}</td><td>${nx(r.interest, false)}</td><td class="hide-m">${nx(r.avgVol, false)}</td><td>${r.days !== null && r.days !== undefined ? r.days.toFixed(2) : '—'}</td></tr>`).join('')}</table>` + usShortVolHTML(d);
   }
   function usInsiderHTML(d) {
     const i = d.insider;
