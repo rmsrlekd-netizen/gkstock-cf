@@ -606,7 +606,8 @@
     if (!['Sat', 'Sun'].includes(us.wd) && us.m >= 240 && us.m < 1200) return 'US';
     return null;
   }
-  let trendBusy = 0;
+  let trendBusy = 0, trendPrimLast = null;
+  setInterval(() => { const p = trendPrimary(); if (p !== trendPrimLast) { trendPrimLast = p; if (S.view in FEED_VIEWS) renderTrend(); } }, 60e3); // 국장↔미장 시간이 바뀌면 다시 그림
   function trendGain(n) {
     const q = quoteOf(n.market, n.ticker);
     const p0 = splitAdj(p0Of(n), q);
@@ -626,11 +627,17 @@
     for (const n of cand) { const g = trendGain(n); if (g == null) continue; const k = wkey(n.market, n.ticker); if (!best.has(k) || g > best.get(k).g) best.set(k, { n, g }); }
     const prim = trendPrimary();
     const ranked = [...best.values()].sort((a, b) => ((prim && b.n.market === prim) - (prim && a.n.market === prim)) || b.g - a.g);
-    const pick = ranked.filter((x) => x.g > 0).slice(0, 6).map((x) => x.n); // 6개 (PC 한 줄에 딱 맞게, 모바일은 슬라이드)
-    if (pick.length < 6) { // 오른 종목이 적으면 기존 기준(중요도·최신)으로 채움
-      const seen = new Set(pick.map((n) => wkey(n.market, n.ticker)));
-      const arr = pool.filter((n) => n.ms > since && n.ticker && n.impact >= 3).sort((a, b) => ((prim && b.market === prim) - (prim && a.market === prim)) || b.impact - a.impact || b.ms - a.ms);
-      for (const n of arr) { const k = wkey(n.market, n.ticker); if (seen.has(k)) continue; seen.add(k); pick.push(n); if (pick.length >= 6) break; }
+    // 장이 열린 시장이 있으면 그 시장 종목만 (시세가 아직 안 받아진 순간에 다른 시장 종목이 끼어들던 문제)
+    const inPrim = (n) => !prim || n.market === prim;
+    const pick = ranked.filter((x) => x.g > 0 && inPrim(x.n)).slice(0, 6).map((x) => x.n); // 6개 (PC 한 줄에 딱 맞게, 모바일은 슬라이드)
+    const seen = new Set(pick.map((n) => wkey(n.market, n.ticker)));
+    const fill = (arr) => { for (const n of arr) { if (pick.length >= 6) break; const k = wkey(n.market, n.ticker); if (seen.has(k)) continue; seen.add(k); pick.push(n); } };
+    if (pick.length < 6) { // 오른 종목이 적으면 같은 시장의 중요 공시(중요도·최신)로 채움
+      fill(pool.filter((n) => n.ms > since && n.ticker && n.impact >= 3 && inPrim(n)).sort((a, b) => b.impact - a.impact || b.ms - a.ms));
+    }
+    if (pick.length < 6 && prim) { // 그래도 모자라면 그때만 다른 시장
+      fill(ranked.filter((x) => x.g > 0).map((x) => x.n));
+      fill(pool.filter((n) => n.ms > since && n.ticker && n.impact >= 3).sort((a, b) => b.impact - a.impact || b.ms - a.ms));
     }
     // 시세가 없는 후보는 뒤에서 받아 와서 다시 정렬
     //  후보가 많을 때 앞쪽 80개만 계속 받던 문제 → 시세를 한 번도 안 받은 종목 먼저, 그다음 오래된 순 (지금 장이 열린 시장 우선)
