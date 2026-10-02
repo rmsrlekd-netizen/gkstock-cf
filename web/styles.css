@@ -1770,3 +1770,30 @@ button.br-mv:hover { border-color: var(--accent); }
 .suggest .sg-clear { width: auto !important; padding: 0 .2rem !important; font-size: .72rem !important; color: var(--faint); background: none !important; }
 .suggest .sg-clear:hover { color: var(--text); }
 .suggest .sg-clock { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--faint); stroke-width: 2; }
+
+/* ── v107: 유튜브·텔레그램 큰 배너 (PC는 시장 선택 오른쪽, 휴대폰은 제목과 검색창 사이) ── */
+.cta-banners { display: flex; gap: .7rem; }
+.cta-banners.cb-pc { margin-left: auto; flex: 0 1 560px; min-width: 0; }
+.cta-banners.cb-m { display: none; }
+.cb { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: .7rem; padding: .55rem .9rem; min-height: 2.9rem; border-radius: 13px; text-decoration: none; color: #fff; border: 1px solid; transition: transform .15s, box-shadow .15s, background .15s; }
+.cb:hover { transform: translateY(-1px); }
+.cb-yt { border-color: rgba(255, 0, 51, .5); background: linear-gradient(120deg, rgba(255, 0, 51, .28), rgba(255, 0, 51, .07) 70%); }
+.cb-yt:hover { box-shadow: 0 6px 22px rgba(255, 0, 51, .22); background: linear-gradient(120deg, rgba(255, 0, 51, .4), rgba(255, 0, 51, .12) 70%); }
+.cb-tg { border-color: rgba(42, 163, 232, .5); background: linear-gradient(120deg, rgba(42, 163, 232, .28), rgba(42, 163, 232, .07) 70%); }
+.cb-tg:hover { box-shadow: 0 6px 22px rgba(42, 163, 232, .22); background: linear-gradient(120deg, rgba(42, 163, 232, .4), rgba(42, 163, 232, .12) 70%); }
+.cb .cb-ico { width: 2.1rem; height: 1.5rem; flex: none; }
+.cb .cb-ico.tg { width: 1.75rem; height: 1.75rem; }
+.cb span { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.cb b { font-size: .95rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb small { font-size: .74rem; font-weight: 700; white-space: nowrap; }
+.cb-yt small { color: #ff8a9a; } .cb-tg small { color: #8fd3ff; }
+.cb .cb-arr { width: 1.05rem; height: 1.05rem; margin-left: auto; flex: none; fill: none; stroke: rgba(255,255,255,.65); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 1100px) { .cta-banners.cb-pc { flex-basis: 100%; margin-left: 0; } }
+@media (max-width: 720px) {
+  .cta-banners.cb-pc { display: none; }
+  .cta-banners.cb-m { display: flex; gap: .5rem; margin: 0 0 .65rem; }
+  .cb { padding: .45rem .6rem; min-height: 2.6rem; gap: .5rem; border-radius: 11px; }
+  .cb .cb-ico { width: 1.7rem; height: 1.2rem; } .cb .cb-ico.tg { width: 1.45rem; height: 1.45rem; }
+  .cb b { font-size: .82rem; } .cb small { font-size: .66rem; }
+  .cb .cb-arr { display: none; }
+}
