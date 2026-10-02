@@ -2190,11 +2190,24 @@
       <table class="tbl"><tr><th>일자</th><th>공매도 거래량</th><th class="hide-m">전체 거래량</th><th>비중</th></tr>${v.map((r) => `<tr><td>${esc(r.date)}</td><td>${nx(r.short, false)}</td><td class="hide-m">${nx(r.total, false)}</td><td class="${r.pct >= 50 ? 'down' : ''}">${r.pct.toFixed(1)}%</td></tr>`).join('')}</table>
       <p class="note">장외 거래소(FINRA 보고분) 기준이라 전체 시장 거래량과 다를 수 있어요. 50%가 넘으면 공매도 거래가 많은 날이에요.</p>`;
   }
+  // IBKR 공매도 가능 수량 (빌릴 수 있는 주식 수 · 대차 수수료, 15분마다 확인)
+  function usBorrowHTML(d) {
+    const b = d.borrow;
+    if (!b) return '';
+    const av = (v) => (v == null ? '—' : v >= 10000000 ? '1,000만+' : fmtInt(v));
+    const ago = (ms) => { const m = Math.round((Date.now() - ms) / 60e3); return m < 60 ? `${Math.max(1, m)}분 전` : m < 1440 ? `${Math.round(m / 60)}시간 전` : `${Math.round(m / 1440)}일 전`; };
+    const kt = (ms) => { const k = fmtDT(new Date(ms)); return `${k.md} ${k.hm}`; };
+    const fee = (v) => (v == null ? '—' : v.toFixed(2) + '%');
+    return `<h4>공매도 가능 수량 <small>IBKR · 15분마다 확인${b.at ? ' · ' + ago(b.at) + ' 갱신' : ''}</small></h4>
+      <div class="mini-stats"><div><span>지금 빌릴 수 있는 주식</span><b class="${b.avail === 0 ? 'up' : ''}">${b.avail === 0 ? '없음' : av(b.avail) + '주'}</b></div><div><span>대차 수수료(연)</span><b class="${b.fee >= 20 ? 'up' : ''}">${fee(b.fee)}</b></div><div><span>최근 변동</span><b>${b.rows[0] ? ago(b.rows[0].at) : '—'}</b></div></div>
+      ${b.rows.length ? `<table class="tbl"><tr><th>변동 시점</th><th class="hide-m">시각 (KST)</th><th>가능 수량</th><th>수수료</th></tr>${b.rows.map((r, i) => { const nx2 = b.rows[i + 1]; const dir = nx2 ? (r.avail > nx2.avail ? 'up' : r.avail < nx2.avail ? 'down' : '') : ''; return `<tr><td>${ago(r.at)}</td><td class="hide-m">${kt(r.at)}</td><td class="${dir}">${av(r.avail)}</td><td>${fee(r.fee)}</td></tr>`; }).join('')}</table>` : '<p class="note">최근 4일 동안 변동이 없었어요.</p>'}
+      <p class="note">가능 수량이 줄거나 0이 되면 공매도 물량이 바닥났다는 뜻이에요. 수수료가 높을수록 빌리기 어려운 종목이에요(숏스퀴즈 참고 지표).</p><div style="height:1rem"></div>`;
+  }
   function usShortHTML(d) {
-    if (!d.short?.length) return `<h4>공매도 잔고</h4>${note(d.errors?.short || '데이터 없음')}` + usShortVolHTML(d);
+    if (!d.short?.length) return usBorrowHTML(d) + `<h4>공매도 잔고</h4>${note(d.errors?.short || '데이터 없음')}` + usShortVolHTML(d);
     const s0 = d.short[0], s1 = d.short[1];
     const chg = s1 && s1.interest ? ((s0.interest - s1.interest) / s1.interest) * 100 : null;
-    return `<h4>공매도 잔고 <small>FINRA · ${esc(s0.date)} 결제일 기준 · 월 2회 발표</small></h4><div class="mini-stats"><div><span>공매도 잔고</span><b>${fmtBig(s0.interest)}주</b></div><div><span>직전 대비</span><b class="${dirCls(chg)}">${fmtPct(chg)}</b></div><div><span>숏커버 소요일</span><b>${s0.days !== null && s0.days !== undefined ? s0.days.toFixed(1) + '일' : '—'}</b></div></div>
+    return usBorrowHTML(d) + `<h4>공매도 잔고 <small>FINRA · ${esc(s0.date)} 결제일 기준 · 월 2회 발표</small></h4><div class="mini-stats"><div><span>공매도 잔고</span><b>${fmtBig(s0.interest)}주</b></div><div><span>직전 대비</span><b class="${dirCls(chg)}">${fmtPct(chg)}</b></div><div><span>숏커버 소요일</span><b>${s0.days !== null && s0.days !== undefined ? s0.days.toFixed(1) + '일' : '—'}</b></div></div>
       <table class="tbl"><tr><th>결제일</th><th>잔고</th><th class="hide-m">일평균 거래량</th><th>커버일</th></tr>${d.short.map((r) => `<tr><td>${esc(r.date)}</td><td>${nx(r.interest, false)}</td><td class="hide-m">${nx(r.avgVol, false)}</td><td>${r.days !== null && r.days !== undefined ? r.days.toFixed(2) : '—'}</td></tr>`).join('')}</table>` + usShortVolHTML(d);
   }
   function usInsiderHTML(d) {

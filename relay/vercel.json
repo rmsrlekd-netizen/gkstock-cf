@@ -1,4 +1,13 @@
 {
-  "regions": ["icn1"],
-  "functions": { "api/relay.js": { "maxDuration": 30 } }
+  "regions": [
+    "icn1"
+  ],
+  "functions": {
+    "api/relay.js": {
+      "maxDuration": 30
+    },
+    "api/borrow.js": {
+      "maxDuration": 30
+    }
+  }
 }

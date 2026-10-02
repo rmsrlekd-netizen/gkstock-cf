@@ -182,6 +182,7 @@ export default {
       const night = (m >= 18 * 60 && !['Sat', 'Sun'].includes(wd)) || (m < 5 * 60 + 5 && !['Sun', 'Mon'].includes(wd));
       const day = !['Sat', 'Sun'].includes(wd) && m >= 8 * 60 + 45 && m <= 15 * 60 + 45;
       if (night || day) jobs.push(import('./functions/market.mjs').then((x) => x.sampleNight()).catch((e) => console.warn('night', e.message))); }
+    if (min % 15 === 4) jobs.push(import('./lib/borrow.mjs').then((x) => x.borrowWatch()).then((r) => console.log('borrow', JSON.stringify(r))).catch((e) => console.warn('borrow', e.message))); // IBKR 공매도 가능 수량 (15분마다)
     if (min === 7 || min === 37) jobs.push(import('./lib/shortvol.mjs').then((x) => x.shortVolWatch()).then((r) => { if (r?.got) console.log('shvol', JSON.stringify(r)); }).catch((e) => console.warn('shvol', e.message))); // FINRA 일별 공매도 (30분마다 확인)
     jobs.push(haltsWatch(now).then((r) => { if (r.kr || r.us) console.log('halts', JSON.stringify(r)); }).catch((e) => console.warn('halts', e.message)));
     // 오늘 주요 이슈: 회차 시각이 되면 AI가 새로 만듦 (한국 4회·미국 4회)

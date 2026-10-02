@@ -5,6 +5,7 @@ import { json, fetchWithTimeout, num, BROWSER_UA, kstYmd } from '../lib/util.mjs
 import { hasKis, kisGet } from '../lib/kis.mjs';
 import { getJSON, setJSON } from '../lib/store.mjs';
 import { shortVolOf } from '../lib/shortvol.mjs';
+import { borrowOf } from '../lib/borrow.mjs';
 
 const NQ = {
   'User-Agent': BROWSER_UA,
@@ -36,6 +37,7 @@ async function us(t) {
       date: r.settlementDate, interest: num(r.interest), avgVol: num(r.avgDailyShareVolume), days: num(r.daysToCover),
     }));
   } else out.errors.short = si.reason.message;
+  try { out.borrow = await borrowOf(t); } catch {} // IBKR 공매도 가능 수량 (15분마다)
   try { out.shortVol = await shortVolOf(t); } catch {} // FINRA 일별 공매도 거래 비중 (매일)
 
   if (ins.status === 'fulfilled') {
@@ -131,7 +133,7 @@ export default async (req) => {
       if (!bad) await setJSON(ck, { at: Date.now(), data }).catch(() => {});
       else if (c) data = c.data; // 호출 제한에 걸렸으면 직전 저장본 사용
     }
-    return json({ ok: true, fetchedAt: new Date().toISOString(), ...data }, { cdnSeconds: src === 'KR' ? 300 : 1800, swr: 600 });
+    return json({ ok: true, fetchedAt: new Date().toISOString(), ...data }, { cdnSeconds: src === 'KR' ? 300 : 600, swr: 600 });
   } catch (e) {
     return json({ ok: false, error: String(e.message || e) }, { cdnSeconds: 30, status: 502 });
   }
