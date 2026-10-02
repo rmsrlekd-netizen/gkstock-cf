@@ -2183,7 +2183,7 @@
   // FINRA 일별 공매도 거래 비중 (매일 발표 · 잔고가 아니라 그날 거래 중 공매도 비율)
   function usShortVolHTML(d) {
     const v = d.shortVol || [];
-    if (!v.length) return '';
+    if (!v.length) return `<h4 style="margin-top:1.2rem">일별 공매도 거래 비중 <small>FINRA · 매 거래일 발표</small></h4><p class="note">데이터를 모으는 중이에요.</p>`;
     const avg = v.reduce((a, x) => a + x.pct, 0) / v.length, v0 = v[0];
     return `<h4 style="margin-top:1.2rem">일별 공매도 거래 비중 <small>FINRA · 매 거래일 발표 · ${esc(v0.date)} 기준</small></h4>
       <div class="mini-stats"><div><span>최근 거래일 비중</span><b class="${v0.pct >= 50 ? 'down' : ''}">${v0.pct.toFixed(1)}%</b></div><div><span>${v.length}일 평균</span><b>${avg.toFixed(1)}%</b></div><div><span>공매도 거래량</span><b>${fmtBig(v0.short)}주</b></div></div>
@@ -2193,7 +2193,7 @@
   // IBKR 공매도 가능 수량 (빌릴 수 있는 주식 수 · 대차 수수료, 15분마다 확인)
   function usBorrowHTML(d) {
     const b = d.borrow;
-    if (!b) return '';
+    if (!b) return `<h4>공매도 가능 수량 <small>IBKR · 15분마다 확인</small></h4><p class="note">데이터를 모으는 중이거나 IBKR 목록에 없는 종목이에요.</p><div style="height:.6rem"></div>`;
     const av = (v) => (v == null ? '—' : v >= 10000000 ? '1,000만+' : fmtInt(v));
     const ago = (ms) => { const m = Math.round((Date.now() - ms) / 60e3); return m < 60 ? `${Math.max(1, m)}분 전` : m < 1440 ? `${Math.round(m / 60)}시간 전` : `${Math.round(m / 1440)}일 전`; };
     const kt = (ms) => { const k = fmtDT(new Date(ms)); return `${k.md} ${k.hm}`; };
