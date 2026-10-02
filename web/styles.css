@@ -1757,3 +1757,16 @@ button.br-mv:hover { border-color: var(--accent); }
   .trend-dots i { width: 6px; height: 6px; border-radius: 3px; background: var(--line); transition: width .25s, background .25s; cursor: pointer; }
   .trend-dots i.on { width: 18px; background: var(--accent); }
 }
+
+/* ── v106: 최근 검색 기록 ── */
+.suggest .sg-row { display: flex; align-items: center; gap: .2rem; border-radius: 9px; }
+.suggest .sg-row:hover { background: var(--card2); }
+.suggest .sg-row > button { flex: 1; min-width: 0; }
+.suggest .sg-row > button:hover { background: transparent; }
+.suggest .sg-row > button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest .sg-x { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; font-style: normal; font-size: .78rem; color: var(--faint); cursor: pointer; }
+.suggest .sg-x:hover { color: var(--text); background: rgba(255,255,255,.08); }
+.suggest .sg-hh { display: flex; align-items: center; justify-content: space-between; }
+.suggest .sg-clear { width: auto !important; padding: 0 .2rem !important; font-size: .72rem !important; color: var(--faint); background: none !important; }
+.suggest .sg-clear:hover { color: var(--text); }
+.suggest .sg-clock { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--faint); stroke-width: 2; }

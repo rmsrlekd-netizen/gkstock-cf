@@ -2562,9 +2562,29 @@
     }
     return out;
   }
+  // ── 최근 검색 기록 (이 기기에만 저장, 최대 12개) ──
+  S.shist = load('gk_shist', []);
+  const histKey = (h) => (h.k === 'co' ? `co:${h.m}:${h.t}` : `kw:${h.q}`);
+  function addHist(h) { S.shist = [h, ...S.shist.filter((x) => histKey(x) !== histKey(h))].slice(0, 12); save('gk_shist', S.shist); }
+  function delHist(i) { S.shist.splice(i, 1); save('gk_shist', S.shist); }
+  function histHTML(feed) {
+    const list = S.shist.map((h, i) => ({ h, i })).filter(({ h }) => feed || h.k === 'co');
+    if (!list.length) return '';
+    return `<div class="sg-h sg-hh"><span>최근 검색</span><button class="sg-clear" data-hclear>전체 삭제</button></div>` + list.map(({ h, i }) => `<div class="sg-row">${h.k === 'co'
+      ? `<button data-open-co="${esc(h.m)}|${esc(h.t)}|${esc(h.n || '')}"><svg class="sg-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>${logoHTML(h.m, h.t, h.n, 'sm')}<span>${esc(h.m === 'KR' ? h.n || h.t : h.n || h.t)}</span><small>${h.m === 'KR' ? '한국' : '미국'} · ${esc(h.t)}</small></button>`
+      : `<button data-kw="${esc(h.q)}"><svg class="sg-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>${esc(h.q)}</span><small>키워드</small></button>`}<i class="sg-x" data-hdel="${i}" title="기록 삭제" role="button" aria-label="기록 삭제">✕</i></div>`).join('');
+  }
   function bindSearch(input, box, { feed }) {
     if (!S.koName) S.koName = new Map();
     let timer, seq = 0, act = -1;
+    const showHist = () => { if (input.value.trim()) return; const h = histHTML(feed); box.innerHTML = h; box.hidden = !h; act = -1; };
+    input.addEventListener('focus', showHist);
+    input.addEventListener('click', showHist);
+    box.addEventListener('click', (e) => {
+      const d = e.target.closest('[data-hdel]');
+      if (d) { e.stopPropagation(); e.preventDefault(); delHist(Number(d.dataset.hdel)); showHist(); input.focus(); return; }
+      if (e.target.closest('[data-hclear]')) { e.stopPropagation(); e.preventDefault(); S.shist = []; save('gk_shist', []); box.hidden = true; input.focus(); }
+    });
     const render = (q, list, loading) => {
       const opts = [];
       if (feed) opts.push(`<button data-kw="${esc(q)}"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>"${esc(q)}" 키워드로 공시·뉴스 검색</button>`);
@@ -2577,7 +2597,7 @@
     input.addEventListener('input', () => {
       const q = input.value.trim();
       clearTimeout(timer);
-      if (!q) { box.hidden = true; if (feed && S.q) { S.q = ''; renderAll(); } return; }
+      if (!q) { showHist(); if (feed && S.q) { S.q = ''; renderAll(); } return; }
       const local = localCompanies(q).map((x) => { const n = x.market === 'US' ? (S.koName.get(x.ticker) || S.quotes.get(wkey('US', x.ticker))?.nameKo) : null; return n && hasKo(n) ? { ...x, name: n } : x; });
       render(q, local, true);
       const my = ++seq;
@@ -2613,6 +2633,7 @@
   }
   function applyKeyword(q) {
     S.q = q; S.theme = null;
+    if (q && !/^[A-Z.]{1,6}$/.test(q)) addHist({ k: 'kw', q: q.slice(0, 40) });
     for (const id of ['#search', '#search2']) { const el = $(id); if (el) { el.value = q; el.blur(); } }
     if (!(S.view in FEED_VIEWS) || S.view === 'watch') setView('home'); else renderAll();
     $('#search').blur();
@@ -2899,7 +2920,7 @@
       const mo = t.closest('[data-modal]');
       if (mo) { openDigestModal(); return; }
       const co = t.closest('[data-open-co]');
-      if (co) { const [m, tk, n] = co.dataset.openCo.split('|'); if (co.closest('#suggest')) $('#search').value = ''; if (co.closest('#suggest2')) $('#search2').value = ''; $('#suggest').hidden = true; $('#suggest2').hidden = true; $('#coSuggest').hidden = true; openCompany(m, tk, n, { corpCode: co.dataset.corp || undefined, exchange: co.dataset.ex || undefined }); return; }
+      if (co) { const [m, tk, n] = co.dataset.openCo.split('|'); if (co.closest('.suggest')) addHist({ k: 'co', m, t: tk, n }); if (co.closest('#suggest')) $('#search').value = ''; if (co.closest('#suggest2')) $('#search2').value = ''; $('#suggest').hidden = true; $('#suggest2').hidden = true; $('#coSuggest').hidden = true; openCompany(m, tk, n, { corpCode: co.dataset.corp || undefined, exchange: co.dataset.ex || undefined }); return; }
       const thr = t.closest('[data-th-no], [data-th-us]');
       if (thr && !t.closest('a')) { toggleTheme(thr); return; }
       const row = t.closest('[data-id]');
