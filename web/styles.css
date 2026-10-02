@@ -1773,9 +1773,9 @@ button.br-mv:hover { border-color: var(--accent); }
 
 /* ── v107: 유튜브·텔레그램 큰 배너 (PC는 시장 선택 오른쪽, 휴대폰은 제목과 검색창 사이) ── */
 .cta-banners { display: flex; gap: .7rem; }
-.cta-banners.cb-pc { margin-left: auto; flex: 0 1 560px; min-width: 0; }
+.cta-banners.cb-pc { flex: 1 1 auto; min-width: 0; margin-left: .2rem; } /* 시장 선택 버튼 오른쪽 남는 공간을 꽉 채움 */
 .cta-banners.cb-m { display: none; }
-.cb { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: .7rem; padding: .55rem .9rem; min-height: 2.9rem; border-radius: 13px; text-decoration: none; color: #fff; border: 1px solid; transition: transform .15s, box-shadow .15s, background .15s; }
+.cb { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: .7rem; padding: .55rem 1rem; min-height: 2.9rem; border-radius: 13px; text-decoration: none; color: #fff; border: 1px solid; transition: transform .15s, box-shadow .15s, background .15s; }
 .cb:hover { transform: translateY(-1px); }
 .cb-yt { border-color: rgba(255, 0, 51, .5); background: linear-gradient(120deg, rgba(255, 0, 51, .28), rgba(255, 0, 51, .07) 70%); }
 .cb-yt:hover { box-shadow: 0 6px 22px rgba(255, 0, 51, .22); background: linear-gradient(120deg, rgba(255, 0, 51, .4), rgba(255, 0, 51, .12) 70%); }
@@ -1797,3 +1797,5 @@ button.br-mv:hover { border-color: var(--accent); }
   .cb b { font-size: .82rem; } .cb small { font-size: .66rem; }
   .cb .cb-arr { display: none; }
 }
+@media (min-width: 721px) { .cta-banners.cb-pc .cb { justify-content: flex-start; } .cta-banners.cb-pc .cb b { font-size: 1rem; } .cta-banners.cb-pc .cb small { font-size: .78rem; } }
+@media (min-width: 721px) and (max-width: 1440px) { .cta-banners.cb-pc .cb .cb-arr { display: none; } .cta-banners.cb-pc .cb { padding: .5rem .75rem; gap: .55rem; } .cta-banners.cb-pc .cb b { font-size: .92rem; } .cta-banners.cb-pc .cb small { font-size: .72rem; } }
