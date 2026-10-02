@@ -12,9 +12,9 @@ import { hasAI, askAI, parseJSON, aiPauseInfo } from './ai.mjs';
 const hm2 = (h, m = 0) => h * 60 + m;
 const SLOTS = {
   KR: [hm2(8), hm2(9), hm2(9, 30), hm2(10), hm2(10, 30), hm2(11), hm2(12), hm2(13), hm2(14), hm2(15), hm2(16)],
-  US: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17].map((h) => hm2(h)),
+  US: [hm2(8), hm2(9), hm2(9, 30), hm2(10), hm2(11), hm2(12), hm2(13), hm2(14), hm2(15), hm2(16), hm2(17)], // 9:30 = 본장 개장 직후
 };
-const FAST = { KR: [hm2(9), hm2(9, 30), hm2(10), hm2(10, 30)], US: [] }; // 개장 직후: 새 소식 수와 상관없이 매 회차 갱신 (시세가 크게 움직이는 시간)
+const FAST = { KR: [hm2(9), hm2(9, 30), hm2(10), hm2(10, 30)], US: [hm2(9, 30)] }; // 개장 직후: 새 소식 수와 상관없이 매 회차 갱신 (시세가 크게 움직이는 시간)
 const TZ = { KR: 'Asia/Seoul', US: 'America/New_York' };
 const MIN_NEW = 3; // 직전 회차 이후 새 뉴스·공시가 이만큼은 있어야 새로 만듦
 
@@ -29,13 +29,14 @@ export function parseId(id) {
   const n = m[5].length === 4 ? Number(m[5].slice(0, 2)) : Number(m[5]);
   return { mk: m[1].toUpperCase(), date: `${m[2]}-${m[3]}-${m[4]}`, n, min: m[5].length === 4 ? Number(m[5].slice(2)) : 0 };
 }
-export function phaseOf(mk, h) {
+export function phaseOf(mk, h, mi = 0) {
   if (mk === 'KR') return h < 9 ? '장 시작 전' : h <= 15 ? '장중' : '장 마감 후';
+  if (h === 9 && mi >= 30) return '본장 개장';
   return h <= 9 ? '프리마켓' : h <= 15 ? '장중' : '장 마감 후';
 }
 function slotFor(mk, t, date) {
   const h = Math.floor(t / 60), mi = t % 60;
-  const phase = phaseOf(mk, h);
+  const phase = phaseOf(mk, h, mi);
   const hm = mi ? `${h}시 ${mi}분` : `${h}시`;
   return { n: h, min: mi, t, phase, fast: FAST[mk].includes(t), name: mk === 'KR' ? `${phase} · ${hm}` : `${phase} · 뉴욕 ${hm}`, date, id: editionId(mk, date, h, mi) };
 }
