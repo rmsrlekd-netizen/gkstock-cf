@@ -14,6 +14,9 @@ const SLOTS = {
   KR: [hm2(8), hm2(9), hm2(9, 30), hm2(10), hm2(10, 30), hm2(11), hm2(12), hm2(13), hm2(14), hm2(15), hm2(16)],
   US: [hm2(8), hm2(9), hm2(9, 30), hm2(10), hm2(11), hm2(12), hm2(13), hm2(14), hm2(15), hm2(16), hm2(17)], // 9:30 = 본장 개장 직후
 };
+// 주말: 하루 3번 (지난 장 정리·주말 뉴스·다음 주 일정)
+const WEEKEND = { KR: [hm2(9), hm2(14), hm2(20)], US: [hm2(9), hm2(14), hm2(20)] };
+const isOff = (phase) => phase === '주말' || phase === '휴장일';
 const FAST = { KR: [hm2(9), hm2(9, 30), hm2(10), hm2(10, 30)], US: [hm2(9, 30)] }; // 개장 직후: 새 소식 수와 상관없이 매 회차 갱신 (시세가 크게 움직이는 시간)
 const TZ = { KR: 'Asia/Seoul', US: 'America/New_York' };
 const MIN_NEW = 3; // 직전 회차 이후 새 뉴스·공시가 이만큼은 있어야 새로 만듦
@@ -34,9 +37,9 @@ export function phaseOf(mk, h, mi = 0) {
   if (h === 9 && mi >= 30) return '본장 개장';
   return h <= 9 ? '프리마켓' : h <= 15 ? '장중' : '장 마감 후';
 }
-function slotFor(mk, t, date) {
+function slotFor(mk, t, date, off = null) {
   const h = Math.floor(t / 60), mi = t % 60;
-  const phase = phaseOf(mk, h, mi);
+  const phase = off || phaseOf(mk, h, mi);
   const hm = mi ? `${h}시 ${mi}분` : `${h}시`;
   return { n: h, min: mi, t, phase, fast: FAST[mk].includes(t), name: mk === 'KR' ? `${phase} · ${hm}` : `${phase} · 뉴욕 ${hm}`, date, id: editionId(mk, date, h, mi) };
 }
@@ -44,10 +47,17 @@ function slotFor(mk, t, date) {
 /** 지금 만들어야 할 회차 (없으면 null). force면 오늘 가장 최근 회차 */
 export function dueSlot(mk, now = new Date(), { force = false } = {}) {
   const z = local(mk, now);
-  const L = SLOTS[mk];
+  const wk = ['Sat', 'Sun'].includes(z.wd);
+  const L = wk ? WEEKEND[mk] : SLOTS[mk];
   const past = L.filter((x) => x <= z.m);
+  if (wk) { // 주말도 멈추지 않음
+    if (!past.length) return null;
+    const t = past[past.length - 1];
+    if (!force && (z.m - t < 4 || z.m - t > 55)) return null;
+    return { ...slotFor(mk, t, z.date, '주말'), fast: true }; // 주말 회차는 새 소식 수와 상관없이 만듦
+  }
   if (!force) {
-    if (['Sat', 'Sun'].includes(z.wd) || !past.length) return null;
+    if (!past.length) return null;
     const t = past[past.length - 1];
     const next = L[L.indexOf(t) + 1] ?? t + 60;
     const gap = Math.min(60, next - t);
@@ -78,7 +88,9 @@ const US_WORD = /미국|뉴욕|월가|연준|파월|나스닥|S&P|다우|국채|
 
 /** AI에 줄 재료 모으기 */
 export async function gather(mk, slot, opts = {}) {
-  const pre = slot.phase === '장 시작 전' || slot.phase === '프리마켓';
+  const off = isOff(slot.phase);
+  const pre = off || slot.phase === '장 시작 전' || slot.phase === '프리마켓';
+  const wide = off ? 2.5 : 1; // 주말·휴장일엔 소식이 적어 더 넓게 봄
   const keys = []; // 새 소식 판단용 (뉴스 제목·공시 번호)
   let [pop, themes, mkt, sec, dart, news, econ, wm] = await Promise.all(['popular/v2', 'themes/v1', 'market/v1', 'sec/feed', 'dart/feed', 'news/feed', 'econ/v1', 'why/map'].map((k) => getJSON(k).catch(() => null)));
   // 장 마감 브리핑: 미국은 시간외가 아닌 정규장 등락 기준으로
@@ -96,12 +108,12 @@ export async function gather(mk, slot, opts = {}) {
 
   let newsN = 0;
   if (mk === 'KR') {
-    const mn = await naverNews('https://api.stock.naver.com/news/mainnews?page=1&pageSize=40', pre ? 16 : 10).catch(() => []);
+    const mn = await naverNews('https://api.stock.naver.com/news/mainnews?page=1&pageSize=40', (pre ? 16 : 10) * wide).catch(() => []);
     newsN = mn.length;
     for (const x of mn.slice(0, 32)) keys.push('n:' + x.t.slice(0, 40));
     if (mn.length) L.push('[증권 주요 뉴스]\n' + mn.slice(0, 32).map((x) => `- (${hm(x.at)} ${x.src}) ${x.t}${x.s ? ' | ' + x.s : ''}`).join('\n'));
   } else {
-    const wn = await naverNews('https://api.stock.naver.com/news/worldNews?page=1&pageSize=80', 14).catch(() => []);
+    const wn = await naverNews('https://api.stock.naver.com/news/worldNews?page=1&pageSize=80', 14 * wide).catch(() => []);
     const us = wn.filter((x) => x.rel.some((r) => US_RC.test(r.code || '')) || US_WORD.test(x.t));
     newsN = us.length;
     for (const x of us.slice(0, 30)) keys.push('n:' + x.t.slice(0, 40));
@@ -111,6 +123,7 @@ export async function gather(mk, slot, opts = {}) {
 
   const lst = (arr, n) => (arr || []).slice(0, n).map((x) => { note(x.name, x.ticker); return `- ${x.name}(${x.ticker}) ${sp(x.pct)}${reason(x)}`; }).join('\n');
   const prevNote = pre ? ' (전 거래일 기준)' : '';
+  if (off) L.push(`[안내] 오늘은 ${slot.phase}이라 증시가 열리지 않음. 종목 등락률은 직전 거래일 기준.`);
   if (mk === 'KR') {
     if (pop?.krUp?.length) L.push(`[상승 특징주${prevNote}]\n` + lst(pop.krUp, 18));
     if (pop?.krDown?.length) L.push(`[하락 특징주${prevNote}]\n` + lst(pop.krDown, 10));
@@ -118,19 +131,19 @@ export async function gather(mk, slot, opts = {}) {
     const kt = themes?.kr;
     if (kt?.themes?.length) L.push('[강세 테마]\n' + kt.themes.slice(0, 10).map((g) => { (g.leaders || []).forEach((s) => note(s.name, s.t)); return `- ${g.name} ${sp(g.rate)} (대장주: ${(g.leaders || []).slice(0, 4).map((s) => `${s.name}(${s.t}) ${sp(s.pct)}`).join(', ')})${g.why ? ' — ' + g.why : ''}`; }).join('\n'));
     if (kt?.worstThemes?.length) L.push('[약세 테마]\n' + kt.worstThemes.slice(0, 5).map((g) => `- ${g.name} ${sp(g.rate)} (${(g.leaders || []).slice(0, 3).map((s) => `${s.name}(${s.t})`).join(', ')})`).join('\n'));
-    const since = Date.now() - (pre ? 20 : 12) * 3600e3;
+    const since = Date.now() - (pre ? 20 : 12) * wide * 3600e3;
     const dl = (dart?.items || []).filter((x) => x.impact >= 4 && (Date.parse(x.seenAt || x.time || '') || 0) > since).slice(0, 25);
     for (const x of dl) keys.push('d:' + x.id);
     if (dl.length) L.push('[주요 공시 (DART)]\n' + dl.map((x) => { note(x.name, x.ticker); return `- ${x.name}(${x.ticker || ''}): ${cut(x.summary?.title || x.titleClean || x.formKo, 70)}`; }).join('\n'));
   } else {
-    const ses = pop?.usSession ? (pop.usSession === 'AFTER' ? ' (애프터마켓 등락률)' : ' (프리마켓 등락률)') : prevNote;
+    const ses = !off && pop?.usSession ? (pop.usSession === 'AFTER' ? ' (애프터마켓 등락률)' : ' (프리마켓 등락률)') : prevNote;
     if (pop?.usUp?.length) L.push(`[상승 특징주${ses}]\n` + lst(pop.usUp.filter((x) => (x.price || 0) >= 1), 16));
     if (pop?.usDown?.length) L.push(`[하락 특징주${ses}]\n` + lst(pop.usDown.filter((x) => (x.price || 0) >= 1), 10));
     if (pop?.us?.length) L.push('[한국 투자자 인기 미국 종목]\n' + lst(pop.us, 10));
     const ut = themes?.us;
     if (ut?.sectors?.length) L.push('[S&P 섹터 ETF] ' + ut.sectors.map((s) => `${s.name}(${s.t}) ${sp(s.pct)}`).join(' · '));
     if (ut?.themes?.length) L.push('[테마 ETF]\n' + [...ut.themes.slice(0, 7), ...ut.themes.slice(-3)].map((g) => { (g.stocks || []).forEach((s) => note(s.t, s.t)); return `- ${g.name}(${g.t}) ${sp(g.pct)} (대표: ${(g.stocks || []).slice(0, 4).map((s) => `${s.t} ${sp(s.pct)}`).join(', ')})${g.why ? ' — ' + g.why : ''}`; }).join('\n'));
-    const since = Date.now() - 18 * 3600e3;
+    const since = Date.now() - 18 * wide * 3600e3;
     const sl = (sec?.items || []).filter((x) => x.impact >= 4 && x.ticker && Date.parse(x.time) > since).slice(0, 20);
     for (const x of sl) keys.push('s:' + x.id);
     if (sl.length) L.push('[주요 SEC 공시]\n' + sl.map((x) => `- ${x.name}(${x.ticker}) ${x.form}: ${cut(x.ko?.title || x.pr?.headline || x.formKo, 70)}`).join('\n'));
@@ -154,9 +167,10 @@ function prompt(mk, slot, date, text, prev) {
   const h = slot.min ? `${slot.n}시 ${slot.min}분` : `${slot.n}시`;
   const when = mk === 'KR'
     ? { '장 시작 전': '한국 증시 개장 전 (전날 미국장·밤사이 뉴스·오늘 일정 중심)', 장중: `한국 증시 장중 (한국시간 ${h} 현재${slot.fast ? ' · 개장 직후라 30분마다 갱신, 지금 시세 흐름·수급 변화 중심' : ''})`, '장 마감 후': '한국 증시 마감 직후 (오늘 장 정리)' }[slot.phase]
-    : { 프리마켓: `미국 증시 개장 전 프리마켓 (뉴욕시간 ${h}, 밤사이 뉴스·실적·경제지표 중심)`, 장중: `미국 증시 장중 (뉴욕시간 ${h} 현재)`, '장 마감 후': '미국 증시 마감 직후 (오늘 장 정리)' }[slot.phase];
+    : { 프리마켓: `미국 증시 개장 전 프리마켓 (뉴욕시간 ${h}, 밤사이 뉴스·실적·경제지표 중심)`, 장중: `미국 증시 장중 (뉴욕시간 ${h} 현재)`, '장 마감 후': '미국 증시 마감 직후 (오늘 장 정리)' }[slot.phase]
+    || ({ 주말: `주말이라 ${mk === 'KR' ? '한국' : '미국'} 증시 휴장 (지난 거래일 장 정리 · 주말 사이 나온 뉴스·공시 · 다음 주 일정·변수 중심)`, 휴장일: `오늘은 ${mk === 'KR' ? '한국' : '미국'} 증시 휴장일 (최근 장 정리 · 휴장 중 나온 뉴스·공시 · 다음 거래일 변수 중심)` })[slot.phase] || slot.phase;
   const prevTxt = prev?.issues?.length ? `\n[직전 회차 (${prev.slot}) 이슈]\n${prev.issues.map((x, i) => `${i + 1}. [${x.tag}] ${x.title}`).join('\n')}\n` : '';
-  return `너는 증권사 리서치센터의 시황 에디터다. 한국 개인투자자를 위해 "${md} ${mk === 'KR' ? '국장' : '미장'} ${slot.name} 주요 이슈 6"을 만든다. 매시간 새로 갱신되는 시황판이다.
+  return `너는 증권사 리서치센터의 시황 에디터다. 한국 개인투자자를 위해 "${md} ${mk === 'KR' ? '국장' : '미장'} ${slot.name} 주요 이슈 6"을 만든다. 매시간 새로 갱신되는 시황판이다. (주말·휴장일에도 쉬지 않고 만든다.)
 시점: ${when}
 
 규칙:
@@ -245,11 +259,14 @@ export async function issuesWatch(now = new Date(), ctx = null) {
     const tk = `issues/try/${s.id}`;
     const t = (await getJSON(tk)) || { n: 0, at: 0 };
     if (t.n >= 3 || Date.now() - t.at < 4 * 60e3) continue;
-    // 장중인데 휴장일이면 건너뜀 (인기 종목 상태가 '장중'이 아님)
+    // 평일인데 휴장일이면(인기 종목 상태가 '장중'이 아님) 멈추지 않고 '휴장일' 회차로 만듦 — 장중 회차는 2개만(정오·오후)
     if (s.phase === '장중' && !boot) {
       const pop = await getJSON('popular/v2');
       const list = mk === 'KR' ? pop?.krUp : pop?.usUp;
-      if (list?.length && list.every((x) => x.status && x.status !== 'OPEN')) { await setJSON(tk, { n: 9, at: Date.now(), err: '휴장' }); continue; }
+      if (list?.length && list.every((x) => x.status && x.status !== 'OPEN')) {
+        if (![12, 15].includes(s.n) || s.min) { await setJSON(tk, { n: 9, at: Date.now(), err: '휴장 (이 시간은 건너뜀)' }); continue; }
+        s = { ...s, phase: '휴장일', name: `휴장일 · ${mk === 'KR' ? '' : '뉴욕 '}${s.n}시`, fast: true };
+      }
     }
     await setJSON(tk, { n: t.n + 1, at: Date.now() });
     try {

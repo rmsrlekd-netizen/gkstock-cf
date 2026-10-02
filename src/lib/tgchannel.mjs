@@ -177,8 +177,8 @@ export async function digestWatch() {
   for (const mk of ['KR', 'US']) {
     if (mk === 'KR' ? !cfg.kr : !cfg.us) continue;
     const z = zoned(mk === 'KR' ? 'Asia/Seoul' : 'America/New_York');
-    if (['Sat', 'Sun'].includes(z.wd)) continue;
-    const slot = DG_TIMES[mk].find(([h, mi]) => z.m >= h * 60 + mi && z.m < h * 60 + mi + 10);
+    const wk = ['Sat', 'Sun'].includes(z.wd); // 주말엔 하루 한 번(첫 회차)만
+    const slot = (wk ? DG_TIMES[mk].slice(0, 1).map(([h, mi]) => [h + 1, mi]) : DG_TIMES[mk]).find(([h, mi]) => z.m >= h * 60 + mi && z.m < h * 60 + mi + 10);
     if (!slot) continue;
     const key = `tgch/dg/${mk}/${z.date}-${slot[0]}${slot[1]}`;
     if (await getJSON(key)) continue;
