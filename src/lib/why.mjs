@@ -126,7 +126,7 @@ JSON만 출력: {"reason":"","confidence":"높음|보통|낮음","basis":[1]}
 
 ${peerTxt ? '동반 움직임:\n' + peerTxt + '\n\n' : ''}최근 뉴스:
 ${newsTxt || '(없음)'}`;
-  const txt = await askAI(prompt, { maxTokens: 400, timeout: 20000, tag: '주가 움직임 이유' });
+  const txt = await askAI(prompt, { maxTokens: 400, timeout: 20000, tag: '주가 움직임 이유', lite: true });
   const j = parseJSON(txt);
   if (!j?.reason) throw new Error('AI 응답 형식 오류');
   return { reason: String(j.reason).slice(0, 80), conf: ['높음', '보통', '낮음'].includes(j.confidence) ? j.confidence : '보통', basis: (j.basis || []).map(Number).filter((n) => n >= 1 && n <= news.length) };

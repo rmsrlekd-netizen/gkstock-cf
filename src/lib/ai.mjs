@@ -32,7 +32,14 @@ export const aiProvider = () => (googleKey() ? 'Gemini' : claudeKey() ? 'Claude'
 export const hasAI = () => !!aiProvider();
 
 // Gemini가 일부 지역(Cloudflare 서버 위치)을 거절하면 서울 중계 서버로 우회
-let geminiViaRelay = false;
+let geminiViaRelay = false, relayChecked = 0;
+// 새 서버(인스턴스)가 뜰 때마다 직접 호출을 먼저 시도했다가 '지역 미지원(400)'으로 거절당하던 문제 → 중계 사용 여부를 저장해 공유 (하루에 한 번만 직접 호출 재확인)
+async function relayPref() {
+  if (Date.now() - relayChecked < 10 * 60e3) return;
+  relayChecked = Date.now();
+  const v = await getJSON('ai/viaRelay').catch(() => null);
+  if (v && Date.now() - v.at < 24 * 3600e3) geminiViaRelay = !!v.on;
+}
 // ── AI 사용량 기록 (기능별 호출 수·토큰) → 관리자 화면에서 어디서 비용이 나가는지 확인 ──
 async function logUsage(tag, u) {
   if (!u) return;
@@ -52,16 +59,35 @@ export async function aiUsage(days = 7) {
   return out;
 }
 
-async function gemini(prompt, { maxTokens, timeout, json = true, think = 0, tag = '기타' }) {
-  const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'].filter(Boolean))];
+// ── 생각(추론) 설정: 모델마다 받는 형식이 달라서(thinkingBudget / thinkingLevel) 안 맞으면 400 오류가 남
+//   → 순서대로 시도하고, 통과한 형식을 기억해 다음부터는 바로 그 형식으로 (같은 400 오류가 반복되지 않게)
+//   생각을 끄려다 실패해서 설정 없이 보내면 모델이 '알아서 길게 생각'해 출력 토큰(비용)이 커지므로, 끄는 형식을 끝까지 찾아 씀
+const THINK_OPTS = (think) => (think > 0
+  ? [{ thinkingBudget: think }, { thinkingLevel: think >= 1024 ? 'medium' : 'low' }, null]
+  : [{ thinkingBudget: 0 }, { thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }, null]);
+let thinkMem = null; // { 'model|0': 몇 번째 형식이 통과했는지 }
+async function thinkPref() { if (!thinkMem) thinkMem = (await getJSON('ai/thinkcfg').catch(() => null)) || {}; return thinkMem; }
+async function rememberThink(k, idx) { const m = await thinkPref(); if (m[k] === idx) return; m[k] = idx; await setJSON('ai/thinkcfg', m).catch(() => {}); }
+const THINK_ERR = /thinking|budget|thinkingLevel|thinking_level|Invalid JSON payload|Unknown name/i;
+// 가벼운 작업용 모델 (제목 번역·한 줄 이유 등) — 품질 차이가 거의 없고 훨씬 저렴
+const LITE = () => [process.env.GEMINI_LITE_MODEL, 'gemini-flash-lite-latest'].filter(Boolean);
+const MAIN = () => [process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest'].filter(Boolean);
+
+async function gemini(prompt, { maxTokens, timeout, json = true, think = 0, tag = '기타', lite = false }) {
+  const models = [...new Set(lite ? [...LITE(), ...MAIN()] : [...MAIN(), ...LITE()])];
   const until = Date.now() + timeout;
+  const pref = await thinkPref();
+  await relayPref();
   let lastErr, n429 = 0, nOther = 0, body429 = '';
   for (const model of models) {
-    for (const thinking of [true, false]) {
+    const tk = `${model}|${think > 0 ? 'on' : 'off'}`;
+    const opts = THINK_OPTS(think);
+    const start = Math.min(pref[tk] ?? 0, opts.length - 1);
+    for (let oi = start; oi < opts.length; oi++) {
       if (until - Date.now() < 2500) break;
       const cfg = { maxOutputTokens: maxTokens, temperature: 0.2 };
       if (json) cfg.responseMimeType = 'application/json';
-      if (thinking) cfg.thinkingConfig = { thinkingBudget: think }; // think>0: 답하기 전에 충분히 생각(심층 분석용)
+      if (opts[oi]) cfg.thinkingConfig = opts[oi];
       // 새 형식(AQ.) 키와 기존(AIza) 키 모두 x-goog-api-key 헤더로 전달
       const call = () => fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST',
@@ -74,22 +100,25 @@ async function gemini(prompt, { maxTokens, timeout, json = true, think = 0, tag 
       // 직접 호출이 '지역 미지원'으로 거절되면 이후 호출은 서울 중계 서버로
       if (r.status === 400 && /location is not supported/i.test(body) && !geminiViaRelay && process.env.KR_RELAY_URL) {
         geminiViaRelay = true;
+        await setJSON('ai/viaRelay', { on: true, at: Date.now() }).catch(() => {});
         r = await call();
         body = await r.text();
       }
       if (r.ok) {
+        if (oi !== (pref[tk] ?? 0)) await rememberThink(tk, oi);
         const j = JSON.parse(body);
         await logUsage(tag, j.usageMetadata);
         const text = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
         if (text) return text;
         lastErr = new Error('Gemini 빈 응답 ' + (j.candidates?.[0]?.finishReason || ''));
+        if (/MAX_TOKENS/.test(j.candidates?.[0]?.finishReason || '')) break; // 길이 부족 → 다음 모델
         continue;
       }
       lastErr = new Error(`Gemini API HTTP ${r.status} (${model}) ${body.slice(0, 250)}`);
       // 결제 문제(크레딧 소진·월 지출 한도)는 다른 모델도 똑같이 막힘 → 30분 쉬고 관리자 화면에 이유 표시
       if (r.status === 402 || (r.status === 429 && BILLING_RE.test(body))) { await pauseAI(body); throw lastErr; }
       if (r.status === 429) { n429++; body429 = body; } else nOther++;
-      if (r.status === 400 && /thinking|invalid argument/i.test(body) && thinking) continue; // 생각 설정을 빼고 같은 모델 재시도
+      if (r.status === 400 && THINK_ERR.test(body) && oi < opts.length - 1) { await rememberThink(tk, oi + 1); continue; } // 생각 설정 형식만 바꿔 같은 모델 재시도
       if ([404, 429, 500, 502, 503, 504].includes(r.status) || (r.status === 400 && /model|not found|not supported|invalid argument/i.test(body))) break; // 다음 모델
       throw lastErr; // 키 오류 등
     }
@@ -122,10 +151,10 @@ async function anthropic(prompt, { maxTokens, timeout }) {
 }
 
 /** 프롬프트 → AI 응답 텍스트 */
-export async function claude(prompt, { maxTokens = 1200, timeout = 9000, json = true, think = 0, tag = '기타' } = {}) {
+export async function claude(prompt, { maxTokens = 1200, timeout = 9000, json = true, think = 0, tag = '기타', lite = false } = {}) {
   const paused = googleKey() ? await aiPausedUntil() : 0;
   if (paused) throw new Error(`AI 잠시 쉬는 중: ${pauseMem.reason || '사용 한도 초과'} (${new Date(paused + 9 * 3600e3).toISOString().slice(11, 16)} KST 이후 다시 시도)`);
-  if (googleKey()) return gemini(prompt, { maxTokens, timeout, json, think, tag });
+  if (googleKey()) return gemini(prompt, { maxTokens, timeout, json, think, tag, lite });
   if (claudeKey()) return anthropic(prompt, { maxTokens, timeout });
   throw new Error('AI 키 미설정');
 }
@@ -220,7 +249,7 @@ export async function koreanHeadlines(batch) {
 
 입력:
 ${JSON.stringify(input)}`;
-  const arr = parseJSON(await claude(prompt, { maxTokens: 1500, timeout: 20000, tag: 'SEC 제목 번역' }), '[', ']');
+  const arr = parseJSON(await claude(prompt, { maxTokens: 1500, timeout: 20000, tag: 'SEC 제목 번역', lite: true }), '[', ']');
   const out = {};
   for (const x of arr) if (x && x.id && x.title) out[x.id] = { title: String(x.title).slice(0, 80), sub: String(x.sub || '').slice(0, 140) };
   return out;
@@ -320,7 +349,7 @@ ${lens.map((x) => '- ' + x).join('\n')}
 /** 영문 기업 소개 → 한국어 2~3문장 */
 export async function overviewKo(name, raw) {
   const prompt = `다음은 ${name}의 영문 기업 소개입니다. 한국 개인투자자가 이해하기 쉽게 이 회사가 무엇을 하는 회사인지(주요 사업·제품·고객·시장) 한국어 3문장 이내로 설명하세요. 원문에 있는 사실만 쓰고, 설명 문장만 출력하세요.\n\n${String(raw).slice(0, 2500)}`;
-  const t = await claude(prompt, { maxTokens: 500, timeout: 20000, json: false, tag: '회사 소개 번역' });
+  const t = await claude(prompt, { maxTokens: 500, timeout: 20000, json: false, tag: '회사 소개 번역', lite: true });
   const out = String(t).replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 450);
   return /[가-힣]{4,}/.test(out) ? out : null;
 }
@@ -332,7 +361,7 @@ export async function translateTitles(batch) {
 규칙: 50자 이내, 숫자·금액·제품명 유지, 회사명은 빼도 됨, 과장 금지.
 출력은 JSON 배열만: [{"id":"...","ko":"..."}]
 입력: ${JSON.stringify(batch.map((b) => ({ id: b.id, title: b.title, desc: (b.desc || '').slice(0, 200) })))}`;
-  const arr = parseJSON(await claude(prompt, { maxTokens: 1800, timeout: 20000, tag: '보도자료 제목 번역' }), '[', ']');
+  const arr = parseJSON(await claude(prompt, { maxTokens: 1800, timeout: 20000, tag: '보도자료 제목 번역', lite: true }), '[', ']');
   const out = {};
   for (const x of arr) if (x && x.id && x.ko) out[x.id] = String(x.ko).slice(0, 90);
   return out;
@@ -362,7 +391,7 @@ export async function translateParagraphs(paras, { timeout = 40000 } = {}) {
 - 번역문 외 다른 설명은 쓰지 마세요
 
 ${paras.map((p, i) => `[[${i}]] ${p}`).join('\n')}`;
-  const text = await claude(prompt, { maxTokens: 8000, timeout, json: false, tag: '원문 번역' });
+  const text = await claude(prompt, { maxTokens: 8000, timeout, json: false, tag: '원문 번역', lite: true });
   const out = new Array(paras.length).fill(null);
   const re = /\[\[(\d+)\]\]\s*([\s\S]*?)(?=\n?\[\[\d+\]\]|$)/g;
   let m;
@@ -382,16 +411,19 @@ export async function askAIWeb(prompt, { maxTokens = 3000, timeout = 60000 } = {
   const models = [...new Set([process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest'].filter(Boolean))];
   const until = Date.now() + timeout;
   let lastErr;
-  for (const model of models) for (const thinking of [true, false]) {
+  const pref = await thinkPref();
+  await relayPref();
+  for (const model of models) { const tk = `${model}|on`, opts = THINK_OPTS(1024); for (let oi = Math.min(pref[tk] ?? 0, opts.length - 1); oi < opts.length; oi++) {
     if (until - Date.now() < 3000) break;
     const gc = { maxOutputTokens: maxTokens, temperature: 0.1 };
-    if (thinking) gc.thinkingConfig = { thinkingBudget: 1024 }; // 생각이 길어져 답이 잘리는 것 방지 (안 받는 모델이면 빼고 다시)
+    if (opts[oi]) gc.thinkingConfig = opts[oi]; // 생각 설정 형식은 모델이 받는 걸로 (기억해 둔 형식부터)
     const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': googleKey() }, relay: geminiViaRelay,
       body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: gc }),
     }, Math.max(3000, until - Date.now()));
     const body = await r.text();
     if (r.ok) {
+      if (oi !== (pref[tk] ?? 0)) await rememberThink(tk, oi);
       const j = JSON.parse(body);
       const c = j.candidates?.[0];
       await logUsage('일정 검색(웹)', j.usageMetadata);
@@ -404,7 +436,8 @@ export async function askAIWeb(prompt, { maxTokens = 3000, timeout = 60000 } = {
     lastErr = new Error(`Gemini 검색 HTTP ${r.status} (${model}) ${body.slice(0, 200)}`);
     if (r.status === 402 || (r.status === 429 && BILLING_RE.test(body))) { await pauseAI(body); throw lastErr; }
     if (![404, 429, 500, 503, 400].includes(r.status)) throw lastErr;
-    if (!(thinking && r.status === 400)) break; // 400이면 생각 설정 빼고 같은 모델로 한 번 더, 그 외엔 다음 모델
-  }
+    if (r.status === 400 && THINK_ERR.test(body) && oi < opts.length - 1) { await rememberThink(tk, oi + 1); continue; } // 생각 설정 형식만 바꿔 재시도
+    break; // 그 외엔 다음 모델
+  } }
   throw lastErr || new Error('Gemini 검색 실패');
 }
