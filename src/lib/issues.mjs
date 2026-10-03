@@ -15,7 +15,9 @@ const SLOTS = {
   US: [hm2(8), hm2(9), hm2(9, 30), hm2(10), hm2(11), hm2(12), hm2(13), hm2(14), hm2(15), hm2(16), hm2(17)], // 9:30 = 본장 개장 직후
 };
 // 주말: 하루 3번 (지난 장 정리·주말 뉴스·다음 주 일정)
-const WEEKEND = { KR: [hm2(9), hm2(14), hm2(20)], US: [hm2(9), hm2(14), hm2(20)] };
+// 주말·휴장일: 하루 24시간 2시간마다 (0시, 2시, … 22시 · 미장은 뉴욕 시간)
+const EVERY2 = Array.from({ length: 12 }, (_, i) => hm2(i * 2));
+const WEEKEND = { KR: EVERY2, US: EVERY2 };
 const isOff = (phase) => phase === '주말' || phase === '휴장일';
 const FAST = { KR: [hm2(9), hm2(9, 30), hm2(10), hm2(10, 30)], US: [hm2(9, 30)] }; // 개장 직후: 새 소식 수와 상관없이 매 회차 갱신 (시세가 크게 움직이는 시간)
 const TZ = { KR: 'Asia/Seoul', US: 'America/New_York' };
@@ -45,16 +47,17 @@ function slotFor(mk, t, date, off = null) {
 }
 
 /** 지금 만들어야 할 회차 (없으면 null). force면 오늘 가장 최근 회차 */
-export function dueSlot(mk, now = new Date(), { force = false } = {}) {
+export function dueSlot(mk, now = new Date(), { force = false, holiday = false } = {}) {
   const z = local(mk, now);
   const wk = ['Sat', 'Sun'].includes(z.wd);
-  const L = wk ? WEEKEND[mk] : SLOTS[mk];
+  const off = wk ? '주말' : holiday ? '휴장일' : null;
+  const L = off ? WEEKEND[mk] : SLOTS[mk];
   const past = L.filter((x) => x <= z.m);
-  if (wk) { // 주말도 멈추지 않음
+  if (off) { // 주말·휴장일도 멈추지 않음 (2시간마다)
     if (!past.length) return null;
     const t = past[past.length - 1];
-    if (!force && (z.m - t < 4 || z.m - t > 55)) return null;
-    return { ...slotFor(mk, t, z.date, '주말'), fast: true }; // 주말 회차는 새 소식 수와 상관없이 만듦
+    if (!force && (z.m - t < 4 || z.m - t > 110)) return null; // 늦게라도 다음 회차 전까지는 만듦
+    return { ...slotFor(mk, t, z.date, off), fast: true }; // 새 소식 수와 상관없이 만듦
   }
   if (!force) {
     if (!past.length) return null;
@@ -250,22 +253,29 @@ export async function issuesWatch(now = new Date(), ctx = null) {
   const out = {};
   for (const mk of ['KR', 'US']) {
     const idx = (await getJSON(`issues/idx/${mk}`)) || [];
-    let s = dueSlot(mk, now);
+    const today = local(mk, now).date;
+    const holKey = `issues/hol/${mk}/${today}`;
+    let holiday = !!(await getJSON(holKey).catch(() => null))?.on;
+    let s = dueSlot(mk, now, { holiday });
     // 처음 설치 직후 한 회차도 없으면 가장 최근 시간으로 바로 만들어 둠
     const boot = !s && !idx.length;
     if (boot) s = dueSlot(mk, now, { force: true });
     if (!s) continue;
     if (idx.some((x) => x.id === s.id)) continue;
-    const tk = `issues/try/${s.id}`;
-    const t = (await getJSON(tk)) || { n: 0, at: 0 };
+    let tk = `issues/try/${s.id}`;
+    let t = (await getJSON(tk)) || { n: 0, at: 0 };
     if (t.n >= 3 || Date.now() - t.at < 4 * 60e3) continue;
-    // 평일인데 휴장일이면(인기 종목 상태가 '장중'이 아님) 멈추지 않고 '휴장일' 회차로 만듦 — 장중 회차는 2개만(정오·오후)
-    if (s.phase === '장중' && !boot) {
+    // 평일인데 장중 시간에 시세가 '장중'이 아니면 휴장일로 기록 → 이후 그날은 2시간마다 '휴장일' 회차
+    if (!holiday && s.phase === '장중' && !boot) {
       const pop = await getJSON('popular/v2');
       const list = mk === 'KR' ? pop?.krUp : pop?.usUp;
       if (list?.length && list.every((x) => x.status && x.status !== 'OPEN')) {
-        if (![12, 15].includes(s.n) || s.min) { await setJSON(tk, { n: 9, at: Date.now(), err: '휴장 (이 시간은 건너뜀)' }); continue; }
-        s = { ...s, phase: '휴장일', name: `휴장일 · ${mk === 'KR' ? '' : '뉴욕 '}${s.n}시`, fast: true };
+        await setJSON(holKey, { on: true, at: Date.now() }).catch(() => {});
+        holiday = true;
+        s = dueSlot(mk, now, { holiday: true });
+        if (!s || idx.some((x) => x.id === s.id)) continue;
+        tk = `issues/try/${s.id}`; t = (await getJSON(tk)) || { n: 0, at: 0 };
+        if (t.n >= 3 || Date.now() - t.at < 4 * 60e3) continue;
       }
     }
     await setJSON(tk, { n: t.n + 1, at: Date.now() });
