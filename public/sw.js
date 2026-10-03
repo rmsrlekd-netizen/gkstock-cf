@@ -1,6 +1,6 @@
 // GK의 공시레이더 — 앱 설치용 서비스 워커
 // 항상 최신 데이터를 보여주기 위해 네트워크 우선. 인터넷이 끊겼을 때만 마지막으로 저장한 첫 화면을 보여줌
-const CACHE = 'gk-shell-v1';
+const CACHE = 'gk-shell-v4';
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/'])).then(() => self.skipWaiting()));
 });
