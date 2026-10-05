@@ -68,17 +68,24 @@ const THINK_OPTS = (think) => (think > 0
 let thinkMem = null; // { 'model|0': 몇 번째 형식이 통과했는지 }
 async function thinkPref() { if (!thinkMem) thinkMem = (await getJSON('ai/thinkcfg').catch(() => null)) || {}; return thinkMem; }
 async function rememberThink(k, idx) { const m = await thinkPref(); if (m[k] === idx) return; m[k] = idx; await setJSON('ai/thinkcfg', m).catch(() => {}); }
+// 모델 하나만 막힌 경우(402 DEPLOYMENT_DISABLED 등): 그 모델만 6시간 건너뛰고 다른 모델로 (전체 AI를 멈추지 않음)
+let offMem = null;
+async function offModels() { if (!offMem || Date.now() - offMem._t > 60e3) offMem = { ...((await getJSON('ai/modelOff').catch(() => null)) || {}), _t: Date.now() }; return offMem; }
+async function disableModel(model, why) { const m = await offModels(); m[model] = { until: Date.now() + 6 * 3600e3, why: String(why).slice(0, 160) }; const { _t, ...save } = m; await setJSON('ai/modelOff', save).catch(() => {}); }
+const isOff = (m, model) => m[model]?.until > Date.now();
 const THINK_ERR = /thinking|budget|thinkingLevel|thinking_level|Invalid JSON payload|Unknown name/i;
 // 가벼운 작업용 모델 (제목 번역·한 줄 이유 등) — 품질 차이가 거의 없고 훨씬 저렴
 const LITE = () => [process.env.GEMINI_LITE_MODEL, 'gemini-flash-lite-latest'].filter(Boolean);
 const MAIN = () => [process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest'].filter(Boolean);
 
 async function gemini(prompt, { maxTokens, timeout, json = true, think = 0, tag = '기타', lite = false }) {
-  const models = [...new Set(lite ? [...LITE(), ...MAIN()] : [...MAIN(), ...LITE()])];
+  const off = await offModels();
+  let models = [...new Set(lite ? [...LITE(), ...MAIN()] : [...MAIN(), ...LITE()])];
+  if (models.some((m) => !isOff(off, m))) models = models.filter((m) => !isOff(off, m));
   const until = Date.now() + timeout;
   const pref = await thinkPref();
   await relayPref();
-  let lastErr, n429 = 0, nOther = 0, body429 = '';
+  let lastErr, n429 = 0, nOther = 0, n402 = 0, body429 = '';
   for (const model of models) {
     const tk = `${model}|${think > 0 ? 'on' : 'off'}`;
     const opts = THINK_OPTS(think);
@@ -116,13 +123,15 @@ async function gemini(prompt, { maxTokens, timeout, json = true, think = 0, tag 
       }
       lastErr = new Error(`Gemini API HTTP ${r.status} (${model}) ${body.slice(0, 250)}`);
       // 결제 문제(크레딧 소진·월 지출 한도)는 다른 모델도 똑같이 막힘 → 30분 쉬고 관리자 화면에 이유 표시
-      if (r.status === 402 || (r.status === 429 && BILLING_RE.test(body))) { await pauseAI(body); throw lastErr; }
+      if ((r.status === 402 || r.status === 429) && BILLING_RE.test(body)) { await pauseAI(body); throw lastErr; } // 진짜 결제 문제(크레딧 소진·지출 한도) → 전체 멈춤
+      if (r.status === 402) { await disableModel(model, body); nOther++; n402++; break; } // 이 모델만 막힘 → 다음 모델
       if (r.status === 429) { n429++; body429 = body; } else nOther++;
       if (r.status === 400 && THINK_ERR.test(body) && oi < opts.length - 1) { await rememberThink(tk, oi + 1); continue; } // 생각 설정 형식만 바꿔 같은 모델 재시도
       if ([404, 429, 500, 502, 503, 504].includes(r.status) || (r.status === 400 && /model|not found|not supported|invalid argument/i.test(body))) break; // 다음 모델
       throw lastErr; // 키 오류 등
     }
   }
+  if (n402 && n402 >= models.length) await pauseAI('billing: 모든 모델이 402 Payment required'); // 모든 모델이 결제 문제 → 30분 멈춤
   if (n429 && !nOther) await pauseAI(body429); // 모든 모델이 한도 초과 → 잠시 멈춤
   throw lastErr || new Error('Gemini API 시간 부족');
 }
@@ -434,7 +443,8 @@ export async function askAIWeb(prompt, { maxTokens = 3000, timeout = 60000 } = {
       break; // 다음 모델로
     }
     lastErr = new Error(`Gemini 검색 HTTP ${r.status} (${model}) ${body.slice(0, 200)}`);
-    if (r.status === 402 || (r.status === 429 && BILLING_RE.test(body))) { await pauseAI(body); throw lastErr; }
+    if ((r.status === 402 || r.status === 429) && BILLING_RE.test(body)) { await pauseAI(body); throw lastErr; }
+    if (r.status === 402) { await disableModel(model, body); break; }
     if (![404, 429, 500, 503, 400].includes(r.status)) throw lastErr;
     if (r.status === 400 && THINK_ERR.test(body) && oi < opts.length - 1) { await rememberThink(tk, oi + 1); continue; } // 생각 설정 형식만 바꿔 재시도
     break; // 그 외엔 다음 모델
