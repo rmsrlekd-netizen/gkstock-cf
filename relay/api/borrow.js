@@ -63,5 +63,6 @@ export async function GET(req) {
     if (avail == null) continue;
     d[sym] = [Math.min(avail, 10000000), num(c[6]), num(c[5])];
   }
-  return new Response(JSON.stringify({ at, n: Object.keys(d).length, d }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  const gz = await new Response(new Blob([JSON.stringify({ at, n: Object.keys(d).length, d })]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+  return new Response(gz, { headers: { 'content-type': 'application/json', 'content-encoding': 'gzip', 'cache-control': 'no-store' } });
 }

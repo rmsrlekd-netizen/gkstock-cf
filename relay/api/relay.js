@@ -21,7 +21,13 @@ async function handle(req) {
     const r = await fetch(target, { ...init, signal: ctrl.signal });
     const out = new Headers({ 'cache-control': 'no-store' });
     const ct = r.headers.get('content-type'); if (ct) out.set('content-type', ct);
-    return new Response(await r.arrayBuffer(), { status: r.status, headers: out });
+    let body = await r.arrayBuffer();
+    // 글자 데이터(JSON·HTML)는 압축해서 돌려보냄 → Vercel 전송량(무료 한도)을 70~90% 절약 (Cloudflare가 자동으로 풀어서 읽음)
+    if (body.byteLength > 1024 && /json|text|html|xml|javascript/i.test(ct || '') && /gzip/i.test(req.headers.get('accept-encoding') || 'gzip')) {
+      body = await new Response(new Blob([body]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+      out.set('content-encoding', 'gzip');
+    }
+    return new Response(body, { status: r.status, headers: out });
   } catch (e) {
     return new Response('relay error: ' + (e.message || e), { status: 502 });
   } finally { clearTimeout(t); }

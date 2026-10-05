@@ -22,6 +22,9 @@ async function checks() {
   // 저장소 쓰기 점검 (Cloudflare D1 무료 한도 초과 시 모든 수집이 멈춤)
   let dbErr = null;
   try { await setJSON('health/ping', { at: now }); } catch (e) { dbErr = String(e.message || e); }
+  { const rs = await getJSON('relay/status').catch(() => null); // 서울 중계 서버(Vercel) 상태
+    const bad = rs && Date.now() - rs.at < 40 * 60e3;
+    add('relay', '중계 서버 (Vercel)', !bad, bad ? `${rs.base} 응답 ${rs.status} — 중계가 막혀 DART·네이버·Gemini가 실패할 수 있음. Vercel 대시보드 Usage(무료 한도)를 확인하세요` : '정상'); }
   add('db', '데이터 저장소 (D1)', !dbErr, dbErr ? `저장 실패 → 수집이 멈춘 상태: ${dbErr.slice(0, 160)}. 하루 쓰기 한도 초과라면 오전 9시(한국)에 풀림` : '저장 정상');
 
   const age = (f) => (f?.updatedAt ? now - Date.parse(f.updatedAt) : Infinity);

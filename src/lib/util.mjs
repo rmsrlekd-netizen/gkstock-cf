@@ -18,29 +18,47 @@ export function json(data, { cdnSeconds = 20, swr = 60, status = 200 } = {}) {
 
 // Cloudflare 서버 접속을 막는 사이트(DART·KRX·네이버·GlobeNewswire)와 Gemini(지역 제한): KR_RELAY_URL(중계 서버, 서울)을 거쳐 요청
 const KR_HOSTS = /(^|\.)(fss\.or\.kr|krx\.co\.kr|naver\.com)$/i;
-export async function fetchWithTimeout(url, opts = {}, ms = 9000) {
+// 중계 서버가 막히면(예: Vercel 무료 한도 초과 → 402 DEPLOYMENT_DISABLED) 잠시 그 중계를 건너뛰고
+//  두 번째 중계(KR_RELAY_URL2, 예: Netlify) → 그것도 없거나 막히면 직접 접속으로 시도
+const relayDown = new Map(); // 중계 주소 → 다시 써 볼 시각
+const relayList = (env) => [env.KR_RELAY_URL, env.KR_RELAY_URL2].filter(Boolean).map((x) => x.replace(/\/+$/, ''));
+const RELAY_BLOCKED = (r) => r && (r.status === 402 || r.status === 429 || r.status === 503 || (r.status >= 500 && r.headers.get('x-vercel-error')));
+async function rawFetch(u, opts, h, ms) {
   const ctrl = new AbortController();
-  let u = String(url);
-  const h = new Headers(opts.headers || {});
-  if (!h.has('user-agent')) h.set('user-agent', BROWSER_UA);
-  if (!h.has('accept-language')) h.set('accept-language', 'ko-KR,ko;q=0.9,en;q=0.8');
-  const env = globalThis.process?.env || {};
-  if (env.KR_RELAY_URL) {
-    let host = '';
-    try { host = new URL(u).hostname; } catch {}
-    if (opts.relay || KR_HOSTS.test(host)) {
-      h.set('x-relay-token', env.KR_RELAY_TOKEN || '');
-      u = env.KR_RELAY_URL.replace(/\/+$/, '') + '?u=' + encodeURIComponent(u);
-      ms += 4000;
-    }
-  }
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
     const { relay, ...rest } = opts;
     return await fetch(u, { ...rest, headers: h, signal: ctrl.signal });
-  } finally {
-    clearTimeout(t);
+  } finally { clearTimeout(t); }
+}
+export async function fetchWithTimeout(url, opts = {}, ms = 9000) {
+  const u = String(url);
+  const h = new Headers(opts.headers || {});
+  if (!h.has('user-agent')) h.set('user-agent', BROWSER_UA);
+  if (!h.has('accept-language')) h.set('accept-language', 'ko-KR,ko;q=0.9,en;q=0.8');
+  const env = globalThis.process?.env || {};
+  let host = '';
+  try { host = new URL(u).hostname; } catch {}
+  const relays = relayList(env);
+  if (relays.length && (opts.relay || KR_HOSTS.test(host))) {
+    for (const base of relays) {
+      if ((relayDown.get(base) || 0) > Date.now()) continue;
+      const rh = new Headers(h); rh.set('x-relay-token', env.KR_RELAY_TOKEN || '');
+      let r = null;
+      try { r = await rawFetch(base + '?u=' + encodeURIComponent(u), opts, rh, ms + 4000); } catch (e) { if (e?.name !== 'AbortError') { relayDown.set(base, Date.now() + 60e3); continue; } throw e; }
+      // 중계 자체가 막힌 응답(본문에 DEPLOYMENT_DISABLED 등)이면 30분 동안 이 중계는 건너뜀
+      if (r.status === 402 || (RELAY_BLOCKED(r) && r.headers.get('x-vercel-error'))) { relayDown.set(base, Date.now() + 30 * 60e3); relayIssue(base, r.status); continue; }
+      return r;
+    }
+    // 모든 중계가 막힘 → 직접 접속 (막히는 사이트도 있지만 아무것도 안 하는 것보다 나음)
   }
+  return rawFetch(u, opts, h, ms);
+}
+let relayNoteAt = 0;
+function relayIssue(base, status) {
+  if (Date.now() - relayNoteAt < 10 * 60e3) return;
+  relayNoteAt = Date.now();
+  import('./store.mjs').then(({ setJSON }) => setJSON('relay/status', { at: Date.now(), base: base.replace(/^https?:\/\//, '').split('/')[0], status, msg: '중계 서버 막힘 — Vercel 사용량 한도 초과 가능' })).catch(() => {});
 }
 
 export function num(v) {
