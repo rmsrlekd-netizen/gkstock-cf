@@ -25,7 +25,7 @@ export default async ({ mode = 'all', full = true, direct = false } = {}) => {
       await getSectors({ allowFetch: true }).catch((e) => console.warn('sectors', e.message));
       const feed = (await getJSON('news/feed')) || { items: [] };
       if (hasAI()) {
-        const need = feed.items.filter((x) => x.src === 'PR' && x.market === 'US' && !x.titleKo && !/[가-힣]/.test(x.title) && (x.koTries || 0) < 2).slice(0, 40);
+        const need = feed.items.filter((x) => x.src === 'PR' && x.market === 'US' && !x.titleKo && !/[가-힣]/.test(x.title) && ((x.koTries || 0) < 2 || !x.koAt || Date.now() - x.koAt > 3 * 3600e3)).slice(0, 40); // 실패해도 3시간 뒤 다시
         if (need.length) {
           let ko = {}, err = null;
           try {
@@ -39,7 +39,7 @@ export default async ({ mode = 'all', full = true, direct = false } = {}) => {
             await setJSON('tr/map', tr).catch(() => {});
           }
           const cur = (await getJSON('news/feed')) || { items: [] };
-          for (const x of cur.items) if (ko[x.id]) x.titleKo = ko[x.id]; else if (need.some((n) => n.id === x.id)) x.koTries = (x.koTries || 0) + 1;
+          for (const x of cur.items) if (ko[x.id]) x.titleKo = ko[x.id]; else if (!err && need.some((n) => n.id === x.id)) { x.koTries = (x.koTries || 0) + 1; x.koAt = Date.now(); } // AI가 멈춰 실패한 건 횟수에 안 셈
           cur.aiError = err;
           await setJSON('news/feed', cur);
         }
