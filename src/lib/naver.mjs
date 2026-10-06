@@ -4,6 +4,8 @@ import { fetchWithTimeout, BROWSER_UA } from './util.mjs';
 const H = { 'User-Agent': BROWSER_UA, Accept: 'application/json', Referer: 'https://m.stock.naver.com/' };
 // 미국 정규 거래소(나스닥·뉴욕·아멕스)만 — 장외(OTC) 종목 제외
 const US_EXCH = (x) => { const c = String(x?.stockExchangeType?.code || x?.stockExchangeType?.name || '').toUpperCase(); return !c || /^(NSQ|NYS|AMX|NASDAQ|NYSE|AMEX)$/.test(c); };
+// 보통주가 아닌 것(신주인수권 Rights, 워런트, 유닛, 조건부권리 CVR 등): 가격이 몇 센트라 등락률이 비정상적으로 커서 순위를 왜곡
+export const notCommon = (ticker, name) => /\s|[.\-](RT|R|W|WS|WT|U|UN)$/i.test(String(ticker || '').trim()) || /\b(rights?|warrants?|units?|contingent value|cvr|subscription)\b/i.test(String(name || ''));
 const isOtc = (x) => /OTC|PNK|PINK/i.test(String(x?.stockExchangeType?.code || '') + ' ' + String(x?.stockExchangeType?.name || '') + ' ' + String(x?.reutersCode || '').replace(/^[^.]*/, ''));
 const n0 = (s) => { const x = Number(String(s ?? '').replace(/[,%+\s]/g, '')); return Number.isFinite(x) ? x : null; };
 // 등락 부호: 4 하한, 5 하락
@@ -57,7 +59,7 @@ export async function naverUsExtMovers(n = 10) {
   if (pages.filter(Boolean).length < 6) throw new Error('네이버 시간외 데이터 부족');
   const seen = new Map();
   for (const j of pages) for (const x of j?.stocks || []) {
-    if (!x.symbolCode || x.stockEndType !== 'stock' || seen.has(x.reutersCode) || !US_EXCH(x) || isOtc(x)) continue;
+    if (!x.symbolCode || x.stockEndType !== 'stock' || seen.has(x.reutersCode) || !US_EXCH(x) || isOtc(x) || notCommon(x.symbolCode, x.stockNameEng || x.stockName)) continue;
     const e = extOf(x);
     if (!e || e.pct == null || e.price == null) continue;
     const q = parseQuote(x);
@@ -118,8 +120,8 @@ export async function naverKrMovers(dir, n = 10) {
 
 /** 미국 상승·하락 상위 (나스닥·뉴욕·아멕스 전체 주식, 동전주 포함) */
 export async function naverUsMovers(dir, n = 10) {
-  const j = await get(`https://api.stock.naver.com/stock/nation/USA/${dir === 'down' ? 'down' : 'up'}?page=1&pageSize=30`);
-  const list = (j.stocks || []).filter((x) => x.symbolCode && x.stockEndType === 'stock' && US_EXCH(x) && !isOtc(x));
+  const j = await get(`https://api.stock.naver.com/stock/nation/USA/${dir === 'down' ? 'down' : 'up'}?page=1&pageSize=50`);
+  const list = (j.stocks || []).filter((x) => x.symbolCode && x.stockEndType === 'stock' && US_EXCH(x) && !isOtc(x) && !notCommon(x.symbolCode, x.stockNameEng || x.stockName));
   if (!list.length) throw new Error('네이버 미국 등락 데이터 없음');
   return list.slice(0, n).map((x) => ({ market: 'US', ticker: x.symbolCode, reuters: x.reutersCode, ...parseQuote(x), name: x.stockName || x.symbolCode, cur: 'USD', mcapText: x.marketValueHangeul || null }));
 }
@@ -204,7 +206,7 @@ export async function tvUsExtMovers(session, n = 10) {
     if (!r?.ok) throw new Error('트레이딩뷰 HTTP ' + (r?.status || '오류'));
     const j = await r.json();
     return (j.data || []).map((x) => { const [t, desc, c, p, close, regChg, cap, v, ex] = x.d; return { ticker: String(t).replace('/', '.'), name: desc, pct: Math.round(c * 100) / 100, price: p, regPrice: close, regPct: regChg != null ? Math.round(regChg * 100) / 100 : null, cap, vol: v, ex }; })
-      .filter((x) => /^[A-Z][A-Z.]{0,5}$/.test(x.ticker) && x.pct != null && x.price != null && /^(NASDAQ|NYSE|AMEX)$/i.test(String(x.ex || ''))); // 장외(OTC) 제외
+      .filter((x) => /^[A-Z][A-Z.]{0,5}$/.test(x.ticker) && x.pct != null && x.price != null && /^(NASDAQ|NYSE|AMEX)$/i.test(String(x.ex || '')) && !notCommon(x.ticker, x.name)); // 장외(OTC)·권리·워런트 제외
   };
   const [up, down] = await Promise.all([scan('desc'), scan('asc')]);
   if (!up.length && !down.length) throw new Error('트레이딩뷰 시간외 데이터 없음');
@@ -239,7 +241,7 @@ export async function tvUsRegMovers(n = 10) {
     if (!r?.ok) throw new Error('트레이딩뷰 HTTP ' + (r?.status || '오류'));
     const j = await r.json();
     return (j.data || []).map((x) => { const [t, desc, close, chg, vol, ex] = x.d; return { ticker: String(t).replace('/', '.'), name: desc, price: close, pct: chg != null ? Math.round(chg * 100) / 100 : null, vol, ex }; })
-      .filter((x) => /^[A-Z][A-Z.]{0,5}$/.test(x.ticker) && x.pct != null && x.price != null);
+      .filter((x) => /^[A-Z][A-Z.]{0,5}$/.test(x.ticker) && x.pct != null && x.price != null && !notCommon(x.ticker, x.name));
   };
   const [up, down] = await Promise.all([scan('desc'), scan('asc')]);
   const all = [...up, ...down];

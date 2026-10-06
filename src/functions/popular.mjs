@@ -108,12 +108,13 @@ async function nasdaqActive() {
 // 방문자는 저장된 목록을 바로 받고, 1분 넘게 지났으면 뒤에서 새로 계산 (새로 계산은 10초 넘게 걸릴 때가 있어서 기다리게 하지 않음)
 export default async (req, ctx) => {
   const cached = await getJSON('popular/v2');
-  if (cached && Date.now() - cached.at < 60e3) return json({ ok: true, ...cached }, { cdnSeconds: 60, swr: 120 });
+  // 엣지 캐시는 '데이터가 신선한 남은 시간'만큼만 (예전엔 59초 된 데이터를 또 60초 캐시해서 최대 2~3분 묵음)
+  if (cached && Date.now() - cached.at < 60e3) return json({ ok: true, ...cached }, { cdnSeconds: Math.max(5, Math.round((60e3 - (Date.now() - cached.at)) / 1000)), swr: 60 });
   if (cached && Date.now() - cached.at < 15 * 60e3 && ctx?.waitUntil) {
     refreshInBackground(ctx, 'popular', () => build(cached));
-    return json({ ok: true, ...cached }, { cdnSeconds: 20, swr: 60 });
+    return json({ ok: true, ...cached }, { cdnSeconds: 10, swr: 30 });
   }
-  return json({ ok: true, ...(await build(cached)) }, { cdnSeconds: 60, swr: 120 });
+  return json({ ok: true, ...(await build(cached)) }, { cdnSeconds: 45, swr: 60 });
 };
 
 async function build(cached) {

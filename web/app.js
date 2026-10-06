@@ -805,7 +805,8 @@
   }
   async function pollPopular() {
     if (document.hidden && S.popular) return;
-    try { S.popular = await getJSON('/api/popular', {}); } catch { S.popular = S.popular || { kr: [], us: [], at: Date.now(), krSrc: '', usSrc: '' }; }
+    // 30초 단위 주소로 받아서 브라우저·중간 캐시에 묵은 목록이 남지 않게 (켜 두기만 해도 자동 갱신)
+    try { const j = await getJSON('/api/popular?t=' + Math.floor(Date.now() / 30e3)); if (!S.popular || !(j.at < S.popular.at)) S.popular = j; } catch { S.popular = S.popular || { kr: [], us: [], at: Date.now(), krSrc: '', usSrc: '' }; }
     renderPopular();
   }
 
@@ -2982,6 +2983,14 @@
   every(60000, pollMarket);
   every(60000, pollPopular);
   every(60000, () => { if (S.view === 'themes') loadThemes(true); });
+  // 그 밖에 켜 두기만 해도 자동으로 바뀌어야 하는 화면들
+  setInterval(() => { if (S.view === 'popular' && !document.hidden) renderPopularPage(); }, 60000); // 인기 종목 페이지
+  setInterval(() => { // 기업 분석: 현재가
+    const c = S.coCur;
+    if (S.view !== 'company' || !c || document.hidden || !$('#coPx')) return;
+    S.quotes.delete(wkey(c.m, c.t));
+    fetchQuotes([wkey(c.m, c.t)]).then(() => { const q = quoteOf(c.m, c.t); if (S.coCur === c && q && $('#coPx')) $('#coPx').innerHTML = `<b>${pxStr({ ...q, market: c.m })}</b><span class="${dirCls(q.livePct ?? q.pct)} mono">${(q.livePct ?? q.pct) > 0 ? '▲' : (q.livePct ?? q.pct) < 0 ? '▼' : ''} ${fmtPct(q.livePct ?? q.pct)}</span>`; });
+  }, 60000);
   every(5 * 60000, () => { if (S.view === 'sched') loadSched(true); });
   every(45000, () => loadEcon(false));
   setInterval(refreshChips, 60000);
