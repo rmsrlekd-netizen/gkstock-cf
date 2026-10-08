@@ -20,7 +20,9 @@ async function groupList(kind) {
   return [first, ...rest].flatMap((j) => j.groups || []).filter((g) => g.no && g.name).map((g) => ({ k: kind === 'industry' ? 'i' : 't', no: g.no, name: g.name, n: g.totalCount || 0 }));
 }
 async function members(k, no) {
-  const j = await nget(`https://m.stock.naver.com/api/stocks/${k === 'i' ? 'industry' : 'theme'}/${Number(no)}?page=1&pageSize=100`);
+  const base = `https://m.stock.naver.com/api/stocks/${k === 'i' ? 'industry' : 'theme'}/${Number(no)}?page=1&pageSize=`;
+  let j = await nget(base + 100).catch(() => null);
+  if (!j?.stocks?.length) j = await nget(base + 40); // 한 번에 많이 못 받는 경우 대비
   return (j.stocks || []).filter((x) => x.itemCode).map((x) => ({ t: x.itemCode, name: x.stockName, cap: n0(x.marketValue) || 0 }))
     .sort((a, b) => b.cap - a.cap).map(({ t, name }) => [t, name]); // 시가총액 큰 순 (대표 종목이 앞에)
 }
@@ -28,9 +30,10 @@ async function members(k, no) {
 /** 크론(3분마다): 목록은 하루 한 번, 종목은 한 번에 20개 그룹씩 (24시간 지난 것부터) */
 export async function themeDirWatch({ per = 20 } = {}) {
   const d = (await getJSON('tdir/kr')) || { at: 0, groups: [], mem: {} };
+  let listChanged = false;
   if (!d.groups.length || Date.now() - d.at > 24 * 3600e3) {
-    const [t, i] = await Promise.all([groupList('theme'), groupList('industry')]);
-    if (t.length > 50) { d.groups = [...t, ...i]; d.at = Date.now(); }
+    const [t, i] = await Promise.all([groupList('theme'), groupList('industry').catch(() => [])]);
+    if (t.length > 50) { d.groups = [...t, ...i]; d.at = Date.now(); listChanged = true; }
   }
   const key = (g) => `${g.k}${g.no}`;
   const todo = d.groups.filter((g) => !d.mem[key(g)] || Date.now() - (d.mem[key(g)].at || 0) > 24 * 3600e3)
@@ -41,7 +44,8 @@ export async function themeDirWatch({ per = 20 } = {}) {
   }
   const live = new Set(d.groups.map(key));
   for (const k of Object.keys(d.mem)) if (!live.has(k)) delete d.mem[k];
-  if (done || todo.length === 0) await setJSON('tdir/kr', d);
+  if (done || listChanged || todo.length === 0) await setJSON('tdir/kr', d); // 종목을 못 받아도 테마 목록은 먼저 저장
+  d.lastErr = null;
   return { groups: d.groups.length, filled: Object.keys(d.mem).length, done };
 }
 
@@ -57,7 +61,10 @@ export async function themeDir(mk) {
       ],
     };
   }
-  const d = (await getJSON('tdir/kr')) || { groups: [], mem: {} };
+  let d = (await getJSON('tdir/kr')) || { groups: [], mem: {} };
+  if (!d.groups.length) { // 아직 한 번도 안 만들어졌으면 지금 바로 (목록 + 일부 종목)
+    try { await themeDirWatch({ per: 10 }); d = (await getJSON('tdir/kr')) || d; } catch {}
+  }
   return {
     mk: 'KR', at: d.at,
     groups: d.groups.map((g) => ({ k: g.k, no: g.no, name: g.name, n: g.n, s: d.mem[`${g.k}${g.no}`]?.s || null })),

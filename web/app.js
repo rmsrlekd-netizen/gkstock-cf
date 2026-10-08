@@ -1675,7 +1675,7 @@
   S.td = { mk: load('gk_tdmk', 'KR'), k: 't', q: '', open: new Set(), data: {}, live: {} };
   async function loadTdir() {
     const mk = S.td.mk;
-    if (!S.td.data[mk] || Date.now() - S.td.data[mk]._at > 10 * 60e3) {
+    if (!S.td.data[mk] || Date.now() - S.td.data[mk]._at > (S.td.data[mk].groups?.some((g) => !g.s) ? 60e3 : 10 * 60e3)) {
       try { S.td.data[mk] = { ...(await getJSON('/api/themes?dir=' + mk)), _at: Date.now() }; } catch (e) { if (!S.td.data[mk]) S.td.data[mk] = { error: e.message, groups: [] }; }
     }
     renderTdir();
@@ -1683,7 +1683,7 @@
   const tdKey = (g) => `${S.td.mk}:${g.k}:${g.no || g.name}`;
   function tdChip(mk, t, name, q) {
     const pc = q ? (q.livePct ?? q.pct) : null;
-    return `<button class="th-chip" data-open-co="${mk}|${esc(t)}|${esc(name || '')}">${esc(mk === 'KR' ? name : t)}${pc != null ? ` <em class="${dirCls(pc)}">${pctTxt(pc)}</em>` : ''}</button>`;
+    return `<button class="th-chip td-chip" data-open-co="${mk}|${esc(t)}|${esc(name || '')}">${logoHTML(mk, t, name, 'xs')}${esc(mk === 'KR' ? name : t)}${pc != null ? ` <em class="${dirCls(pc)}">${pctTxt(pc)}</em>` : ''}</button>`;
   }
   function renderTdir() {
     const { mk, k, q } = S.td, d = S.td.data[mk];
@@ -3063,6 +3063,7 @@
     try { const y = Number(sessionStorage.getItem('gk_scroll')); if (y) { sessionStorage.removeItem('gk_scroll'); setTimeout(() => scrollTo({ top: y }), 800); } } catch {} }
   every(60000, () => { if (S.view === 'themes') loadThemes(true); });
   // 그 밖에 켜 두기만 해도 자동으로 바뀌어야 하는 화면들
+  setInterval(() => { if (S.view === 'tdir' && !document.hidden) loadTdir(); }, 60000); // 테마·섹터 관련주
   setInterval(() => { if (S.view === 'popular' && !document.hidden) renderPopularPage(); }, 60000); // 인기 종목 페이지
   setInterval(() => { // 기업 분석: 현재가
     const c = S.coCur;

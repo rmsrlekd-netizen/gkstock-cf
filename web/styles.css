@@ -1813,3 +1813,6 @@ button.br-mv:hover { border-color: var(--accent); }
 .td-car { margin-left: auto; font-style: normal; font-size: .76rem; color: var(--accent); white-space: nowrap; }
 .td-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
 @media (max-width: 720px) { .td-grid { grid-template-columns: 1fr; } .td-search { max-width: none; flex-basis: 100%; } }
+
+.logo-b.xs { width: 1.25rem; height: 1.25rem; border-radius: 5px; } .logo-b.xs .mm { font-size: .42rem; }
+.th-chip.td-chip { display: inline-flex; align-items: center; gap: .38rem; padding-left: .3rem; }

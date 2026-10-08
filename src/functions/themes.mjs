@@ -31,7 +31,8 @@ export default async (req, ctx) => {
     if (dir) { // 테마·섹터 전체 목록 (관련주 사전)
       const { themeDir } = await import('../lib/themedir.mjs');
       const d = await themeDir(dir === 'US' ? 'US' : 'KR');
-      return json({ ok: true, ...d }, { cdnSeconds: 600, swr: 3600 });
+      const filling = !d.groups.length || d.groups.some((g) => !g.s);
+      return json({ ok: true, ...d }, { cdnSeconds: filling ? 30 : 600, swr: filling ? 60 : 3600 }); // 채우는 중엔 짧게
     }
     if (kind) {
       const no = Number(u.searchParams.get('no'));
