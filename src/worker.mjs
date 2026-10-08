@@ -148,6 +148,7 @@ export default {
       const krz = zoned(now, 'Asia/Seoul'), usz = zoned(now, 'America/New_York');
       const krOpen = !['Sat', 'Sun'].includes(krz.wd) && krz.m >= 8 * 60 + 50 && krz.m <= 16 * 60;
       const usOpen = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 4 * 60 && usz.m <= 20 * 60;
+      jobs3.push(import('./lib/themedir.mjs').then((x) => x.themeDirWatch()).then((r) => { if (r?.done) console.log('tdir', JSON.stringify(r)); }).catch((e) => console.warn('tdir', e.message))); // 테마·섹터 관련주 사전 (조금씩 채움)
       if (krOpen || usOpen || min % 30 < 3) jobs3.push(whyWatch().then((r) => console.log('why', JSON.stringify(r))).catch((e) => console.warn('why', e.message)));
       // 내일 일정 (20분마다 새로 모으고, 새 거래일이 되면 AI 요약)
       // (장 마감 브리핑은 메인 화면 AI 요약과 겹쳐서 중지)

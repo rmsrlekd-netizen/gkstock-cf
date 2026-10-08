@@ -1800,3 +1800,16 @@ button.br-mv:hover { border-color: var(--accent); }
 @media (min-width: 721px) { .cta-banners.cb-pc .cb { justify-content: flex-start; } .cta-banners.cb-pc .cb b { font-size: 1rem; } .cta-banners.cb-pc .cb small { font-size: .78rem; } }
 @media (min-width: 721px) and (max-width: 1440px) { .cta-banners.cb-pc .cb .cb-arr { display: none; } .cta-banners.cb-pc .cb { padding: .5rem .75rem; gap: .55rem; } .cta-banners.cb-pc .cb b { font-size: .92rem; } .cta-banners.cb-pc .cb small { font-size: .72rem; } }
 
+
+/* ── v115: 테마·섹터 관련주 사전 ── */
+.td-bar { gap: .7rem; }
+.td-search { flex: 1 1 260px; max-width: 420px; height: 2.4rem; }
+.td-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: .8rem; align-items: start; }
+.td-card { padding: .85rem .95rem; cursor: pointer; transition: border-color .15s; }
+.td-card:hover { border-color: rgba(160,140,255,.5); }
+.td-card.open { grid-column: 1 / -1; }
+.td-h { display: flex; align-items: baseline; gap: .5rem; margin-bottom: .55rem; }
+.td-h b { font-size: 1rem; }
+.td-car { margin-left: auto; font-style: normal; font-size: .76rem; color: var(--accent); white-space: nowrap; }
+.td-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+@media (max-width: 720px) { .td-grid { grid-template-columns: 1fr; } .td-search { max-width: none; flex-basis: 100%; } }

@@ -26,7 +26,13 @@ async function build() {
 export default async (req, ctx) => {
   const u = new URL(req.url);
   const kind = u.searchParams.get('kind');
+  const dir = u.searchParams.get('dir');
   try {
+    if (dir) { // 테마·섹터 전체 목록 (관련주 사전)
+      const { themeDir } = await import('../lib/themedir.mjs');
+      const d = await themeDir(dir === 'US' ? 'US' : 'KR');
+      return json({ ok: true, ...d }, { cdnSeconds: 600, swr: 3600 });
+    }
     if (kind) {
       const no = Number(u.searchParams.get('no'));
       if (!no) return json({ ok: false, error: '번호 없음' }, { status: 400 });

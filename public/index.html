@@ -40,7 +40,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=114" />
+  <link rel="stylesheet" href="/styles.css?v=115" />
   <script>document.documentElement.classList.add('js');</script>
   <style>.js .ssr{display:none}.ssr{max-width:860px;margin:2rem auto;padding:0 1rem;color:#eef0ff;font-family:sans-serif;line-height:1.7}</style>
 </head>
@@ -69,11 +69,12 @@
       <nav class="nav" id="nav">
         <button data-go="home" class="on">라이브 피드</button>
         <button data-go="sched">오늘 일정</button>
-        <button data-go="themes">테마·섹터</button>
+        <button data-go="themes">당일 테마</button>
         <button data-go="halt" class="nav-halt">VI·서킷</button>
         <button data-go="econ" class="mx dx2">경제지표</button>
         <button data-go="earnings" class="mx dx">실적 캘린더</button>
         <button data-go="react" class="mx">공시 반응</button>
+        <button data-go="tdir" class="mx dx">테마·섹터</button>
         <button data-go="company" class="mx dx">기업 분석</button>
         <button data-go="flows" class="mx dx">수급</button>
         <button data-go="market" class="mx dx">시장 지표</button>
@@ -195,9 +196,19 @@
     <section id="viewIssue" class="page" hidden><div id="issPage"></div></section>
     <section id="viewAdmin" class="page" hidden><div id="adminBody"></div></section>
     <section id="viewThemes" class="page" hidden>
-      <div class="page-head"><h2>오늘의 주도 테마·섹터</h2><span class="muted" id="thMeta"></span></div>
+      <div class="page-head"><h2>당일 테마 · 오늘의 주도 테마·섹터</h2><span class="muted" id="thMeta"></span></div>
       <div class="filter-row"><div class="mkseg" id="thSeg"><button data-th="KR" class="on kr"><i>KR</i>한국</button><button data-th="US" class="us"><i>US</i>미국</button></div></div>
       <div id="thBody"><div class="skel"></div><div class="skel"></div></div>
+    </section>
+    <section id="viewTdir" class="page" hidden>
+      <div class="page-head"><h2>테마·섹터 관련주</h2><span class="muted" id="tdMeta"></span></div>
+      <div class="filter-row td-bar">
+        <div class="mkseg" id="tdSeg"><button data-td="KR" class="on kr"><i>KR</i>한국</button><button data-td="US" class="us"><i>US</i>미국</button></div>
+        <div class="seg" id="tdKind"><button data-tk="t" class="on">테마</button><button data-tk="i">업종·섹터</button></div>
+        <div class="search td-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="tdQ" type="search" placeholder="테마·종목 이름으로 찾기 (예: 원전, 삼성전자)" autocomplete="off" /></div>
+      </div>
+      <div id="tdBody" class="td-grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+      <p class="note">테마·업종마다 시가총액이 큰 대표 종목을 먼저 보여 줘요. 카드를 누르면 소속 종목 전체와 오늘 등락률이 펼쳐지고, 종목을 누르면 기업 분석으로 이동합니다. 한국은 네이버 증권 테마·업종 분류, 미국은 사이트가 정리한 테마와 S&amp;P 500·나스닥100 섹터 기준이에요.</p>
     </section>
     <section id="viewSched" class="page" hidden>
       <div class="page-head"><h2>오늘 일정</h2><span class="muted" id="scMeta"></span></div>
@@ -289,6 +300,6 @@
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
   <button class="to-top" id="toTop" aria-label="맨 위로" title="맨 위로"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>맨 위로</span></button>
-  <script src="/app.js?v=114" defer></script>
+  <script src="/app.js?v=115" defer></script>
 </body>
 </html>

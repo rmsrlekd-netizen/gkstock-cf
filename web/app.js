@@ -1671,6 +1671,66 @@
   // ───────────────────────── 오늘의 주도 테마·섹터 ─────────────────────────
   S.thMk = load('gk_thmk', 'KR');
   const pctTxt = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%`);
+  // ───────── 테마·섹터 관련주 사전 ─────────
+  S.td = { mk: load('gk_tdmk', 'KR'), k: 't', q: '', open: new Set(), data: {}, live: {} };
+  async function loadTdir() {
+    const mk = S.td.mk;
+    if (!S.td.data[mk] || Date.now() - S.td.data[mk]._at > 10 * 60e3) {
+      try { S.td.data[mk] = { ...(await getJSON('/api/themes?dir=' + mk)), _at: Date.now() }; } catch (e) { if (!S.td.data[mk]) S.td.data[mk] = { error: e.message, groups: [] }; }
+    }
+    renderTdir();
+  }
+  const tdKey = (g) => `${S.td.mk}:${g.k}:${g.no || g.name}`;
+  function tdChip(mk, t, name, q) {
+    const pc = q ? (q.livePct ?? q.pct) : null;
+    return `<button class="th-chip" data-open-co="${mk}|${esc(t)}|${esc(name || '')}">${esc(mk === 'KR' ? name : t)}${pc != null ? ` <em class="${dirCls(pc)}">${pctTxt(pc)}</em>` : ''}</button>`;
+  }
+  function renderTdir() {
+    const { mk, k, q } = S.td, d = S.td.data[mk];
+    $$('#tdSeg button').forEach((b) => b.classList.toggle('on', b.dataset.td === mk));
+    $$('#tdKind button').forEach((b) => b.classList.toggle('on', b.dataset.tk === k));
+    const box = $('#tdBody');
+    if (!d) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; return; }
+    if (d.error) { box.innerHTML = `<div class="empty">불러오지 못했습니다: ${esc(d.error)}</div>`; return; }
+    const ql = q.trim().toLowerCase();
+    let list = d.groups.filter((g) => g.k === k);
+    if (ql) list = d.groups.filter((g) => g.name.toLowerCase().includes(ql) || (g.s || []).some(([t, n]) => String(n).toLowerCase().includes(ql) || String(t).toLowerCase() === ql));
+    if (!ql) list.sort((a, b) => (b.s ? 1 : 0) - (a.s ? 1 : 0) || (k === 't' && mk === 'KR' ? (b.n || 0) - (a.n || 0) : 0));
+    const filled = d.groups.filter((g) => g.s).length;
+    $('#tdMeta').textContent = mk === 'KR' ? `테마 ${d.groups.filter((g) => g.k === 't').length}개 · 업종 ${d.groups.filter((g) => g.k === 'i').length}개${filled < d.groups.length ? ` · 종목 정리 중 ${filled}/${d.groups.length}` : ''}` : `테마 ${d.groups.filter((g) => g.k === 't').length}개 · 섹터 ${d.groups.filter((g) => g.k === 'i').length}개`;
+    if (!list.length) { box.innerHTML = `<div class="empty">${ql ? `"${esc(q)}"에 맞는 테마·종목이 없어요.` : '목록을 준비하는 중이에요. 잠시 후 다시 확인해 주세요.'}</div>`; return; }
+    const keys = [];
+    box.innerHTML = list.slice(0, ql ? 60 : 400).map((g) => {
+      const key = tdKey(g), open = S.td.open.has(key), s = g.s || [];
+      const hit = ql ? s.filter(([t, n]) => String(n).toLowerCase().includes(ql) || String(t).toLowerCase() === ql).map(([t]) => t) : [];
+      const rep = [...s.filter(([t]) => hit.includes(t)), ...s.filter(([t]) => !hit.includes(t))].slice(0, 4);
+      const show = open ? s : rep;
+      for (const [t] of show) keys.push(wkey(mk, t));
+      const live = S.td.live[key];
+      const rows = open ? (mk === 'KR' && live?.length ? [...live.map((x) => tdChip('KR', x.t, x.name, { pct: x.pct })), ...s.filter(([t]) => !live.some((x) => x.t === t)).map(([t, n]) => tdChip('KR', t, n, quoteOf('KR', t)))] : s.map(([t, n]) => tdChip(mk, t, n, quoteOf(mk, t)))) : rep.map(([t, n]) => tdChip(mk, t, n, quoteOf(mk, t)));
+      return `<div class="card td-card${open ? ' open' : ''}" data-td-key="${esc(key)}" data-td-no="${esc(g.no || '')}" data-td-k="${g.k}">
+        <div class="td-h"><b>${esc(g.name)}</b><span class="muted sm">${s.length || g.n || 0}종목${g.etf ? ' · ' + esc(g.etf) : ''}</span><i class="td-car">${open ? '접기 ▴' : (s.length > 4 ? `+${s.length - 4} 더보기 ▾` : '▾')}</i></div>
+        <div class="td-chips">${s.length ? rows.join('') : '<span class="muted sm">종목 정리 중…</span>'}</div></div>`;
+    }).join('');
+    // 보이는 종목 시세 (미국은 오늘 등락률, 한국은 펼친 카드만 네이버 실시간)
+    const need = [...new Set(keys)].filter((x) => !quoteOf(...x.split(':')));
+    if (need.length && !renderTdir._busy) { renderTdir._busy = true; (async () => { for (let i = 0; i < Math.min(need.length, 120); i += 40) await fetchQuotes(need.slice(i, i + 40)); renderTdir._busy = false; if (S.view === 'tdir') renderTdir(); })(); }
+  }
+  function bindTdir() {
+    $('#tdSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-td]'); if (!b) return; S.td.mk = b.dataset.td; save('gk_tdmk', S.td.mk); loadTdir(); });
+    $('#tdKind').addEventListener('click', (e) => { const b = e.target.closest('[data-tk]'); if (!b) return; S.td.k = b.dataset.tk; renderTdir(); });
+    let t; $('#tdQ').addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { S.td.q = e.target.value; renderTdir(); }, 150); });
+    $('#tdBody').addEventListener('click', async (e) => {
+      if (e.target.closest('[data-open-co]')) return; // 종목 누르면 기업 분석 (전역 처리)
+      const c = e.target.closest('.td-card'); if (!c) return;
+      const key = c.dataset.tdKey;
+      if (S.td.open.has(key)) { S.td.open.delete(key); renderTdir(); return; }
+      S.td.open.add(key); renderTdir();
+      if (S.td.mk === 'KR' && c.dataset.tdNo) { // 한국: 펼친 테마는 오늘 등락률 순으로 (네이버)
+        try { const j = await getJSON(`/api/themes?kind=${c.dataset.tdK === 'i' ? 'industry' : 'theme'}&no=${c.dataset.tdNo}`); S.td.live[key] = j.stocks || []; if (S.view === 'tdir') renderTdir(); } catch {}
+      }
+    });
+  }
   async function loadThemes(force) {
     if (S.view !== 'themes') return;
     if (!S.themes || force || Date.now() - (S.themesAt || 0) > 60e3) {
@@ -2504,7 +2564,7 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
-  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact' };
+  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', tdir: '#viewTdir', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact' };
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
@@ -2519,6 +2579,7 @@
     if (v === 'market') { renderMarket(); pollSpark(); }
     if (v === 'earnings') loadEarnings();
     if (v === 'themes') loadThemes();
+    if (v === 'tdir') loadTdir();
     if (v === 'sched') loadSched();
     if (v === 'halt') loadHalts();
     if (v === 'react') loadReact();
@@ -2964,6 +3025,7 @@
   bindSched();
   bindHalts();
   bindReact();
+  bindTdir();
   syncNavMore();
   { // 공유 링크 (?top=digest&mk=US)로 들어오면 AI 핵심 공시를 바로 보여줌
     const qp = new URLSearchParams(location.search);
