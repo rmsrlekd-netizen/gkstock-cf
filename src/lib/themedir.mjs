@@ -27,13 +27,17 @@ async function members(k, no) {
     .sort((a, b) => b.cap - a.cap).map(({ t, name }) => [t, name]); // 시가총액 큰 순 (대표 종목이 앞에)
 }
 
-/** 크론(3분마다): 목록은 하루 한 번, 종목은 한 번에 20개 그룹씩 (24시간 지난 것부터) */
+/** 크론(3분마다): 목록은 1시간마다, 종목은 한 번에 20개 그룹씩 (24시간 지난 것부터) */
 export async function themeDirWatch({ per = 20 } = {}) {
   const d = (await getJSON('tdir/kr')) || { at: 0, groups: [], mem: {} };
   let listChanged = false;
-  if (!d.groups.length || Date.now() - d.at > 24 * 3600e3) {
+  if (!d.groups.length || Date.now() - d.at > 3600e3) { // 네이버에 새 테마가 생기면 1시간 안에 반영
     const [t, i] = await Promise.all([groupList('theme'), groupList('industry').catch(() => [])]);
-    if (t.length > 50) { d.groups = [...t, ...i]; d.at = Date.now(); listChanged = true; }
+    if (t.length > 50) {
+      const old = new Set(d.groups.map((g) => g.k + g.no));
+      d.groups = [...t, ...i]; d.at = Date.now(); listChanged = true;
+      d.groups.forEach((g) => { if (!old.has(g.k + g.no)) delete d.mem[g.k + g.no]; }); // 새 테마는 종목부터 바로 채우기
+    }
   }
   const key = (g) => `${g.k}${g.no}`;
   const todo = d.groups.filter((g) => !d.mem[key(g)] || Date.now() - (d.mem[key(g)].at || 0) > 24 * 3600e3)
