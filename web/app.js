@@ -3044,6 +3044,23 @@
   every(60000, () => poll('news'));
   every(60000, pollMarket);
   every(60000, pollPopular);
+  // ── 새 버전 자동 적용: 2분마다 배포 버전을 확인해서 바뀌었으면 스스로 새로 고침 ──
+  //  (입력 중이거나 상세 글을 읽는 중이면 기다렸다가, 화면을 잠시 안 볼 때·목록으로 돌아올 때 적용)
+  { const myV = (document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/) || [])[1];
+    let newV = null, lastAct = Date.now();
+    ['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach((ev) => addEventListener(ev, () => { lastAct = Date.now(); }, { passive: true }));
+    const busy = () => { const a = document.activeElement; return (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) && a.value) || S.view === 'item' || !$('#modal')?.hidden; };
+    const apply = () => { if (!newV || busy()) return; try { sessionStorage.setItem('gk_scroll', String(scrollY)); } catch {} location.reload(); };
+    const check = async () => {
+      if (!myV) return;
+      try { const j = await getJSON('/api/ver?t=' + Date.now()); if (j.v && j.v !== myV) newV = j.v; } catch {}
+      if (newV && (document.hidden || Date.now() - lastAct > 60e3)) apply(); // 안 보고 있거나 1분 넘게 손을 안 댔으면 바로
+      else if (newV && !check.toasted) { check.toasted = true; toast('새 버전이 나왔어요 · 잠시 후 자동으로 적용돼요'); }
+    };
+    setInterval(check, 120e3); setTimeout(check, 20e3);
+    document.addEventListener('visibilitychange', () => { if (document.hidden && newV) apply(); });
+    addEventListener('hashchange', () => { if (newV) setTimeout(apply, 300); });
+    try { const y = Number(sessionStorage.getItem('gk_scroll')); if (y) { sessionStorage.removeItem('gk_scroll'); setTimeout(() => scrollTo({ top: y }), 800); } } catch {} }
   every(60000, () => { if (S.view === 'themes') loadThemes(true); });
   // 그 밖에 켜 두기만 해도 자동으로 바뀌어야 하는 화면들
   setInterval(() => { if (S.view === 'popular' && !document.hidden) renderPopularPage(); }, 60000); // 인기 종목 페이지

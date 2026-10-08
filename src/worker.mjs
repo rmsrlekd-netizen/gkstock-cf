@@ -119,6 +119,12 @@ export default {
     if (im && req.method === 'GET') return cached(req, ctx, () => renderIssuePage(env, req, im[1]));
     const iom = url.pathname.match(/^\/og\/i\/((?:kr|us)-\d{8}-(?:\d{4}|\d{1,2}))\.png$/);
     if (iom && req.method === 'GET') return cached(req, ctx, () => renderIssueOg(ctx, iom[1]).catch((e) => { console.error('og-i', e); return env.ASSETS.fetch(new Request(new URL('/img/icon-512.png', req.url))); }));
+    // 지금 배포된 화면 버전 (켜 둔 화면이 새 버전을 알아채고 스스로 새로 고침하는 데 씀)
+    if (url.pathname === '/api/ver') {
+      let v = null;
+      try { const h = await (await env.ASSETS.fetch(new Request(new URL('/index.html', req.url)))).text(); v = (h.match(/app\.js\?v=(\d+)/) || [])[1] || null; } catch {}
+      return new Response(JSON.stringify({ ok: true, v }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+    }
     if (url.pathname === '/sitemap-pages.xml') return cached(req, ctx, () => sitemap());
     // www 주소로 들어오면 대표 주소로
     if (url.hostname === 'www.gk-stock.com') return Response.redirect('https://gk-stock.com' + url.pathname + url.search, 301);
