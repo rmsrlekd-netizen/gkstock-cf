@@ -6,6 +6,7 @@
 //  숫자(등락률)는 AI가 쓰지 않고 실제 시세에서 붙임
 import { fetchWithTimeout } from './util.mjs';
 import { getJSON, setJSON } from './store.mjs';
+import { isTradingDay } from './schedule.mjs';
 import { hasAI, askAI, parseJSON, aiPauseInfo } from './ai.mjs';
 
 // 회차 시각 (현지 시각, 분 단위). 국장은 변동성이 큰 개장 직후(9:00~10:30)엔 30분마다
@@ -255,7 +256,8 @@ export async function issuesWatch(now = new Date(), ctx = null) {
     const idx = (await getJSON(`issues/idx/${mk}`)) || [];
     const today = local(mk, now).date;
     const holKey = `issues/hol/${mk}/${today}`;
-    let holiday = !!(await getJSON(holKey).catch(() => null))?.on;
+    // 휴장일: ① 시장별 달력(한국·미국 따로) ② 달력에 없는 임시휴장은 장중 시세로 스스로 판단
+    let holiday = !isTradingDay(mk, today) || !!(await getJSON(holKey).catch(() => null))?.on;
     let s = dueSlot(mk, now, { holiday });
     // 처음 설치 직후 한 회차도 없으면 가장 최근 시간으로 바로 만들어 둠
     const boot = !s && !idx.length;
