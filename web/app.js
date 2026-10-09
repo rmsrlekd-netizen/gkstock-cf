@@ -1734,7 +1734,7 @@
   async function loadThemes(force) {
     if (S.view !== 'themes') return;
     if (!S.themes || force || Date.now() - (S.themesAt || 0) > 60e3) {
-      try { S.themes = await getJSON('/api/themes', {}); S.themesAt = Date.now(); } catch (e) { if (!S.themes) S.themes = { error: e.message }; }
+      try { S.themes = await getJSON('/api/themes?t=' + Math.floor(Date.now() / 30e3), {}); S.themesAt = Date.now(); } catch (e) { if (!S.themes) S.themes = { error: e.message }; }
     }
     renderThemes();
   }
@@ -1776,7 +1776,8 @@
     $$('#thSeg button').forEach((b) => b.classList.toggle('on', b.dataset.th === S.thMk));
     if (!d) return;
     if (d.error) { $('#thBody').innerHTML = `<div class="empty">테마 정보를 불러오지 못했습니다: ${esc(d.error)}</div>`; return; }
-    $('#thMeta').textContent = `${fmtDT(new Date(d.at)).full} 기준 · 1분마다 갱신`;
+    const thSes = S.thMk === 'US' && d.us?.session ? (d.us.session === 'DAY' ? ' · 주간거래(데이마켓) 등락률' : ' · 프리마켓 등락률') : '';
+    $('#thMeta').textContent = `${fmtDT(new Date(d.at)).full} 기준${thSes} · 1분마다 갱신`;
     if (S.thMk === 'KR') {
       const k = d.kr;
       if (!k) { $('#thBody').innerHTML = '<div class="empty">한국 테마 데이터를 불러오지 못했습니다.</div>'; return; }

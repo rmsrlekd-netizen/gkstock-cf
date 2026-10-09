@@ -43,8 +43,8 @@ export default async (req, ctx) => {
     let d = await getJSON('themes/v1');
     let mode = 'cache';
     if (!d) { d = await build(); mode = 'live'; }
-    else if (Date.now() - d.at > 90e3 && refreshInBackground(ctx, 'themes', build)) mode = 'refreshing';
-    return json({ ok: true, mode, ...d }, { cdnSeconds: 60, swr: 120 });
+    else if (Date.now() - d.at > 50e3 && refreshInBackground(ctx, 'themes', build, 45e3)) mode = 'refreshing';
+    return json({ ok: true, mode, ...d }, { cdnSeconds: 20, swr: 40 }); // 묵은 목록이 오래 남지 않게 짧게
   } catch (e) {
     return json({ ok: false, error: String(e.message || e) }, { status: 502, cdnSeconds: 20 });
   }

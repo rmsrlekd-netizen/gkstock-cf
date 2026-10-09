@@ -165,6 +165,13 @@ export async function usThemes(getQuotes) {
   const parts = [];
   for (let i = 0; i < stocks.length; i += 60) parts.push(stocks.slice(i, i + 60));
   for (const r of await Promise.all(parts.map((p) => getQuotes(p.map((t) => 'US:' + t)).catch(() => ({}))))) Object.assign(sq, r);
+  // 정규장 열리기 전(프리마켓·주간거래)엔 어제 종가 등락에 멈춰 있지 않도록 '지금 시간외 등락률'로 (둘 다 전일 종가 대비)
+  //  애프터마켓은 오늘 종가 대비라 섞지 않고 정규장 결과 그대로
+  const live = (v) => v && v.livePct != null && v.live != null && (v.session === 'PRE' || v.session === 'DAY');
+  let liveN = 0, liveS = null;
+  for (const src of [sq, nq]) for (const [k, v] of Object.entries(src)) if (live(v)) { src[k] = { ...v, price: v.live, pct: v.livePct }; liveN++; liveS = v.session; }
+  for (const t of etfs) { const v = nq['US:' + t]; if (v?.price != null && v.pct != null) q[t] = { price: v.price, pct: v.pct }; }
+  const session = liveN >= 20 ? liveS : null;
   const sectors = US_SECTORS.map(([t, name]) => ({ t, name, ...(q[t] || {}) })).filter((x) => x.pct != null).sort((a, b) => b.pct - a.pct);
   const themes = US_THEMES.map(([t, name, list]) => ({ t, name, ...(q[t] || {}), stocks: list.map((s) => ({ t: s, ...(sq['US:' + s] || {}) })).filter((s) => s.price != null).sort((a, b) => (b.pct ?? -99) - (a.pct ?? -99)) }))
     .filter((x) => x.pct != null).sort((a, b) => b.pct - a.pct);
@@ -176,5 +183,5 @@ export async function usThemes(getQuotes) {
   // 지수 흐름: 나스닥100 · S&P 500 대형주 (오른 종목·내린 종목 비율)
   const spxBig = [...new Set(Object.values(US_SECTOR_MEMBERS).flat())];
   const indexGroups = [groupStats('나스닥 100', 'QQQ', NDX, sq, { etfPct: q.QQQ?.pct ?? null }), groupStats('S&P 500 대형주', 'SPY', spxBig, sq, { etfPct: q.SPY?.pct ?? null })].filter(Boolean);
-  return { sectors, themes, groups, sectorGroups, indexGroups, groupCount: US_GROUPS.length };
+  return { sectors, themes, groups, sectorGroups, indexGroups, groupCount: US_GROUPS.length, session };
 }
