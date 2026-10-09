@@ -1816,3 +1816,16 @@ button.br-mv:hover { border-color: var(--accent); }
 
 .logo-b.xs { width: 1.25rem; height: 1.25rem; border-radius: 5px; } .logo-b.xs .mm { font-size: .42rem; }
 .th-chip.td-chip { display: inline-flex; align-items: center; gap: .38rem; padding-left: .3rem; }
+
+/* 관리자: 누적 · 순수 방문자 */
+.adm-cum { grid-template-columns: 1fr; }
+.adm-cum .card > span small { display: block; font-weight: 500; font-size: .7rem; }
+.adm-dist { display: grid; gap: .4rem; }
+.adm-dist > div { display: grid; grid-template-columns: 5.5rem 1fr 3.5rem; align-items: center; gap: .5rem; font-size: .85rem; }
+.adm-dist i { display: block; height: 14px; border-radius: 4px; background: rgba(139,108,255,.6); min-width: 2px; }
+.adm-dist b { font-family: var(--mono); text-align: right; }
+.adm-tb { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.adm-tb th, .adm-tb td { padding: .3rem .35rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,.06); white-space: nowrap; }
+.adm-tb th:first-child, .adm-tb td:first-child { text-align: left; }
+.adm-tb th { color: var(--muted); font-weight: 600; }
+@media (max-width: 720px) { .adm-uniq .adm-kpis { grid-template-columns: 1fr 1fr !important; } .adm-uniq .adm-grid { grid-template-columns: 1fr; } }

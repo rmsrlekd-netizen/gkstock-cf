@@ -2740,7 +2740,9 @@
   function trackPV() {
     let ref = '';
     try { ref = document.referrer ? new URL(document.referrer).hostname : ''; } catch {}
-    sendTrack({ t: 'pv', ref, m: isMobile() });
+    let vid = '';
+    try { vid = localStorage.getItem('gk_vid') || ''; if (!vid) { vid = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join(''); localStorage.setItem('gk_vid', vid); } } catch {}
+    sendTrack({ t: 'pv', ref, m: isMobile(), vid }); // vid: 이 기기를 구분하는 임의 번호 (개인정보 아님 · 서버엔 해시로만 저장)
   }
   function trackItem(id) {
     try { const k = 'gk_iv_' + id; if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch {}
@@ -2779,6 +2781,19 @@
       <div class="adm-kpis">
         ${[['오늘', d.today], ['최근 7일', d.week], ['최근 30일', d.month]].map(([l, x]) => `<div class="card"><span>${l}</span><div><b>${fmtInt(x?.uv || 0)}</b><small>방문자</small></div><div><b>${fmtInt(x?.pv || 0)}</b><small>페이지뷰</small></div><div><b>${fmtInt(x?.iv || 0)}</b><small>게시물 조회</small></div></div>`).join('')}
       </div>
+      <div class="adm-kpis adm-cum">
+        <div class="card"><span>누적<small>${d.all?.since ? esc(d.all.since) + '부터' : ''}</small></span><div><b>${fmtInt(d.all?.uv || 0)}</b><small>방문자 (일별 합계)</small></div><div><b>${fmtInt(d.all?.pv || 0)}</b><small>페이지뷰</small></div><div><b>${fmtInt(d.all?.iv || 0)}</b><small>게시물 조회</small></div></div>
+      </div>
+      ${(() => { // 순수 방문자 · 같은 기기 반복 방문
+        const v = d.devices; if (!v) return '';
+        const t = d.today || {}, dist = Object.entries(v.dist || {}), dmax = Math.max(1, ...dist.map(([, n]) => n));
+        const avg = v.n ? (v.visits / v.n).toFixed(1) : '0';
+        return `<div class="card adm-uniq" style="margin-bottom:.8rem"><h3>순수 방문자 · 재방문 <small class="muted">${v.since ? esc(v.since) + '부터 기기 기준 집계' : '이번 업데이트부터 집계 시작'}</small></h3>
+          <div class="adm-kpis" style="grid-template-columns:repeat(4,1fr);margin:0 0 .8rem">${[['누적 순수 방문자', v.n, '대 (중복 없는 기기 수)'], ['같은 기기 총 방문', v.visits, '회 (30분 넘게 쉬었다 오면 1회)'], ['기기당 평균 방문', avg, '회'], ['오늘 신규 / 재방문', `${fmtInt(t.nd || 0)} / ${fmtInt(t.rd || 0)}`, '대 (처음 온 기기 / 예전에 온 기기)']].map(([l, n, u]) => `<div class="card" style="display:block"><span>${l}</span><div><b>${typeof n === 'number' ? fmtInt(n) : n}</b><small>${u}</small></div></div>`).join('')}</div>
+          <div class="adm-grid" style="margin:0"><div><h3>방문 횟수별 기기 수</h3><div class="adm-dist">${dist.map(([l, n]) => `<div><span>${l}</span><i style="width:${Math.round((n / dmax) * 100)}%"></i><b>${fmtInt(n)}</b></div>`).join('')}</div></div>
+          <div><h3>가장 자주 온 기기 TOP 15</h3><table class="adm-tb"><tr><th>#</th><th>방문</th><th>방문일</th><th>페이지뷰</th><th>처음</th><th>마지막</th></tr>${(v.top || []).map((x, i) => `<tr><td>${i + 1} ${x.m ? '📱' : '💻'}</td><td><b>${fmtInt(x.visits)}회</b></td><td>${fmtInt(x.days)}일</td><td>${fmtInt(x.pv)}</td><td>${esc(String(x.first || '').slice(5))}</td><td>${esc(String(x.last || '').slice(5))}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">아직 기록이 없습니다.</td></tr>'}</table></div></div>
+          <p class="note">기기 = 같은 브라우저. 같은 사람이 휴대폰·컴퓨터로 오면 2대로, 방문 기록을 지우면 새 기기로 셉니다. 관리자 본인 방문은 제외.</p></div>`;
+      })()}
       <div class="adm-grid">
         <div class="card"><h3>일별 방문 (최근 30일)</h3><div class="adm-bars">${d.days.map((x) => `<div title="${x.d} · 방문자 ${x.uv} · 페이지뷰 ${x.pv}"><i style="height:${Math.round((x.pv / maxPv) * 100)}%"></i><i class="uv" style="height:${Math.round((x.uv / maxPv) * 100)}%"></i><span>${x.d.slice(8)}</span></div>`).join('')}</div><p class="note">■ 페이지뷰 ■ 방문자 · 막대에 마우스를 올리면 숫자가 보입니다</p></div>
         <div class="card"><h3>오늘 시간대별 (KST)</h3><div class="adm-bars hrs">${d.hours.map((v, i) => `<div title="${i}시 · ${v}회"><i style="height:${Math.round((v / maxHr) * 100)}%"></i><span>${i % 3 ? '' : i}</span></div>`).join('')}</div>
