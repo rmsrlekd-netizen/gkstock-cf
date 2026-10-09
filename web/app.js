@@ -690,7 +690,7 @@
 
   // ───────────────────────── 현재가 ─────────────────────────
   async function fetchQuotes(keys) {
-    const need = [...new Set(keys)].filter((k) => { const q = S.quotes.get(k); return !q || Date.now() - q._at > 55e3; }).slice(0, 40);
+    const need = [...new Set(keys)].filter((k) => { const q = S.quotes.get(k); return !q || Date.now() - q._at > 13e3; }).slice(0, 40);
     if (!need.length) return false;
     need.forEach((k) => S.quotes.set(k, { ...(S.quotes.get(k) || {}), _at: Date.now() }));
     try {
@@ -805,8 +805,8 @@
   }
   async function pollPopular() {
     if (document.hidden && S.popular) return;
-    // 30초 단위 주소로 받아서 브라우저·중간 캐시에 묵은 목록이 남지 않게 (켜 두기만 해도 자동 갱신)
-    try { const j = await getJSON('/api/popular?t=' + Math.floor(Date.now() / 30e3)); if (!S.popular || !(j.at < S.popular.at)) S.popular = j; } catch { S.popular = S.popular || { kr: [], us: [], at: Date.now(), krSrc: '', usSrc: '' }; }
+    // 10초 단위 주소로 받아서 브라우저·중간 캐시에 묵은 목록이 남지 않게 (켜 두기만 해도 자동 갱신)
+    try { const j = await getJSON('/api/popular?t=' + Math.floor(Date.now() / 10e3)); if (!S.popular || !(j.at < S.popular.at)) S.popular = j; } catch { S.popular = S.popular || { kr: [], us: [], at: Date.now(), krSrc: '', usSrc: '' }; }
     renderPopular();
   }
 
@@ -3043,7 +3043,7 @@
   every(30000, () => poll('dart'));
   every(60000, () => poll('news'));
   every(60000, pollMarket);
-  every(60000, pollPopular);
+  every(15000, pollPopular); // 실시간 상승·하락·인기: 15초마다
   // ── 새 버전 자동 적용: 2분마다 배포 버전을 확인해서 바뀌었으면 스스로 새로 고침 ──
   //  (입력 중이거나 상세 글을 읽는 중이면 기다렸다가, 화면을 잠시 안 볼 때·목록으로 돌아올 때 적용)
   { const myV = (document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/) || [])[1];
@@ -3064,7 +3064,7 @@
   every(60000, () => { if (S.view === 'themes') loadThemes(true); });
   // 그 밖에 켜 두기만 해도 자동으로 바뀌어야 하는 화면들
   setInterval(() => { if (S.view === 'tdir' && !document.hidden) loadTdir(); }, 60000); // 테마·섹터 관련주
-  setInterval(() => { if (S.view === 'popular' && !document.hidden) renderPopularPage(); }, 60000); // 인기 종목 페이지
+  setInterval(() => { if (S.view === 'popular' && !document.hidden) renderPopularPage(); }, 15000); // 인기 종목 페이지
   setInterval(() => { // 기업 분석: 현재가
     const c = S.coCur;
     if (S.view !== 'company' || !c || document.hidden || !$('#coPx')) return;
@@ -3073,7 +3073,7 @@
   }, 60000);
   every(5 * 60000, () => { if (S.view === 'sched') loadSched(true); });
   every(45000, () => loadEcon(false));
-  setInterval(refreshChips, 60000);
+  setInterval(refreshChips, 15000); // 공시·뉴스의 '발표후 등락'도 15초마다
   every(15 * 60000, () => { if (S.top === 'digest') loadDigest(); });
   every(5 * 60000, () => { if (S.top === 'issue' && S.view in FEED_VIEWS && !document.hidden) loadIssues(true); });
   every(120000, pollViews);

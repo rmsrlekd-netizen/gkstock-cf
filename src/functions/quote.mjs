@@ -36,9 +36,9 @@ export async function kr(t) {
   return null;
 }
 
-// 같은 서버 안에서 30초간 재사용 (여러 방문자가 같은 종목을 볼 때 호출 절약)
+// 같은 서버 안에서 10초간 재사용 (여러 방문자가 같은 종목을 볼 때 호출 절약)
 const mem = new Map();
-const fresh = (k) => { const v = mem.get(k); return v && Date.now() - v.at < 30e3 ? v.q : undefined; };
+const fresh = (k) => { const v = mem.get(k); return v && Date.now() - v.at < 10e3 ? v.q : undefined; };
 
 /** ['US:NVDA','KR:005930'] → { 'US:NVDA': {price, chg, pct, ...} } (네이버 일괄 조회 → 부족분은 대체 조회) */
 export async function getQuotes(list, { ctx = null } = {}) {
@@ -96,7 +96,7 @@ export async function getQuotes(list, { ctx = null } = {}) {
 export default async (req, ctx) => {
   const list = [...new Set((new URL(req.url).searchParams.get('list') || '').split(',').map((s) => s.trim().toUpperCase()).filter((s) => /^(US|KR):[A-Z0-9.\-]{1,10}$/.test(s)))].slice(0, 40);
   const out = await getQuotes(list, { ctx });
-  return json({ ok: true, quotes: out }, { cdnSeconds: 30, swr: 60 });
+  return json({ ok: true, quotes: out }, { cdnSeconds: 10, swr: 15 });
 };
 
 export const config = { path: '/api/quote' };

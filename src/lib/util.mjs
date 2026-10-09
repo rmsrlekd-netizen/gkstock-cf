@@ -129,9 +129,9 @@ export function decodeText(buf, enc = 'utf-8') {
 
 // 방문자를 기다리게 하지 않는 백그라운드 갱신: 저장된 데이터를 바로 응답하고, 오래됐으면 응답 뒤에 새로 수집
 const bgRunning = new Map();
-export function refreshInBackground(ctx, name, job) {
+export function refreshInBackground(ctx, name, job, gap = 60e3) {
   const last = bgRunning.get(name);
-  if (last && Date.now() - last < 60e3) return false; // 같은 서버에서 1분 안에 중복 실행 방지
+  if (last && Date.now() - last < gap) return false; // 같은 서버에서 gap(기본 1분) 안에 중복 실행 방지
   bgRunning.set(name, Date.now());
   const p = Promise.resolve().then(job).catch((e) => console.warn('bg ' + name, e?.message || e)).finally(() => bgRunning.set(name, Date.now()));
   if (ctx?.waitUntil) ctx.waitUntil(p);

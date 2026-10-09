@@ -105,16 +105,17 @@ async function nasdaqActive() {
   return rows.slice(0, 10).map((x) => ({ market: 'US', ticker: x.symbol, name: x.name, price: num(String(x.lastSalePrice || '').replace('$', '')), pct: num(String(x.change || x.percentageChange || '').replace('%', '')) }));
 }
 
-// 방문자는 저장된 목록을 바로 받고, 1분 넘게 지났으면 뒤에서 새로 계산 (새로 계산은 10초 넘게 걸릴 때가 있어서 기다리게 하지 않음)
+// 방문자는 저장된 목록을 바로 받고, 15초 넘게 지났으면 뒤에서 새로 계산 (새로 계산은 10초 넘게 걸릴 때가 있어서 기다리게 하지 않음)
 export default async (req, ctx) => {
   const cached = await getJSON('popular/v2');
   // 엣지 캐시는 '데이터가 신선한 남은 시간'만큼만 (예전엔 59초 된 데이터를 또 60초 캐시해서 최대 2~3분 묵음)
-  if (cached && Date.now() - cached.at < 60e3) return json({ ok: true, ...cached }, { cdnSeconds: Math.max(5, Math.round((60e3 - (Date.now() - cached.at)) / 1000)), swr: 60 });
+  const FRESH = 15e3; // 순위 갱신 주기 15초
+  if (cached && Date.now() - cached.at < FRESH) return json({ ok: true, ...cached }, { cdnSeconds: Math.max(3, Math.round((FRESH - (Date.now() - cached.at)) / 1000)), swr: 15 });
   if (cached && Date.now() - cached.at < 15 * 60e3 && ctx?.waitUntil) {
-    refreshInBackground(ctx, 'popular', () => build(cached));
-    return json({ ok: true, ...cached }, { cdnSeconds: 10, swr: 30 });
+    refreshInBackground(ctx, 'popular', () => build(cached), 12e3);
+    return json({ ok: true, ...cached }, { cdnSeconds: 3, swr: 10 });
   }
-  return json({ ok: true, ...(await build(cached)) }, { cdnSeconds: 45, swr: 60 });
+  return json({ ok: true, ...(await build(cached)) }, { cdnSeconds: 10, swr: 15 });
 };
 
 async function build(cached) {
@@ -142,11 +143,11 @@ async function build(cached) {
     try { return [k, await fn(dir, 10)]; } catch (e) { errors.push(`${k}: ${e.message}`); return [k, cached?.[k] || []]; }
   }));
   const out = { at: Date.now(), kr, us: usList, krSrc, usSrc, ...Object.fromEntries(mv), errors };
-  // 미국 프리마켓·애프터마켓 시간엔 상승·하락을 시간외 등락률 기준으로 (3분마다 새로 계산)
+  // 미국 프리마켓·애프터마켓 시간엔 상승·하락을 시간외 등락률 기준으로 (30초마다 새로 계산)
   const sess = usExtSession();
-  // 미국 정규장: 네이버 순위 + 트레이딩뷰 전체 스캔 + 최근 공시 종목을 합침 (네이버 순위에서 빠지는 급등주 보완, 2분마다)
+  // 미국 정규장: 네이버 순위 + 트레이딩뷰 전체 스캔 + 최근 공시 종목을 합침 (네이버 순위에서 빠지는 급등주 보완, 30초마다)
   if (!sess && !usDaySession()) {
-    let reg = cached?.usReg && Date.now() - cached.usReg.at < 2 * 60e3 ? cached.usReg : null;
+    let reg = cached?.usReg && Date.now() - cached.usReg.at < 30e3 ? cached.usReg : null;
     if (!reg) {
       reg = { up: out.usUp || [], down: out.usDown || [], at: Date.now() };
       try {
@@ -159,7 +160,7 @@ async function build(cached) {
     out.usReg = reg; out.usUp = reg.up; out.usDown = reg.down;
   }
   if (sess) {
-    let ext = cached?.usExt && cached.usExt.session === sess && Date.now() - cached.usExt.at < 2 * 60e3 ? cached.usExt : null;
+    let ext = cached?.usExt && cached.usExt.session === sess && Date.now() - cached.usExt.at < 30e3 ? cached.usExt : null;
     if (!ext) {
       // 1순위: 트레이딩뷰 전체 종목 스캔 (소형주까지 전부) → 실패하면 네이버 시총 상위 + 전일 급등락 종목으로 계산
       try { ext = { ...(await tvUsExtMovers(sess, 10)), at: Date.now() }; } catch (e) {
@@ -173,9 +174,9 @@ async function build(cached) {
     // 인기 종목도 시간외 등락률을 함께 표시
     for (const x of usList) if (x.ext && x.ext.session === sess) { x.regPct = x.pct; x.regPrice = x.price; x.pct = x.ext.pct; x.price = x.ext.price ?? x.price; x.session = sess; }
   }
-  // 미국 주간거래(데이마켓, 한국 낮 시간): 한국투자증권 시세로 상승·하락 순위와 인기 종목 등락률 (2분마다 새로)
+  // 미국 주간거래(데이마켓, 한국 낮 시간): 한국투자증권 시세로 상승·하락 순위와 인기 종목 등락률 (1분마다 새로 · 증권사 호출 제한 고려)
   if (!sess && usDaySession()) {
-    let day = cached?.usDay && Date.now() - cached.usDay.at < 2 * 60e3 ? cached.usDay : null;
+    let day = cached?.usDay && Date.now() - cached.usDay.at < 60e3 ? cached.usDay : null;
     if (!day) {
       try { day = { ...(await usDayMovers(10)), at: Date.now() }; } catch (e) { errors.push('usDay: ' + e.message); }
       if (day) {
@@ -213,7 +214,7 @@ async function build(cached) {
   for (const k of ['kr', 'krUp', 'krDown']) for (const x of out[k] || []) useExt(x);
   const ks = krExtSession();
   if (ks) {
-    let ext = cached?.krExt && cached.krExt.session === ks && Date.now() - cached.krExt.at < 2 * 60e3 ? cached.krExt : null;
+    let ext = cached?.krExt && cached.krExt.session === ks && Date.now() - cached.krExt.at < 30e3 ? cached.krExt : null;
     if (!ext) { try { ext = { ...(await naverKrExtMovers(10)), session: ks, at: Date.now() }; } catch (e) { errors.push('krExt: ' + e.message); } }
     if (ext?.up?.length || ext?.down?.length) { out.krExt = ext; out.krUp = ext.up; out.krDown = ext.down; out.krSession = ks; }
   }
