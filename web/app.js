@@ -732,7 +732,7 @@
     const p0 = p0Of(n);
     // 발표 시점 주가 기록이 없는 오래된 공시(하루 넘은 것)는 표시 안 함 — 오늘 등락을 붙이면 모든 공시가 같은 숫자로 보여 헷갈림
     if (!p0 && Date.now() - n.ms > 24 * 3600e3) return '';
-    const tip = p0 ? `발표 시점 ${n.market === 'KR' ? fmtInt(p0) + '원' : '$' + fmtPx(p0)} 대비 현재 주가 등락 (1분마다 갱신)` : '오늘 주가 등락률 (1분마다 갱신)';
+    const tip = p0 ? `발표 시점 ${n.market === 'KR' ? fmtInt(p0) + '원' : '$' + fmtPx(p0)} 대비 현재 주가 등락 (15초마다 갱신)` : '오늘 주가 등락률 (15초마다 갱신)';
     return `<span class="qchip" data-q="${esc(wkey(n.market, n.ticker))}"${p0 ? ` data-p0="${p0}"` : ''} title="${esc(tip)}">${chipKeyMode ? '' : qchipInner(n.market, n.ticker, p0)}</span>`;
   };
   function paintChips() {
@@ -784,7 +784,7 @@
     if (!p) { $('#popList').innerHTML = '<li class="muted">불러오는 중…</li>'; return; }
     const list = popList(p, S.popTab);
     $('#popList').innerHTML = list?.length ? list.slice(0, 10).map((x, i) => rankRow(x, i)).join('') : `<li class="muted">${list ? '데이터를 불러오지 못했습니다.' : '불러오는 중…'}</li>`;
-    $('#popSrc').textContent = `${popSrcText(p, S.popTab)} · ${fmtDT(new Date(p.at)).hm} 갱신 · 1분마다 업데이트`;
+    $('#popSrc').textContent = `${popSrcText(p, S.popTab)} · ${fmtDT(new Date(p.at)).hm} 갱신 · ${S.popTab === 'US' && p.usSession === 'DAY' ? '1분' : '15초'}마다 업데이트`;
     if (S.view === 'popular') renderPopularPage();
   }
   function renderPopularPage() {
