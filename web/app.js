@@ -1713,8 +1713,9 @@
         <div class="td-chips">${s.length ? rows.join('') : '<span class="muted sm">종목 정리 중…</span>'}</div></div>`;
     }).join('');
     // 보이는 종목 시세 (미국은 오늘 등락률, 한국은 펼친 카드만 네이버 실시간)
-    const need = [...new Set(keys)].filter((x) => !quoteOf(...x.split(':')));
-    if (need.length && !renderTdir._busy) { renderTdir._busy = true; (async () => { for (let i = 0; i < Math.min(need.length, 120); i += 40) await fetchQuotes(need.slice(i, i + 40)); renderTdir._busy = false; if (S.view === 'tdir') renderTdir(); })(); }
+    //  시세를 못 받는 종목(상장폐지·조회 실패)은 1분 동안 다시 묻지 않음 — 예전엔 '받기 실패 → 다시 그림 → 또 요청'이 끝없이 돌아 화면이 멈췄음
+    const need = [...new Set(keys)].filter((x) => { if (quoteOf(...x.split(':'))) return false; const q = S.quotes.get(x); return !q?._at || Date.now() - q._at > 60e3; });
+    if (need.length && !renderTdir._busy) { renderTdir._busy = true; (async () => { let got = false; for (let i = 0; i < Math.min(need.length, 120); i += 40) got = (await fetchQuotes(need.slice(i, i + 40))) || got; renderTdir._busy = false; if (got && S.view === 'tdir') renderTdir(); })(); }
   }
   function bindTdir() {
     $('#tdSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-td]'); if (!b) return; S.td.mk = b.dataset.td; save('gk_tdmk', S.td.mk); loadTdir(); });
