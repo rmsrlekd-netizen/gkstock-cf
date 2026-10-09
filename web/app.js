@@ -1229,7 +1229,7 @@
     let ed = c.ed;
     const sel = S.issSel[S.issMk];
     if (sel && sel !== ed.id) { try { ed = (await getEd(sel)) || ed; } catch {} }
-    $('#issMeta').textContent = S.issMk === 'KR' ? '평일 8~16시 매시간 새 이슈 자동 반영' : '뉴욕 8~17시 매시간 새 이슈 자동 반영';
+    $('#issMeta').textContent = S.issMk === 'KR' ? '평일 8~16시 매시간 새 이슈 자동 반영' : '뉴욕 8~17시 매시간 · 밤사이(한국 낮) 2시간마다 새 이슈 자동 반영';
     box.innerHTML = issCompactHTML(ed);
   }
   function setIssMk(mk) { S.issMk = mk === 'US' ? 'US' : 'KR'; save('gk_imk', S.issMk); renderIssueBox(); loadIssues(); }
