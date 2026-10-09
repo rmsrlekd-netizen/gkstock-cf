@@ -1717,7 +1717,7 @@ button.br-mv:hover { border-color: var(--accent); }
 /* ── v89: 미국 지수 흐름 (나스닥100 · S&P 500) ── */
 .th-idx { margin-bottom: 1rem; }
 .th-idx-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: .6rem; }
-.th-idx-list .th-row .rk { display: none; }
+.th-idx-list .th-row > .th-top .rk { display: none; } /* 지수 카드 제목의 순번만 숨김 (펼친 종목 목록의 순번은 그대로) */
 @media (max-width: 720px) { .th-idx-list { grid-template-columns: 1fr; } }
 
 /* ── v95: 미국 테마 PC 배치 정리 (윗줄 강한·약한 테마, 아랫줄 강한·약한 섹터, 칸 높이 맞춤) ── */
