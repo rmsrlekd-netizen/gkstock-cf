@@ -155,6 +155,8 @@ export async function cactUsWatch(force = false) {
     res.forEach((j) => { for (const x of j?.data?.calendar?.rows || j?.data?.rows || []) { const t = String(x.symbol || '').toUpperCase(); if (!blue.has(t)) continue; div.push({ mk: 'US', kind: 'div', t, name: x.companyName || '', date: mdy(x.dividend_Ex_Date), pay: mdy(x.payment_Date), record: mdy(x.record_Date), amount: num(x.dividend_Rate), annual: num(x.indicated_Annual_Dividend) }); } });
     if (div.length || !out.div.length) out.div = div.filter((x) => x.date);
   } catch {}
+  // 한국어 회사 이름 (네이버 증권 기준, 예: NVDA → 엔비디아)
+  try { const { usKoNames } = await import('./usko.mjs'); const ko = await usKoNames([...out.split, ...out.div].map((x) => x.t)); for (const x of [...out.split, ...out.div]) if (ko[x.t]) x.ko = ko[x.t]; } catch {}
   await setJSON('cact/us', out);
   return { us: { split: out.split.length, div: out.div.length } };
 }
@@ -167,5 +169,7 @@ export async function cactList(mk) {
   if (mk === 'KR') list = Object.values((await getJSON('cact/kr'))?.ev || {});
   else { let c = await getJSON('cact/us'); if (!c) { await cactUsWatch(true).catch(() => {}); c = await getJSON('cact/us'); } list = [...(c?.split || []), ...(c?.div || [])]; }
   list = list.filter((e) => e.date && e.date >= from).sort((a, b) => a.date.localeCompare(b.date));
+  // 미국: 한국어 이름이 아직 없는 종목은 지금 찾아서 붙임 (한 번 찾으면 저장돼 다음부터 바로)
+  if (mk === 'US' && list.some((e) => !e.ko)) { try { const { usKoNames } = await import('./usko.mjs'); const ko = await usKoNames(list.filter((e) => !e.ko).map((e) => e.t), { max: 60 }); for (const e of list) if (!e.ko && ko[e.t]) e.ko = ko[e.t]; } catch {} }
   return { mk, today, list };
 }

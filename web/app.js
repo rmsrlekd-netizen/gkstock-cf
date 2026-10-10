@@ -1339,7 +1339,7 @@
   const CA_TITLE = { split: '분할 캘린더', div: '배당락 일정', rights: '유·무상증자 일정' };
   const CA_VIEW = { split: 'cact', div: 'cdiv', rights: 'crights' };
   async function loadCact(force) {
-    const mk = S.ca.mk;
+    const mk = S.ca.tab === 'rights' ? 'KR' : S.ca.mk;
     renderCact();
     if (!force && S.ca.data[mk] && Date.now() - (S.ca.at[mk] || 0) < 5 * 60e3) return;
     try { S.ca.data[mk] = await getJSON(`/api/cact?mk=${mk}`, {}); S.ca.at[mk] = Date.now(); } catch (e) { if (!S.ca.data[mk]) S.ca.data[mk] = { error: e.message }; }
@@ -1382,10 +1382,13 @@
       if (e.pay) info.push(`납입 ${md(e.pay)}`);
       if (e.list) info.push(`상장 ${md(e.list)}`);
     }
-    return `<li class="ca-row"><button class="ca-co" data-open-co="${esc(mk)}|${esc(e.t)}|${esc(e.name || '')}">${logoHTML(mk, e.t, e.name, 'sm')}<span><b>${esc(nm)}</b><small>${esc(mk === 'KR' ? e.t : e.name || '')}</small></span></button>${badge}<span class="ca-info">${esc(info.join(' · '))}${e.fix ? ' <i class="ca-fix">정정</i>' : ''}</span>${e.id ? `<button class="link ca-src" data-adm-open="${esc(e.id)}">공시 보기</button>` : ''}</li>`;
+    return `<li class="ca-row"><button class="ca-co" data-open-co="${esc(mk)}|${esc(e.t)}|${esc(e.ko || e.name || '')}">${logoHTML(mk, e.t, e.name, 'sm')}<span><b>${esc(nm)}</b><small>${esc(mk === 'KR' ? e.t : e.ko || S.koName?.get?.(e.t) || e.name || '')}</small></span></button>${badge}<span class="ca-info">${esc(info.join(' · '))}${e.fix ? ' <i class="ca-fix">정정</i>' : ''}</span>${e.id ? `<button class="link ca-src" data-adm-open="${esc(e.id)}">공시 보기</button>` : ''}</li>`;
   }
   function renderCact() {
-    const { tab, mk } = S.ca, d = S.ca.data[mk];
+    const { tab } = S.ca;
+    const mk = tab === 'rights' ? 'KR' : S.ca.mk; // 유·무상증자는 국장만 (미국은 이런 일정이 따로 공시되지 않음)
+    const d = S.ca.data[mk];
+    $('#caSeg').hidden = tab === 'rights';
     $('#caTitle').textContent = CA_TITLE[tab];
     $$('#caTab button').forEach((b) => b.classList.toggle('on', b.dataset.ca === tab));
     $$('#caSeg button').forEach((b) => b.classList.toggle('on', b.dataset.cam === mk));
@@ -1393,7 +1396,6 @@
     if (!d) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; return; }
     if (d.error) { box.innerHTML = `<div class="empty">불러오지 못했습니다: ${esc(d.error)}</div>`; return; }
     const pick = { split: ['split', 'merge'], div: ['div'], rights: ['rights', 'bonus', 'both', 'capred'] }[tab];
-    if (tab === 'rights' && mk === 'US') { box.innerHTML = '<div class="empty">미국은 유·무상증자 일정이 따로 공시되지 않아 국장만 제공해요. (미국 유상증자는 공시 피드의 \'공모·유상증자\' 공시로 확인하세요)</div>'; $('#caMeta').textContent = ''; return; }
     const list = (d.list || []).filter((e) => pick.includes(e.kind));
     const byDay = new Map();
     for (const e of list) (byDay.get(e.date) || byDay.set(e.date, []).get(e.date)).push(e);
@@ -2663,7 +2665,7 @@
     const feed = v in FEED_VIEWS;
     $('#viewFeed').hidden = !feed;
     for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== (VIEW_ALIAS[v] || v);
-    $$('#nav button[data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
+    $$('#nav button[data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === (VIEW_ALIAS[v] || v)));
     syncNavMore();
     //  화면을 옮길 때마다 방문 기록을 남김 (예전엔 같은 페이지 안에선 덮어써서, 모바일 앱에서 뒤로 가기를 누르면 앱이 꺼졌음)
     if (hash !== false) { const u = !hash && SEC_PATH[v] ? '/' + SEC_PATH[v] : '/' + (hash || '#' + v); if (location.pathname + location.hash !== u) history.pushState(null, '', u); }
