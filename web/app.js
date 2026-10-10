@@ -42,6 +42,7 @@
   };
   document.documentElement.className = 'js notranslate ' + S.fs;
   const wkey = (m, t) => `${m}:${String(t || '').toUpperCase()}`;
+  S.push = load('gk_push', false); S.pushBig = load('gk_pushBig', false);
   const inWatch = (m, t) => !!t && S.watch.some((w) => wkey(w.m, w.t) === wkey(m, t));
 
   // ───────────────────────── 포맷 ─────────────────────────
@@ -454,6 +455,17 @@
     if (sec) parts.push(`<span class="sector" title="섹터·업종">${esc(sec)}</span>`);
     return parts.join('');
   }
+  // 실적 발표 판정 배지 (컨센서스 대비 상회·부합·하회)
+  S.earnv = {};
+  function evHTML(n, big) {
+    const v = S.earnv[n.id];
+    if (!v) return '';
+    const c = v.v === '상회' ? 'up' : v.v === '하회' ? 'dn' : 'eq';
+    return `<div class="ev-badge ${c}${big ? ' big' : ''}" title="시장 예상치(컨센서스) 대비 · ${esc(v.mk === 'KR' ? '네이버 증권' : 'Finnhub·Nasdaq')} 기준"><b>📊 컨센서스 ${esc(v.v)}</b><span>${esc(v.line)}</span></div>`;
+  }
+  async function pollEarnv() {
+    try { const j = await getJSON('/api/earnv?t=' + Math.floor(Date.now() / 60e3), {}); const ch = JSON.stringify(j.map || {}) !== JSON.stringify(S.earnv); S.earnv = j.map || {}; if (ch && S.view in FEED_VIEWS) renderFeed(); } catch {}
+  }
   function rowHTML(n) {
     const tm = timeStr(n);
     const news = n.kind === 'NEWS' && !n.ticker;
@@ -465,6 +477,7 @@
         <div class="r-top"><span class="r-time" title="${esc(tm.title)}">${esc(tm.t)}<small>${rel(n.ms)}</small></span>${idLine(n)}${qchip(n)}<span class="src">${SRC_BADGE[n.src]}${n.kind === 'FILING' ? ' · ' + esc(n.kindLabel || '') : n.source ? ' · ' + esc(n.source) : ''}</span></div>
         <div class="r-head ${n.cls}">${esc(n.head)}</div>
         ${n.sub ? `<div class="r-sub">${esc(n.sub)}</div>` : ''}
+        ${evHTML(n)}
       </div>
       <div class="r-side"><div class="tags">${tagsHTML(n)}</div>${starHTML(n)}</div>
     </article>`;
@@ -952,7 +965,7 @@
     $('#bellPanel').innerHTML = `<h4>알림 <button class="link" data-close-bell>닫기 ✕</button></h4>
       <div class="set-row"><div>관심종목 알림<small>관심종목 새 공시·보도자료가 나오면 알림음 + 알림 창</small></div><input type="checkbox" class="tg" data-set="watchAlert" ${S.watchAlert !== false ? 'checked' : ''}></div>
       <div class="set-row"><div>알림음<small>중요 공시 소식이 오면 소리</small></div><input type="checkbox" class="tg" data-set="sound" ${S.sound ? 'checked' : ''}></div>
-      <div class="set-row"><div>데스크톱 알림<small>관심종목·매우 중요한 항목</small></div><input type="checkbox" class="tg" data-set="notify" ${S.notify ? 'checked' : ''}></div>
+      <div class="set-row"><div>데스크톱 알림<small>관심종목·매우 중요한 항목</small></div><input type="checkbox" class="tg" data-set="notify" ${S.notify ? 'checked' : ''}></div>${pushRows()}
       ${rows.length ? rows.map((n) => `<div class="al" data-id="${esc(n.id)}"><b>${esc(n.market === 'KR' ? n.name : n.ticker || n.name || '')}</b> ${esc(n.head)}<small>${fmtDT(new Date(n.ms)).full} · ${n.kind === 'FILING' ? '공시' : n.kind === 'PR' ? '보도자료' : '뉴스'}</small></div>`).join('')
         : '<div class="empty" style="padding:1.5rem 0">이 창을 연 뒤 새로 들어온 중요 공시·관심종목 소식이 여기에 쌓입니다.</div>'}`;
   }
@@ -1925,7 +1938,7 @@
       <div class="set-row"><div>글자 크기<small>화면 전체 글자 크기</small></div><div class="seg" id="fsSeg">${fsOpt.map(([v, l]) => `<button data-fs="${v}" class="${S.fs === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
       <div class="set-row"><div>관심종목 알림<small>관심종목 새 공시·보도자료가 나오면 알림음 + 알림 창</small></div><input type="checkbox" class="tg" data-set="watchAlert" ${S.watchAlert !== false ? 'checked' : ''}></div>
       <div class="set-row"><div>알림음<small>중요 공시 소식이 오면 소리</small></div><input type="checkbox" class="tg" data-set="sound" ${S.sound ? 'checked' : ''}></div>
-      <div class="set-row"><div>데스크톱 알림<small>관심종목·매우 중요한 항목</small></div><input type="checkbox" class="tg" data-set="notify" ${S.notify ? 'checked' : ''}></div>
+      <div class="set-row"><div>데스크톱 알림<small>관심종목·매우 중요한 항목</small></div><input type="checkbox" class="tg" data-set="notify" ${S.notify ? 'checked' : ''}></div>${pushRows()}
       <h3 style="margin:1.2rem 0 .5rem;font-size:1rem">관심종목 (${S.watch.length})</h3>
       <div class="chips">${S.watch.map((w) => `<span class="wchip">${esc(w.m === 'KR' ? w.n || w.t : w.t)}<button data-unwatch="${esc(w.m)}|${esc(w.t)}">✕</button></span>`).join('') || '<span class="muted">없음 — 목록의 ☆를 눌러 추가하세요.</span>'}</div>
       <p class="note">설정과 관심종목은 이 브라우저에만 저장됩니다.</p>`);
@@ -2014,6 +2027,7 @@
         <div class="dp-meters" id="aMeters">${metersHTML(n, true)}</div>
       </header>
       <div class="article">
+        ${evHTML(n, true)}
         <section class="a-sec"><h3>AI 애널리스트 분석 <small>섹터 전문 애널리스트 관점의 핵심 요약 · 호재/악재 · 체크포인트</small></h3><div id="aAI">${aiPane(n)}</div></section>
         <section class="a-sec" id="aReact" hidden></section>
         ${extraCards(n) ? `<section class="a-sec">${extraCards(n)}</section>` : ''}
@@ -2600,6 +2614,9 @@
   function route() {
     const im = location.pathname.match(ISS_RE);
     if (im) { showIssuePage(im[1], location.hash.slice(1) || null); return; }
+    // 종목별 공개 페이지 (/s/KR/005930) → 그 종목 기업 분석 화면
+    const sm = location.pathname.match(/^\/s\/(US|KR)\/([A-Za-z0-9.\-]+)\/?$/i);
+    if (sm) { const m = sm[1].toUpperCase(), t = decodeURIComponent(sm[2]).toUpperCase(); history.replaceState(null, '', `/#company/${m}/${t}`); openCompany(m, t); return; }
     const id = itemIdFromUrl();
     if (id) {
       if (!ITEM_RE.test(location.pathname)) history.replaceState(null, '', '/p/' + id); // 예전 #item 주소 → 새 주소
@@ -2703,12 +2720,48 @@
     $('#search').blur();
   }
 
+  // ───────────────────────── 푸시 알림 (사이트·앱을 닫아도 관심종목 새 공시 알림) ─────────────────────────
+  const pushOK = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  function pushRows() {
+    const hint = !pushOK() ? (isIOS() && !isStandalone() ? ' · 아이폰은 공유 버튼 → "홈 화면에 추가"로 앱을 설치한 뒤 켤 수 있어요' : ' · 이 브라우저는 지원하지 않아요') : '';
+    return `<div class="set-row"><div>푸시 알림<small>사이트·앱을 닫아 둬도 관심종목 새 공시가 나오면 휴대폰·PC로 알려줘요${hint}</small></div><input type="checkbox" class="tg" data-set="push" ${S.push ? 'checked' : ''}></div>
+      <div class="set-row"><div>중요 공시 푸시<small>관심종목이 아니어도 AI가 '매우 중요'로 본 공시 (하루 최대 8건)</small></div><input type="checkbox" class="tg" data-set="pushBig" ${S.pushBig ? 'checked' : ''}></div>`;
+  }
+  const b64key = (s) => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); };
+  async function pushSub(create) {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub && create) { const j = await getJSON('/api/push', {}); sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64key(j.key) }); }
+    return sub;
+  }
+  // 관심종목이 바뀌거나 하루가 지나면 서버에 다시 알려 줌
+  async function syncPush(force) {
+    if (!S.push || !pushOK() || Notification.permission !== 'granted') return false;
+    try {
+      const sub = await pushSub(true); if (!sub) return false;
+      const j = sub.toJSON(), w = S.watch.map((x) => wkey(x.m, x.t));
+      const sig = `${j.endpoint}|${w.join(',')}|${S.pushBig ? 1 : 0}`;
+      if (!force && load('gk_pushSig', '') === sig && Date.now() - load('gk_pushAt', 0) < 86400e3) return true;
+      const r = await fetch('/api/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ep: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, w, big: !!S.pushBig }) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      save('gk_pushSig', sig); save('gk_pushAt', Date.now());
+      return true;
+    } catch (e) { console.warn('push', e); return false; }
+  }
+  async function pushOff() {
+    try { const sub = pushOK() ? await pushSub(false) : null; if (sub) { await fetch('/api/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ unsub: sub.endpoint }) }).catch(() => {}); await sub.unsubscribe().catch(() => {}); } } catch {}
+    save('gk_pushSig', '');
+  }
+
   // ───────────────────────── 관심종목·설정 ─────────────────────────
   function toggleWatch(m, t, n) {
     const k = wkey(m, t);
     if (S.watch.some((w) => wkey(w.m, w.t) === k)) { S.watch = S.watch.filter((w) => wkey(w.m, w.t) !== k); toast(`${m === 'KR' ? n || t : t} 관심종목 해제`); }
     else { S.watch.push({ m, t: t.toUpperCase(), n }); toast(`${m === 'KR' ? n || t : t} 관심종목 추가 ★ · 새 공시가 나오면 알림음과 알림이 뜹니다`); askNotifyPermission(); try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume?.(); } catch {} }
     save('gk_watch2', S.watch);
+    if (S.push) syncPush(true);
     if (S.view in FEED_VIEWS) renderFeed();
     renderWatchbar();
     $$('[data-star]').forEach((b) => {
@@ -2721,6 +2774,18 @@
   }
   function toast(msg, ms = 2200) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), ms); }
   async function setSetting(key, on, el) {
+    if ((key === 'push' || key === 'pushBig') && on && !S.push) {
+      if (!pushOK()) { toast(isIOS() && !isStandalone() ? '아이폰은 공유 버튼 → "홈 화면에 추가"로 앱을 설치한 뒤 켤 수 있어요' : '이 브라우저는 푸시 알림을 지원하지 않습니다', 4000); if (el) el.checked = false; return; }
+      if (Notification.permission !== 'granted' && (await Notification.requestPermission()) !== 'granted') { toast('알림 권한을 허용해야 받을 수 있어요 (브라우저 설정에서 허용)', 3500); if (el) el.checked = false; return; }
+      S.push = true; save('gk_push', true); $$('[data-set="push"]').forEach((x) => (x.checked = true));
+    }
+    if (key === 'push' && !on) { S.pushBig = false; save('gk_pushBig', false); $$('[data-set="pushBig"]').forEach((x) => (x.checked = false)); await pushOff(); }
+    if (key === 'push' || key === 'pushBig') {
+      S[key] = on; save('gk_' + key, on); $$(`[data-set="${key}"]`).forEach((x) => (x.checked = on));
+      if (S.push) { const ok = await syncPush(true); toast(ok ? (key === 'pushBig' ? (on ? '중요 공시 푸시 켜짐' : '중요 공시 푸시 꺼짐') : `푸시 알림 켜짐 · 관심종목 ${S.watch.length}개`) : '푸시 알림 연결에 실패했어요. 잠시 후 다시 시도해 주세요', 3000); }
+      else toast('푸시 알림 꺼짐');
+      return;
+    }
     if (key === 'notify' && on) {
       if (!('Notification' in window)) { toast('이 브라우저는 알림을 지원하지 않습니다'); if (el) el.checked = false; return; }
       if (Notification.permission !== 'granted' && (await Notification.requestPermission()) !== 'granted') { toast('브라우저 알림 권한이 필요합니다'); if (el) el.checked = false; return; }
@@ -2803,6 +2868,14 @@
         <div class="card"><h3>많이 본 게시물 (최근 7일)</h3><ol class="adm-list">${d.topItems.map((x) => `<li data-id="${esc(x.id)}" data-adm-open="${esc(x.id)}"><b>${fmtInt(x.n)}</b><span>${x.ticker ? `<em>${esc(x.market === 'KR' ? x.name || x.ticker : x.ticker)}</em>` : ''}${esc(x.title)}</span></li>`).join('') || '<li class="muted">아직 기록이 없습니다.</li>'}</ol></div>
         <div class="card"><h3>유입 경로 (최근 7일)</h3><ol class="adm-list">${d.refs.map((x) => `<li><b>${fmtInt(x.n)}</b><span>${esc(x.r)}</span></li>`).join('') || '<li class="muted">아직 기록이 없습니다.</li>'}</ol></div>
       </div>
+      <div class="card" style="margin-bottom:.8rem">
+        <h3>알림 현황</h3><ol class="adm-list">
+          <li><b>${fmtInt(d.push?.subs || 0)}</b><span>푸시 알림 구독 기기 (중요 공시 푸시 ${fmtInt(d.push?.big || 0)}대)${d.push?.last ? ` · 마지막 발송 ${esc(fmtDT(new Date(d.push.last.at)).full)} ${d.push.last.n}건` : ''}${d.push?.fail && (!d.push.last || d.push.fail.at > d.push.last.at) ? ` · <b class="err">최근 실패 ${d.push.fail.n}건</b>` : ''}</span></li>
+          <li><b>${d.close?.KR ? '✓' : '—'}</b><span>오늘 국장 마감 이미지 ${d.close?.KR ? `보냄 (${esc(fmtDT(new Date(d.close.KR.at)).hm)}) · <a href="${esc(d.close.KR.img)}" target="_blank">이미지 보기</a>` : '아직 안 보냄 (평일 16시 이후 자동)'}</span></li>
+          <li><b>${d.close?.US ? '✓' : '—'}</b><span>오늘 미장 마감 이미지 ${d.close?.US ? `보냄 (${esc(fmtDT(new Date(d.close.US.at)).hm)}) · <a href="${esc(d.close.US.img)}" target="_blank">이미지 보기</a>` : '아직 안 보냄 (뉴욕 16시 이후 자동)'}</span></li>
+          ${(d.earn || []).map((v) => `<li><b>${esc(v.v)}</b><span>📊 ${esc(v.n)} (${esc(v.t)}) — ${esc(v.line)}</span></li>`).join('') || '<li class="muted">최근 3일 실적 판정 없음</li>'}
+        </ol></div>
+      </div>
       <div class="card" style="margin-bottom:.8rem"><h3>공시 보관소 <small class="muted">지우지 않고 계속 쌓임</small></h3>
         <div class="adm-kpis" style="grid-template-columns:repeat(4,1fr);margin:0">${[['전체', d.archive?.total], ['미국 공시', d.archive?.bySrc?.SEC], ['한국 공시', d.archive?.bySrc?.DART], ['보도자료', d.archive?.bySrc?.PR]].map(([l, v]) => `<div class="card" style="display:block"><span>${l}</span><div><b>${fmtInt(v || 0)}</b><small>건</small></div></div>`).join('')}</div>
         <p class="note">가장 오래된 기록: ${d.archive?.oldest ? fmtDT(new Date(d.archive.oldest)).date : '—'} · 8-K 항목 보강 대기 ${fmtInt(d.archive?.pendingEnrich || 0)}건<br>과거 채우기 — 미국: ${d.backfill?.sec ? (d.backfill.sec.done ? '완료' : esc(d.backfill.sec.day) + ' 진행 중') + (d.backfill.sec.log ? ' (' + esc(d.backfill.sec.log) + ')' : '') : '대기'} · 한국: ${d.backfill?.dart ? (d.backfill.dart.done ? '완료' : esc(d.backfill.dart.day) + ' 진행 중') + (d.backfill.dart.log ? ' (' + esc(d.backfill.dart.log) + ')' : '') : '대기'}</p></div>
@@ -2828,14 +2901,14 @@
           <li>Cloudflare 변수에 <code>TELEGRAM_CHANNEL_ID</code>를 등록하세요. 값: <code>@채널주소</code> (비공개 채널이면 -100으로 시작하는 숫자)</li>
           <li>저장 후 이 화면을 새로고침하면 설정 버튼이 나와요.</li></ol></div>`;
         return `<div class="card" style="margin-top:.8rem"><h3>텔레그램 채널 자동 게시 <small class="muted">${esc(c.id)} · 오늘 ${c.today || 0}건 게시</small></h3>
-          <p class="note" style="margin:.2rem 0 .6rem">① 중요 공시·보도자료가 나오면 AI 요약(호재·악재, 핵심 2줄)과 링크를 바로 올려요. ② <b>오늘 주요 이슈</b>는 사이트에 새 회차가 만들어질 때마다(국장 8~16시, 개장 직후 30분 간격 · 미장 뉴욕 8~17시) 올려요. ③ <b>AI 핵심 공시</b>는 하루 3번(국장 8:40·12:10·15:45 / 미장 뉴욕 8:50·12:30·16:15) 올려요. ④ <b>공시 후 급등</b>: 공시·보도자료 발표 후 6시간 안에 발표 시점 주가 대비 국장 +10%, 미장 +15% 넘게 오르면 중요도와 상관없이 올려요(같은 종목 하루 1번, 하루 최대 40건). 시간당 최대 건수는 ①에만 적용돼요.</p>
+          <p class="note" style="margin:.2rem 0 .6rem">① 중요 공시·보도자료가 나오면 AI 요약(호재·악재, 핵심 2줄)과 링크를 바로 올려요. ② <b>오늘 주요 이슈</b>는 사이트에 새 회차가 만들어질 때마다(국장 8~16시, 개장 직후 30분 간격 · 미장 뉴욕 8~17시) 올려요. ③ <b>AI 핵심 공시</b>는 하루 3번(국장 8:40·12:10·15:45 / 미장 뉴욕 8:50·12:30·16:15) 올려요. ④ <b>공시 후 급등</b>: 공시·보도자료 발표 후 6시간 안에 발표 시점 주가 대비 국장 +10%, 미장 +15% 넘게 오르면 중요도와 상관없이 올려요(같은 종목 하루 1번, 하루 최대 40건). ⑤ <b>장 마감 정리 이미지</b>: 국장(16시 이후)·미장(뉴욕 16시 이후) 마감 뒤 지수·핵심 이슈·급등락·테마를 한 장 이미지로 올려요(휴장일 제외). 시간당 최대 건수는 ①에만 적용돼요.</p>
           <div class="chips" style="align-items:center;gap:.4rem">
             <button class="btn sm ${g.on ? 'primary' : ''}" data-admin-act="${g.on ? 'choff' : 'chon'}">${g.on ? '● 게시 중 (끄기)' : '○ 꺼짐 (켜기)'}</button>
             <label class="muted sm">기준 <select id="chImp"><option value="5"${g.minImp === 5 ? ' selected' : ''}>최중요만</option><option value="4"${g.minImp === 4 ? ' selected' : ''}>중요 이상</option><option value="3"${g.minImp === 3 ? ' selected' : ''}>보통 이상 (많음)</option></select></label>
             <label class="muted sm">시간당 최대 <select id="chPer">${[4, 8, 12, 20, 30, 60, 120].map((v) => `<option value="${v}"${g.perHour === v ? ' selected' : ''}>${v}건</option>`).join('')}</select></label>
             <label class="muted sm"><input type="checkbox" id="chKr"${g.kr ? ' checked' : ''}> 국장</label><label class="muted sm"><input type="checkbox" id="chUs"${g.us ? ' checked' : ''}> 미장</label>
-            <label class="muted sm"><input type="checkbox" id="chIss"${g.issues !== false ? ' checked' : ''}> 오늘 주요 이슈</label><label class="muted sm"><input type="checkbox" id="chDg"${g.digest !== false ? ' checked' : ''}> AI 핵심 공시</label><label class="muted sm"><input type="checkbox" id="chSg"${g.surge !== false ? ' checked' : ''}> 공시 후 급등</label>
-            <button class="btn sm" data-admin-act="chset">설정 저장</button><button class="btn sm" data-admin-act="chtest">테스트 발송</button>
+            <label class="muted sm"><input type="checkbox" id="chIss"${g.issues !== false ? ' checked' : ''}> 오늘 주요 이슈</label><label class="muted sm"><input type="checkbox" id="chDg"${g.digest !== false ? ' checked' : ''}> AI 핵심 공시</label><label class="muted sm"><input type="checkbox" id="chSg"${g.surge !== false ? ' checked' : ''}> 공시 후 급등</label><label class="muted sm"><input type="checkbox" id="chCl"${g.close !== false ? ' checked' : ''}> 장 마감 정리 이미지</label>
+            <button class="btn sm" data-admin-act="chset">설정 저장</button><button class="btn sm" data-admin-act="chtest">테스트 발송</button><button class="btn sm" data-admin-act="chcloseKR">국장 마감 이미지 지금 보내기</button><button class="btn sm" data-admin-act="chcloseUS">미장 마감 이미지 지금 보내기</button>
           </div>
           <p class="note">${c.last ? `마지막 게시: ${fmtDT(new Date(c.last.at)).full} · ${esc(c.last.title || '')}` : '아직 게시한 글이 없어요.'}${c.err ? `<br><b class="err">⚠ ${esc(c.err)}</b> — 봇이 채널 관리자인지, 채널 주소가 맞는지 확인하세요.` : ''}${c.lastErr && !c.err ? `<br><span class="muted">최근 오류(${fmtDT(new Date(c.lastErr.at)).hm}): ${esc(c.lastErr.msg)}</span>` : ''}</p></div>`;
       })()}`;
@@ -2855,9 +2928,10 @@
         S.iss = S.iss || {}; S.iss[mk] = null;
         msg(`완료: "${j.ed.headline || ''}" 로 바뀌었습니다. 메인 화면은 1~2분 안에 새 내용으로 보입니다.`); return;
       }
+      if (act === 'chcloseKR' || act === 'chcloseUS') { const mk = act.slice(-2); msg(`${mk === 'KR' ? '국장' : '미장'} 마감 정리 이미지를 만들어 보내는 중… (20초쯤 걸려요)`); const j = await getJSON(`/api/admin?key=${k}&ch=close&mk=${mk}`, { cache: 'no-store' }).catch((e) => ({ ok: false, error: e.message })); msg(j.ok ? '채널에 마감 정리 이미지를 보냈어요. 텔레그램 채널을 확인하세요.' : '보내지 못했어요: ' + (j.error || '')); return; }
       if (act === 'chtest') { msg('채널로 테스트 메시지를 보내는 중…'); const j = await getJSON(`/api/admin?key=${k}&ch=test`, { cache: 'no-store' }).catch((e) => ({ ok: false, error: e.message })); msg(j.ok ? '채널에 테스트 메시지를 보냈어요. 텔레그램 채널을 확인하세요.' : '보내지 못했어요: ' + (j.error || '')); return; }
       if (act === 'chon' || act === 'choff') { await getJSON(`/api/admin?key=${k}&ch=${act.slice(2)}`, { cache: 'no-store' }); return renderAdmin(); }
-      if (act === 'chset') { const q = `minImp=${$('#chImp').value}&perHour=${$('#chPer').value}&kr=${$('#chKr').checked ? 1 : 0}&us=${$('#chUs').checked ? 1 : 0}&issues=${$('#chIss').checked ? 1 : 0}&digest=${$('#chDg').checked ? 1 : 0}&surge=${$('#chSg').checked ? 1 : 0}`; await getJSON(`/api/admin?key=${k}&ch=set&${q}`, { cache: 'no-store' }); msg('채널 설정을 저장했어요.'); return renderAdmin(); }
+      if (act === 'chset') { const q = `minImp=${$('#chImp').value}&perHour=${$('#chPer').value}&kr=${$('#chKr').checked ? 1 : 0}&us=${$('#chUs').checked ? 1 : 0}&issues=${$('#chIss').checked ? 1 : 0}&digest=${$('#chDg').checked ? 1 : 0}&surge=${$('#chSg').checked ? 1 : 0}&close=${$('#chCl').checked ? 1 : 0}`; await getJSON(`/api/admin?key=${k}&ch=set&${q}`, { cache: 'no-store' }); msg('채널 설정을 저장했어요.'); return renderAdmin(); }
       if (act === 'tgfind') { const j = await getJSON(`/api/admin?key=${k}&tg=find`, { cache: 'no-store' }); msg(j.error || (j.chats?.length ? '찾은 채팅 ID: ' + j.chats.map((c) => `${c.id} (${c.name || ''})`).join(', ') + ' → 이 숫자를 Cloudflare 변수 TELEGRAM_CHAT_ID로 등록하세요.' : j.hint)); return; }
       if (act === 'tgtest') { const j = await getJSON(`/api/admin?key=${k}&tg=test`, { cache: 'no-store' }); msg(j.ok ? '텔레그램으로 테스트 알림을 보냈습니다.' : '보내지 못했습니다. 봇 토큰과 채팅 ID를 확인하세요.'); }
     } catch (e) { msg(e.message); }
@@ -2879,7 +2953,7 @@
 
   // ───────────────────────── 앱 설치 (홈 화면·바탕화면에 추가) ─────────────────────────
   function setupInstall() {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => syncPush(false)).catch(() => {});
     const btn = $('#btnInstall');
     if (!btn) return;
     const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -3061,6 +3135,7 @@
   every(60000, () => poll('news'));
   every(60000, pollMarket);
   every(15000, pollPopular); // 실시간 상승·하락·인기: 15초마다
+  every(180000, pollEarnv); // 실적 발표 판정 (컨센서스 대비)
   // ── 새 버전 자동 적용: 2분마다 배포 버전을 확인해서 바뀌었으면 스스로 새로 고침 ──
   //  (입력 중이거나 상세 글을 읽는 중이면 기다렸다가, 화면을 잠시 안 볼 때·목록으로 돌아올 때 적용)
   { const myV = (document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/) || [])[1];

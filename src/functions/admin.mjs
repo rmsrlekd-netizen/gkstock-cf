@@ -35,6 +35,10 @@ export default async (req) => {
   if (ch) {
     const { tgSend, DEFAULT_CFG } = await import('../lib/tgchannel.mjs');
     const cfg = { ...DEFAULT_CFG, ...((await getJSON('tgch/cfg')) || {}) };
+    if (ch === 'close') { // 장 마감 정리 카드 시험 발송 (&mk=KR|US)
+      try { return J(await (await import('../lib/closecard.mjs')).sendClose(u.searchParams.get('mk') === 'US' ? 'US' : 'KR', { force: true })); }
+      catch (e) { return J({ ok: false, error: e.message }); }
+    }
     if (ch === 'test') {
       try { await tgSend(process.env.TELEGRAM_CHANNEL_ID, '📡 <b>GK의 공시레이더</b> 채널 연결 테스트입니다.\n중요 공시가 나오면 AI 요약과 함께 이곳에 자동으로 올라와요.\n<a href="https://gk-stock.com">gk-stock.com</a>'); return J({ ok: true }); }
       catch (e) { return J({ ok: false, error: e.message }); }
@@ -45,7 +49,7 @@ export default async (req) => {
       const mi = n('minImp', 3, 5), ph = n('perHour', 1, 180);
       if (mi !== undefined) cfg.minImp = mi;
       if (ph !== undefined) cfg.perHour = ph;
-      for (const k of ['kr', 'us', 'issues', 'digest', 'surge']) if (u.searchParams.has(k)) cfg[k] = u.searchParams.get(k) === '1';
+      for (const k of ['kr', 'us', 'issues', 'digest', 'surge', 'close']) if (u.searchParams.has(k)) cfg[k] = u.searchParams.get(k) === '1';
     }
     await setJSON('tgch/cfg', cfg);
     return J({ ok: true, cfg });
@@ -63,7 +67,17 @@ export default async (req) => {
   rep.topItems = await Promise.all(rep.topItems.map(async (x) => ({ ...x, ...(await titleOf(x.id)) })));
   const [arch, bf] = await Promise.all([archiveStats().catch((e) => ({ error: e.message })), getJSON('backfill/state')]);
   const usage = await aiUsage(7).catch(() => []);
-  return J({ ok: true, ...rep, usage, archive: arch, backfill: bf, monitor: mon, telegram: { token: !!process.env.TELEGRAM_BOT_TOKEN, chat: !!process.env.TELEGRAM_CHAT_ID }, channel: await (async () => { const { DEFAULT_CFG } = await import('../lib/tgchannel.mjs'); const st = (await getJSON('tgch/state')) || {}; return { id: process.env.TELEGRAM_CHANNEL_ID || null, cfg: { ...DEFAULT_CFG, ...((await getJSON('tgch/cfg')) || {}) }, today: st.day === new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10) ? st.dayN || 0 : 0, last: st.last || null, err: st.err || null, lastErr: st.lastErr || null }; })() });
+  // 새 기능 상태: 푸시 알림 · 장 마감 이미지 · 실적 판정
+  const kd = (tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const [pushSt, pushN, closeKR, closeUS, earnMap] = await Promise.all([
+    getJSON('push/state').catch(() => null),
+    import('../lib/push.mjs').then((x) => x.pushStats()).catch(() => null),
+    getJSON(`close/sent/KR/${kd('Asia/Seoul')}`).catch(() => null),
+    getJSON(`close/sent/US/${kd('America/New_York')}`).catch(() => null),
+    getJSON('earn/vmap').catch(() => null),
+  ]);
+  const extras = { push: { ...(pushN || {}), last: pushSt?.lastSent || null, fail: pushSt?.lastFail || null }, close: { KR: closeKR, US: closeUS }, earn: Object.entries(earnMap || {}).sort((a, b) => b[1].at - a[1].at).slice(0, 12).map(([id, v]) => ({ id, ...v })) };
+  return J({ ok: true, ...rep, ...extras, usage, archive: arch, backfill: bf, monitor: mon, telegram: { token: !!process.env.TELEGRAM_BOT_TOKEN, chat: !!process.env.TELEGRAM_CHAT_ID }, channel: await (async () => { const { DEFAULT_CFG } = await import('../lib/tgchannel.mjs'); const st = (await getJSON('tgch/state')) || {}; return { id: process.env.TELEGRAM_CHANNEL_ID || null, cfg: { ...DEFAULT_CFG, ...((await getJSON('tgch/cfg')) || {}) }, today: st.day === new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10) ? st.dayN || 0 : 0, last: st.last || null, err: st.err || null, lastErr: st.lastErr || null }; })() });
 };
 
 export const config = { path: '/api/admin' };

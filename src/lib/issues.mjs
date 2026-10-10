@@ -161,6 +161,11 @@ export async function gather(mk, slot, opts = {}) {
     for (const e of ev) if (e.actual != null) keys.push('e:' + e.id);
     if (ev.length) L.push('[오늘 미국 경제지표 (뉴욕시간)]\n' + ev.slice(0, 12).map((e) => `- ${e.et} ${e.ko || e.name}: ${e.actual != null ? `발표 ${e.actual} (예상 ${e.cons ?? '-'}, 이전 ${e.prev ?? '-'})${e.ai?.headline ? ' — ' + e.ai.headline : ''}` : `발표 예정 (예상 ${e.cons ?? '-'}, 이전 ${e.prev ?? '-'})`}`).join('\n'));
   }
+  // 실적 발표 판정 (컨센서스 대비 — AI가 숫자만 보고 '부진·호조'를 추측하지 않게)
+  try {
+    const ev = Object.values((await getJSON('earn/vmap')) || {}).filter((v) => v.mk === mk && Date.now() - v.at < 30 * 3600e3);
+    if (ev.length) L.push('[실적 발표 판정 (시장 예상치 대비, 확정 사실 — 실적 평가는 이것을 따를 것)]\n' + ev.slice(0, 15).map((v) => `- ${v.n}(${v.t}): 컨센서스 ${v.v} — ${v.line}`).join('\n'));
+  } catch {}
   const themeStrip = mk === 'KR'
     ? (themes?.kr?.themes || []).slice(0, 6).map((g) => ({ name: g.name, pct: g.rate }))
     : (themes?.us?.themes || []).slice(0, 6).map((g) => ({ name: g.name, pct: g.pct }));

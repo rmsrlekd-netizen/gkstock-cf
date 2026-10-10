@@ -258,3 +258,24 @@ export function summarizeDart(reportName, lines) {
   }
   return null;
 }
+
+/** 잠정실적 원문 줄 → 숫자 (원 단위) { y:2026, q:3 | null(연간), rev, op, ni } — 컨센서스 비교용 */
+export function earnFigures(lines) {
+  let L = lines;
+  const ci = L.findIndex((x) => /^정정\s*후$/.test(x));
+  if (ci >= 0 && ci < 60) { const j = idx(L, /^1\.\s*\S/, ci + 1); if (j > 0) L = L.slice(Math.max(0, j - 1)); }
+  const unit = (L.find((x) => /단위\s*:/.test(x)) || '').match(/(조원|억원|백만원|천원|원)/)?.[1] || '원';
+  const mul = UNIT[unit];
+  const q = L.map((x) => x.match(/\(`?(\d{2})\.(\d)Q\)/)).find(Boolean);
+  const val = (label) => {
+    const i = idx(L, new RegExp('^' + label + '$'));
+    if (i < 0) return null;
+    const j = idx(L, /^당해실적$/, i);
+    if (j < 0 || j - i > 3) return null;
+    const v = num(L[j + 1]);
+    return v === null ? null : v * mul;
+  };
+  const rev = val('매출액'), op = val('영업이익'), ni = val('당기순이익');
+  if (rev === null && op === null) return null;
+  return { y: q ? 2000 + Number(q[1]) : null, q: q ? Number(q[2]) : null, rev, op, ni };
+}

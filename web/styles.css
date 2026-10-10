@@ -1829,3 +1829,13 @@ button.br-mv:hover { border-color: var(--accent); }
 .adm-tb th:first-child, .adm-tb td:first-child { text-align: left; }
 .adm-tb th { color: var(--muted); font-weight: 600; }
 @media (max-width: 720px) { .adm-uniq .adm-kpis { grid-template-columns: 1fr 1fr !important; } .adm-uniq .adm-grid { grid-template-columns: 1fr; } }
+
+/* 실적 발표 판정 배지 */
+.ev-badge { display: flex; flex-wrap: wrap; gap: .15rem .5rem; align-items: baseline; margin-top: .3rem; padding: .25rem .55rem; border-radius: 8px; font-size: .78rem; background: rgba(165,180,252,.1); border: 1px solid rgba(165,180,252,.3); }
+.ev-badge b { white-space: nowrap; }
+.ev-badge span { color: var(--muted); font-family: var(--mono); font-size: .74rem; }
+.ev-badge.up { background: rgba(52,211,153,.1); border-color: rgba(52,211,153,.4); } .ev-badge.up b { color: #34d399; }
+.ev-badge.dn { background: rgba(251,113,133,.1); border-color: rgba(251,113,133,.4); } .ev-badge.dn b { color: #fb7185; }
+.ev-badge.big { margin: 0 0 .8rem; padding: .6rem .9rem; font-size: .95rem; } .ev-badge.big span { font-size: .85rem; }
+
+.adm-list li.muted { display: block; }

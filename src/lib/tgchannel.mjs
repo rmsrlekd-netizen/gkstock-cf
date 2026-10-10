@@ -4,7 +4,7 @@
 import { getJSON, setJSON } from './store.mjs';
 import { fetchWithTimeout } from './util.mjs';
 
-export const DEFAULT_CFG = { on: true, minImp: 4, perHour: 12, kr: true, us: true, issues: true, digest: true, surge: true };
+export const DEFAULT_CFG = { on: true, minImp: 4, perHour: 12, kr: true, us: true, issues: true, digest: true, surge: true, close: true };
 // 공시 후 급등 기준 (발표 시점 주가 대비): 국장 +10%, 미장 +15%
 export const SURGE = { KR: 10, US: 15 };
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -128,7 +128,9 @@ export async function channelWatch() {
     const pts = (ai?.summary || []).slice(0, 2).map((s) => `• ${esc(String(s).slice(0, 110))}`).join('\n');
     const kind = x.src === 'DART' ? 'DART 공시' : x.src === 'SEC' ? `SEC ${x.form || '공시'}` : x.source || '보도자료';
     const earn = isEarnings(x) ? '📊 <b>실적 발표</b>  ' : '';
-    const text = `${earn}${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>${vt ? '  ' + vt : ''}\n${esc(String(await koTitle(x, ai)).slice(0, 140))}${pts ? '\n\n' + pts : ''}\n\n<i>${esc(kind)} · ${kst(ms)} KST</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
+    const ev = earn ? (await getJSON('earn/vmap').catch(() => null))?.[x.id] : null;
+    if (earn && !ev && now - ms < 6 * 60e3) continue; // 실적은 컨센서스 판정을 조금 기다림
+    const text = `${earn}${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>${vt ? '  ' + vt : ''}\n${esc(String(await koTitle(x, ai)).slice(0, 140))}${ev ? `\n\n${ev.v === '상회' ? '🟢' : ev.v === '하회' ? '🔴' : '⚪'} <b>컨센서스 ${esc(ev.v)}</b> · ${esc(ev.line)}` : ''}${pts ? '\n\n' + pts : ''}\n\n<i>${esc(kind)} · ${kst(ms)} KST</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
     try { await tgSend(chat, text); sent.add(x.id); hist.push(Date.now()); n++; st.last = { id: x.id, at: Date.now(), title: titleOf(x).slice(0, 80) }; }
     catch (e) { errs.push(e.message); if (/429|Too Many/i.test(e.message)) break; if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) { st.err = e.message; break; } }
   }

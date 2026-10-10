@@ -122,6 +122,32 @@ async function checks() {
       } catch (e) { return add('keyDart', 'API 키 · DART', false, '호출 실패: ' + String(e.message || e).slice(0, 160)); }
     })(),
   ]);
+  // ── 새 기능 점검: 오늘 주요 이슈 · 장 마감 이미지 · 푸시 알림 ──
+  try {
+    const { isTradingDay } = await import('./schedule.mjs');
+    const kd = (tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const krDay = kd('Asia/Seoul'), usDay = kd('America/New_York');
+    const krTrade = isTradingDay('KR', krDay) && !(await getJSON(`issues/hol/KR/${krDay}`))?.on;
+    const usTrade = isTradingDay('US', usDay) && !(await getJSON(`issues/hol/US/${usDay}`))?.on;
+    const [ik, iu] = await Promise.all([getJSON('issues/idx/KR'), getJSON('issues/idx/US')]);
+    const lastAt = (l) => (l || []).reduce((m, x) => Math.max(m, x.at || 0), 0);
+    const kAge = now - lastAt(ik), uAge = now - lastAt(iu);
+    const kBad = krTrade && kr.m >= 10 * 60 && kr.m <= 17 * 60 && kAge > 150 * MIN;
+    const uBad = usTrade && us.m >= 10 * 60 && us.m <= 18 * 60 && uAge > 150 * MIN;
+    add('issues', '오늘 주요 이슈 (AI)', !kBad && !uBad, `국장 마지막 회차 ${ago(kAge)} · 미장 마지막 회차 ${ago(uAge)}${kBad || uBad ? ' — 장중인데 2시간 넘게 새 회차가 없음 (AI 오류·재료 수집 실패 가능성)' : ''}`);
+    if (process.env.TELEGRAM_CHANNEL_ID) {
+      const cfg = { close: true, on: true, ...((await getJSON('tgch/cfg')) || {}) };
+      if (cfg.on && cfg.close !== false) {
+        const [ck, cu] = await Promise.all([getJSON(`close/sent/KR/${krDay}`), getJSON(`close/sent/US/${usDay}`)]);
+        const [tk, tu] = await Promise.all([getJSON(`close/try/KR/${krDay}`), getJSON(`close/try/US/${usDay}`)]);
+        const kMiss = krTrade && kr.m >= 17 * 60 + 40 && !ck, uMiss = usTrade && us.m >= 18 * 60 + 10 && !cu;
+        add('close', '장 마감 정리 이미지', !kMiss && !uMiss, kMiss || uMiss ? `${kMiss ? '국장' : ''}${kMiss && uMiss ? '·' : ''}${uMiss ? '미장' : ''} 마감 이미지를 못 보냄${(tk?.err || tu?.err) ? ' — ' + String(tk?.err || tu?.err).slice(0, 140) : ''}` : `국장 ${ck ? '보냄' : '대기'} · 미장 ${cu ? '보냄' : '대기'}`);
+      }
+    }
+    const ps = await getJSON('push/state');
+    const pBad = ps?.lastFail && now - ps.lastFail.at < 30 * MIN && (!ps.lastSent || ps.lastSent.at < ps.lastFail.at) && ps.lastFail.n >= 3;
+    add('push', '푸시 알림 발송', !pBad, pBad ? `최근 발송 실패 ${ps.lastFail.n}건 (푸시 서버 응답 오류)` : ps?.lastSent ? `마지막 발송 ${ago(now - ps.lastSent.at)} ${ps.lastSent.n}건` : '발송 기록 없음');
+  } catch (e) { console.warn('monitor extra', e.message); }
   add('ai', 'AI 분석 (Gemini)', !errRecent && !paused, paused ? `${aiPause.reason || '한도 초과'} → ${Math.ceil((aiPause.until - now) / 60e3)}분 동안 AI 호출 중지 (그동안은 자동 요약). 반복되면 Gemini 결제(유료 전환) 필요` : errRecent ? `최근 실패 ${ago(now - aiErr.at)}: ${String(aiErr.error).slice(0, 180)}` : `마지막 성공 ${aiOk?.at ? ago(now - aiOk.at) : '기록 없음'}`);
   return out;
 }

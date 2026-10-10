@@ -158,3 +158,17 @@ export async function sitemapRows(limit = 5000) {
   const r = await d.prepare("SELECT id, ms FROM items WHERE kind != 'NEWS' AND ticker IS NOT NULL ORDER BY ms DESC LIMIT ?").bind(limit).all();
   return r.results || [];
 }
+
+/** 종목 페이지 사이트맵용: 최근 30일 공시가 있는 종목 (12시간마다 새로 계산해 저장 → DB 읽기 절약) */
+export async function sitemapTickers(limit = 4000) {
+  const { getJSON, setJSON } = await import('./store.mjs');
+  const c = await getJSON('sitemap/tk').catch(() => null);
+  if (c && Date.now() - c.at < 12 * 3600e3) return c.rows;
+  const d = await db().catch(() => null);
+  let rows;
+  if (!d) rows = [...mem.values()].filter((r) => r.ticker && r.kind !== 'NEWS').map((r) => ({ m: r.market, t: r.ticker, ms: r.ms }));
+  else rows = ((await d.prepare("SELECT market AS m, ticker AS t, MAX(ms) AS ms FROM items WHERE ms > ? AND kind != 'NEWS' AND ticker IS NOT NULL AND ticker != '' GROUP BY market, ticker ORDER BY ms DESC LIMIT ?").bind(Date.now() - 30 * 86400e3, limit).all()).results || []);
+  rows = rows.filter((r) => (r.m === 'KR' ? /^\d{6}$/ : /^[A-Z][A-Z0-9.\-]{0,9}$/).test(String(r.t)));
+  await setJSON('sitemap/tk', { at: Date.now(), rows }).catch(() => {});
+  return rows;
+}

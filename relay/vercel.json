@@ -8,6 +8,15 @@
     },
     "api/borrow.js": {
       "maxDuration": 30
+    },
+    "api/watchdog.js": {
+      "maxDuration": 30
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/watchdog",
+      "schedule": "*/10 * * * *"
+    }
+  ]
 }

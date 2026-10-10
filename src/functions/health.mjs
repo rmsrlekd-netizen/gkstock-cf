@@ -5,6 +5,12 @@ import { kospiFrontCode } from '../lib/kis.mjs';
 import { aiProvider, askAI } from '../lib/ai.mjs';
 
 export default async (req) => {
+  // 바깥 감시용 짧은 응답 (?beat=1): 자동 수집·점검이 돌고 있는지 (Vercel 중계 서버가 10분마다 확인)
+  if (new URL(req.url).searchParams.get('beat') === '1') {
+    const [mon, sec, dart] = await Promise.all([getJSON('monitor/state').catch(() => null), getJSON('sec/feed').catch(() => null), getJSON('dart/feed').catch(() => null)]);
+    const bad = Object.values(mon?.checks || {}).filter((c) => !c.ok && c.fails >= 2).map((c) => c.name);
+    return json({ ok: true, monAge: mon?.at ? Math.round((Date.now() - mon.at) / 1000) : null, secAge: sec?.updatedAt ? Math.round((Date.now() - Date.parse(sec.updatedAt)) / 1000) : null, dartAge: dart?.updatedAt ? Math.round((Date.now() - Date.parse(dart.updatedAt)) / 1000) : null, bad }, { cdnSeconds: 0, swr: 0 });
+  }
   const testAI = new URL(req.url).searchParams.get('ai') === '1';
   let aiTest = null;
   if (testAI) {
