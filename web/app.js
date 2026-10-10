@@ -1334,6 +1334,79 @@
   addEventListener('resize', () => { toggleNavPop(false); syncNavMore(); });
   addEventListener('scroll', () => { if (!$('#navPop')?.hidden) toggleNavPop(false); }, { passive: true });
 
+  // ───────────────────────── 권리 일정: 분할·병합 / 배당락 / 유·무상증자·감자 ─────────────────────────
+  S.ca = { tab: 'split', mk: load('gk_camk', 'KR'), data: {}, at: {} };
+  const CA_TITLE = { split: '분할 캘린더', div: '배당락 일정', rights: '유·무상증자 일정' };
+  const CA_VIEW = { split: 'cact', div: 'cdiv', rights: 'crights' };
+  async function loadCact(force) {
+    const mk = S.ca.mk;
+    renderCact();
+    if (!force && S.ca.data[mk] && Date.now() - (S.ca.at[mk] || 0) < 5 * 60e3) return;
+    try { S.ca.data[mk] = await getJSON(`/api/cact?mk=${mk}`, {}); S.ca.at[mk] = Date.now(); } catch (e) { if (!S.ca.data[mk]) S.ca.data[mk] = { error: e.message }; }
+    if (S.view in CA_VIEW_SET) renderCact();
+  }
+  const CA_VIEW_SET = { cact: 1, cdiv: 1, crights: 1 };
+  function caDay(d, today) {
+    const dt = new Date(d + 'T12:00:00Z'), n = Math.round((Date.parse(d) - Date.parse(today)) / 86400e3);
+    return `${dt.getUTCMonth() + 1}월 ${dt.getUTCDate()}일 (${'일월화수목금토'[dt.getUTCDay()]})<em class="${n === 0 ? 'today' : n < 0 ? 'past' : ''}">${n === 0 ? '오늘' : n > 0 ? 'D-' + n : Math.abs(n) + '일 전'}</em>`;
+  }
+  const md = (d) => (d ? `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}` : '');
+  function caRow(e) {
+    const mk = e.mk, nm = mk === 'KR' ? e.name || e.t : e.t;
+    let badge = '', info = [];
+    if (e.kind === 'split' || e.kind === 'merge') {
+      const r = mk === 'US' ? e.ratio : e.before && e.after ? (e.before > e.after ? `1→${+(e.before / e.after).toFixed(2)}주` : `${+(e.after / e.before).toFixed(2)}→1주`) : '';
+      badge = `<b class="ca-b ${e.kind}">${e.kind === 'split' ? '분할' : mk === 'US' ? '역분할' : '병합'}${r ? ' ' + esc(r) : ''}</b>`;
+      if (mk === 'KR' && e.before && e.after) info.push(`액면 ${fmtInt(e.before)}원 → ${fmtInt(e.after)}원`);
+      if (e.haltFrom) info.push(`매매정지 ${md(e.haltFrom)}${e.haltTo ? '~' + md(e.haltTo) : ''}`);
+      if (e.list) info.push(`신주 상장 ${md(e.list)}`);
+      if (mk === 'US') info.push(`${e.date === e.pay ? '' : ''}적용일 ${md(e.date)}`);
+    } else if (e.kind === 'capred') {
+      badge = `<b class="ca-b merge">감자${e.capRatio ? ' ' + e.capRatio + '%' : ''}</b>`;
+      if (e.haltFrom) info.push(`매매정지 ${md(e.haltFrom)}${e.haltTo ? '~' + md(e.haltTo) : ''}`);
+      if (e.list) info.push(`신주 상장 ${md(e.list)}`);
+    } else if (e.kind === 'div') {
+      badge = `<b class="ca-b div">배당락${e.amount != null ? ' ' + (mk === 'KR' ? fmtInt(e.amount) + '원' : '$' + e.amount) : ''}</b>`;
+      if (e.kindNote) info.push(e.kindNote);
+      if (e.record) info.push(`기준일 ${md(e.record)}`);
+      if (e.pay) info.push(`지급 ${md(e.pay)}`);
+      if (e.yield) info.push(`시가배당률 ${e.yield}%`);
+      if (mk === 'US' && e.annual) info.push(`연 배당 $${e.annual}`);
+    } else {
+      const free = e.kind === 'bonus' || e.kind === 'both';
+      badge = `<b class="ca-b ${free ? 'bonus' : 'rights'}">${e.kind === 'both' ? '유무상' : free ? '무상증자' : '유상증자'}${free && e.ratio ? ` 1주당 ${e.ratio}주` : ''}</b>`;
+      if (e.method) info.push(e.method);
+      if (e.price) info.push(`발행가 ${fmtInt(e.price)}원`);
+      if (e.record) info.push(`기준일 ${md(e.record)}`);
+      if (e.sub?.length) info.push(`청약 ${md(e.sub[0])}${e.sub[1] && e.sub[1] !== e.sub[0] ? '~' + md(e.sub[1]) : ''}`);
+      if (e.pay) info.push(`납입 ${md(e.pay)}`);
+      if (e.list) info.push(`상장 ${md(e.list)}`);
+    }
+    return `<li class="ca-row"><button class="ca-co" data-open-co="${esc(mk)}|${esc(e.t)}|${esc(e.name || '')}">${logoHTML(mk, e.t, e.name, 'sm')}<span><b>${esc(nm)}</b><small>${esc(mk === 'KR' ? e.t : e.name || '')}</small></span></button>${badge}<span class="ca-info">${esc(info.join(' · '))}${e.fix ? ' <i class="ca-fix">정정</i>' : ''}</span>${e.id ? `<button class="link ca-src" data-adm-open="${esc(e.id)}">공시 보기</button>` : ''}</li>`;
+  }
+  function renderCact() {
+    const { tab, mk } = S.ca, d = S.ca.data[mk];
+    $('#caTitle').textContent = CA_TITLE[tab];
+    $$('#caTab button').forEach((b) => b.classList.toggle('on', b.dataset.ca === tab));
+    $$('#caSeg button').forEach((b) => b.classList.toggle('on', b.dataset.cam === mk));
+    const box = $('#caBody');
+    if (!d) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; return; }
+    if (d.error) { box.innerHTML = `<div class="empty">불러오지 못했습니다: ${esc(d.error)}</div>`; return; }
+    const pick = { split: ['split', 'merge'], div: ['div'], rights: ['rights', 'bonus', 'both', 'capred'] }[tab];
+    if (tab === 'rights' && mk === 'US') { box.innerHTML = '<div class="empty">미국은 유·무상증자 일정이 따로 공시되지 않아 국장만 제공해요. (미국 유상증자는 공시 피드의 \'공모·유상증자\' 공시로 확인하세요)</div>'; $('#caMeta').textContent = ''; return; }
+    const list = (d.list || []).filter((e) => pick.includes(e.kind));
+    const byDay = new Map();
+    for (const e of list) (byDay.get(e.date) || byDay.set(e.date, []).get(e.date)).push(e);
+    $('#caMeta').textContent = `${mk === 'KR' ? 'DART 공시 기준' : tab === 'div' ? 'Nasdaq 기준 · 시총 상위·인기 종목' : 'Nasdaq 기준'} · ${list.filter((e) => e.date >= d.today).length}건 예정`;
+    box.innerHTML = list.length ? [...byDay].map(([day, arr]) => `<div class="card ca-day${day < d.today ? ' past' : ''}"><h3>${caDay(day, d.today)}</h3><ul class="ca-list">${arr.map(caRow).join('')}</ul></div>`).join('')
+      + `<p class="note">${tab === 'div' ? '배당락일에는 배당금만큼 주가가 낮아진 채로 시작할 수 있어요. 국장 배당락일 = 배당기준일 전 거래일.' : tab === 'rights' ? '권리락일 = 신주배정기준일 전 거래일 (이날부터 사도 신주를 못 받음). 제3자배정은 신주 상장일 기준으로 표시해요.' : '날짜는 신주 상장일(국장)·분할 적용일(미장) 기준. 매매정지 기간에는 거래가 안 돼요.'} 공시 정정으로 날짜가 바뀔 수 있으니 원문을 확인하세요.</p>`
+      : `<div class="empty">${mk === 'KR' && tab !== 'div' ? '최근 공시된 일정이 아직 없어요.' : '예정된 일정이 없어요.'} (공시가 나오면 자동으로 추가돼요)</div>`;
+  }
+  function bindCact() {
+    $('#caTab').addEventListener('click', (e) => { const b = e.target.closest('[data-ca]'); if (!b) return; setView(CA_VIEW[b.dataset.ca]); });
+    $('#caSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-cam]'); if (!b) return; S.ca.mk = b.dataset.cam; save('gk_camk', S.ca.mk); loadCact(); });
+  }
+
   // ───────────────────────── 공시 반응 통계 (이런 공시 뒤 주가는 보통 어떻게 됐나) ─────────────────────────
   S.rcMk = load('gk_rcmk', 'KR'); S.rc = {}; S.rcOpen = null;
   async function loadReact() {
@@ -2580,15 +2653,16 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
-  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', tdir: '#viewTdir', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact' };
+  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', tdir: '#viewTdir', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact', cact: '#viewCact' };
+  const VIEW_ALIAS = { cdiv: 'cact', crights: 'cact' }; // 같은 화면, 다른 탭
   // 메뉴별 고유 주소 (/popular, /themes …) ↔ 화면 이름
-  const SEC_PATH = { popular: 'popular', themes: 'themes', tdir: 'sectors', sched: 'schedule', earnings: 'earnings', econ: 'econ', halt: 'halts', react: 'reaction', flows: 'flows', market: 'market' };
+  const SEC_PATH = { cact: 'splits', cdiv: 'dividends', crights: 'rights', popular: 'popular', themes: 'themes', tdir: 'sectors', sched: 'schedule', earnings: 'earnings', econ: 'econ', halt: 'halts', react: 'reaction', flows: 'flows', market: 'market' };
   const PATH_SEC = Object.fromEntries(Object.entries(SEC_PATH).map(([v, p]) => [p, v]));
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
     $('#viewFeed').hidden = !feed;
-    for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== v;
+    for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== (VIEW_ALIAS[v] || v);
     $$('#nav button[data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
     syncNavMore();
     //  화면을 옮길 때마다 방문 기록을 남김 (예전엔 같은 페이지 안에선 덮어써서, 모바일 앱에서 뒤로 가기를 누르면 앱이 꺼졌음)
@@ -2602,6 +2676,7 @@
     if (v === 'sched') loadSched();
     if (v === 'halt') loadHalts();
     if (v === 'react') loadReact();
+    if (v === 'cact' || v === 'cdiv' || v === 'crights') { S.ca.tab = v === 'cdiv' ? 'div' : v === 'crights' ? 'rights' : 'split'; loadCact(); }
     if (v === 'econ') loadEcon(true);
     if (v === 'admin') renderAdmin();
     if (v === 'popular') { renderPopularPage(); pollViews(); }
@@ -3123,6 +3198,7 @@
   bindHalts();
   bindReact();
   bindTdir();
+  bindCact();
   syncNavMore();
   { // 공유 링크 (?top=digest&mk=US)로 들어오면 AI 핵심 공시를 바로 보여줌
     const qp = new URLSearchParams(location.search);

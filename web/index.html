@@ -29,7 +29,7 @@
   <meta name="twitter:image" content="https://gk-stock.com/img/og-main.png?v=4" />
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"GK의 공시레이더","alternateName":["공시레이더","GK 공시레이더"],"url":"https://gk-stock.com/","inLanguage":"ko","description":"미국 SEC·한국 DART 실시간 공시와 보도자료, AI 분석","publisher":{"@type":"Organization","name":"GK의 미국 주식","url":"https://www.youtube.com/@GK_Stock","logo":"https://gk-stock.com/img/icon-512.png?v=4"}}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"GK의 공시레이더","url":"https://gk-stock.com/","logo":"https://gk-stock.com/img/icon-512.png?v=4","sameAs":["https://www.youtube.com/@GK_Stock","https://t.me/gkstock1"]}</script>
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SiteNavigationElement","name":["실시간 인기 종목","당일 테마","테마·섹터","오늘 일정","실적 캘린더","경제지표","VI·서킷","공시 반응"],"url":["https://gk-stock.com/popular","https://gk-stock.com/themes","https://gk-stock.com/sectors","https://gk-stock.com/schedule","https://gk-stock.com/earnings","https://gk-stock.com/econ","https://gk-stock.com/halts","https://gk-stock.com/reaction"]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SiteNavigationElement","name":["실시간 인기 종목","당일 테마","테마·섹터","오늘 일정","실적 캘린더","분할 캘린더","배당락 일정","유·무상증자 일정","경제지표","VI·서킷"],"url":["https://gk-stock.com/popular","https://gk-stock.com/themes","https://gk-stock.com/sectors","https://gk-stock.com/schedule","https://gk-stock.com/earnings","https://gk-stock.com/splits","https://gk-stock.com/dividends","https://gk-stock.com/rights","https://gk-stock.com/econ","https://gk-stock.com/halts"]}</script>
   <link rel="alternate" type="application/rss+xml" title="GK의 공시레이더" href="https://gk-stock.com/rss.xml" />
   <link rel="icon" href="/favicon.ico?v=4" sizes="48x48" />
   <link rel="icon" type="image/png" sizes="96x96" href="/img/favicon-96.png?v=4" />
@@ -45,7 +45,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=128" />
+  <link rel="stylesheet" href="/styles.css?v=129" />
   <script>document.documentElement.classList.add('js');</script>
   <style>.js .ssr{display:none}.ssr{max-width:860px;margin:2rem auto;padding:0 1rem;color:#eef0ff;font-family:sans-serif;line-height:1.7}</style>
 </head>
@@ -79,11 +79,14 @@
         <button data-go="halt" class="nav-halt">VI·서킷</button>
         <button data-go="econ" class="mx dx2">경제지표</button>
         <button data-go="earnings" class="mx dx">실적 캘린더</button>
-        <button data-go="react" class="mx">공시 반응</button>
+        <button data-go="cact" class="mx">분할 캘린더</button>
         <button data-go="tdir" class="mx dx">테마·섹터</button>
         <button data-go="company" class="mx dx">기업 분석</button>
         <button data-go="flows" class="mx dx">수급</button>
         <button data-go="market" class="mx dx">시장 지표</button>
+        <button data-go="cdiv" class="mo">배당락 일정</button>
+        <button data-go="crights" class="mo">유·무상증자 일정</button>
+        <button data-go="react" class="mo">공시 반응</button>
         <button class="nav-more" data-nav-more aria-haspopup="true">더보기<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
         <div class="nav-pop" id="navPop" hidden></div>
       </nav>
@@ -264,6 +267,16 @@
       <div id="rcBody"><div class="skel"></div><div class="skel"></div></div>
     </section>
 
+    <!-- ───────── 권리 일정: 분할·병합 / 배당락 / 유·무상증자 ───────── -->
+    <section id="viewCact" class="page" hidden>
+      <div class="page-head"><h2 id="caTitle">분할 캘린더</h2><span class="muted" id="caMeta"></span></div>
+      <div class="filter-row">
+        <div class="seg" id="caTab"><button data-ca="split" class="on">분할·병합</button><button data-ca="div">배당락</button><button data-ca="rights">유·무상증자·감자</button></div>
+        <div class="mkseg" id="caSeg"><button data-cam="KR" class="on kr"><i>KR</i>국장</button><button data-cam="US" class="us"><i>US</i>미장</button></div>
+      </div>
+      <div id="caBody"><div class="skel"></div><div class="skel"></div></div>
+    </section>
+
     <!-- ───────── 미국 경제지표 ───────── -->
     <section id="viewEcon" class="page" hidden>
       <div class="page-head"><h2>미국 경제지표</h2><span class="muted" id="ecMeta"></span></div>
@@ -343,7 +356,7 @@
 
   <footer class="footer">
     <div class="footer-in">
-      <nav class="f-menu" aria-label="사이트 메뉴"><a href="/popular">실시간 인기 종목</a><a href="/themes">당일 테마</a><a href="/sectors">테마·섹터</a><a href="/schedule">오늘 일정</a><a href="/earnings">실적 캘린더</a><a href="/econ">경제지표</a><a href="/halts">VI·서킷</a><a href="/reaction">공시 반응</a><a href="/flows">수급</a><a href="/market">시장 지표</a></nav>
+      <nav class="f-menu" aria-label="사이트 메뉴"><a href="/popular">실시간 인기 종목</a><a href="/themes">당일 테마</a><a href="/sectors">테마·섹터</a><a href="/schedule">오늘 일정</a><a href="/earnings">실적 캘린더</a><a href="/econ">경제지표</a><a href="/halts">VI·서킷</a><a href="/splits">분할 캘린더</a><a href="/dividends">배당락 일정</a><a href="/rights">유·무상증자 일정</a><a href="/reaction">공시 반응</a><a href="/flows">수급</a><a href="/market">시장 지표</a></nav>
       <div class="f-brand"><b>GK의 공시레이더</b><span>by <a href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener">GK의 미국 주식</a></span></div>
       <p>데이터: SEC EDGAR · 금융감독원 DART · GlobeNewswire · PR Newswire · Business Wire · ACCESS Newswire · 뉴스와이어(미국 상장사) · 네이버 증권 · StockTwits · Nasdaq · CNN · Google Finance · 한국투자증권 Open API. 로고는 각 사 상표이며 식별 목적으로만 표시됩니다.</p>
       <p>본 사이트의 정보와 AI 요약은 투자 참고용이며 투자 권유가 아닙니다. <button class="link" data-go="guide">이용 안내</button> · <a href="/privacy">개인정보처리방침</a></p>
@@ -355,6 +368,6 @@
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
   <button class="to-top" id="toTop" aria-label="맨 위로" title="맨 위로"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>맨 위로</span></button>
-  <script src="/app.js?v=128" defer></script>
+  <script src="/app.js?v=129" defer></script>
 </body>
 </html>

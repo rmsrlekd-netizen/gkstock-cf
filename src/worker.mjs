@@ -39,6 +39,7 @@ import * as halts from './functions/halts.mjs';
 import * as reaction from './functions/reaction.mjs';
 import * as push from './functions/push.mjs';
 import * as earnv from './functions/earnv.mjs';
+import * as cact from './functions/cact.mjs';
 import { reactWatch } from './lib/react.mjs';
 import { channelWatch, digestWatch, surgeWatch } from './lib/tgchannel.mjs';
 import { haltsWatch } from './lib/halts.mjs';
@@ -54,7 +55,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, spark, verdicts, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts, reaction, push, earnv]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, spark, verdicts, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts, reaction, push, earnv, cact]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -177,6 +178,8 @@ export default {
       // 내일 일정 (20분마다 새로 모으고, 새 거래일이 되면 AI 요약)
       // (장 마감 브리핑은 메인 화면 AI 요약과 겹쳐서 중지)
       // 공시 반응 통계: 지난 공시의 발표 후 1일·5일 주가를 조금씩 계산 (9분마다)
+      // 권리 일정: 국장 DART 분할·병합·증자·배당 공시 읽기 (3분마다) · 미장 Nasdaq 일정 (6시간마다)
+      jobs3.push(import('./lib/cact.mjs').then(async (x) => [await x.cactKrWatch(), await x.cactUsWatch()]).then((r) => { if (r[0]?.kr) console.log('cact', JSON.stringify(r)); }).catch((e) => console.warn('cact', e.message)));
       // 실적 발표 판정: 실적 공시가 나오면 컨센서스와 비교 (3분마다)
       jobs3.push(import('./lib/earnv.mjs').then((x) => x.earnWatch()).then((r) => { if (r?.judged) console.log('earnv', JSON.stringify(r)); }).catch((e) => console.warn('earnv', e.message)));
       if (min % 9 < 3) jobs3.push(reactWatch().then((r) => { if (r) console.log('react', JSON.stringify(r)); }).catch((e) => console.warn('react', e.message)));
