@@ -95,7 +95,7 @@ async function judgeUS(x, ms) {
   if (e == null) return { none: '예상치 없음' };
   const eps = verdictOf(a, e, 2);
   if (eps && eps.v !== '부합' && Math.abs(a - e) < 0.01) eps.v = '부합';
-  const rev = verdictOf(ra, re, 1.5);
+  const rev = ra > 0 && re > 0 ? verdictOf(ra, re, 1.5) : null; // 매출 예상치가 없거나 0이면 매출 비교는 뺌
   const line = [`EPS $${a.toFixed(2)} · 예상 $${e.toFixed(2)}${sp(eps.pct)}`, rev ? `매출 ${usd(ra)} · 예상 ${usd(re)}${sp(rev.pct)}` : ''].filter(Boolean).join(' / ');
   return { mk: 'US', verdict: eps.v, basis: 'EPS', eps: { a, e, pct: eps.pct }, rev: rev && { a: ra, e: re, pct: rev.pct, v: rev.v }, line, src };
 }

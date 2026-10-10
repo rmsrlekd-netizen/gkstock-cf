@@ -120,11 +120,13 @@ export async function enrichDocs(items, { max = 8, deadline = Date.now() + 12000
   let n = 0;
   for (const it of items) {
     if (n >= max || Date.now() > deadline) break;
-    if (!/^(8-K|6-K)/.test(it.form) || it.pr || (it.docTries || 0) >= 2 || !it.url) continue;
+    const empty6k = /^6-K/.test(it.form) && it.pr && !it.pr.headline && !it.pr.itemText && !it.pr.v2; // 예전 방식으로 내용을 못 찾은 6-K는 한 번 더
+    if (!/^(8-K|6-K)/.test(it.form) || (it.pr && !empty6k) || (it.docTries || 0) >= 2 || !it.url) continue;
     n++;
     try {
       const r = await fetchFilingText(it.url, fetcher);
-      it.pr = { headline: r.headline || null, deck: r.deck || null, itemText: r.itemText || null, doc: r.doc || null };
+      it.pr = { headline: r.headline || null, deck: r.deck || null, itemText: r.itemText || null, doc: r.doc || null, v2: 1 };
+      if (empty6k) { delete it.ko; it.aiTries = 0; }
       it.impact = Math.max(it.impact || 0, impactByText(`${r.headline || ''} ${r.deck || ''} ${(r.itemText || '').slice(0, 1500)}`));
       if (r.excerpt) it._excerpt = r.excerpt;
     } catch {

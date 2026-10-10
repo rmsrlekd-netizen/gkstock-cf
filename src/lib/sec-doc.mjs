@@ -30,6 +30,14 @@ function rowHref(indexHtml, re) {
 }
 export const findExhibit = (h) => rowHref(h, />\s*EX-99\.1\s*</i) || rowHref(h, />\s*EX-99(\.\d+)?\s*</i);
 export const findMain = (h) => rowHref(h, />\s*(8-K|6-K|8-K\/A)\s*</i);
+// 6-K는 보도자료가 EX-99가 아닌 다른 번호(EX-1, EX-10.1 등)로 붙는 경우가 많음 (XBRL·그래픽 제외)
+export const findAnyExhibit = (h) => rowHref(h, />\s*EX-(?!101|104)\d+(\.\d+)?\s*</i);
+const COVER = /^(FORM 6-K|UNITED STATES|SECURITIES AND EXCHANGE COMMISSION|Washington|REPORT OF FOREIGN PRIVATE ISSUER|PURSUANT TO RULE|UNDER THE SECURITIES EXCHANGE ACT|For the month of|Commission File Number|\(Translation of|\(Address of|Indicate by check mark|Form 20-F|Form 40-F|SIGNATURES?|Pursuant to the requirements|Date:|By:|Name:|Title:|EXHIBIT|Exhibit No|INCORPORATION BY REFERENCE|\(Exact name)/i;
+/** 6-K 본문 → 표지·서명 문구를 건너뛴 첫 내용 문단 */
+export function bodySentence(lines) {
+  const body = lines.filter((l) => l.length > 60 && !COVER.test(l) && !/check mark|incorporated by reference|registration statement/i.test(l));
+  return body.length ? firstSentence(body.slice(0, 3).join(' '), 420) : null;
+}
 
 const SKIP = /^(exhibit|ex-?\s?99)|press release|for immediate release|news release|^media|investor|^contacts?\b|^source:|^(nasdaq|nyse)\b|forward[- ]looking|^page \d+|table of contents|^\(?in (thousands|millions)|\.htm$|@|\(\d{3}\)|\d{3}[-.]\d{3}[-.]\d{4}|^(chief|svp|evp|vp|senior vice|vice president)\b|, (svp|evp|cfo|ceo|vp)\b/i;
 const VERB = /\b(announces?|announced|reports?|reported|receives?|received|completes?|completed|enters?|entered|provides?|launch(es)?|appoints?|declares?|prices?|priced|closes?|closed|signs?|signed|secures?|achieves?|expands?|names?|named|regains?|updates?|raises?|affirms?|reaffirms?|to acquire|acquires?|agrees?|partners?|wins?|awarded|delivers?|posts?|increases?|approves?|approved|initiates?|results?|guidance)\b/i;
@@ -97,9 +105,21 @@ export async function fetchFilingText(indexUrl, fetcher) {
     const deck = nx && !SKIP.test(nx) && !DATELINE.test(nx) && nx.length >= 20 && nx.length < 200 && !/\.$/.test(nx) ? nx : null;
     return { headline, deck, excerpt: lines.slice(hi + 1).join(' ').slice(0, 1800), doc: ex };
   }
+  // 6-K: EX-99가 없으면 다른 번호의 첨부 보도자료
+  const is6k = />\s*6-K\s*</i.test(idx);
+  const ex2 = is6k ? findAnyExhibit(idx) : null;
+  if (ex2) {
+    const lines = htmlToText(await fetcher(ex2));
+    const headline = pickHeadline(lines);
+    const hi = Math.max(0, headline ? lines.findIndex((x) => headline.endsWith(x)) : 0);
+    const exc = lines.slice(hi + 1).join(' ').slice(0, 1800);
+    return { headline, itemText: headline ? null : bodySentence(lines), excerpt: exc, doc: ex2 };
+  }
   const main = findMain(idx);
   if (!main) return { none: true };
   const lines = htmlToText(await fetcher(main));
-  const s = itemSentence(lines);
-  return { itemText: s, excerpt: s || '', doc: main };
+  // 8-K는 Item 설명, 6-K(Item 없음)는 표지를 건너뛴 본문 첫 문단
+  const s = itemSentence(lines) || (is6k ? bodySentence(lines) : null);
+  const body = is6k ? lines.filter((l) => l.length > 40 && !COVER.test(l)).join(' ').slice(0, 1800) : s || '';
+  return { itemText: s, excerpt: body, doc: main };
 }

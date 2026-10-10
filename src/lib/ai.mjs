@@ -271,6 +271,7 @@ function lensFor(kind, form, title, text) {
   const L = [];
   if (/2\.02|실적|잠정|results|revenue|earnings|quarter|매출액|영업이익/i.test(t)) L.push('실적: 매출·영업이익·순이익의 전년/전분기 대비 증감률, 이익률(마진) 변화, 일회성 요인 제거 후 본질 이익, 가이던스 상향·하향 여부, 원문에 컨센서스가 있으면 비교(없으면 "컨센서스 비교 불가"라고 명시)');
   if (/offering|placement|유상증자|전환사채|신주인수권|convertible|warrant|at-the-market|424B|S-3|shelf/i.test(t)) L.push('자금조달·희석: 조달 금액 ÷ 시가총액으로 희석률(%) 계산, 할인율(발행가 vs 현재가), 자금 용도(성장 투자 vs 운영자금·부채상환), 현금 소진 속도와 추가 조달 가능성, 워런트·전환가 리셋 조건');
+  if (/offering|placement|유상증자|공모|private placement|registered direct/i.test(t)) L.push('공모·증자 판정 기준: 발행가가 현재가보다 높으면(프리미엄·할증 발행) 투자자가 비싸게 사 준 것이라 보통 중립~긍정, 전략적 투자자·대주주·경영진이 참여하면 긍정 요인. 큰 할인율·워런트 동반·소형주의 대규모 희석·운영자금 부족 목적이면 부정. 무조건 악재로 판단하지 말 것');
   if (/1\.01|agreement|contract|awarded|공급계약|수주|계약/i.test(t)) L.push('계약·수주: 계약금액 ÷ 최근 연매출로 매출 대비 비중(%) 계산, 계약 기간(연 환산 매출 기여), 상대방 신용도·반복성, 마진 수준 추정 근거, 조건부·해지 조항');
   if (/merger|acquisition|acquire|인수|합병|M&A|tender/i.test(t)) L.push('M&A: 인수가·프리미엄, 인수 대상 매출·이익 대비 멀티플, 자금 조달 방식(현금·주식·부채)과 희석, 시너지 실현 가능성, 규제 승인 리스크');
   if (/FDA|임상|clinical|trial|approval|허가|PDUFA|phase/i.test(t)) L.push('임상·허가: 단계(1/2/3상), 1차 평가변수 충족 여부와 통계적 유의성(p값), 안전성 신호, 경쟁 약물 대비 차별점, 시장 규모와 상업화 일정, 현금으로 버틸 수 있는 기간');

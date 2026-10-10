@@ -93,47 +93,59 @@ export function dartKind(formKo) {
 // ───── 국장: 새 DART 공시 읽기 (3분마다 최대 6건) ─────
 export async function cactKrWatch() {
   const st = (await getJSON('cact/kr')) || { ev: {}, done: {} };
+  st.queue = st.queue || []; // 아직 원문을 못 읽은 공시 (처음 모은 45일치가 여기 쌓여 조금씩 처리됨)
+  const slim = (x) => ({ id: x.id, ticker: x.ticker, name: x.name, formKo: x.formKo || x.titleClean });
   const dart = await getJSON('dart/feed').catch(() => null);
-  let cand = (dart?.items || []).filter((x) => x.ticker && !st.done[x.id] && dartKind(x.formKo || x.titleClean));
-  // 처음 한 번: 보관소에서 최근 45일치 관련 공시를 모음 (한 번만)
-  if (!st.boot) {
+  const inQ = new Set(st.queue.map((x) => x.id));
+  // 새 공시는 앞쪽에 (빨리 보이게)
+  const fresh = (dart?.items || []).filter((x) => x.ticker && !st.done[x.id] && !inQ.has(x.id) && dartKind(x.formKo || x.titleClean)).map(slim);
+  st.queue = [...fresh, ...st.queue];
+  // 처음 한 번 (또는 예전 버전에서 넘어올 때): 보관소에서 최근 45일치 관련 공시를 모아 대기열에
+  if (!st.boot2) {
     try {
       const { queryArchive } = await import('./archive.mjs');
+      const q0 = new Set(st.queue.map((x) => x.id));
       for (const q of ['유상증자', '무상증자', '주식분할', '주식병합', '감자결정', '배당결정']) {
-        const rows = await queryArchive({ kind: 'FILING', market: 'KR', q, limit: 80 }).catch(() => []);
-        for (const x of rows) if (x.ticker && !st.done[x.id] && dartKind(x.formKo || x.titleClean) && Date.now() - (Date.parse(x.seenAt || x.date || '') || 0) < 45 * 86400e3) cand.push(x);
+        const rows = await queryArchive({ kind: 'FILING', market: 'KR', q, limit: 120 }).catch(() => []);
+        for (const x of rows) if (x.ticker && !st.done[x.id] && !q0.has(x.id) && dartKind(x.formKo || x.titleClean) && Date.now() - (Date.parse(x.seenAt || x.date || '') || 0) < 45 * 86400e3) { st.queue.push(slim(x)); q0.add(x.id); }
       }
     } catch {}
-    st.boot = Date.now();
+    st.boot2 = Date.now();
   }
-  const seen = new Set(); cand = cand.filter((x) => (seen.has(x.id) ? false : seen.add(x.id)));
   const { fetchDartDoc } = await import('./dart-doc.mjs');
-  let n = 0;
-  for (const x of cand.slice(0, 6)) {
-    const kind = dartKind(x.formKo || x.titleClean);
-    st.done[x.id] = 1;
+  let n = 0, tried = 0;
+  const next = [];
+  for (const x of st.queue) {
+    if (tried >= 8 || st.done[x.id]) { if (!st.done[x.id]) next.push(x); continue; }
+    tried++;
+    const kind = dartKind(x.formKo);
     try {
       const p = parseDartAction(kind, await fetchDartDoc(String(x.id).replace(/^DART-/, '')));
+      st.done[x.id] = 1;
       if (!p.date) continue;
       st.ev[x.id] = { ...p, mk: 'KR', id: x.id, t: x.ticker, name: x.name, fix: /정정/.test(x.formKo || ''), at: Date.now() };
       // 같은 회사·같은 종류의 예전 공시(정정 전)는 지움
       for (const [id, e] of Object.entries(st.ev)) if (id !== x.id && e.t === x.ticker && e.kind === kind && id < x.id) delete st.ev[id];
       n++;
-    } catch { delete st.done[x.id]; } // 원문을 못 읽으면 다음에 다시
+    } catch {
+      x.fails = (x.fails || 0) + 1;
+      if (x.fails >= 3) st.done[x.id] = 1; else next.push(x); // 원문을 못 읽으면 다음에 다시 (3번까지)
+    }
   }
+  st.queue = next.slice(0, 600);
   // 정리: 지난 일정은 10일 뒤 지움
   const cut = addDays(new Date().toISOString().slice(0, 10), -10);
   for (const [id, e] of Object.entries(st.ev)) if ((e.date || '') < cut) delete st.ev[id];
   const ids = Object.keys(st.done); if (ids.length > 3000) for (const id of ids.slice(0, ids.length - 3000)) delete st.done[id];
-  if (n || cand.length) await setJSON('cact/kr', st);
-  return { kr: n, left: Math.max(0, cand.length - 6) };
+  if (tried || fresh.length) await setJSON('cact/kr', st);
+  return { kr: n, left: st.queue.length };
 }
 
 // ───── 미장: Nasdaq 분할·배당 일정 (6시간마다) ─────
 const mdy = (s) => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : null; };
 export async function cactUsWatch(force = false) {
   const c = await getJSON('cact/us');
-  if (!force && c && Date.now() - c.at < 6 * 3600e3) return { us: 'cached' };
+  if (!force && c && c.divDays != null && Date.now() - c.at < 6 * 3600e3) return { us: 'cached' };
   const out = { at: Date.now(), split: c?.split || [], div: c?.div || [] };
   try {
     const r = await fetchWithTimeout('https://api.nasdaq.com/api/calendar/splits', { headers: NQ }, 9000);
@@ -144,16 +156,23 @@ export async function cactUsWatch(force = false) {
       return { mk: 'US', kind: a && b ? (a > b ? 'split' : 'merge') : 'split', t: String(x.symbol || '').toUpperCase(), name: x.name || '', ratio: x.ratio || '', date: mdy(x.executionDate), pay: mdy(x.payableDate), ann: mdy(x.announcedDate) };
     }).filter((x) => x.t && x.date);
   } catch {}
-  // 배당락: 앞으로 10일 (시총 상위·인기 종목만 — 하루 수백 건이라)
+  // 배당락: 앞으로 8거래일 (S&P 500·나스닥100 대형주 + 시총 상위 + 인기 종목 — 하루 수백 건이라 주요 종목만)
   try {
     const { blueSet } = await import('./tgchannel.mjs');
-    const blue = (await blueSet())?.US || new Set();
+    const { US_SECTOR_MEMBERS, NDX } = await import('./themes.mjs');
+    const uni = new Set([...((await blueSet())?.US || []), ...Object.values(US_SECTOR_MEMBERS || {}).flat(), ...(NDX || [])].map((t) => String(t).toUpperCase()));
     const days = []; let d = new Date().toISOString().slice(0, 10);
     for (let i = 0; days.length < 8 && i < 14; i++, d = addDays(d, 1)) if (isTradingDay('US', d)) days.push(d);
-    const res = await Promise.all(days.map((day) => fetchWithTimeout(`https://api.nasdaq.com/api/calendar/dividends?date=${day}`, { headers: NQ }, 9000).then((r) => (r.ok ? r.json() : null)).catch(() => null)));
-    const div = [];
-    res.forEach((j) => { for (const x of j?.data?.calendar?.rows || j?.data?.rows || []) { const t = String(x.symbol || '').toUpperCase(); if (!blue.has(t)) continue; div.push({ mk: 'US', kind: 'div', t, name: x.companyName || '', date: mdy(x.dividend_Ex_Date), pay: mdy(x.payment_Date), record: mdy(x.record_Date), amount: num(x.dividend_Rate), annual: num(x.indicated_Annual_Dividend) }); } });
-    if (div.length || !out.div.length) out.div = div.filter((x) => x.date);
+    const div = []; let okDays = 0;
+    for (const day of days) { // 한꺼번에 부르면 Nasdaq이 막아서 하나씩
+      let j = null;
+      for (let k = 0; k < 2 && !j; k++) j = await fetchWithTimeout(`https://api.nasdaq.com/api/calendar/dividends?date=${day}`, { headers: NQ }, 9000).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const rows = j?.data?.calendar?.rows || j?.data?.rows || [];
+      if (j) okDays++;
+      for (const x of rows) { const t = String(x.symbol || '').toUpperCase(); if (!uni.has(t)) continue; div.push({ mk: 'US', kind: 'div', t, name: x.companyName || '', date: mdy(x.dividend_Ex_Date) || day, pay: mdy(x.payment_Date), record: mdy(x.record_Date), amount: num(x.dividend_Rate), annual: num(x.indicated_Annual_Dividend) }); }
+    }
+    if (okDays) out.div = div.filter((x) => x.date);
+    out.divDays = okDays;
   } catch {}
   // 한국어 회사 이름 (네이버 증권 기준, 예: NVDA → 엔비디아)
   try { const { usKoNames } = await import('./usko.mjs'); const ko = await usKoNames([...out.split, ...out.div].map((x) => x.t)); for (const x of [...out.split, ...out.div]) if (ko[x.t]) x.ko = ko[x.t]; } catch {}

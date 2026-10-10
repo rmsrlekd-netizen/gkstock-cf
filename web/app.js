@@ -1830,7 +1830,7 @@
   function thLeader(s, mk) {
     const lim = s.limit === 'up' ? '<b class="lim up">상한</b>' : s.limit === 'down' ? '<b class="lim down">하한</b>' : '';
     const label = mk === 'KR' ? s.name : s.t;
-    return `<button class="th-chip" data-open-co="${mk}|${esc(s.t)}|${esc(s.name || s.nameKo || '')}">${esc(label)} <em class="${dirCls(s.pct)}">${pctTxt(s.pct)}</em>${lim}</button>`;
+    return `<button class="th-chip td-chip" data-open-co="${mk}|${esc(s.t)}|${esc(s.name || s.nameKo || '')}">${logoHTML(mk, s.t, s.name || s.nameKo || s.t, 'xs')}${esc(label)} <em class="${dirCls(s.pct)}">${pctTxt(s.pct)}</em>${lim}</button>`;
   }
   function thRow(g, i, kind, key) {
     const tot = Math.max(1, g.rise + g.fall + g.flat);
