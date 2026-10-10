@@ -40,7 +40,8 @@ async function checks() {
   const dl = (dart?.items || []).filter((x) => x.seenLive && x.seenAt && x.timeMin && x.timeMin !== 'na' && now - Date.parse(x.seenAt) < 24 * 3600e3)
     .map((x) => (Date.parse(x.seenAt) - Date.parse(x.timeMin.replace(' ', 'T') + ':00+09:00')) / 60e3 - 0.5).filter((v) => v > -2 && v < 600).sort((a, b) => a - b);
   const dMed = dl.length ? dl[Math.floor(dl.length / 2)] : null;
-  add('dart', '한국 DART 공시 수집', age(dart) < dartLimit && !(dart?.errors || []).length, `마지막 수집 ${ago(age(dart))}${dMed != null ? ` · 접수 후 평균 지연 약 ${Math.max(0, dMed).toFixed(1)}분 (${dl.length}건)` : ''}${(dart?.errors || []).length ? ' · 오류: ' + dart.errors.join(' / ').slice(0, 160) : ''}`);
+  const dartMaint = (dart?.errors || []).some((e) => /점검|Unexpected token '<'|DOCTYPE/.test(e));
+  add('dart', '한국 DART 공시 수집', (age(dart) < dartLimit || (dartMaint && !krBusy)) && (!(dart?.errors || []).length || dartMaint), `마지막 수집 ${ago(age(dart))}${dMed != null ? ` · 접수 후 평균 지연 약 ${Math.max(0, dMed).toFixed(1)}분 (${dl.length}건)` : ''}${(dart?.errors || []).length ? ' · 오류: ' + dart.errors.join(' / ').slice(0, 160) : ''}`);
   const nErr = news?.errors || [];
   const prDay = (news?.items || []).filter((x) => x.src === 'PR' && now - Date.parse(x.time) < 24 * 3600e3).length;
   // 보도자료 지연 = 우리가 처음 가져온 시각 - 원래 발표 시각 (최근 24시간 중앙값)
@@ -114,7 +115,9 @@ async function checks() {
       if (!env.DART_API_KEY) return add('keyDart', 'API 키 · DART', false, '미등록 — 한국 공시 수집이 안 됨');
       try {
         const r = await fetchWithTimeout(`https://opendart.fss.or.kr/api/list.json?crtfc_key=${encodeURIComponent(env.DART_API_KEY)}&page_count=1`, {}, 10000);
-        const j = await r.json().catch(() => ({}));
+        const txt = await r.text().catch(() => '');
+        if (/^\s*</.test(txt)) return add('keyDart', 'API 키 · DART', true, 'DART 시스템 점검 중 (점검 안내 페이지 응답) — 키 문제 아님, 점검이 끝나면 자동 복구');
+        let j = {}; try { j = JSON.parse(txt); } catch {}
         const st = String(j.status || '');
         if (st === '000' || st === '013') return add('keyDart', 'API 키 · DART', true, '정상');
         const why = { '010': '등록되지 않은 키', '011': '사용할 수 없는 키', '012': '접근할 수 없는 IP', '020': '하루 요청 한도(2만 건) 초과 — 자정에 풀림', '800': 'DART 점검 중', '900': 'DART 오류' }[st] || j.message || `HTTP ${r.status}`;

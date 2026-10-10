@@ -17,7 +17,10 @@ export async function dartList(key, pages = [1, 2]) {
     const url = `https://opendart.fss.or.kr/api/list.json?crtfc_key=${encodeURIComponent(key)}&bgn_de=${bgn}&end_de=${end}&page_no=${p}&page_count=100&sort=date&sort_mth=desc`;
     const r = await fetchWithTimeout(url, {}, 8000);
     if (!r.ok) throw new Error('DART OpenAPI HTTP ' + r.status);
-    const j = await r.json();
+    const txt = await r.text();
+    // DART 시스템 점검 중엔 JSON 대신 점검 안내 웹페이지가 옴
+    if (/^\s*</.test(txt)) throw new Error('DART 점검 중 (OpenDART가 점검 안내 페이지를 보냄 — 점검이 끝나면 자동 복구)');
+    const j = JSON.parse(txt);
     if (j.status === '013') break;
     if (j.status !== '000') throw new Error(`DART OpenAPI ${j.status}: ${j.message}`);
     out.push(...(j.list || []));

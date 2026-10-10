@@ -13,13 +13,58 @@ const kst = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(5, 16).replace
 export async function tgSend(chat, text, { preview = true } = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token || !chat) throw new Error('봇 토큰 또는 채널이 설정되지 않았습니다');
-  const r = await fetchWithTimeout(`https://api.telegram.org/bot${token}/sendMessage`, {
+  const send = () => fetchWithTimeout(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', link_preview_options: { is_disabled: !preview, prefer_large_media: true } }),
-  }, 9000);
+  }, 15000);
+  // 텔레그램이 잠깐 느리면(응답 지연으로 중단) 한 번 더
+  let r;
+  try { r = await send(); } catch (e) { if (!/abort|timeout|시간/i.test(String(e.message || e))) throw e; await new Promise((ok) => setTimeout(ok, 1500)); r = await send(); }
   const j = await r.json().catch(() => ({}));
   if (!j.ok) throw new Error(`텔레그램 ${j.error_code || r.status}: ${j.description || ''}`);
   return j;
+}
+
+// ───── 이미지로 보내기: 모든 게시물을 카드 이미지 + 짧은 설명(캡션)으로 (이미지를 못 만들면 글로) ─────
+const NOCTX = { waitUntil() {} };
+async function postForm(method, fd) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const go = () => fetchWithTimeout(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', body: fd }, 25000);
+  let r;
+  try { r = await go(); } catch (e) { if (!/abort|timeout/i.test(String(e.message || e))) throw e; await new Promise((ok) => setTimeout(ok, 1500)); r = await go(); }
+  const j = await r.json().catch(() => ({}));
+  if (!j.ok) throw new Error(`텔레그램 ${j.error_code || r.status}: ${j.description || ''}`);
+  return j;
+}
+/** 텔레그램 캡션은 1,024자까지 — 넘치면 중간 줄을 줄이고 마지막 링크 줄은 남김 */
+function capCaption(text, max = 1000) {
+  const plain = (s) => s.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').length;
+  if (plain(text) <= max) return text;
+  const lines = text.split('\n'), last = lines.pop();
+  while (lines.length > 2 && plain(lines.join('\n') + '\n' + last) > max) lines.pop();
+  return lines.join('\n') + '\n' + last;
+}
+export async function tgPhoto(chat, png, caption) {
+  const fd = new FormData();
+  fd.append('chat_id', chat);
+  fd.append('caption', capCaption(caption));
+  fd.append('parse_mode', 'HTML');
+  fd.append('photo', new Blob([png], { type: 'image/png' }), 'card.png');
+  return postForm('sendPhoto', fd);
+}
+/** 카드 이미지를 만들어 사진으로 보내고, 실패하면 기존처럼 글로 */
+async function sendCard(chat, text, makePng, opts = {}) {
+  let png = null;
+  try { png = await makePng(); } catch (e) { console.warn('tg card', e.message); }
+  if (png?.byteLength > 1000) {
+    try { return await tgPhoto(chat, png, text); } catch (e) { if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) throw e; console.warn('tg photo', e.message); }
+  }
+  return tgSend(chat, text, opts);
+}
+async function filingPng(id) {
+  const { renderOgImage } = await import('./og.mjs');
+  const r = await renderOgImage(NOCTX, id);
+  return r.ok ? new Uint8Array(await r.arrayBuffer()) : null;
 }
 
 function itemMs(x) {
@@ -131,7 +176,7 @@ export async function channelWatch() {
     const ev = earn ? (await getJSON('earn/vmap').catch(() => null))?.[x.id] : null;
     if (earn && !ev && now - ms < 6 * 60e3) continue; // 실적은 컨센서스 판정을 조금 기다림
     const text = `${earn}${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>${vt ? '  ' + vt : ''}\n${esc(String(await koTitle(x, ai)).slice(0, 140))}${ev ? `\n\n${ev.v === '상회' ? '🟢' : ev.v === '하회' ? '🔴' : '⚪'} <b>컨센서스 ${esc(ev.v)}</b> · ${esc(ev.line)}` : ''}${pts ? '\n\n' + pts : ''}\n\n<i>${esc(kind)} · ${kst(ms)} KST</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
-    try { await tgSend(chat, text); sent.add(x.id); hist.push(Date.now()); n++; st.last = { id: x.id, at: Date.now(), title: titleOf(x).slice(0, 80) }; }
+    try { await sendCard(chat, text, () => filingPng(x.id)); sent.add(x.id); hist.push(Date.now()); n++; st.last = { id: x.id, at: Date.now(), title: titleOf(x).slice(0, 80) }; }
     catch (e) { errs.push(e.message); if (/429|Too Many/i.test(e.message)) break; if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) { st.err = e.message; break; } }
   }
   st.sent = [...sent].slice(-800);
@@ -159,7 +204,7 @@ export async function postIssue(ed) {
     return `${i + 1}. ${x.tone === '호재' ? '🟢' : x.tone === '악재' ? '🔴' : '⚪'} <b>${esc(x.title)}</b>${s0 ? `  <i>${esc(s0.name)}${pct(s0.pct)}</i>` : ''}`;
   }).join('\n');
   const text = `📰 <b>${ed.mk === 'KR' ? '국장' : '미장'} 주요 이슈 · ${esc(ed.slot || '')}</b>\n${esc(ed.headline || '')}\n\n${lines}\n\n<a href="https://gk-stock.com/i/${encodeURIComponent(ed.id)}">이슈 ${ed.issues.length}개 자세히 보기 →</a>`;
-  await tgSend(chat, text, { preview: true });
+  await sendCard(chat, text, async () => { const saved = await getJSON(`issues/og/${ed.id}`); if (saved?.b) return Uint8Array.from(atob(saved.b), (c) => c.charCodeAt(0)); return (await import('./og.mjs')).issueOgPng(NOCTX, ed.id, ed); }, { preview: true });
   await setJSON(key, { at: Date.now() });
   return true;
 }
@@ -198,7 +243,7 @@ export async function digestWatch() {
       }).join('\n');
       const when = mk === 'KR' ? ['장 시작 전', '점심', '장 마감'][DG_TIMES.KR.indexOf(slot)] : ['개장 전', '장중', '장 마감'][DG_TIMES.US.indexOf(slot)];
       const text = `🤖 <b>AI가 고른 ${mk === 'KR' ? '국장' : '미장'} 핵심 공시</b> · ${when}\n${esc(d.headline || '')}\n\n${lines}\n\n<a href="https://gk-stock.com/?top=digest&mk=${mk}">전체 보기 →</a>`;
-      await tgSend(chat, text, { preview: false });
+      await sendCard(chat, text, () => digestPng(mk, when, d, all), { preview: false });
       out[mk] = 'sent';
     } catch (e) { out[mk] = 'error: ' + e.message; }
   }
@@ -246,9 +291,30 @@ export async function surgeWatch() {
     const kind = x.src === 'DART' ? 'DART 공시' : x.src === 'SEC' ? `SEC ${x.form || '공시'}` : x.source || '보도자료';
     const pt = (ai?.summary || [])[0];
     const text = `🚀 <b>공시 후 급등</b>  ${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>  <b>+${h.r.toFixed(1)}%</b>\n발표 후 ${ago} · 지금 ${px}${sess}\n\n${esc(String(await koTitle(x, ai)).slice(0, 140))}${pt ? `\n• ${esc(String(pt).slice(0, 110))}` : ''}\n\n<i>${esc(kind)} · ${kst(h.v.t)} KST 주가 대비</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
-    try { await tgSend(chat, text, { preview: false }); st.done[h.k] = { id: x.id, r: Math.round(h.r * 10) / 10, at: now }; st.n = (st.n || 0) + 1; n++; }
+    try { await sendCard(chat, text, () => filingPng(x.id), { preview: false }); st.done[h.k] = { id: x.id, r: Math.round(h.r * 10) / 10, at: now }; st.n = (st.n || 0) + 1; n++; }
     catch (e) { st.lastErr = e.message; if (/429|Too Many|403|chat not found/i.test(e.message)) break; }
   }
   await setJSON('tgch/surge', st).catch(() => {});
   return { n, hits: hits.length };
+}
+
+// ───── 'AI가 고른 핵심 공시' 카드 이미지 (1200×630) ─────
+async function digestPng(mk, when, d, all) {
+  const { ImageResponse, GoogleFont, cache } = await import('@cf-wasm/og/workerd');
+  const { t } = await import('@cf-wasm/og/html-to-react');
+  cache.setExecutionContext(NOCTX);
+  const e = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const cut = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+  const kr = mk === 'KR';
+  const rows = d.items.slice(0, 6).map((x, i) => {
+    const it = all.get(x.id);
+    const nm = it ? (kr ? it.name || it.ticker : it.ticker || it.company || '') : '';
+    const vc = x.verdict === '긍정' ? '#34d399' : x.verdict === '부정' ? '#fb7185' : '#a5b4fc';
+    const vt = x.verdict === '긍정' ? '호재' : x.verdict === '부정' ? '악재' : '중립';
+    return `<div style="display:flex;align-items:center;width:524px;margin:0 ${i % 2 ? 0 : 32}px 12px 0;padding:10px 16px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(139,108,255,.35)"><div style="display:flex;width:44px;height:44px;border-radius:12px;background:#f5c542;color:#1b1300;font-size:26px;font-weight:700;align-items:center;justify-content:center">${i + 1}</div><div style="display:flex;flex-direction:column;margin-left:14px;flex:1"><div style="display:flex;align-items:center"><div style="display:flex;font-size:20px;font-weight:700;color:#93c5fd">${e(cut(nm, 14))}</div><div style="display:flex;margin-left:8px;padding:1px 10px;border-radius:999px;border:2px solid ${vc};color:${vc};font-size:16px;font-weight:700">${vt}</div></div><div style="display:flex;font-size:23px;font-weight:700;color:#fff">${e(cut(x.title, 22))}</div></div></div>`;
+  }).join('');
+  const html = `<div style="display:flex;flex-direction:column;width:1200px;height:630px;padding:38px 56px 34px;background:linear-gradient(135deg,#1a1650 0%,#0b0d24 55%,#080a1c 100%);color:#eef0ff;font-family:'Noto Sans KR'"><div style="display:flex;width:100%;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center"><div style="display:flex;padding:8px 20px;border-radius:999px;background:${kr ? '#ff5a6a' : '#3e7bff'};color:#fff;font-size:26px;font-weight:700">${kr ? '국장' : '미장'} · ${e(when)}</div></div><div style="display:flex;font-size:26px;font-weight:700;color:#c4b5fd">GK의 공시레이더</div></div><div style="display:flex;margin-top:12px;font-size:52px;font-weight:700;color:#fff">AI가 고른 핵심 공시</div><div style="display:flex;margin-top:6px;font-size:26px;color:#c3c7e6">${e(cut(d.headline, 46))}</div><div style="display:flex;flex-wrap:wrap;width:100%;margin-top:18px">${rows}</div><div style="display:flex;width:100%;margin-top:auto;justify-content:space-between;align-items:center;font-size:22px;color:#8b90b8"><div style="display:flex">실시간 공시 · AI 분석 · 호재/악재</div><div style="display:flex;color:#f5c542;font-weight:700">gk-stock.com</div></div></div>`;
+  const allText = [...new Set(`${html.replace(/<[^>]+>/g, '')}국장미장AI가고른핵심공시호재악재중립GK의공시레이더gk-stock.com0123456789…·`.replace(/\s+/g, ''))].join('') + ' ';
+  const res = await ImageResponse.async(t(html.replace(/>\s+</g, '><')), { width: 1200, height: 630, fonts: [new GoogleFont('Noto Sans KR', { weight: 400, text: allText }), new GoogleFont('Noto Sans KR', { weight: 700, text: allText })] });
+  return res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
 }
