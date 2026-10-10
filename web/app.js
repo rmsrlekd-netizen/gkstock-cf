@@ -1267,7 +1267,7 @@
   }
   function openIssuePage(ref) {
     const [id, anchor] = String(ref).split('#');
-    if (S.view !== 'issue') { S.listScroll = window.scrollY; S.returnUrl = location.pathname === '/' ? '/' + (location.hash || '#' + (S.view || 'home')) : '/#home'; S.fromList = true; }
+    if (S.view !== 'issue') { S.listScroll = window.scrollY; S.returnUrl = location.pathname === '/' ? '/' + (location.hash || '#' + (S.view || 'home')) : PATH_SEC[location.pathname.slice(1)] ? location.pathname : '/#home'; S.fromList = true; }
     history.pushState({ issue: id }, '', '/i/' + id);
     showIssuePage(id, anchor);
   }
@@ -1956,7 +1956,7 @@
   }
   function openItem(id) {
     if (!S.items.has(id)) return;
-    if (S.view !== 'item') { S.listScroll = window.scrollY; S.returnUrl = location.pathname === '/' ? '/' + (location.hash || '#' + (S.view || 'home')) : '/#home'; S.fromList = true; }
+    if (S.view !== 'item') { S.listScroll = window.scrollY; S.returnUrl = location.pathname === '/' ? '/' + (location.hash || '#' + (S.view || 'home')) : PATH_SEC[location.pathname.slice(1)] ? location.pathname : '/#home'; S.fromList = true; }
     history.pushState({ item: id }, '', '/p/' + id);
     showItem(id);
   }
@@ -2581,6 +2581,9 @@
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
   const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', tdir: '#viewTdir', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact' };
+  // 메뉴별 고유 주소 (/popular, /themes …) ↔ 화면 이름
+  const SEC_PATH = { popular: 'popular', themes: 'themes', tdir: 'sectors', sched: 'schedule', earnings: 'earnings', econ: 'econ', halt: 'halts', react: 'reaction', flows: 'flows', market: 'market' };
+  const PATH_SEC = Object.fromEntries(Object.entries(SEC_PATH).map(([v, p]) => [p, v]));
   function setView(v, hash) {
     S.view = v;
     const feed = v in FEED_VIEWS;
@@ -2589,7 +2592,7 @@
     $$('#nav button[data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === v));
     syncNavMore();
     //  화면을 옮길 때마다 방문 기록을 남김 (예전엔 같은 페이지 안에선 덮어써서, 모바일 앱에서 뒤로 가기를 누르면 앱이 꺼졌음)
-    if (hash !== false) { const u = '/' + (hash || '#' + v); if (location.pathname + location.hash !== u) history.pushState(null, '', u); }
+    if (hash !== false) { const u = !hash && SEC_PATH[v] ? '/' + SEC_PATH[v] : '/' + (hash || '#' + v); if (location.pathname + location.hash !== u) history.pushState(null, '', u); }
     if (feed) { S.type = v === 'home' ? S.homeType || 'ALL' : FEED_VIEWS[v]; S.limit = 80; renderAll(); }
     if (v !== 'item') { S.sel = null; document.title = 'GK의 공시레이더 | 미국·한국 실시간 공시·보도자료'; }
     if (v === 'market') { renderMarket(); pollSpark(); }
@@ -2623,6 +2626,7 @@
       showItem(id);
       return;
     }
+    { const sv = PATH_SEC[location.pathname.replace(/^\/|\/$/g, '')]; if (sv && !location.hash) { setView(sv, false); return; } }
     const h = decodeURIComponent(location.hash.slice(1));
     const m = h.match(/^company\/(US|KR)\/([A-Z0-9.\-]+)/i);
     if (m) { openCompany(m[1].toUpperCase(), m[2]); return; }
@@ -3031,6 +3035,8 @@
     $('#flowSub').addEventListener('click', (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; S[b.parentElement.dataset.sub] = b.dataset.v; renderFlows(); });
 
     document.addEventListener('change', (e) => { const el = e.target.closest('[data-set]'); if (el) setSetting(el.dataset.set, el.checked, el); });
+    // 하단 사이트 메뉴: 새로 고침 없이 화면만 바꿈
+    document.addEventListener('click', (e) => { const a = e.target.closest('.f-menu a'); if (!a || e.ctrlKey || e.metaKey) return; const v = PATH_SEC[a.getAttribute('href').slice(1)]; if (!v) return; e.preventDefault(); setView(v); window.scrollTo({ top: 0 }); });
     document.addEventListener('click', (e) => {
       const t = e.target;
       if (!t.closest('#bellPanel') && !t.closest('#btnBell')) $('#bellPanel').hidden = true;

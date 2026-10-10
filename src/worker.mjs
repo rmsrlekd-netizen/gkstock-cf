@@ -47,7 +47,7 @@ import { briefWatch } from './lib/brief.mjs';
 import { issuesWatch } from './lib/issues.mjs';
 import { econWatch } from './lib/econ.mjs';
 import { whyWatch } from './lib/why.mjs';
-import { renderItemPage, renderIssuePage, renderStockPage, sitemap, stockSitemap } from './lib/page.mjs';
+import { renderItemPage, renderIssuePage, renderStockPage, renderSectionPage, rssFeed, sitemap, stockSitemap, SECTIONS } from './lib/page.mjs';
 import { renderOgImage, renderIssueOg } from './lib/og.mjs';
 import secWatch from './functions/sec-watch.mjs';
 import dartWatch from './functions/dart-watch.mjs';
@@ -124,6 +124,12 @@ export default {
     if (ocm && req.method === 'GET') return cached(req, ctx, () => import('./lib/closecard.mjs').then((x) => x.renderClosePng(ctx, ocm[1])));
     const iom = url.pathname.match(/^\/og\/i\/((?:kr|us)-\d{8}-(?:\d{4}|\d{1,2}))\.png$/);
     if (iom && req.method === 'GET') return cached(req, ctx, () => renderIssueOg(ctx, iom[1]).catch((e) => { console.error('og-i', e); return env.ASSETS.fetch(new Request(new URL('/img/icon-512.png', req.url))); }));
+    // 안드로이드 앱(플레이스토어) ↔ 사이트 연결 증명: 앱 서명 지문은 Cloudflare 변수 ANDROID_CERT_SHA256 (여러 개면 쉼표로)
+    if (url.pathname === '/.well-known/assetlinks.json') {
+      const fps = String(env.ANDROID_CERT_SHA256 || '').split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x));
+      const body = fps.length ? [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: env.ANDROID_PACKAGE || 'com.gkstock.radar', sha256_cert_fingerprints: fps } }] : [];
+      return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300', 'access-control-allow-origin': '*' } });
+    }
     // 지금 배포된 화면 버전 (켜 둔 화면이 새 버전을 알아채고 스스로 새로 고침하는 데 씀)
     if (url.pathname === '/api/ver') {
       let v = null;
@@ -132,6 +138,9 @@ export default {
     }
     if (url.pathname === '/sitemap-pages.xml') return cached(req, ctx, () => sitemap());
     if (url.pathname === '/sitemap-stocks.xml') return cached(req, ctx, () => stockSitemap());
+    if (url.pathname === '/rss.xml' || url.pathname === '/rss') return cached(req, ctx, () => rssFeed());
+    // 메뉴별 고유 주소 (/popular, /themes …)
+    { const sl = url.pathname.replace(/^\/|\/$/g, ''); if (SECTIONS[sl] && req.method === 'GET') return cached(req, ctx, () => renderSectionPage(env, req, sl)); }
     // 종목별 공개 페이지 (/s/KR/005930, /s/US/NVDA) — 검색 노출용
     const sm = url.pathname.match(/^\/s\/(KR|US)\/([A-Za-z0-9.\-]{1,10})\/?$/i);
     if (sm && req.method === 'GET') return cached(req, ctx, () => renderStockPage(env, req, sm[1], decodeURIComponent(sm[2])));

@@ -59,6 +59,7 @@ export async function sitemap() {
     rows = [...(sec?.items || []), ...(dart?.items || []), ...(news?.items || []).filter((x) => x.src === 'PR')].filter((x) => x.ticker).map((x) => ({ id: x.id, ms: Date.parse(x.time || x.seenAt || '') || 0 }));
   }
   const urls = [`<url><loc>${ORIGIN}/</loc><changefreq>always</changefreq><priority>1.0</priority></url>`,
+    ...Object.keys(SECTIONS).map((k) => `<url><loc>${ORIGIN}/${k}</loc><changefreq>hourly</changefreq><priority>0.8</priority></url>`),
     ...rows.map((x) => `<url><loc>${ORIGIN}/p/${x.id}</loc>${x.ms ? `<lastmod>${new Date(x.ms).toISOString()}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.6</priority></url>`)];
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=1800', 'x-gk-edge-ttl': '1800' } });
 }
@@ -144,4 +145,70 @@ export async function stockSitemap() {
   const rows = await sitemapTickers().catch(() => []);
   const urls = rows.map((r) => `<url><loc>${ORIGIN}/s/${r.m}/${encodeURIComponent(r.t)}</loc>${r.ms ? `<lastmod>${new Date(r.ms).toISOString()}</lastmod>` : ''}<changefreq>daily</changefreq><priority>0.7</priority></url>`);
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600', 'x-gk-edge-ttl': '3600' } });
+}
+
+// ───── 메뉴별 고유 주소 (/themes, /popular …) — 검색 결과의 '사이트링크'(하위 메뉴)와 메뉴별 검색 노출용 ─────
+//  화면은 앱이 그 메뉴로 그대로 그림. 검색엔진에는 메뉴별 제목·설명·최신 내용 일부를 미리 넣어 보냄
+export const SECTIONS = {
+  popular: { view: 'popular', t: '실시간 인기·급등·급락 종목 TOP 10 (국내·미국)', d: '네이버 증권 기준 국내·미국 실시간 인기 검색 종목과 상승률·하락률 상위 종목, 오늘 움직임 이유를 15초마다 갱신합니다.' },
+  themes: { view: 'themes', t: '당일 테마 — 오늘의 주도 테마·섹터', d: '오늘 가장 강한 테마와 약한 테마, 테마별 대장주와 등락률을 국장·미장으로 나눠 실시간으로 보여줍니다.' },
+  sectors: { view: 'tdir', t: '테마·섹터 관련주 사전 (국내·미국)', d: '네이버 증권 테마·업종 전체와 미국 S&P 500·나스닥100 섹터별 관련주를 한눈에 정리했습니다.' },
+  schedule: { view: 'sched', t: '오늘 증시 일정 — 실적 발표·경제지표·IPO', d: '국장·미장 오늘과 이번 주 주요 일정: 실적 발표, 미국 경제지표, 공모주 상장, 휴장일을 정리합니다.' },
+  earnings: { view: 'earnings', t: '미국 실적 발표 캘린더 — 예상 EPS·매출', d: '미국 상장사 실적 발표 일정과 시장 예상 EPS·매출, 발표 시간(장전·장후)을 날짜별로 보여줍니다.' },
+  econ: { view: 'econ', t: '미국 경제지표 발표 일정과 AI 해석', d: 'CPI·고용·FOMC 등 미국 주요 경제지표 발표 일정과 예상치·실제치, 발표 직후 AI 해석을 제공합니다.' },
+  halts: { view: 'halt', t: 'VI 발동·서킷브레이커·거래정지 실시간 현황', d: '국장 VI(변동성 완화장치) 발동·해제와 미국 거래정지·재개 내역을 1분마다 기록합니다.' },
+  reaction: { view: 'react', t: '공시 유형별 발표 후 주가 반응 통계', d: '유상증자·자사주·공급계약·실적 등 공시 유형별로 발표 후 1일·5일 주가가 어떻게 움직였는지 통계로 보여줍니다.' },
+  flows: { view: 'flows', t: '외국인·기관 수급 상위 종목', d: '국내 주식 외국인·기관 순매수·순매도 상위 종목을 장중 잠정치로 보여줍니다.' },
+  market: { view: 'market', t: '시장 지표 — 지수·환율·금리·선물', d: '코스피·코스닥, S&P 500·나스닥, 원/달러, 미 국채 금리, 나스닥100 선물, 야간선물을 한 화면에서 확인합니다.' },
+};
+export async function renderSectionPage(env, req, slug) {
+  const sec = SECTIONS[slug];
+  const base = await env.ASSETS.fetch(new Request(new URL('/', req.url)));
+  let html = await base.text();
+  if (!sec) return new Response(html, { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } });
+  const url = `${ORIGIN}/${slug}`;
+  const title = `${sec.t} | GK의 공시레이더`;
+  // 최신 내용 일부 (검색엔진이 '살아 있는 페이지'로 보도록)
+  let live = '';
+  try {
+    if (slug === 'popular') {
+      const p = await getJSON('popular/v2');
+      const li = (a, mk) => (a || []).slice(0, 10).map((x) => `<li>${esc(mk === 'KR' ? x.name || x.ticker : x.ticker)} ${x.pct != null ? esc((x.pct > 0 ? '+' : '') + Number(x.pct).toFixed(2) + '%') : ''}${x.reason ? ' — ' + esc(x.reason) : ''}</li>`).join('');
+      live = `<h2>국내 상승률 상위</h2><ol>${li(p?.krUp, 'KR')}</ol><h2>미국 상승률 상위</h2><ol>${li(p?.usUp, 'US')}</ol><h2>국내 인기 검색</h2><ol>${li(p?.kr, 'KR')}</ol>`;
+    } else if (slug === 'themes') {
+      const t = await getJSON('themes/v1');
+      live = `<h2>국장 강세 테마</h2><ol>${(t?.kr?.themes || []).slice(0, 10).map((g) => `<li>${esc(g.name)} ${esc((g.rate > 0 ? '+' : '') + Number(g.rate || 0).toFixed(2) + '%')} — ${(g.leaders || []).slice(0, 3).map((s) => esc(s.name)).join(', ')}</li>`).join('')}</ol>`;
+    }
+  } catch {}
+  const body = `<article class="ssr" id="ssr"><h1>${esc(sec.t)}</h1><p>${esc(sec.d)}</p>${live}<nav><ul>${Object.entries(SECTIONS).map(([k, v]) => `<li><a href="/${k}">${esc(v.t.split(' — ')[0])}</a></li>`).join('')}</ul></nav><p><a href="/">GK의 공시레이더 — 미국·한국 실시간 공시</a></p></article>`;
+  html = html
+    .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
+    .replace(/<meta name="description" content="[^"]*" \/>/, `<meta name="description" content="${esc(sec.d)}" />`)
+    .replace(/<link rel="canonical" href="[^"]*" \/>/, `<link rel="canonical" href="${url}" />`)
+    .replace(/<meta property="og:url" content="[^"]*" \/>/, `<meta property="og:url" content="${url}" />`)
+    .replace(/<meta property="og:title" content="[^"]*" \/>/, `<meta property="og:title" content="${esc(sec.t)}" />`)
+    .replace(/<meta property="og:description" content="[^"]*" \/>/, `<meta property="og:description" content="${esc(sec.d)}" />`)
+    .replace(/<noscript>[\s\S]*?<\/noscript>/, body);
+  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300', 'x-gk-edge-ttl': '600' } });
+}
+
+/** /rss.xml — 최신 '오늘 주요 이슈' 회차 + 중요 공시 (네이버 서치어드바이저 RSS 제출용) */
+export async function rssFeed() {
+  const xe = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+  const [ik, iu, sec, dart, news] = await Promise.all(['issues/idx/KR', 'issues/idx/US', 'sec/feed', 'dart/feed', 'news/feed'].map((k) => getJSON(k).catch(() => null)));
+  const items = [];
+  for (const [mk, idx] of [['KR', ik], ['US', iu]]) for (const x of (idx || []).slice(0, 15)) {
+    const d = new Date(x.date + 'T12:00:00Z');
+    items.push({ title: `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 ${mk === 'KR' ? '국장' : '미장'} ${x.slot || ''} 주요 이슈`, link: `${ORIGIN}/i/${x.id}`, desc: x.headline || '', ms: x.at || Date.parse(x.date) });
+  }
+  const tOf = (x) => x.ko?.title || x.summary?.title || x.titleKo || x.pr?.headline || x.title || x.titleClean || x.formKo || x.form || '';
+  for (const x of [...(sec?.items || []), ...(dart?.items || []), ...(news?.items || []).filter((z) => z.src === 'PR')]) {
+    if (!x.ticker || (x.impact ?? 0) < 4) continue;
+    const co = x.src === 'DART' ? x.name || x.ticker : `${x.ticker}${x.name ? ' ' + x.name : ''}`;
+    items.push({ title: `${co} — ${tOf(x)}`.slice(0, 150), link: `${ORIGIN}/p/${x.id}`, desc: x.summary?.sub || x.desc || x.pr?.deck || '', ms: Date.parse(x.time || x.seenAt || '') || 0 });
+  }
+  items.sort((a, b) => b.ms - a.ms);
+  const rows = items.slice(0, 60).map((x) => `<item><title>${xe(x.title)}</title><link>${xe(x.link)}</link><guid isPermaLink="true">${xe(x.link)}</guid>${x.ms ? `<pubDate>${new Date(x.ms).toUTCString()}</pubDate>` : ''}<description>${xe(String(x.desc).slice(0, 300))}</description></item>`).join('\n');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0"><channel><title>GK의 공시레이더</title><link>${ORIGIN}/</link><description>미국·한국 실시간 공시, 보도자료, 오늘 주요 이슈와 AI 분석</description><language>ko</language><lastBuildDate>${new Date().toUTCString()}</lastBuildDate>\n${rows}\n</channel></rss>`;
+  return new Response(xml, { headers: { 'content-type': 'application/rss+xml; charset=utf-8', 'cache-control': 'public, max-age=600', 'x-gk-edge-ttl': '600' } });
 }
