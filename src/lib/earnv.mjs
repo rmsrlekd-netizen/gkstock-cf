@@ -100,6 +100,36 @@ async function judgeUS(x, ms) {
   return { mk: 'US', verdict: eps.v, basis: 'EPS', eps: { a, e, pct: eps.pct }, rev: rev && { a: ra, e: re, pct: rev.pct, v: rev.v }, line, src };
 }
 
+// 주간 결과판 한 줄: 기준 지표(국장 영업이익 · 미장 EPS)의 예상 대비 %
+function histRow(id, v) {
+  const main = v.mk === 'KR' ? v.op || v.rev : v.eps;
+  return { id, t: v.t, n: v.name, mk: v.mk, v: v.verdict, pct: main?.pct != null ? Math.round(main.pct * 10) / 10 : null, b: v.basis, line: v.line, period: v.period || null, rv: v.rev?.v || null, at: v.at };
+}
+
+/** 이번 주(week=0)·지난주(week=1) 컨센서스 상회·하회 순위 (한국 시간 월요일 0시 기준) */
+export async function earnWeek(week = 0) {
+  const hist = (await getJSON('earn/hist')) || {};
+  const k = new Date(Date.now() + 9 * 3600e3);
+  const mon = Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate() - ((k.getUTCDay() + 6) % 7)) - 9 * 3600e3 - week * 7 * 86400e3;
+  const rows = Object.values(hist).filter((x) => x.at >= mon && x.at < mon + 7 * 86400e3);
+  const out = { from: new Date(mon + 9 * 3600e3).toISOString().slice(0, 10), to: new Date(mon + 9 * 3600e3 + 6 * 86400e3).toISOString().slice(0, 10) };
+  for (const mk of ['KR', 'US']) {
+    const r = rows.filter((x) => x.mk === mk);
+    out[mk] = {
+      n: r.length,
+      beat: r.filter((x) => x.v === '상회').sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)).slice(0, 30),
+      miss: r.filter((x) => x.v === '하회').sort((a, b) => (a.pct ?? 0) - (b.pct ?? 0)).slice(0, 30),
+      inline: r.filter((x) => x.v === '부합').length,
+    };
+  }
+  // 미국 종목은 한국어 이름
+  try {
+    const us = [...out.US.beat, ...out.US.miss];
+    if (us.length) { const { usKoNames } = await import('./usko.mjs'); const ko = await usKoNames(us.map((x) => x.t)); for (const x of us) x.ko = ko?.[x.t] || ko?.[String(x.t).toUpperCase()] || null; }
+  } catch {}
+  return out;
+}
+
 // ───── 크론 (3분마다) ─────
 function itemMs(x) {
   if (x.src === 'DART' && x.timeMin && x.timeMin !== 'na') return Date.parse(x.timeMin.replace(' ', 'T') + ':00+09:00');
@@ -111,6 +141,13 @@ export async function earnWatch() {
   const { typeOf } = await import('./react.mjs');
   const st = (await getJSON('earn/state')) || { tries: {} };
   const vmap = (await getJSON('earn/vmap')) || {};
+  // 주간 결과판용 기록 (3주 보관) — 처음엔 최근 3일 판정으로 채움
+  let hist = await getJSON('earn/hist');
+  const hist0 = hist ? Object.keys(hist).length : -1;
+  if (!hist) {
+    hist = {};
+    for (const id of Object.keys(vmap).slice(0, 60)) { const v = await getJSON(`earn/v/${id}`).catch(() => null); if (v) hist[id] = histRow(id, v); }
+  }
   const cand = [];
   for (const x of [...(dart?.items || []), ...(sec?.items || []), ...(news?.items || [])]) {
     if (!x.id || !x.ticker || x.dupOf || vmap[x.id] || (st.tries[x.id]?.done)) continue;
@@ -136,6 +173,7 @@ export async function earnWatch() {
       const v = { ...r, id: x.id, t: x.ticker, name: x.name || x.company || x.ticker, at: now };
       await setJSON(`earn/v/${x.id}`, v);
       vmap[x.id] = { v: r.verdict, line: r.line, b: r.basis, t: x.ticker, mk: r.mk, n: v.name, at: now };
+      hist[x.id] = histRow(x.id, v);
       st.tries[x.id].done = 1;
       out.judged++;
     } catch (e) { st.tries[x.id].err = String(e.message || e).slice(0, 120); }
@@ -144,6 +182,8 @@ export async function earnWatch() {
   for (const [id, v] of Object.entries(vmap)) if (now - (v.at || 0) > 3 * 86400e3) delete vmap[id];
   for (const [id, v] of Object.entries(st.tries)) if (now - (v.at || 0) > 3 * 86400e3) delete st.tries[id];
   if (out.judged) await setJSON('earn/vmap', vmap);
+  for (const [id, v] of Object.entries(hist)) if (now - (v.at || 0) > 21 * 86400e3) delete hist[id];
+  if (out.judged || hist0 !== Object.keys(hist).length) await setJSON('earn/hist', hist).catch(() => {});
   await setJSON('earn/state', st).catch(() => {});
   return out;
 }

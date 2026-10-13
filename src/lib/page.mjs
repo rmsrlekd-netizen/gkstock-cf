@@ -157,12 +157,14 @@ export const SECTIONS = {
   earnings: { view: 'earnings', t: '미국 실적 발표 캘린더 — 예상 EPS·매출', d: '미국 상장사 실적 발표 일정과 시장 예상 EPS·매출, 발표 시간(장전·장후)을 날짜별로 보여줍니다.' },
   econ: { view: 'econ', t: '미국 경제지표 발표 일정과 AI 해석', d: 'CPI·고용·FOMC 등 미국 주요 경제지표 발표 일정과 예상치·실제치, 발표 직후 AI 해석을 제공합니다.' },
   halts: { view: 'halt', t: 'VI 발동·서킷브레이커·거래정지 실시간 현황', d: '국장 VI(변동성 완화장치) 발동·해제와 미국 거래정지·재개 내역을 1분마다 기록합니다.' },
-  about: { view: 'guide', t: '서비스 소개 — GK의 공시레이더가 제공하는 모든 기능과 투자 유의사항', d: '미국·한국 실시간 공시, AI 분석, 오늘 주요 이슈, 실시간 급등주, 테마·섹터, 분할·배당락 캘린더, 푸시·텔레그램 알림까지 GK의 공시레이더의 모든 서비스와 투자 유의사항을 안내합니다.' },
+  about: { view: 'guide', t: '서비스 소개 — GK의 공시레이더가 제공하는 모든 기능과 투자 유의사항', d: '미국·한국 실시간 공시, AI 분석, 오늘 주요 이슈, 실시간 급등주, 테마·섹터, 분할·배당락 캘린더, 실적 컨센서스 TOP, 투자 대가 포트폴리오, 가격·키워드 푸시와 텔레그램 알림까지 GK의 공시레이더의 모든 서비스와 투자 유의사항을 안내합니다.' },
   splits: { view: 'cact', t: '주식 분할·병합(역분할) 일정 캘린더 (국내·미국)', d: '국내 DART 주식분할·주식병합·감자 결정과 미국 주식분할·역분할(리버스 스플릿) 일정을 날짜별로 정리합니다. 매매정지 기간, 신주 상장일, 분할 비율까지.' },
   dividends: { view: 'cdiv', t: '배당락 일정 캘린더 (국내·미국)', d: '국내 현금배당 결정 공시의 배당기준일·배당락일과 미국 주요 종목의 배당락일(Ex-Date)·1주당 배당금을 날짜별로 보여줍니다.' },
   rights: { view: 'crights', t: '유상증자·무상증자 일정 캘린더', d: '국내 유상증자·무상증자 결정 공시의 신주배정기준일, 권리락일, 청약일, 납입일, 신주 상장일을 날짜별로 정리합니다.' },
   reaction: { view: 'react', t: '공시 유형별 발표 후 주가 반응 통계', d: '유상증자·자사주·공급계약·실적 등 공시 유형별로 발표 후 1일·5일 주가가 어떻게 움직였는지 통계로 보여줍니다.' },
-  flows: { view: 'flows', t: '외국인·기관 수급 상위 종목', d: '국내 주식 외국인·기관 순매수·순매도 상위 종목을 장중 잠정치로 보여줍니다.' },
+  flows: { view: 'flows', t: '수급 레이더 — 외국인·기관 순매수, 공매도, 대차잔고', d: '국내 주식 외국인·기관 순매수·순매도 상위, 공매도 거래 비중 상위, 대차잔고 상위·급증 종목과 미국 내부자 매매를 한 화면에서 보여줍니다.' },
+  consensus: { view: 'ewk', t: '이번 주 실적 컨센서스 상회·하회 TOP (국장·미장)', d: '이번 주 실적을 발표한 국내·미국 기업 가운데 시장 예상치(컨센서스)를 가장 크게 웃돈 기업과 밑돈 기업 순위. 국장은 영업이익, 미장은 EPS 기준으로 자동 판정합니다.' },
+  gurus: { view: 'guru', t: '투자 대가 포트폴리오 — 워런 버핏·드러켄밀러·애크먼 13F 보유 종목', d: '워런 버핏, 스탠리 드러켄밀러, 빌 애크먼, 마이클 버리 등 유명 투자자들의 분기 13F 보고 보유 종목과 신규 매수·추가 매수·전량 매도 종목을 한국어로 정리합니다.' },
   market: { view: 'market', t: '시장 지표 — 지수·환율·금리·선물', d: '코스피·코스닥, S&P 500·나스닥, 원/달러, 미 국채 금리, 나스닥100 선물, 야간선물을 한 화면에서 확인합니다.' },
 };
 export async function renderSectionPage(env, req, slug) {
@@ -179,6 +181,15 @@ export async function renderSectionPage(env, req, slug) {
       const p = await getJSON('popular/v2');
       const li = (a, mk) => (a || []).slice(0, 10).map((x) => `<li>${esc(mk === 'KR' ? x.name || x.ticker : x.ticker)} ${x.pct != null ? esc((x.pct > 0 ? '+' : '') + Number(x.pct).toFixed(2) + '%') : ''}${x.reason ? ' — ' + esc(x.reason) : ''}</li>`).join('');
       live = `<h2>국내 상승률 상위</h2><ol>${li(p?.krUp, 'KR')}</ol><h2>미국 상승률 상위</h2><ol>${li(p?.usUp, 'US')}</ol><h2>국내 인기 검색</h2><ol>${li(p?.kr, 'KR')}</ol>`;
+    } else if (slug === 'gurus') {
+      const { guruView } = await import('./guru.mjs');
+      const g = await guruView(null);
+      live = `<h2>투자자별 상위 보유 종목</h2><ul>${(g?.list || []).filter((x) => !x.none).map((x) => `<li>${esc(x.who)}(${esc(x.fund)}) ${esc(x.q)}: ${(x.top || []).map((t) => esc((t.ko || t.t || t.nm) + ' ' + t.pct + '%')).join(', ')}</li>`).join('')}</ul>`;
+    } else if (slug === 'consensus') {
+      const { earnWeek } = await import('./earnv.mjs');
+      const e = await earnWeek(0);
+      const li = (a, mk) => (a || []).slice(0, 10).map((x) => `<li>${esc(mk === 'KR' ? x.n : (x.ko || x.n) + ' ' + x.t)} — ${esc(x.line || x.v)}</li>`).join('');
+      live = `<h2>미장 컨센서스 상회</h2><ol>${li(e.US?.beat, 'US')}</ol><h2>국장 컨센서스 상회</h2><ol>${li(e.KR?.beat, 'KR')}</ol>`;
     } else if (slug === 'themes') {
       const t = await getJSON('themes/v1');
       live = `<h2>국장 강세 테마</h2><ol>${(t?.kr?.themes || []).slice(0, 10).map((g) => `<li>${esc(g.name)} ${esc((g.rate > 0 ? '+' : '') + Number(g.rate || 0).toFixed(2) + '%')} — ${(g.leaders || []).slice(0, 3).map((s) => esc(s.name)).join(', ')}</li>`).join('')}</ol>`;

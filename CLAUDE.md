@@ -35,5 +35,13 @@
 - 주가가 떨어졌다고 실적이 나빴다고 쓰지 않는다. 실적 평가는 `src/lib/earnv.mjs` 컨센서스 판정(상회·부합·하회)을 따른다.
 - 공모·증자는 무조건 악재가 아니다 (할증 발행·전략적 투자자는 중립~긍정).
 
+## 기능 메모 (v138)
+- 가격·키워드 푸시: `src/lib/push.mjs` (push_al·push_kw 표, `alertWatch` 매분). 기기 설정은 localStorage `gk_alerts`·`gk_kw`.
+- 컨센서스 TOP: `earn/hist`(3주) → `/api/earnv?week=0|1`, 화면 `/consensus`.
+- 투자 대가(13F): `src/lib/guru.mjs` (17명, 3분마다 한 명, OpenFIGI로 CUSIP→티커), 화면 `/gurus`, `/gurus/buffett`.
+- 대차잔고: `src/lib/loan.mjs` (KIS HHPST074500C0, 하루 2번), 수급 탭 '국내 대차잔고'.
+- 영상 소재 노트(관리자): `src/lib/vnote.mjs` · 주간 정리 카드(토 8:30): `src/lib/weekcard.mjs`, `/og/week/YYYYMMDD.png`.
+- 더보기 메뉴는 항상 '서비스 소개'가 맨 끝.
+
 ## 앞으로 할 일 (메모)
 - 플레이스토어 앱: PWABuilder(TWA), 패키지 `com.gkstock.radar`, Cloudflare 변수 `ANDROID_CERT_SHA256`. 개발자 계정은 GK가 나중에 개인/조직 결정.

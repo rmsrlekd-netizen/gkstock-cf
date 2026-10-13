@@ -4,7 +4,7 @@
 import { getJSON, setJSON } from './store.mjs';
 import { fetchWithTimeout } from './util.mjs';
 
-export const DEFAULT_CFG = { on: true, minImp: 4, perHour: 12, kr: true, us: true, issues: true, digest: true, surge: true, close: true };
+export const DEFAULT_CFG = { on: true, minImp: 4, perHour: 12, kr: true, us: true, issues: true, digest: true, surge: true, close: true, weekly: true };
 // 공시 후 급등 기준 (발표 시점 주가 대비): 국장 +10%, 미장 +15%
 export const SURGE = { KR: 10, US: 15 };
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -53,7 +53,7 @@ export async function tgPhoto(chat, png, caption) {
   return postForm('sendPhoto', fd);
 }
 /** 카드 이미지를 만들어 사진으로 보내고, 실패하면 기존처럼 글로 */
-async function sendCard(chat, text, makePng, opts = {}) {
+export async function sendCard(chat, text, makePng, opts = {}) {
   let png = null;
   try { png = await makePng(); } catch (e) { console.warn('tg card', e.message); }
   if (png?.byteLength > 1000) {

@@ -54,7 +54,12 @@ async function shortTop() {
   }));
 }
 
-export default async () => {
+export default async (req) => {
+  // 대차잔고 (크론이 하루 두 번 채워 둔 것)
+  if (req && new URL(req.url).searchParams.get('loan')) {
+    const { loanList } = await import('../lib/loan.mjs');
+    return json({ ok: true, needsKis: !hasKis(), loan: await loanList() }, { cdnSeconds: 300, swr: 600 });
+  }
   if (!hasKis()) {
     return json({ ok: false, error: 'KIS_APP_KEY / KIS_APP_SECRET 환경변수가 없어 국내 수급을 불러올 수 없습니다.', needsKis: true }, { cdnSeconds: 60 });
   }

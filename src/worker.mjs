@@ -40,6 +40,7 @@ import * as reaction from './functions/reaction.mjs';
 import * as push from './functions/push.mjs';
 import * as earnv from './functions/earnv.mjs';
 import * as cact from './functions/cact.mjs';
+import * as guru from './functions/guru.mjs';
 import { reactWatch } from './lib/react.mjs';
 import { channelWatch, digestWatch, surgeWatch } from './lib/tgchannel.mjs';
 import { haltsWatch } from './lib/halts.mjs';
@@ -55,7 +56,7 @@ import dartWatch from './functions/dart-watch.mjs';
 import newsWatch from './functions/news-watch.mjs';
 
 const ROUTES = {};
-for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, spark, verdicts, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts, reaction, push, earnv, cact]) {
+for (const m of [analyze, company, dart, digest, doc, flows, health, logo, market, spark, verdicts, news, popular, sectors, quote, translate, translateDoc, earnings, search, sec, stock, views, track, admin, item, archive, why, themes, econ, issues, schedule, halts, reaction, push, earnv, cact, guru]) {
   ROUTES[m.config.path] = m.default;
 }
 
@@ -123,6 +124,9 @@ export default {
     // 장 마감 정리 카드 이미지 (/og/close/kr-20261010.png)
     const ocm = url.pathname.match(/^\/og\/close\/((?:kr|us)-\d{8})\.png$/);
     if (ocm && req.method === 'GET') return cached(req, ctx, () => import('./lib/closecard.mjs').then((x) => x.renderClosePng(ctx, ocm[1])));
+    // 주간 정리 카드 이미지 (/og/week/20261010.png)
+    const owm = url.pathname.match(/^\/og\/week\/(\d{8})\.png$/);
+    if (owm && req.method === 'GET') return cached(req, ctx, () => import('./lib/weekcard.mjs').then((x) => x.renderWeekPng(ctx, owm[1])).catch(() => new Response('not found', { status: 404 })));
     const iom = url.pathname.match(/^\/og\/i\/((?:kr|us)-\d{8}-(?:\d{4}|\d{1,2}))\.png$/);
     if (iom && req.method === 'GET') return cached(req, ctx, () => renderIssueOg(ctx, iom[1]).catch((e) => { console.error('og-i', e); return env.ASSETS.fetch(new Request(new URL('/img/icon-512.png', req.url))); }));
     // 안드로이드 앱(플레이스토어) ↔ 사이트 연결 증명: 앱 서명 지문은 Cloudflare 변수 ANDROID_CERT_SHA256 (여러 개면 쉼표로)
@@ -142,6 +146,7 @@ export default {
     if (url.pathname === '/rss.xml' || url.pathname === '/rss') return cached(req, ctx, () => rssFeed());
     // 메뉴별 고유 주소 (/popular, /themes …)
     { const sl = url.pathname.replace(/^\/|\/$/g, ''); if (SECTIONS[sl] && req.method === 'GET') return cached(req, ctx, () => renderSectionPage(env, req, sl)); }
+    if (/^\/gurus\/[a-z]{2,12}\/?$/.test(url.pathname) && req.method === 'GET') return cached(req, ctx, () => renderSectionPage(env, req, 'gurus')); // 투자자 한 명 화면
     // 종목별 공개 페이지 (/s/KR/005930, /s/US/NVDA) — 검색 노출용
     const sm = url.pathname.match(/^\/s\/(KR|US)\/([A-Za-z0-9.\-]{1,10})\/?$/i);
     if (sm && req.method === 'GET') return cached(req, ctx, () => renderStockPage(env, req, sm[1], decodeURIComponent(sm[2])));
@@ -181,6 +186,9 @@ export default {
       // 권리 일정: 국장 DART 분할·병합·증자·배당 공시 읽기 (3분마다) · 미장 Nasdaq 일정 (6시간마다)
       jobs3.push(import('./lib/cact.mjs').then(async (x) => [await x.cactKrWatch(), await x.cactUsWatch()]).then((r) => { if (r[0]?.kr) console.log('cact', JSON.stringify(r)); }).catch((e) => console.warn('cact', e.message)));
       // 실적 발표 판정: 실적 공시가 나오면 컨센서스와 비교 (3분마다)
+      jobs3.push(import('./lib/guru.mjs').then((x) => x.guruWatch()).then((r) => { if (Object.values(r || {}).some((v) => v === 'new' || v === 'error')) console.log('guru', JSON.stringify(r)); }).catch((e) => console.warn('guru', e.message))); // 투자 대가 13F
+      jobs3.push(import('./lib/loan.mjs').then((x) => x.loanWatch()).then((r) => { if (r) console.log('loan', JSON.stringify(r)); }).catch((e) => console.warn('loan', e.message))); // 국내 대차잔고
+      jobs3.push(import('./lib/vnote.mjs').then((x) => x.vnoteWatch(now)).then((r) => { if (r && Object.keys(r).length) console.log('vnote', JSON.stringify(r)); }).catch((e) => console.warn('vnote', e.message))); // 영상 소재 노트
       jobs3.push(import('./lib/earnv.mjs').then((x) => x.earnWatch()).then((r) => { if (r?.judged) console.log('earnv', JSON.stringify(r)); }).catch((e) => console.warn('earnv', e.message)));
       if (min % 9 < 3) jobs3.push(reactWatch().then((r) => { if (r) console.log('react', JSON.stringify(r)); }).catch((e) => console.warn('react', e.message)));
       if (min % 6 < 3) jobs3.push(scheduleWatch().then((r) => console.log('sched', JSON.stringify(r))).catch((e) => console.warn('sched', e.message)));
@@ -220,6 +228,8 @@ export default {
     // 웹 푸시: 관심종목 새 공시 → 구독한 휴대폰·PC로 알림
     jobs.push(import('./lib/push.mjs').then((x) => x.pushWatch()).then((r) => { if (r?.n || r?.fail) console.log('push', JSON.stringify(r)); }).catch((e) => console.warn('push', e.message)));
     // 장 마감 정리 카드 → 텔레그램 채널 (국장 16:08~ · 미장 뉴욕 16:10~)
+    jobs.push(import('./lib/push.mjs').then((x) => x.alertWatch(now)).then((r) => { if (r?.hits) console.log('alert', JSON.stringify(r)); }).catch((e) => console.warn('alert', e.message))); // 가격 알림
+    jobs.push(import('./lib/weekcard.mjs').then((x) => x.weekWatch(ctx)).then((r) => { if (r) console.log('week', JSON.stringify(r)); }).catch((e) => console.warn('week', e.message))); // 토요일 주간 정리 카드
     jobs.push(import('./lib/closecard.mjs').then((x) => x.closeWatch(now, ctx)).then((r) => { if (r && Object.keys(r).length) console.log('close', JSON.stringify(r)); }).catch((e) => console.warn('close', e.message)));
     if (jobs.length) ctx.waitUntil(Promise.allSettled(jobs));
   },

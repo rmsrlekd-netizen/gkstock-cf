@@ -20,6 +20,27 @@ export default async (req) => {
   const item = u.searchParams.get('item');
   if (item) return J({ ok: true, views: await itemViews(item.split(',').filter(Boolean).slice(0, 50)) });
 
+  // 영상 소재 노트: &vnote=1 (&mk=KR&date=2026-10-12 보기 · &make=KR|US 지금 만들기)
+  if (u.searchParams.get('vnote')) {
+    const vn = await import('../lib/vnote.mjs');
+    const make = u.searchParams.get('make');
+    try {
+      if (make) { const note = await vn.buildNote(make === 'US' ? 'US' : 'KR'); return J({ ok: true, ...(await vn.noteView(note.mk, note.date)) }); }
+      const mk = u.searchParams.get('mk'), date = u.searchParams.get('date');
+      return J({ ok: true, ...(await vn.noteView(mk === 'US' ? 'US' : mk === 'KR' ? 'KR' : null, /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : null)) });
+    } catch (e) { return J({ ok: false, error: e.message }); }
+  }
+  // 주간 정리 카드: &week=make (새로 만들기·미리보기) | send (채널로 보내기)
+  const wk = u.searchParams.get('week');
+  if (wk) {
+    try {
+      const w = await import('../lib/weekcard.mjs');
+      if (wk === 'send') return J(await w.sendWeek(null, { force: true, fresh: u.searchParams.get('fresh') === '1' }));
+      const { d } = await w.buildWeek(null, { fresh: true });
+      return J({ ok: true, fri: d.fri, img: `/og/week/${d.fri.replace(/-/g, '')}.png?t=${Date.now()}`, headline: d.headline, items: d.items });
+    } catch (e) { return J({ ok: false, error: e.message }); }
+  }
+
   const tg = u.searchParams.get('tg');
   if (tg === 'find') {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -49,7 +70,7 @@ export default async (req) => {
       const mi = n('minImp', 3, 5), ph = n('perHour', 1, 180);
       if (mi !== undefined) cfg.minImp = mi;
       if (ph !== undefined) cfg.perHour = ph;
-      for (const k of ['kr', 'us', 'issues', 'digest', 'surge', 'close']) if (u.searchParams.has(k)) cfg[k] = u.searchParams.get(k) === '1';
+      for (const k of ['kr', 'us', 'issues', 'digest', 'surge', 'close', 'weekly']) if (u.searchParams.has(k)) cfg[k] = u.searchParams.get(k) === '1';
     }
     await setJSON('tgch/cfg', cfg);
     return J({ ok: true, cfg });
@@ -69,14 +90,19 @@ export default async (req) => {
   const usage = await aiUsage(7).catch(() => []);
   // 새 기능 상태: 푸시 알림 · 장 마감 이미지 · 실적 판정
   const kd = (tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const [pushSt, pushN, closeKR, closeUS, earnMap] = await Promise.all([
+  const { weekOf } = await import('../lib/weekcard.mjs');
+  const [pushSt, pushN, closeKR, closeUS, earnMap, weekSent, guruSt, loanSt, alSt] = await Promise.all([
     getJSON('push/state').catch(() => null),
     import('../lib/push.mjs').then((x) => x.pushStats()).catch(() => null),
     getJSON(`close/sent/KR/${kd('Asia/Seoul')}`).catch(() => null),
     getJSON(`close/sent/US/${kd('America/New_York')}`).catch(() => null),
     getJSON('earn/vmap').catch(() => null),
+    getJSON(`week/sent/${weekOf().fri}`).catch(() => null),
+    getJSON('guru/state').catch(() => null),
+    getJSON('loan/state').catch(() => null),
+    getJSON('push/alst').catch(() => null),
   ]);
-  const extras = { push: { ...(pushN || {}), last: pushSt?.lastSent || null, fail: pushSt?.lastFail || null }, close: { KR: closeKR, US: closeUS }, earn: Object.entries(earnMap || {}).sort((a, b) => b[1].at - a[1].at).slice(0, 12).map(([id, v]) => ({ id, ...v })) };
+  const extras = { push: { ...(pushN || {}), last: pushSt?.lastSent || null, fail: pushSt?.lastFail || null, alLast: alSt?.last || null }, week: { fri: weekOf().fri, sent: weekSent }, guru: { err: guruSt?.err || null, pend: guruSt?.pend?.length || 0 }, loan: { done: loanSt?.doneKey || null, err: loanSt?.err || null }, close: { KR: closeKR, US: closeUS }, earn: Object.entries(earnMap || {}).sort((a, b) => b[1].at - a[1].at).slice(0, 12).map(([id, v]) => ({ id, ...v })) };
   return J({ ok: true, ...rep, ...extras, usage, archive: arch, backfill: bf, monitor: mon, telegram: { token: !!process.env.TELEGRAM_BOT_TOKEN, chat: !!process.env.TELEGRAM_CHAT_ID }, channel: await (async () => { const { DEFAULT_CFG } = await import('../lib/tgchannel.mjs'); const st = (await getJSON('tgch/state')) || {}; return { id: process.env.TELEGRAM_CHANNEL_ID || null, cfg: { ...DEFAULT_CFG, ...((await getJSON('tgch/cfg')) || {}) }, today: st.day === new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10) ? st.dayN || 0 : 0, last: st.last || null, err: st.err || null, lastErr: st.lastErr || null }; })() });
 };
 

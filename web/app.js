@@ -1317,7 +1317,7 @@
     mb.hidden = !hid.length;
     const act = hid.find((b) => b.classList.contains('on'));
     mb.classList.toggle('on', !!act);
-    mb.firstChild.textContent = act ? act.textContent : '더보기';
+    mb.firstChild.textContent = act ? act.dataset.short || act.textContent : '더보기';
   }
   function toggleNavPop(open) {
     const pop = $('#navPop');
@@ -1412,6 +1412,90 @@
   function bindCact() {
     $('#caTab').addEventListener('click', (e) => { const b = e.target.closest('[data-ca]'); if (!b) return; setView(CA_VIEW[b.dataset.ca]); });
     $('#caSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-cam]'); if (!b) return; S.ca.mk = b.dataset.cam; save('gk_camk', S.ca.mk); loadCact(); });
+  }
+
+  // ───────────────────────── 실적 컨센서스 TOP (이번 주·지난주 상회/하회) ─────────────────────────
+  S.ew = { w: '0', mk: load('gk_ewmk', 'US'), data: {}, at: {} };
+  async function loadEwk(force) {
+    renderEwk();
+    const w = S.ew.w;
+    if (!force && S.ew.data[w] && Date.now() - (S.ew.at[w] || 0) < 3 * 60e3) return;
+    try { S.ew.data[w] = await getJSON(`/api/earnv?week=${w}`, {}); S.ew.at[w] = Date.now(); } catch (e) { if (!S.ew.data[w]) S.ew.data[w] = { error: e.message }; }
+    if (S.view === 'ewk') renderEwk();
+  }
+  function ewRow(x, i, mk) {
+    const nm = mk === 'KR' ? x.n || x.t : x.t, sub = mk === 'KR' ? x.t : x.ko || x.n || '';
+    const pct = x.pct != null ? `${x.pct > 0 ? '+' : ''}${Math.abs(x.pct) >= 1000 ? Math.round(x.pct) : x.pct}%` : '';
+    return `<li class="ew-row"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="${esc(mk)}|${esc(x.t)}|${esc(x.ko || x.n || '')}">${logoHTML(mk, x.t, x.n, 'sm')}<span><b>${esc(nm)}</b><small>${esc(sub)}${x.period ? ' · ' + esc(x.period) : ''}</small></span></button><span class="ew-line">${esc(x.line || '')}</span><span class="ew-pct ${x.v === '상회' ? 'beat' : 'miss'}">${esc(pct || x.v)}<small>${esc(x.b || '')} 예상 대비</small></span>${x.id ? `<button class="link ew-src" data-ew-open="${esc(x.id)}">공시 →</button>` : ''}</li>`;
+  }
+  function renderEwk() {
+    const d = S.ew.data[S.ew.w], mk = S.ew.mk;
+    $$('#ewWeek button').forEach((b) => b.classList.toggle('on', b.dataset.ew === S.ew.w));
+    $$('#ewSeg button').forEach((b) => b.classList.toggle('on', b.dataset.ewm === mk));
+    const box = $('#ewBody');
+    if (!d) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; $('#ewMeta').textContent = ''; return; }
+    if (d.error) { box.innerHTML = `<div class="empty">불러오지 못했습니다: ${esc(d.error)}</div>`; return; }
+    const m = d[mk] || { beat: [], miss: [], n: 0, inline: 0 };
+    $('#ewMeta').textContent = `${md(d.from)}~${md(d.to)} · 판정 ${m.n}건 (상회 ${m.beat.length} · 부합 ${m.inline} · 하회 ${m.miss.length})`;
+    const part = (cls, title, arr, empty) => `<div class="card ew-card ${cls}"><h3>${title}</h3>${arr.length ? `<ul class="ew-list">${arr.map((x, i) => ewRow(x, i, mk)).join('')}</ul>` : `<div class="empty sm">${empty}</div>`}</div>`;
+    box.innerHTML = `<div class="ew-grid">${part('beat', '🟢 컨센서스 상회 TOP', m.beat, '아직 상회한 실적 발표가 없어요')}${part('miss', '🔴 컨센서스 하회 TOP', m.miss, '아직 하회한 실적 발표가 없어요')}</div>`;
+  }
+  function bindEwk() {
+    $('#ewWeek').addEventListener('click', (e) => { const b = e.target.closest('[data-ew]'); if (!b) return; S.ew.w = b.dataset.ew; loadEwk(); });
+    $('#ewSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-ewm]'); if (!b) return; S.ew.mk = b.dataset.ewm; save('gk_ewmk', S.ew.mk); renderEwk(); });
+    $('#ewBody').addEventListener('click', (e) => { const b = e.target.closest('[data-ew-open]'); if (b) showItem(b.dataset.ewOpen); });
+  }
+
+  // ───────────────────────── 투자 대가 포트폴리오 (SEC 13F) ─────────────────────────
+  S.gu = { list: null, at: 0, one: {}, cur: null };
+  const usdB = (v) => (v == null ? '—' : v >= 1e12 ? `$${(v / 1e12).toFixed(2)}조` : v >= 1e9 ? `$${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `$${Math.round(v / 1e6)}M` : `$${fmtInt(v)}`);
+  const CHG = { new: ['신규', 'new'], add: ['추가 매수', 'add'], cut: ['일부 매도', 'cut'], sold: ['전량 매도', 'sold'], same: ['', ''] };
+  async function loadGuru(id) {
+    S.gu.cur = id || null;
+    renderGuru();
+    try {
+      if (id) { if (!S.gu.one[id] || Date.now() - S.gu.one[id]._at > 600e3) { const d = await getJSON(`/api/guru?id=${encodeURIComponent(id)}`, {}); S.gu.one[id] = { ...d, _at: Date.now() }; } }
+      else if (!S.gu.list || Date.now() - S.gu.at > 600e3) { S.gu.list = await getJSON('/api/guru', {}); S.gu.at = Date.now(); }
+    } catch (e) { if (id) S.gu.one[id] = { error: e.message, _at: 0 }; else S.gu.list = { error: e.message }; }
+    if (S.view === 'guru') renderGuru();
+  }
+  const guName = (x) => (x.t ? (x.ko ? `${x.ko}` : x.t) : x.nm);
+  function renderGuru() {
+    const box = $('#guBody'), id = S.gu.cur;
+    if (id) {
+      const d = S.gu.one[id];
+      if (!d) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; return; }
+      if (d.error) { box.innerHTML = `<div class="empty">불러오지 못했습니다: ${esc(d.error)}</div>`; return; }
+      $('#guTitle').textContent = `${d.g.who} 포트폴리오`;
+      if (d.none) { $('#guMeta').textContent = d.g.fund; box.innerHTML = `<button class="btn sm gu-back" data-gu-back>← 전체 투자자</button><div class="empty">보고 내용을 모으는 중이에요. 잠시 후 다시 확인해 주세요.</div>`; return; }
+      $('#guMeta').textContent = `${d.g.fund} · ${d.q} 보고 (${md(d.filed)} 공개)`;
+      const row = (x, i) => { const c = CHG[x.chg] || CHG.same; return `<li class="gu-row"><span class="f-rk">${i + 1}</span>${x.t ? `<button class="ca-co" data-open-co="US|${esc(x.t)}|${esc(x.ko || x.nm)}">${logoHTML('US', x.t, x.nm, 'sm')}<span><b>${esc(x.ko || x.t)}</b><small>${esc(x.t)} · ${esc(x.nm)}${x.pc ? ' · ' + (x.pc === 'PUT' ? '풋옵션' : '콜옵션') : ''}</small></span></button>` : `<span class="ca-co">${logoHTML('US', '', x.nm, 'sm')}<span><b>${esc(x.nm)}</b><small>${esc(x.cls || '')}${x.pc ? ' · ' + (x.pc === 'PUT' ? '풋옵션' : '콜옵션') : ''}</small></span></span>`}<span class="gu-v">${usdB(x.v)}${x.pct != null ? `<small>${x.pct}%</small>` : ''}</span><span class="gu-chg">${c[0] ? `<b class="gu-b ${c[1]}">${c[0]}${x.chg !== 'new' && x.chg !== 'sold' && x.dp != null ? ` ${x.dp > 0 ? '+' : ''}${x.dp}%` : ''}</b>` : ''}</span></li>`; };
+      const bar = d.rows.filter((x) => !x.pc).slice(0, 8);
+      box.innerHTML = `<button class="btn sm gu-back" data-gu-back>← 전체 투자자</button>
+        <div class="card gu-hero"><div><b>${esc(d.g.who)}</b><span>${esc(d.g.fund)} · ${esc(d.g.style)}</span></div><div class="gu-stats"><span>총 평가액<b>${usdB(d.total)}</b></span><span>종목 수<b>${d.n}개</b></span><span>신규<b class="up">${d.cnt.new}</b></span><span>추가<b class="up">${d.cnt.add}</b></span><span>일부 매도<b class="down">${d.cnt.cut}</b></span><span>전량 매도<b class="down">${d.cnt.sold}</b></span></div>
+        <div class="gu-bar">${bar.map((x, i) => `<i style="width:${Math.max(1, x.pct || 0)}%" class="c${i % 8}" title="${esc(guName(x))} ${x.pct}%"></i>`).join('')}</div><div class="gu-leg">${bar.map((x, i) => `<span><i class="c${i % 8}"></i>${esc(guName(x))} ${x.pct}%</span>`).join('')}</div></div>
+        <div class="card"><h3 class="gu-h">보유 종목 <small>평가액 순 · ${d.prevQ ? d.prevQ + ' 대비 변화' : ''}</small></h3><ul class="gu-list">${d.rows.map(row).join('')}</ul></div>
+        ${d.sold.length ? `<div class="card"><h3 class="gu-h">전량 매도한 종목 <small>${esc(d.prevQ || '')} 보유 → 이번 분기 0주 (직전 평가액)</small></h3><ul class="gu-list">${d.sold.map(row).join('')}</ul></div>` : ''}`;
+      return;
+    }
+    $('#guTitle').textContent = '투자 대가 포트폴리오';
+    const d = S.gu.list;
+    if (!d) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; $('#guMeta').textContent = ''; return; }
+    if (d.error) { box.innerHTML = `<div class="empty">불러오지 못했습니다: ${esc(d.error)}</div>`; return; }
+    const ready = d.list.filter((x) => !x.none).length;
+    $('#guMeta').textContent = `${d.list.length}명 · SEC 13F`;
+    const hot = (title, arr, cls) => arr.length ? `<div class="card gu-hot ${cls}"><h3 class="gu-h">${title} <small>${esc(d.hot.q)}</small></h3><ul class="gu-hl">${arr.slice(0, 8).map((x) => `<li>${x.t ? `<button class="ca-co" data-open-co="US|${esc(x.t)}|${esc(x.ko || x.nm)}">${logoHTML('US', x.t, x.nm, 'xs')}<b>${esc(x.ko || x.t)}</b></button>` : `<b>${esc(x.nm)}</b>`}<span class="gu-who">${x.who.length}명 · ${esc(x.who.slice(0, 3).join(', '))}${x.who.length > 3 ? ' 외' : ''}</span></li>`).join('')}</ul></div>` : '';
+    box.innerHTML = `${ready < d.list.length ? `<p class="note">보고 내용을 모으는 중이에요 (${ready}/${d.list.length}명). 한 명씩 차례로 채워집니다.</p>` : ''}
+      <div class="gu-hots">${hot('🟢 대가들이 함께 산 종목', d.hot.buy, 'gu-buy')}${hot('🔴 대가들이 함께 판 종목', d.hot.sell, 'gu-sell')}</div>
+      <div class="gu-grid">${d.list.map((g) => `<button class="card gu-card" data-gu="${esc(g.id)}"><div class="gu-top"><b>${esc(g.who)}</b><span>${esc(g.fund)}</span></div><div class="gu-style">${esc(g.style)}</div>${g.none ? '<div class="muted gu-wait">불러오는 중…</div>' : `<div class="gu-meta">${esc(g.q)}${g.old ? ' (마지막 보고)' : ''} · ${usdB(g.total)} · ${g.n}종목</div><ol class="gu-top5">${(g.top || []).map((x) => `<li>${x.t ? logoHTML('US', x.t, x.nm, 'xs') : ''}<span>${esc(guName(x))}</span><em>${x.pct}%</em></li>`).join('')}</ol><div class="gu-cnt">${g.cnt.new ? `<b class="gu-b new">신규 ${g.cnt.new}</b>` : ''}${g.cnt.add ? `<b class="gu-b add">추가 ${g.cnt.add}</b>` : ''}${g.cnt.cut ? `<b class="gu-b cut">축소 ${g.cnt.cut}</b>` : ''}${g.cnt.sold ? `<b class="gu-b sold">전량 매도 ${g.cnt.sold}</b>` : ''}</div>`}</button>`).join('')}</div>`;
+  }
+  function bindGuru() {
+    $('#guBody').addEventListener('click', (e) => {
+      if (e.target.closest('[data-open-co]')) return;
+      const b = e.target.closest('[data-gu]');
+      if (b) { setView('guru', `gurus/${b.dataset.gu}`); loadGuru(b.dataset.gu); window.scrollTo({ top: 0 }); return; }
+      if (e.target.closest('[data-gu-back]')) { setView('guru'); }
+    });
   }
 
   // ───────────────────────── 공시 반응 통계 (이런 공시 뒤 주가는 보통 어떻게 됐나) ─────────────────────────
@@ -2517,7 +2601,7 @@
     trackView(m, t, c.name);
     const on = inWatch(m, t), sec = sectorOf(m, t);
     const n = { market: m, ticker: t, corpCode: c.corpCode, name: c.name, exchange: c.exchange };
-    $('#coBody').innerHTML = `<div class="co-hero">${logoHTML(m, t, c.name, 'lg')}<div><h3>${esc(c.name)}</h3><div class="dp-meta"><span class="mk ${m === 'KR' ? 'kr' : 'us'}">${m === 'KR' ? '한국' : '미국'}</span><span class="mono">${esc(t)}</span>${c.exchange ? `<span>${esc(exShort(c.exchange))}</span>` : ''}${sec ? `<span class="sector">${esc(sec)}</span>` : ''}<button class="link" data-star="${esc(m)}|${esc(t)}|${esc(c.name)}">${on ? '★ 관심종목' : '☆ 관심종목 추가'}</button></div></div><div class="px" id="coPx"></div></div>
+    $('#coBody').innerHTML = `<div class="co-hero">${logoHTML(m, t, c.name, 'lg')}<div><h3>${esc(c.name)}</h3><div class="dp-meta"><span class="mk ${m === 'KR' ? 'kr' : 'us'}">${m === 'KR' ? '한국' : '미국'}</span><span class="mono">${esc(t)}</span>${c.exchange ? `<span>${esc(exShort(c.exchange))}</span>` : ''}${sec ? `<span class="sector">${esc(sec)}</span>` : ''}<button class="link" data-star="${esc(m)}|${esc(t)}|${esc(c.name)}">${on ? '★ 관심종목' : '☆ 관심종목 추가'}</button><button class="link" data-alert-new="${esc(m)}|${esc(t)}|${esc(c.name)}">🎯 가격 알림</button></div></div><div class="px" id="coPx"></div></div>
       <div id="coWhy"></div>
       <div class="co-grid"><div><div id="coInfo">${coPane(n, null)}</div><div class="box"><h4>공시·보도자료 전체 기록 <small id="coRecentN"></small></h4><div id="coRecent"></div></div></div>
       <div><div id="coFlows">${stockHTML(m, null)}</div><div class="links">${coLinks(c)}</div></div></div>`;
@@ -2580,7 +2664,8 @@
     usInst: '13D(경영참여)·13G(단순투자) 5% 이상 지분 보고와 13F 기관 포트폴리오 보고.',
     krInst: '장중 증권사 집계 기준 잠정치 (한국투자증권). 확정치는 장 마감 후.',
     krFrgn: '장중 증권사 집계 기준 잠정치 (한국투자증권). 확정치는 장 마감 후.',
-    krShort: '공매도 거래량 비중 상위 (한국투자증권). 공매도 잔고는 KRX 로그인 전용이라 거래 비중으로 표시합니다.',
+    krShort: '그날 거래량 중 공매도로 거래된 비중 상위 (한국투자증권). 쌓여 있는 물량은 \'국내 대차잔고\' 탭에서 보세요.',
+    krLoan: '대차잔고 = 기관·외국인이 빌려 가서 아직 갚지 않은 주식 (공매도 대기 물량으로 많이 봅니다). 대형주와 공매도 상위 종목 약 80개를 하루 두 번(아침·저녁) 확인합니다 · 한국투자증권.',
     krInsider: 'DART 임원·주요주주 소유상황 / 주식등의 대량보유(5%) 보고.',
   };
   function fRow(i, m, t, name, sub, val, small, cls, attr) {
@@ -2612,6 +2697,7 @@
     $('#flowFoot').textContent = TAB_INFO[tab] || '';
     const sub = $('#flowSub');
     if (tab === 'usInsider') sub.innerHTML = `<div class="seg" data-sub="insiderSide">${[['all', '전체'], ['P', '장내 매수'], ['S', '장내 매도']].map(([v, l]) => `<button data-v="${v}" class="${S.insiderSide === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    else if (tab === 'krLoan') sub.innerHTML = `<div class="seg" data-sub="loanSide">${[['top', '잔고 많은 순'], ['up', '최근 5일 급증']].map(([v, l]) => `<button data-v="${v}" class="${(S.loanSide || 'top') === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
     else if (tab === 'krInst' || tab === 'krFrgn') sub.innerHTML = `<div class="seg" data-sub="flowSide">${[['buy', '순매수 상위'], ['sell', '순매도 상위']].map(([v, l]) => `<button data-v="${v}" class="${S.flowSide === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
     else sub.innerHTML = '';
     const byTime = (a, b) => b.ms - a.ms, all = [...S.items.values()];
@@ -2637,6 +2723,18 @@
       box.innerHTML = list.length ? list.slice(0, 100).map((n, i) => { const d = n.raw.detail; const val = d && d.change !== null && d.change !== undefined ? `${signedInt(d.change)}주` : n.raw.category === 'inst' ? '5%' : '임원'; return fRow(i + 1, 'KR', n.ticker, n.name, esc(d ? `${d.who || ''}${d.role ? ' · ' + d.role : ''}` : n.raw.formKo), val, n.when?.official ? n.when.official.slice(5).replace('-', '.') : '', d?.change > 0 ? 'buy' : d?.change < 0 ? 'sell' : '', `data-id="${esc(n.id)}"`); }).join('') : `<div class="empty">${S.loaded.dart ? '최근 임원·5% 보고가 없습니다. (DART_API_KEY가 필요합니다)' : '불러오는 중…'}</div>`;
       return;
     }
+    if (tab === 'krLoan') {
+      const L = S.loan;
+      if (!L || Date.now() - (S.loanAt || 0) > 600e3) { if (!S.loanBusy) { S.loanBusy = true; getJSON('/api/flows?loan=1', {}).then((j) => { S.loan = j; }).catch((e) => { S.loan = { error: e.message }; }).finally(() => { S.loanBusy = false; S.loanAt = Date.now(); if (S.view === 'flows' && S.flowTab === 'krLoan') renderFlows(); }); } if (!L) { box.innerHTML = '<div class="empty">불러오는 중…</div>'; return; } }
+      if (L.error) { box.innerHTML = `<div class="empty">불러오지 못했습니다: ${esc(L.error)}</div>`; return; }
+      if (!L.loan) { box.innerHTML = `<div class="empty">${L.needsKis ? '한국투자증권 Open API 키가 있어야 대차잔고를 받을 수 있습니다.' : '대차잔고를 모으는 중이에요. 처음엔 30분쯤 걸립니다 (아침 7시·저녁 6시에 새로 채움).'}</div>`; $('#flowMeta').textContent = ''; return; }
+      const d = L.loan.date ? `${L.loan.date.slice(4, 6)}.${L.loan.date.slice(6, 8)}` : '';
+      $('#flowMeta').textContent = d ? `${d} 기준` : '';
+      const list = (S.loanSide || 'top') === 'up' ? L.loan.up : L.loan.top;
+      const eok = (v) => (v == null ? '—' : v >= 1e12 ? `${(v / 1e12).toFixed(2)}조` : `${fmtInt(v / 1e8)}억`);
+      box.innerHTML = list.length ? list.map((x, i) => fRow(i + 1, 'KR', x.t, x.name, `${x.price != null ? fmtInt(x.price) + '원 ' : ''}<span class="${dirCls(x.pct)}">${x.pct != null ? fmtPct(x.pct) : ''}</span> · 잔고 5일 <span class="${dirCls(x.d5)}">${x.d5p != null ? `${x.d5p > 0 ? '+' : ''}${x.d5p}%` : '—'}</span>`, (S.loanSide || 'top') === 'up' ? `${x.d5p > 0 ? '+' : ''}${x.d5p}%` : eok(x.amt), (S.loanSide || 'top') === 'up' ? `잔고 ${eok(x.amt)}` : `${fmtInt(x.bal)}주`, (S.loanSide || 'top') === 'up' ? 'sell' : '', `data-open-co="KR|${esc(x.t)}|${esc(x.name)}"`)).join('') : '<div class="empty">최근 5일 동안 대차잔고가 늘어난 종목이 없습니다.</div>';
+      return;
+    }
     const f = S.flows;
     if (!f) { box.innerHTML = '<div class="empty">불러오는 중…</div>'; pollFlows(); return; }
     if (f.needsKis) { box.innerHTML = '<div class="empty"><b>한국투자증권 Open API 키가 필요합니다.</b><br>국내 기관·외국인 순매수와 공매도 데이터는 증권사 API로만 무료 제공됩니다.<br>Cloudflare 변수에 <code>KIS_APP_KEY</code>, <code>KIS_APP_SECRET</code>를 등록하세요.</div>'; $('#flowMeta').textContent = ''; return; }
@@ -2660,10 +2758,10 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
-  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', tdir: '#viewTdir', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact', cact: '#viewCact' };
+  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', tdir: '#viewTdir', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact', cact: '#viewCact', ewk: '#viewEwk', guru: '#viewGuru' };
   const VIEW_ALIAS = { cdiv: 'cact', crights: 'cact' }; // 같은 화면, 다른 탭
   // 메뉴별 고유 주소 (/popular, /themes …) ↔ 화면 이름
-  const SEC_PATH = { guide: 'about', cact: 'splits', cdiv: 'dividends', crights: 'rights', popular: 'popular', themes: 'themes', tdir: 'sectors', sched: 'schedule', earnings: 'earnings', econ: 'econ', halt: 'halts', react: 'reaction', flows: 'flows', market: 'market' };
+  const SEC_PATH = { guide: 'about', cact: 'splits', cdiv: 'dividends', crights: 'rights', popular: 'popular', themes: 'themes', tdir: 'sectors', sched: 'schedule', earnings: 'earnings', econ: 'econ', halt: 'halts', react: 'reaction', flows: 'flows', market: 'market', ewk: 'consensus', guru: 'gurus' };
   const PATH_SEC = Object.fromEntries(Object.entries(SEC_PATH).map(([v, p]) => [p, v]));
   function setView(v, hash) {
     S.view = v;
@@ -2686,6 +2784,8 @@
     if (v === 'react') loadReact();
     if (v === 'cact' || v === 'cdiv' || v === 'crights') { S.ca.tab = v === 'cdiv' ? 'div' : v === 'crights' ? 'rights' : 'split'; loadCact(); }
     if (v === 'econ') loadEcon(true);
+    if (v === 'ewk') loadEwk();
+    if (v === 'guru' && !(hash && /^gurus\//.test(hash))) loadGuru(null);
     if (v === 'admin') renderAdmin();
     if (v === 'popular') { renderPopularPage(); pollViews(); }
     if (v === 'flows') { renderFlows(); if (!S.flows || Date.now() - (S.flowsAt || 0) > 180e3) { S.flowsAt = Date.now(); pollFlows(); } }
@@ -2709,6 +2809,7 @@
       showItem(id);
       return;
     }
+    { const gm = location.pathname.match(/^\/gurus\/([a-z]{2,12})\/?$/); if (gm) { setView('guru', false); loadGuru(gm[1]); return; } }
     { const sv = PATH_SEC[location.pathname.replace(/^\/|\/$/g, '')]; if (sv && !location.hash) { setView(sv, false); return; } }
     const h = decodeURIComponent(location.hash.slice(1));
     const m = h.match(/^company\/(US|KR)\/([A-Z0-9.\-]+)/i);
@@ -2814,7 +2915,8 @@
   function pushRows() {
     const hint = !pushOK() ? (isIOS() && !isStandalone() ? ' · 아이폰은 공유 버튼 → "홈 화면에 추가"로 앱을 설치한 뒤 켤 수 있어요' : ' · 이 브라우저는 지원하지 않아요') : '';
     return `<div class="set-row"><div>푸시 알림<small>사이트·앱을 닫아 둬도 관심종목 새 공시가 나오면 휴대폰·PC로 알려줘요${hint}</small></div><input type="checkbox" class="tg" data-set="push" ${S.push ? 'checked' : ''}></div>
-      <div class="set-row"><div>중요 공시 푸시<small>관심종목이 아니어도 AI가 '매우 중요'로 본 공시 (하루 최대 8건)</small></div><input type="checkbox" class="tg" data-set="pushBig" ${S.pushBig ? 'checked' : ''}></div>`;
+      <div class="set-row"><div>중요 공시 푸시<small>관심종목이 아니어도 AI가 '매우 중요'로 본 공시 (하루 최대 8건)</small></div><input type="checkbox" class="tg" data-set="pushBig" ${S.pushBig ? 'checked' : ''}></div>
+      <div class="set-row"><div>가격·키워드 알림<small>목표가 도달 · 관심 단어가 들어간 공시를 푸시로 (가격 ${S.alerts.length}개 · 키워드 ${S.kw.length}개)</small></div><button class="btn sm" data-alerts>관리</button></div>`;
   }
   const b64key = (s) => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); };
   async function pushSub(create) {
@@ -2829,9 +2931,10 @@
     try {
       const sub = await pushSub(true); if (!sub) return false;
       const j = sub.toJSON(), w = S.watch.map((x) => wkey(x.m, x.t));
-      const sig = `${j.endpoint}|${w.join(',')}|${S.pushBig ? 1 : 0}`;
+      const al = S.alerts.map((a) => ({ id: a.id, k: a.k, ty: a.ty, v: a.v, nm: a.nm }));
+      const sig = `${j.endpoint}|${w.join(',')}|${S.pushBig ? 1 : 0}|${JSON.stringify(al)}|${S.kw.join(',')}|${S.kww ? 1 : 0}`;
       if (!force && load('gk_pushSig', '') === sig && Date.now() - load('gk_pushAt', 0) < 86400e3) return true;
-      const r = await fetch('/api/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ep: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, w, big: !!S.pushBig }) });
+      const r = await fetch('/api/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ep: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, w, big: !!S.pushBig, al, kw: S.kw, kww: !!S.kww }) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       save('gk_pushSig', sig); save('gk_pushAt', Date.now());
       return true;
@@ -2841,6 +2944,99 @@
     try { const sub = pushOK() ? await pushSub(false) : null; if (sub) { await fetch('/api/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ unsub: sub.endpoint }) }).catch(() => {}); await sub.unsubscribe().catch(() => {}); } } catch {}
     save('gk_pushSig', '');
   }
+
+  // ───────────────────────── 가격·키워드 알림 (푸시) ─────────────────────────
+  //  가격 알림: 목표가 이상·이하, 오늘 ±% 이상 → 한 번 울리면 끝(다시 켜기 가능) / 키워드: 공시 제목에 그 단어가 나오면
+  S.alerts = load('gk_alerts', []); S.kw = load('gk_kw', []); S.kww = load('gk_kww', false); S.alFired = load('gk_alfired', {});
+  const alMoney = (k, v) => (k.startsWith('KR:') ? `${fmtInt(v)}원` : `$${fmtPx(v)}`);
+  const alText = (a) => (a.ty === 'ge' ? `${alMoney(a.k, a.v)} 이상` : a.ty === 'le' ? `${alMoney(a.k, a.v)} 이하` : a.ty === 'up' ? `오늘 +${a.v}% 이상 상승` : `오늘 -${a.v}% 이상 하락`);
+  function saveAlerts() { save('gk_alerts', S.alerts); save('gk_kw', S.kw); save('gk_kww', S.kww); if (S.push) syncPush(true); }
+  async function ensurePush() {
+    if (S.push && pushOK() && Notification.permission === 'granted') return true;
+    await setSetting('push', true);
+    return !!S.push;
+  }
+  async function refreshAlFired() {
+    if (!S.push || !pushOK() || !S.alerts.length) return;
+    try {
+      const sub = await pushSub(false); if (!sub) return;
+      const j = await (await fetch('/api/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: sub.endpoint }) })).json();
+      S.alFired = Object.fromEntries((j.fired || []).map((x) => [x.aid, x.at || Date.now()]));
+      save('gk_alfired', S.alFired);
+    } catch {}
+  }
+  function openAlertNew(m, t, n) {
+    const q = quoteOf(m, t), px = q ? q.live ?? q.price : null;
+    const name = m === 'KR' ? n || t : `${t}${n && n !== t ? ' ' + n : ''}`;
+    S.alNew = { m, t, n: n || t, px, ty: 'ge' };
+    openModal(`<h2>🎯 가격 알림</h2>
+      <div class="al-head">${logoHTML(m, t, n, 'sm')}<b>${esc(name)}</b><span class="muted">현재가 ${px != null ? esc(alMoney(wkey(m, t), px)) : '—'}${q?.pct != null ? ` <span class="${dirCls(q.livePct ?? q.pct)}">${fmtPct(q.livePct ?? q.pct)}</span>` : ''}</span></div>
+      <div class="seg al-ty" id="alTy">${[['ge', '가격 이상'], ['le', '가격 이하'], ['up', '오늘 % 상승'], ['dn', '오늘 % 하락']].map(([v, l]) => `<button data-alty="${v}" class="${v === 'ge' ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="al-in"><input id="alVal" type="number" inputmode="decimal" step="any" min="0" value="${px != null ? (m === 'KR' ? Math.round(px * 1.05) : (Math.round(px * 105) / 100)) : ''}"><span id="alUnit">${m === 'KR' ? '원 이상이 되면' : '달러 이상이 되면'}</span></div>
+      <p class="note" id="alHint">조건이 맞으면 휴대폰·PC로 푸시가 한 번 와요. (장 시간 중 1분마다 확인)</p>
+      <div class="al-btns"><button class="btn primary" data-al-add>알림 추가</button><button class="btn" data-alerts>내 알림 목록 (${S.alerts.length})</button></div>`);
+    if (!q) fetchQuotes([wkey(m, t)]).then(() => { if (S.alNew?.t === t && !$('#modal').hidden && $('#alVal') && !$('#alVal').value) { const q2 = quoteOf(m, t); if (q2) $('#alVal').value = m === 'KR' ? Math.round(q2.price * 1.05) : Math.round(q2.price * 105) / 100; } });
+  }
+  function setAlTy(ty) {
+    const a = S.alNew; if (!a) return;
+    a.ty = ty;
+    $$('#alTy button').forEach((b) => b.classList.toggle('on', b.dataset.alty === ty));
+    const price = ty === 'ge' || ty === 'le';
+    $('#alUnit').textContent = price ? `${a.m === 'KR' ? '원' : '달러'} ${ty === 'ge' ? '이상이 되면' : '이하가 되면'}` : `% 이상 ${ty === 'up' ? '오르면' : '내리면'} (전일 종가 대비)`;
+    if (a.px != null) $('#alVal').value = ty === 'ge' ? (a.m === 'KR' ? Math.round(a.px * 1.05) : Math.round(a.px * 105) / 100) : ty === 'le' ? (a.m === 'KR' ? Math.round(a.px * 0.95) : Math.round(a.px * 95) / 100) : 5;
+    else if (!price) $('#alVal').value = 5;
+  }
+  async function addAlert() {
+    const a = S.alNew; if (!a) return;
+    const v = Number($('#alVal').value);
+    if (!(v > 0)) { toast('숫자를 입력해 주세요'); return; }
+    if ((a.ty === 'up' || a.ty === 'dn') && v > 60) { toast('등락률은 60% 이하로 입력해 주세요'); return; }
+    if (S.alerts.length >= 30) { toast('가격 알림은 30개까지 만들 수 있어요'); return; }
+    if (!(await ensurePush())) return;
+    const al = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), k: wkey(a.m, a.t), ty: a.ty, v, nm: a.m === 'KR' ? a.n : a.t, n: a.n, at: Date.now() };
+    S.alerts.unshift(al); saveAlerts();
+    const now = a.px;
+    const already = now != null && ((a.ty === 'ge' && now >= v) || (a.ty === 'le' && now <= v));
+    toast(already ? '추가했어요 · 이미 조건을 넘은 가격이라 곧 알림이 올 수 있어요' : `🎯 ${a.m === 'KR' ? a.n : a.t} ${alText(al)} 알림 추가`, 3200);
+    openAlerts();
+  }
+  function openAlerts() {
+    const rows = S.alerts.map((a) => {
+      const [m, t] = a.k.split(':'), fired = S.alFired[a.id];
+      return `<li class="al-row ${fired ? 'done' : ''}">${logoHTML(m, t, a.n, 'xs')}<button class="link" data-open-co="${esc(m)}|${esc(t)}|${esc(a.n || '')}">${esc(m === 'KR' ? a.n || t : t)}</button><span class="al-c">${esc(alText(a))}</span><span class="al-st">${fired ? `✓ 울림 ${esc(fmtDT(new Date(fired)).md || '')}` : '대기 중'}</span>${fired ? `<button class="btn sm" data-al-re="${esc(a.id)}">다시 켜기</button>` : ''}<button class="al-x" data-al-del="${esc(a.id)}" title="삭제">✕</button></li>`;
+    }).join('');
+    openModal(`<h2>가격·키워드 알림</h2>
+      <h3 class="al-h">🎯 가격 알림 <small>${S.alerts.length}/30 · 종목 화면의 '가격 알림' 버튼으로 추가</small></h3>
+      ${rows ? `<ul class="al-list">${rows}</ul>` : '<p class="muted">아직 없어요. 종목 화면(기업 분석)에서 <b>🎯 가격 알림</b>을 눌러 추가하세요.</p>'}
+      <h3 class="al-h">🔔 키워드 알림 <small>공시·보도자료 제목에 이 단어가 나오면 푸시 (최대 10개)</small></h3>
+      <div class="al-kw">${S.kw.map((k, i) => `<span class="wchip">${esc(k)}<button data-kw-del="${i}">✕</button></span>`).join('') || '<span class="muted">예) 자사주, 수주, 무상증자, FDA, buyback</span>'}</div>
+      <div class="al-in"><input id="kwVal" type="text" maxlength="20" placeholder="단어 입력 (2글자 이상)"><button class="btn primary" data-kw-add>추가</button></div>
+      <label class="al-chk"><input type="checkbox" id="kwW" ${S.kww ? 'checked' : ''}> 관심종목 공시만 (끄면 모든 종목)</label>
+      <p class="note">키워드 알림은 기기당 하루 최대 15건까지 와요. 설정은 이 기기에만 저장되고, 알림을 보내기 위해 서버에도 함께 저장됩니다.${!S.push ? '<br><b>푸시 알림이 꺼져 있어요.</b> 알림을 추가하면 자동으로 켜집니다.' : ''}</p>`);
+    refreshAlFired().then(() => { if (!$('#modal').hidden && $('.al-list')) { const changed = S.alerts.some((a) => !!S.alFired[a.id] !== !!$(`[data-al-del="${a.id}"]`)?.closest('.al-row')?.classList.contains('done')); if (changed) openAlerts(); } });
+  }
+  async function addKw() {
+    const v = ($('#kwVal')?.value || '').replace(/\s+/g, ' ').trim();
+    if (v.length < 2) { toast('2글자 이상 입력해 주세요'); return; }
+    if (S.kw.length >= 10) { toast('키워드는 10개까지예요'); return; }
+    if (S.kw.some((k) => k.toLowerCase() === v.toLowerCase())) { toast('이미 있는 키워드예요'); return; }
+    if (!(await ensurePush())) return;
+    S.kw.push(v); saveAlerts(); toast(`🔔 '${v}' 키워드 알림 추가`); openAlerts();
+  }
+  document.addEventListener('click', (e) => {
+    const t = e.target;
+    let b;
+    if ((b = t.closest('[data-alert-new]'))) { const [m, tk, n] = b.dataset.alertNew.split('|'); openAlertNew(m, tk, n); return; }
+    if ((b = t.closest('[data-alty]'))) { setAlTy(b.dataset.alty); return; }
+    if (t.closest('[data-al-add]')) { addAlert(); return; }
+    if (t.closest('[data-alerts]')) { openAlerts(); return; }
+    if ((b = t.closest('[data-al-del]'))) { S.alerts = S.alerts.filter((a) => a.id !== b.dataset.alDel); saveAlerts(); openAlerts(); return; }
+    if ((b = t.closest('[data-al-re]'))) { const a = S.alerts.find((x) => x.id === b.dataset.alRe); if (a) { delete S.alFired[a.id]; a.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6); save('gk_alfired', S.alFired); saveAlerts(); toast('다시 켰어요'); openAlerts(); } return; }
+    if (t.closest('[data-kw-add]')) { addKw(); return; }
+    if ((b = t.closest('[data-kw-del]'))) { S.kw.splice(Number(b.dataset.kwDel), 1); saveAlerts(); openAlerts(); return; }
+  });
+  document.addEventListener('change', (e) => { if (e.target.id === 'kwW') { S.kww = e.target.checked; saveAlerts(); toast(S.kww ? '관심종목 공시만 키워드 알림' : '모든 종목 키워드 알림'); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'kwVal') { e.preventDefault(); addKw(); } if (e.key === 'Enter' && e.target.id === 'alVal') { e.preventDefault(); addAlert(); } });
 
   // ───────────────────────── 관심종목·설정 ─────────────────────────
   function toggleWatch(m, t, n) {
@@ -2930,6 +3126,9 @@
     const devT = (d.dev.m || 0) + (d.dev.d || 0) || 1;
     const mon = d.monitor?.checks ? Object.values(d.monitor.checks) : [];
     box.innerHTML = `<div class="page-head"><h2>관리자 · 방문 통계</h2><div class="chips" style="margin:0"><button class="btn sm" data-admin-act="refresh">새로고침</button><button class="btn sm" data-admin-logout>로그아웃</button></div></div>
+      <div class="card adm-vn" style="margin-bottom:.8rem"><h3>🎬 영상 소재 노트 <small class="muted">장 마감 뒤 자동 (국장 16:45 · 미장 뉴욕 16:40 = 한국 새벽~아침) · 관리자만 보임</small></h3><div id="vnBody"><div class="loading"><span class="spin"></span>불러오는 중…</div></div>
+        <div class="chips" style="margin-top:.6rem"><button class="btn sm" data-admin-act="vnKR">국장 노트 지금 만들기</button><button class="btn sm" data-admin-act="vnUS">미장 노트 지금 만들기</button><button class="btn sm" data-admin-act="wkMake">주간 정리 카드 미리 만들기</button>${d.channel?.id ? '<button class="btn sm" data-admin-act="wkSend">주간 카드 채널로 보내기</button>' : ''}</div>
+        <p class="note" id="vnMsg">주간 정리 카드: 매주 토요일 아침 8:30 이후 텔레그램 채널에 자동 게시 ${d.week?.sent ? `· 이번 주 보냄 ✓ <a href="/og/week/${esc(String(d.week.fri).replace(/-/g, ''))}.png" target="_blank">이미지 보기</a>` : ''}</p><div id="wkPrev"></div></div>
       <div class="adm-kpis">
         ${[['오늘', d.today], ['최근 7일', d.week], ['최근 30일', d.month]].map(([l, x]) => `<div class="card"><span>${l}</span><div><b>${fmtInt(x?.uv || 0)}</b><small>방문자</small></div><div><b>${fmtInt(x?.pv || 0)}</b><small>페이지뷰</small></div><div><b>${fmtInt(x?.iv || 0)}</b><small>게시물 조회</small></div></div>`).join('')}
       </div>
@@ -2958,6 +3157,8 @@
       <div class="card" style="margin-bottom:.8rem">
         <h3>알림 현황</h3><ol class="adm-list">
           <li><b>${fmtInt(d.push?.subs || 0)}</b><span>푸시 알림 구독 기기 (중요 공시 푸시 ${fmtInt(d.push?.big || 0)}대)${d.push?.last ? ` · 마지막 발송 ${esc(fmtDT(new Date(d.push.last.at)).full)} ${d.push.last.n}건` : ''}${d.push?.fail && (!d.push.last || d.push.fail.at > d.push.last.at) ? ` · <b class="err">최근 실패 ${d.push.fail.n}건</b>` : ''}</span></li>
+          <li><b>${fmtInt(d.push?.al || 0)}</b><span>가격 알림 (울린 것 ${fmtInt(d.push?.alFired || 0)}개) · 키워드 알림 쓰는 기기 ${fmtInt(d.push?.kw || 0)}대${d.push?.alLast ? ` · 마지막 울림 ${esc(fmtDT(new Date(d.push.alLast.at)).full)} ${d.push.alLast.sent}건` : ''}</span></li>
+          <li><b>${d.loan?.done ? '✓' : '—'}</b><span>국내 대차잔고 ${d.loan?.done ? esc(d.loan.done) + ' 회차 채움' : '아직 채우는 중'}${d.loan?.err ? ` · <span class="err">${esc(d.loan.err)}</span>` : ''} · 투자 대가 13F 티커 변환 대기 ${fmtInt(d.guru?.pend || 0)}개${d.guru?.err && Object.keys(d.guru.err).length ? ` · <span class="err">오류 ${esc(Object.entries(d.guru.err).map(([k, v]) => k + ': ' + v).join(' / ').slice(0, 160))}</span>` : ''}</span></li>
           <li><b>${d.close?.KR ? '✓' : '—'}</b><span>오늘 국장 마감 이미지 ${d.close?.KR ? `보냄 (${esc(fmtDT(new Date(d.close.KR.at)).hm)}) · <a href="${esc(d.close.KR.img)}" target="_blank">이미지 보기</a>` : '아직 안 보냄 (평일 16시 이후 자동)'}</span></li>
           <li><b>${d.close?.US ? '✓' : '—'}</b><span>오늘 미장 마감 이미지 ${d.close?.US ? `보냄 (${esc(fmtDT(new Date(d.close.US.at)).hm)}) · <a href="${esc(d.close.US.img)}" target="_blank">이미지 보기</a>` : '아직 안 보냄 (뉴욕 16시 이후 자동)'}</span></li>
           ${(d.earn || []).map((v) => `<li><b>${esc(v.v)}</b><span>📊 ${esc(v.n)} (${esc(v.t)}) — ${esc(v.line)}</span></li>`).join('') || '<li class="muted">최근 3일 실적 판정 없음</li>'}
@@ -2994,12 +3195,45 @@
             <label class="muted sm">기준 <select id="chImp"><option value="5"${g.minImp === 5 ? ' selected' : ''}>최중요만</option><option value="4"${g.minImp === 4 ? ' selected' : ''}>중요 이상</option><option value="3"${g.minImp === 3 ? ' selected' : ''}>보통 이상 (많음)</option></select></label>
             <label class="muted sm">시간당 최대 <select id="chPer">${[4, 8, 12, 20, 30, 60, 120].map((v) => `<option value="${v}"${g.perHour === v ? ' selected' : ''}>${v}건</option>`).join('')}</select></label>
             <label class="muted sm"><input type="checkbox" id="chKr"${g.kr ? ' checked' : ''}> 국장</label><label class="muted sm"><input type="checkbox" id="chUs"${g.us ? ' checked' : ''}> 미장</label>
-            <label class="muted sm"><input type="checkbox" id="chIss"${g.issues !== false ? ' checked' : ''}> 오늘 주요 이슈</label><label class="muted sm"><input type="checkbox" id="chDg"${g.digest !== false ? ' checked' : ''}> AI 핵심 공시</label><label class="muted sm"><input type="checkbox" id="chSg"${g.surge !== false ? ' checked' : ''}> 공시 후 급등</label><label class="muted sm"><input type="checkbox" id="chCl"${g.close !== false ? ' checked' : ''}> 장 마감 정리 이미지</label>
+            <label class="muted sm"><input type="checkbox" id="chIss"${g.issues !== false ? ' checked' : ''}> 오늘 주요 이슈</label><label class="muted sm"><input type="checkbox" id="chDg"${g.digest !== false ? ' checked' : ''}> AI 핵심 공시</label><label class="muted sm"><input type="checkbox" id="chSg"${g.surge !== false ? ' checked' : ''}> 공시 후 급등</label><label class="muted sm"><input type="checkbox" id="chCl"${g.close !== false ? ' checked' : ''}> 장 마감 정리 이미지</label><label class="muted sm"><input type="checkbox" id="chWk"${g.weekly !== false ? ' checked' : ''}> 토요일 주간 정리 카드</label>
             <button class="btn sm" data-admin-act="chset">설정 저장</button><button class="btn sm" data-admin-act="chtest">테스트 발송</button><button class="btn sm" data-admin-act="chcloseKR">국장 마감 이미지 지금 보내기</button><button class="btn sm" data-admin-act="chcloseUS">미장 마감 이미지 지금 보내기</button>
           </div>
           <p class="note">${c.last ? `마지막 게시: ${fmtDT(new Date(c.last.at)).full} · ${esc(c.last.title || '')}` : '아직 게시한 글이 없어요.'}${c.err ? `<br><b class="err">⚠ ${esc(c.err)}</b> — 봇이 채널 관리자인지, 채널 주소가 맞는지 확인하세요.` : ''}${c.lastErr && !c.err ? `<br><span class="muted">최근 오류(${fmtDT(new Date(c.lastErr.at)).hm}): ${esc(c.lastErr.msg)}</span>` : ''}</p></div>`;
       })()}`;
+    loadVnote();
   }
+  // 영상 소재 노트
+  async function loadVnote(mk, date, make) {
+    const box = $('#vnBody'); if (!box) return;
+    if (make) box.innerHTML = `<div class="loading"><span class="spin"></span>${make === 'KR' ? '국장' : '미장'} 노트를 AI가 쓰는 중… (30초~1분)</div>`;
+    const q = make ? `&make=${make}` : mk ? `&mk=${mk}&date=${date}` : '';
+    let j;
+    try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&vnote=1${q}`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    if (!$('#vnBody')) return;
+    if (!j.ok) { $('#vnBody').innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
+    S.vnote = j.note;
+    const n = j.note, idx = j.idx || [];
+    const tabs = idx.length ? `<div class="chips vn-tabs">${idx.slice(0, 10).map((x) => `<button class="${n && x.mk === n.mk && x.date === n.date ? 'on' : ''}" data-vn="${esc(x.mk)}|${esc(x.date)}">${esc(md(x.date))} ${x.mk === 'KR' ? '국장' : '미장'}</button>`).join('')}</div>` : '';
+    if (!n) { $('#vnBody').innerHTML = tabs + '<p class="muted">아직 만든 노트가 없어요. 장 마감 뒤 자동으로 만들어지고, 아래 버튼으로 바로 만들 수도 있어요.</p>'; return; }
+    const cp = (txt) => `<button class="vn-cp" data-vn-copy="${esc(txt)}" title="복사">복사</button>`;
+    $('#vnBody').innerHTML = `${tabs}<div class="vn-sum"><b>${esc(n.date)} ${n.mk === 'KR' ? '국장' : '미장'}</b> ${esc(n.summary)}</div>
+      ${n.hook ? `<div class="vn-hook"><span>오프닝</span>${esc(n.hook)}${cp(n.hook)}</div>` : ''}
+      <ol class="vn-topics">${n.topics.map((t) => `<li><div class="vn-t"><b>${esc(t.title)}</b>${t.tickers?.length ? `<em>${esc(t.tickers.join(', '))}</em>` : ''}</div><p>${esc(t.why)}</p>${t.facts?.length ? `<ul>${t.facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}${t.angle ? `<p class="vn-angle">▶ ${esc(t.angle)}</p>` : ''}</li>`).join('')}</ol>
+      <div class="vn-cols"><div><h4>제목 후보</h4><ul class="vn-copy">${n.titles.map((x) => `<li><span>${esc(x)}</span>${cp(x)}</li>`).join('')}</ul></div>
+      <div><h4>썸네일 문구</h4><ul class="vn-copy">${n.thumbs.map((x) => `<li><span>${esc(x)}</span>${cp(x)}</li>`).join('')}</ul><h4>쇼츠 아이디어</h4><ul class="vn-copy">${n.shorts.map((x) => `<li><span>${esc(x)}</span>${cp(x)}</li>`).join('')}</ul></div></div>
+      <div class="chips" style="margin-top:.5rem"><button class="btn sm" data-vn-all>노트 전체 복사</button>${n.edId ? `<a class="btn sm" href="/i/${esc(n.edId)}" target="_blank">그날 주요 이슈 보기</a>` : ''}</div>
+      <p class="note">AI가 그날 '오늘 주요 이슈'·급등 이유·실적 판정만 보고 쓴 초안이에요. 숫자는 영상에 쓰기 전에 원문으로 한 번 더 확인하세요.</p>`;
+  }
+  function vnoteText(n) {
+    return [`[${n.date} ${n.mk === 'KR' ? '국장' : '미장'}] ${n.summary}`, n.hook ? `오프닝: ${n.hook}` : '', '', ...n.topics.map((t, i) => `${i + 1}. ${t.title}${t.tickers?.length ? ` (${t.tickers.join(', ')})` : ''}\n- ${t.why}\n${(t.facts || []).map((f) => '· ' + f).join('\n')}${t.angle ? '\n▶ ' + t.angle : ''}`), '', '[제목 후보]', ...n.titles.map((x) => '- ' + x), '', '[썸네일]', ...n.thumbs.map((x) => '- ' + x), '', '[쇼츠]', ...n.shorts.map((x) => '- ' + x)].filter((x) => x !== null).join('\n');
+  }
+  async function copyText(t) { try { await navigator.clipboard.writeText(t); toast('복사했어요'); } catch { toast('복사하지 못했어요'); } }
+  document.addEventListener('click', (e) => {
+    let b;
+    if ((b = e.target.closest('[data-vn]'))) { const [mk, date] = b.dataset.vn.split('|'); loadVnote(mk, date); return; }
+    if ((b = e.target.closest('[data-vn-copy]'))) { copyText(b.dataset.vnCopy); return; }
+    if (e.target.closest('[data-vn-all]') && S.vnote) copyText(vnoteText(S.vnote));
+  });
   async function adminAct(act) {
     const msg = (t) => { if ($('#admMsg')) $('#admMsg').textContent = t; };
     const k = encodeURIComponent(S.admin);
@@ -3016,9 +3250,21 @@
         msg(`완료: "${j.ed.headline || ''}" 로 바뀌었습니다. 메인 화면은 1~2분 안에 새 내용으로 보입니다.`); return;
       }
       if (act === 'chcloseKR' || act === 'chcloseUS') { const mk = act.slice(-2); msg(`${mk === 'KR' ? '국장' : '미장'} 마감 정리 이미지를 만들어 보내는 중… (20초쯤 걸려요)`); const j = await getJSON(`/api/admin?key=${k}&ch=close&mk=${mk}`, { cache: 'no-store' }).catch((e) => ({ ok: false, error: e.message })); msg(j.ok ? '채널에 마감 정리 이미지를 보냈어요. 텔레그램 채널을 확인하세요.' : '보내지 못했어요: ' + (j.error || '')); return; }
+      if (act === 'vnKR' || act === 'vnUS') { if (!confirm(`${act === 'vnKR' ? '국장' : '미장'} 영상 소재 노트를 지금 재료로 새로 만들까요? (AI 1회 사용)`)) return; return loadVnote(null, null, act.slice(2)); }
+      if (act === 'wkMake' || act === 'wkSend') {
+        const send = act === 'wkSend';
+        if (send && !confirm('이번 주 주간 정리 카드를 텔레그램 채널에 지금 올릴까요?')) return;
+        const m2 = (t) => { if ($('#vnMsg')) $('#vnMsg').textContent = t; };
+        m2(send ? '주간 카드를 만들어 채널로 보내는 중… (1분쯤)' : 'AI가 이번 주 핵심 10가지를 고르고 이미지를 만드는 중… (1분쯤)');
+        const j = await getJSON(`/api/admin?key=${k}&week=${send ? 'send' : 'make'}`, { cache: 'no-store' }).catch((e) => ({ ok: false, error: e.message }));
+        if (!j.ok) return m2('실패: ' + (j.error || ''));
+        m2(send ? '채널에 주간 정리 카드를 보냈어요.' : '만들었어요. 아래 이미지를 길게 눌러(우클릭) 저장할 수 있어요. 토요일 자동 게시 때 이 내용이 쓰여요.');
+        if ($('#wkPrev') && j.img) $('#wkPrev').innerHTML = `<a href="${esc(j.img)}" target="_blank"><img src="${esc(j.img)}" alt="주간 정리 카드" class="wk-img"></a>`;
+        return;
+      }
       if (act === 'chtest') { msg('채널로 테스트 메시지를 보내는 중…'); const j = await getJSON(`/api/admin?key=${k}&ch=test`, { cache: 'no-store' }).catch((e) => ({ ok: false, error: e.message })); msg(j.ok ? '채널에 테스트 메시지를 보냈어요. 텔레그램 채널을 확인하세요.' : '보내지 못했어요: ' + (j.error || '')); return; }
       if (act === 'chon' || act === 'choff') { await getJSON(`/api/admin?key=${k}&ch=${act.slice(2)}`, { cache: 'no-store' }); return renderAdmin(); }
-      if (act === 'chset') { const q = `minImp=${$('#chImp').value}&perHour=${$('#chPer').value}&kr=${$('#chKr').checked ? 1 : 0}&us=${$('#chUs').checked ? 1 : 0}&issues=${$('#chIss').checked ? 1 : 0}&digest=${$('#chDg').checked ? 1 : 0}&surge=${$('#chSg').checked ? 1 : 0}&close=${$('#chCl').checked ? 1 : 0}`; await getJSON(`/api/admin?key=${k}&ch=set&${q}`, { cache: 'no-store' }); msg('채널 설정을 저장했어요.'); return renderAdmin(); }
+      if (act === 'chset') { const q = `minImp=${$('#chImp').value}&perHour=${$('#chPer').value}&kr=${$('#chKr').checked ? 1 : 0}&us=${$('#chUs').checked ? 1 : 0}&issues=${$('#chIss').checked ? 1 : 0}&digest=${$('#chDg').checked ? 1 : 0}&surge=${$('#chSg').checked ? 1 : 0}&close=${$('#chCl').checked ? 1 : 0}&weekly=${$('#chWk').checked ? 1 : 0}`; await getJSON(`/api/admin?key=${k}&ch=set&${q}`, { cache: 'no-store' }); msg('채널 설정을 저장했어요.'); return renderAdmin(); }
       if (act === 'tgfind') { const j = await getJSON(`/api/admin?key=${k}&tg=find`, { cache: 'no-store' }); msg(j.error || (j.chats?.length ? '찾은 채팅 ID: ' + j.chats.map((c) => `${c.id} (${c.name || ''})`).join(', ') + ' → 이 숫자를 Cloudflare 변수 TELEGRAM_CHAT_ID로 등록하세요.' : j.hint)); return; }
       if (act === 'tgtest') { const j = await getJSON(`/api/admin?key=${k}&tg=test`, { cache: 'no-store' }); msg(j.ok ? '텔레그램으로 테스트 알림을 보냈습니다.' : '보내지 못했습니다. 봇 토큰과 채팅 ID를 확인하세요.'); }
     } catch (e) { msg(e.message); }
@@ -3207,7 +3453,7 @@
   bindHalts();
   bindReact();
   bindTdir();
-  bindCact();
+  bindCact(); bindEwk(); bindGuru();
   syncNavMore();
   { // 공유 링크 (?top=digest&mk=US)로 들어오면 AI 핵심 공시를 바로 보여줌
     const qp = new URLSearchParams(location.search);
