@@ -331,6 +331,9 @@ export async function surgeWatch() {
   const cfg = { ...DEFAULT_CFG, ...((await getJSON('tgch/cfg')) || {}) };
   if (!cfg.on || !cfg.surge) return null;
   const now = Date.now();
+  const lastRun = (await getJSON('tgch/surge-run'))?.at || 0;
+  const gap = lastRun ? now - lastRun : 0; // 마지막으로 돈 뒤 지난 시간 (꺼져 있었으면 길어짐)
+  await setJSON('tgch/surge-run', { at: now }).catch(() => {});
   const map = (await getJSON('px0/map')) || {};
   const recent = Object.entries(map).filter(([, v]) => v?.p > 0 && now - v.t < 6 * 3600e3);
   if (!recent.length) return { n: 0 };
@@ -353,6 +356,8 @@ export async function surgeWatch() {
     if (r >= SURGE[mkOf(x)] && r < 1000) hits.push({ x, v, k, r, cur, sess: q[k]?.session || null, day: q[k]?.livePct ?? q[k]?.pct });
   }
   hits.sort((a, b) => b.r - a.r);
+  // 꺼 뒀다 켜거나 한동안 멈췄다 다시 돌면, 그사이 이미 급등해 있던 종목은 올리지 않고 넘김 (한꺼번에 쏟아지지 않게)
+  if (gap > 8 * 60e3) { for (const h of hits) st.done[h.k] = { id: h.x.id, at: now, skip: true }; hits.length = 0; }
   let n = 0;
   for (const h of hits) {
     if (n >= 2 || (st.n || 0) >= 40) break; // 한 번에 2건, 하루 40건까지
