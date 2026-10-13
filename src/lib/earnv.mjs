@@ -123,11 +123,12 @@ export async function earnWeek(week = 0) {
       beat: r.filter((x) => x.v === '상회').sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)).slice(0, 30),
       miss: r.filter((x) => x.v === '하회').sort((a, b) => (a.pct ?? 0) - (b.pct ?? 0)).slice(0, 30),
       inline: r.filter((x) => x.v === '부합').length,
+      inl: r.filter((x) => x.v === '부합').sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)).slice(0, 20),
     };
   }
   // 미국 종목은 한국어 이름
   try {
-    const us = [...out.US.beat, ...out.US.miss];
+    const us = [...out.US.beat, ...out.US.miss, ...out.US.inl];
     if (us.length) { const { usKoNames } = await import('./usko.mjs'); const ko = await usKoNames(us.map((x) => x.t)); for (const x of us) x.ko = ko?.[x.t] || ko?.[String(x.t).toUpperCase()] || null; }
   } catch {}
   return out;

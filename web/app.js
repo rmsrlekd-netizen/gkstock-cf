@@ -1426,7 +1426,7 @@
   function ewRow(x, i, mk) {
     const nm = mk === 'KR' ? x.n || x.t : x.t, sub = mk === 'KR' ? x.t : x.ko || x.n || '';
     const pct = x.pct != null ? `${x.pct > 0 ? '+' : ''}${Math.abs(x.pct) >= 1000 ? Math.round(x.pct) : x.pct}%` : '';
-    return `<li class="ew-row"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="${esc(mk)}|${esc(x.t)}|${esc(x.ko || x.n || '')}">${logoHTML(mk, x.t, x.n, 'sm')}<span><b>${esc(nm)}</b><small>${esc(sub)}${x.period ? ' · ' + esc(x.period) : ''}</small></span></button><span class="ew-line">${esc(x.line || '')}</span><span class="ew-pct ${x.v === '상회' ? 'beat' : 'miss'}">${esc(pct || x.v)}<small>${esc(x.b || '')} 예상 대비</small></span>${x.id ? `<button class="link ew-src" data-ew-open="${esc(x.id)}">공시 →</button>` : ''}</li>`;
+    return `<li class="ew-row"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="${esc(mk)}|${esc(x.t)}|${esc(x.ko || x.n || '')}">${logoHTML(mk, x.t, x.n, 'sm')}<span><b>${esc(nm)}</b><small>${esc(sub)}${x.period ? ' · ' + esc(x.period) : ''}</small></span></button><span class="ew-line">${esc(x.line || '')}</span><span class="ew-pct ${x.v === '상회' ? 'beat' : x.v === '하회' ? 'miss' : 'inl'}">${esc(pct || x.v)}<small>${esc(x.b || '')} 예상 대비</small></span>${x.id ? `<button class="link ew-src" data-ew-open="${esc(x.id)}">공시 →</button>` : ''}</li>`;
   }
   function renderEwk() {
     const d = S.ew.data[S.ew.w], mk = S.ew.mk;
@@ -1439,8 +1439,10 @@
     $('#ewMeta').textContent = `${md(d.from)}~${md(d.to)} · 판정 ${m.n}건 (상회 ${m.beat.length} · 부합 ${m.inline} · 하회 ${m.miss.length})`;
     const part = (cls, title, arr, empty) => `<div class="card ew-card ${cls}"><h3>${title}</h3>${arr.length ? `<ul class="ew-list">${arr.map((x, i) => ewRow(x, i, mk)).join('')}</ul>` : `<div class="empty sm">${empty}</div>`}</div>`;
     const other = mk === 'US' ? 'KR' : 'US', om = d[other] || { n: 0 };
-    const hint = !m.n ? `<div class="card ew-empty"><b>${S.ew.w === '0' ? '이번 주' : '지난주'} ${mk === 'KR' ? '국장' : '미장'} 실적 판정이 아직 없어요.</b><span>${mk === 'US' ? '미국 3분기 실적 시즌은 10월 중순 대형 은행부터 시작해 하순에 본격화돼요.' : '국내는 잠정실적 공시(대형주 10월 초·하순)가 나올 때마다 채워져요.'} 실적 공시가 나오면 몇 분 안에 자동으로 추가됩니다.</span><div class="chips">${S.ew.w === '0' ? '<button class="btn sm" data-ew-go="1">지난주 보기</button>' : ''}${om.n ? `<button class="btn sm" data-ew-mk="${other}">${other === 'KR' ? '국장' : '미장'} 보기 (${om.n}건)</button>` : ''}</div></div>` : '';
-    box.innerHTML = hint + `<div class="ew-grid">${part('beat', '🟢 컨센서스 상회 TOP', m.beat, '아직 상회한 실적 발표가 없어요')}${part('miss', '🔴 컨센서스 하회 TOP', m.miss, '아직 하회한 실적 발표가 없어요')}</div>`;
+    const none = !m.beat.length && !m.miss.length;
+    const hint = none ? `<div class="card ew-empty"><b>${S.ew.w === '0' ? '이번 주' : '지난주'} ${mk === 'KR' ? '국장' : '미장'}에는 예상치를 크게 웃돌거나 밑돈 실적이 아직 없어요.${m.inline ? ` (예상치에 부합한 실적 ${m.inline}건은 아래에)` : ''}</b><span>${mk === 'US' ? '미국 3분기 실적 시즌은 10월 중순 대형 은행부터 시작해 하순에 본격화돼요.' : '국내는 잠정실적 공시(대형주 10월 초·하순)가 나올 때마다 채워져요.'} 실적 공시가 나오면 몇 분 안에 자동으로 추가됩니다.</span><div class="chips">${S.ew.w === '0' ? '<button class="btn sm" data-ew-go="1">지난주 보기</button>' : ''}${om.n ? `<button class="btn sm primary" data-ew-mk="${other}">${other === 'KR' ? '국장' : '미장'} 보기 (${om.n}건)</button>` : ''}</div></div>` : '';
+    box.innerHTML = hint + `<div class="ew-grid">${part('beat', '🟢 컨센서스 상회 TOP', m.beat, '아직 상회한 실적 발표가 없어요')}${part('miss', '🔴 컨센서스 하회 TOP', m.miss, '아직 하회한 실적 발표가 없어요')}</div>`
+      + ((m.inl || []).length ? `<div class="card ew-card inl" style="margin-top:.8rem"><h3>⚪ 예상치 부합 <small class="muted">예상과 거의 같음 (영업이익 ±3% · EPS ±2% 이내)</small></h3><ul class="ew-list">${m.inl.map((x, i) => ewRow(x, i, mk)).join('')}</ul></div>` : '');
   }
   function bindEwk() {
     $('#ewWeek').addEventListener('click', (e) => { const b = e.target.closest('[data-ew]'); if (!b) return; S.ew.w = b.dataset.ew; loadEwk(); });
