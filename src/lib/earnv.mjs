@@ -3,7 +3,7 @@
 //  미장: 8-K(2.02)·실적 보도자료 → Finnhub 실적 캘린더(실제 EPS·매출 vs 예상) · 없으면 Nasdaq 실적 서프라이즈
 //  결과: earn/v/{공시ID} (자세히) + earn/vmap (최근 3일 요약: 화면·텔레그램·주요 이슈 AI 재료)
 //  컨센서스가 없는 종목(소형주 등)은 판정하지 않음 — AI가 숫자만 보고 '부진·호조'를 추측하지 않게 하는 게 목적
-import { getJSON, setJSON } from './store.mjs';
+import { getJSON, setJSON, getManyJSON, sqlDB } from './store.mjs';
 import { fetchWithTimeout, BROWSER_UA } from './util.mjs';
 
 const H_NV = { Accept: 'application/json', Referer: 'https://m.stock.naver.com/' };
@@ -144,9 +144,16 @@ export async function earnWatch() {
   // 주간 결과판용 기록 (3주 보관) — 처음엔 최근 3일 판정으로 채움
   let hist = await getJSON('earn/hist');
   const hist0 = hist ? Object.keys(hist).length : -1;
-  if (!hist) {
-    hist = {};
-    for (const id of Object.keys(vmap).slice(0, 60)) { const v = await getJSON(`earn/v/${id}`).catch(() => null); if (v) hist[id] = histRow(id, v); }
+  if (!hist || !(await getJSON('earn/hist-bf'))) {
+    // 처음 한 번: 지난 3주 동안 판정해 둔 기록(earn/v/…)을 모두 찾아 채움
+    hist = hist || {};
+    try {
+      const d = await sqlDB();
+      const ids = d ? ((await d.prepare("SELECT k FROM kv WHERE k LIKE 'earn/v/%' AND t > ?").bind(now - 21 * 86400e3).all()).results || []).map((r) => r.k) : Object.keys(vmap).map((id) => `earn/v/${id}`);
+      const got = await getManyJSON(ids.slice(0, 600));
+      for (const [k, v] of Object.entries(got)) if (v?.verdict) hist[k.slice(7)] = histRow(k.slice(7), v);
+      await setJSON('earn/hist-bf', { at: now, n: Object.keys(got).length });
+    } catch (e) { console.warn('earn hist backfill', e.message); }
   }
   const cand = [];
   for (const x of [...(dart?.items || []), ...(sec?.items || []), ...(news?.items || [])]) {

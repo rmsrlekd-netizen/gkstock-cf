@@ -1438,12 +1438,18 @@
     const m = d[mk] || { beat: [], miss: [], n: 0, inline: 0 };
     $('#ewMeta').textContent = `${md(d.from)}~${md(d.to)} · 판정 ${m.n}건 (상회 ${m.beat.length} · 부합 ${m.inline} · 하회 ${m.miss.length})`;
     const part = (cls, title, arr, empty) => `<div class="card ew-card ${cls}"><h3>${title}</h3>${arr.length ? `<ul class="ew-list">${arr.map((x, i) => ewRow(x, i, mk)).join('')}</ul>` : `<div class="empty sm">${empty}</div>`}</div>`;
-    box.innerHTML = `<div class="ew-grid">${part('beat', '🟢 컨센서스 상회 TOP', m.beat, '아직 상회한 실적 발표가 없어요')}${part('miss', '🔴 컨센서스 하회 TOP', m.miss, '아직 하회한 실적 발표가 없어요')}</div>`;
+    const other = mk === 'US' ? 'KR' : 'US', om = d[other] || { n: 0 };
+    const hint = !m.n ? `<div class="card ew-empty"><b>${S.ew.w === '0' ? '이번 주' : '지난주'} ${mk === 'KR' ? '국장' : '미장'} 실적 판정이 아직 없어요.</b><span>${mk === 'US' ? '미국 3분기 실적 시즌은 10월 중순 대형 은행부터 시작해 하순에 본격화돼요.' : '국내는 잠정실적 공시(대형주 10월 초·하순)가 나올 때마다 채워져요.'} 실적 공시가 나오면 몇 분 안에 자동으로 추가됩니다.</span><div class="chips">${S.ew.w === '0' ? '<button class="btn sm" data-ew-go="1">지난주 보기</button>' : ''}${om.n ? `<button class="btn sm" data-ew-mk="${other}">${other === 'KR' ? '국장' : '미장'} 보기 (${om.n}건)</button>` : ''}</div></div>` : '';
+    box.innerHTML = hint + `<div class="ew-grid">${part('beat', '🟢 컨센서스 상회 TOP', m.beat, '아직 상회한 실적 발표가 없어요')}${part('miss', '🔴 컨센서스 하회 TOP', m.miss, '아직 하회한 실적 발표가 없어요')}</div>`;
   }
   function bindEwk() {
     $('#ewWeek').addEventListener('click', (e) => { const b = e.target.closest('[data-ew]'); if (!b) return; S.ew.w = b.dataset.ew; loadEwk(); });
     $('#ewSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-ewm]'); if (!b) return; S.ew.mk = b.dataset.ewm; save('gk_ewmk', S.ew.mk); renderEwk(); });
-    $('#ewBody').addEventListener('click', (e) => { const b = e.target.closest('[data-ew-open]'); if (b) showItem(b.dataset.ewOpen); });
+    $('#ewBody').addEventListener('click', (e) => {
+      let b = e.target.closest('[data-ew-open]'); if (b) { showItem(b.dataset.ewOpen); return; }
+      if ((b = e.target.closest('[data-ew-go]'))) { S.ew.w = b.dataset.ewGo; loadEwk(); return; }
+      if ((b = e.target.closest('[data-ew-mk]'))) { S.ew.mk = b.dataset.ewMk; save('gk_ewmk', S.ew.mk); renderEwk(); }
+    });
   }
 
   // ───────────────────────── 투자 대가 포트폴리오 (SEC 13F) ─────────────────────────

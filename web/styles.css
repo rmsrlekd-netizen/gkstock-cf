@@ -2014,3 +2014,5 @@ button.br-mv:hover { border-color: var(--accent); }
 @media (max-width: 720px) { .gu-row { grid-template-columns: 1.4rem minmax(0, 1fr) auto; } .gu-chg { min-width: 0; } }
 .al-ty { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
 @media (max-width: 520px) { .al-ty { grid-template-columns: repeat(2, 1fr); } }
+.ew-empty { margin-bottom: .8rem; display: flex; flex-direction: column; gap: .35rem; }
+.ew-empty span { color: var(--text2); font-size: .9rem; } .ew-empty .chips { margin: .3rem 0 0; }

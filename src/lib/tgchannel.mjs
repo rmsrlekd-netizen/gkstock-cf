@@ -198,6 +198,11 @@ export async function postIssue(ed) {
   if (!cfg.on || !cfg.issues || (ed.mk === 'KR' ? !cfg.kr : !cfg.us)) return false;
   const key = `tgch/iss/${ed.id}`;
   if (await getJSON(key)) return false; // 같은 회차는 한 번만
+  // 직전에 채널에 올린 회차와 비교해 새 이슈가 3개 미만이면 올리지 않음 (주말·휴장일에 같은 내용 반복 방지)
+  const lastKey = `tgch/isslast/${ed.mk}`;
+  const last = await getJSON(lastKey);
+  const fresh = newIssueCount(ed, last);
+  if (last && fresh < 3) { await setJSON(key, { at: Date.now(), skip: true, fresh }); return false; }
   const pct = (v) => (v == null ? '' : ` ${v > 0 ? '▲' : v < 0 ? '▼' : ''}${Math.abs(v).toFixed(2)}%`);
   const lines = ed.issues.slice(0, 6).map((x, i) => {
     const s0 = (x.stocks || []).find((s) => s.pct != null);
@@ -206,7 +211,26 @@ export async function postIssue(ed) {
   const text = `📰 <b>${ed.mk === 'KR' ? '국장' : '미장'} 주요 이슈 · ${esc(ed.slot || '')}</b>\n${esc(ed.headline || '')}\n\n${lines}\n\n<a href="https://gk-stock.com/i/${encodeURIComponent(ed.id)}">이슈 ${ed.issues.length}개 자세히 보기 →</a>`;
   await sendCard(chat, text, async () => { const saved = await getJSON(`issues/og/${ed.id}`); if (saved?.b) return Uint8Array.from(atob(saved.b), (c) => c.charCodeAt(0)); return (await import('./og.mjs')).issueOgPng(NOCTX, ed.id, ed); }, { preview: true });
   await setJSON(key, { at: Date.now() });
+  await setJSON(lastKey, { id: ed.id, at: Date.now(), issues: ed.issues.map((x) => ({ title: x.title, sub: x.sub || '', s: (x.stocks || []).map((z) => z.code || z.name) })) });
   return true;
+}
+
+// 이슈가 '같은 내용'인지: 제목+요약 글자 조각(2글자) 겹침 비율, 또는 같은 종목 + 제목이 꽤 비슷하면 같은 이슈로 봄
+const grams = (t) => { const s = String(t || '').replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase(); const g = new Set(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g; };
+const overlap = (a, b) => { if (!a.size || !b.size) return 0; let n = 0; for (const x of a) if (b.has(x)) n++; return n / Math.min(a.size, b.size); };
+export function sameIssue(a, b) {
+  const t = overlap(grams(a.title), grams(b.title));
+  if (t >= 0.6) return true;
+  const both = overlap(grams(`${a.title} ${a.sub || ''}`), grams(`${b.title} ${b.sub || ''}`));
+  if (both >= 0.55) return true;
+  const sa = new Set((a.s || (a.stocks || []).map((z) => z.code || z.name)).filter(Boolean));
+  const sb = (b.s || (b.stocks || []).map((z) => z.code || z.name)).filter(Boolean);
+  return sb.some((x) => sa.has(x)) && t >= 0.35;
+}
+/** 직전에 올린 회차에 없던 새 이슈 수 */
+export function newIssueCount(ed, last) {
+  if (!last?.issues?.length) return ed.issues.length;
+  return ed.issues.filter((x) => !last.issues.some((y) => sameIssue({ title: x.title, sub: x.sub, stocks: x.stocks }, y))).length;
 }
 
 // ───── AI가 고른 핵심 공시: 하루 3번씩 (국장 장 전·점심·마감 / 미장 개장 전·장중·마감) ─────
