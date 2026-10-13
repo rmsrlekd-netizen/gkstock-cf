@@ -180,6 +180,8 @@ export async function closeWatch(now = new Date(), ctx = null) {
     // 16시 '장 마감 후' 이슈 회차가 나올 때까지 잠깐 기다림 (늦으면 그날 마지막 회차로)
     const has16 = await getJSON(`issues/ed/${mk.toLowerCase()}-${z.date.replace(/-/g, '')}-16`);
     if (!has16 && z.m < wait) continue;
+    const { claim } = await import('./tgchannel.mjs');
+    if (!(await claim(`close/c/${mk}/${z.date}`, 4 * 60e3))) continue; // 다른 실행이 지금 보내는 중
     await setJSON(tk, { n: t.n + 1, at: Date.now() });
     try { out[mk] = await sendClose(mk, { ctx, date: z.date }); }
     catch (e) { out[mk] = 'error: ' + e.message; await setJSON(tk, { n: t.n + 1, at: Date.now(), err: String(e.message).slice(0, 200) }).catch(() => {}); }

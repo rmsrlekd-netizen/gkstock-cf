@@ -152,6 +152,8 @@ export async function weekWatch(ctx) {
   const tk = `week/try/${w.fri}`;
   const t = (await getJSON(tk)) || { n: 0, at: 0 };
   if (t.n >= 3 || Date.now() - t.at < 15 * 60e3) return null;
+  const { claim } = await import('./tgchannel.mjs');
+  if (!(await claim(`week/c/${w.fri}`, 14 * 60e3))) return null; // 다른 실행이 지금 만드는 중
   await setJSON(tk, { n: t.n + 1, at: Date.now() });
   try { return await sendWeek(ctx, { fresh: true }); } catch (e) { await setJSON(tk, { n: t.n + 1, at: Date.now(), err: String(e.message).slice(0, 200) }).catch(() => {}); return { error: e.message }; }
 }

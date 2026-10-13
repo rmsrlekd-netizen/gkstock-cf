@@ -1,7 +1,7 @@
 // 텔레그램 채널 자동 게시 — 중요 공시·보도자료가 나오면 AI 요약과 함께 채널에 올림
 //  설정: Cloudflare 변수 TELEGRAM_BOT_TOKEN(봇) + TELEGRAM_CHANNEL_ID(@채널주소 또는 -100… 숫자), 봇을 채널 관리자로 추가
 //  관리자 화면에서 켜기/끄기 · 기준(중요도) · 시간당 최대 건수 조절
-import { getJSON, setJSON } from './store.mjs';
+import { getJSON, setJSON, sqlDB } from './store.mjs';
 import { fetchWithTimeout } from './util.mjs';
 
 export const DEFAULT_CFG = { on: true, minImp: 4, perHour: 12, kr: true, us: true, issues: true, digest: true, surge: true, close: true, weekly: true };
@@ -18,11 +18,26 @@ export async function tgSend(chat, text, { preview = true } = {}) {
     body: JSON.stringify({ chat_id: chat, text, parse_mode: 'HTML', link_preview_options: { is_disabled: !preview, prefer_large_media: true } }),
   }, 15000);
   // 텔레그램이 잠깐 느리면(응답 지연으로 중단) 한 번 더
-  let r;
-  try { r = await send(); } catch (e) { if (!/abort|timeout|시간/i.test(String(e.message || e))) throw e; await new Promise((ok) => setTimeout(ok, 1500)); r = await send(); }
+  // 응답이 늦어도 다시 보내지 않음 (텔레그램은 이미 올렸는데 응답만 늦는 경우가 있어 중복 게시가 됨)
+  const r = await send();
   const j = await r.json().catch(() => ({}));
   if (!j.ok) throw new Error(`텔레그램 ${j.error_code || r.status}: ${j.description || ''}`);
   return j;
+}
+
+/** 한 번만 실행되게 '찜하기' — 크론이 겹쳐 돌아도 같은 글을 두 번 올리지 않게 (DB에서 한 번에 확인·기록)
+ *  ttl 안에 이미 찜한 키면 false */
+export async function claim(key, ttl = 30 * 86400e3) {
+  const now = Date.now();
+  const d = await sqlDB().catch(() => null);
+  if (!d) { const c = await getJSON(key); if (c && now - (c.at || 0) < ttl) return false; await setJSON(key, { at: now }); return true; }
+  const r = await d.prepare('INSERT INTO kv (k, v, t) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, t = excluded.t WHERE kv.t < ?').bind(key, JSON.stringify({ at: now }), now, now - ttl).run();
+  return (r?.meta?.changes ?? 0) > 0;
+}
+export async function unclaim(key) {
+  const d = await sqlDB().catch(() => null);
+  if (!d) { await setJSON(key, { at: 0 }); return; }
+  await d.prepare('UPDATE kv SET t = 0, v = ? WHERE k = ?').bind(JSON.stringify({ at: 0 }), key).run().catch(() => {});
 }
 
 // ───── 이미지로 보내기: 모든 게시물을 카드 이미지 + 짧은 설명(캡션)으로 (이미지를 못 만들면 글로) ─────
@@ -30,8 +45,7 @@ const NOCTX = { waitUntil() {} };
 async function postForm(method, fd) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const go = () => fetchWithTimeout(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', body: fd }, 25000);
-  let r;
-  try { r = await go(); } catch (e) { if (!/abort|timeout/i.test(String(e.message || e))) throw e; await new Promise((ok) => setTimeout(ok, 1500)); r = await go(); }
+  const r = await go(); // 재시도 없음 (중복 게시 방지)
   const j = await r.json().catch(() => ({}));
   if (!j.ok) throw new Error(`텔레그램 ${j.error_code || r.status}: ${j.description || ''}`);
   return j;
@@ -57,7 +71,11 @@ export async function sendCard(chat, text, makePng, opts = {}) {
   let png = null;
   try { png = await makePng(); } catch (e) { console.warn('tg card', e.message); }
   if (png?.byteLength > 1000) {
-    try { return await tgPhoto(chat, png, text); } catch (e) { if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) throw e; console.warn('tg photo', e.message); }
+    try { return await tgPhoto(chat, png, text); } catch (e) {
+      if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) throw e;
+      if (/abort|timeout/i.test(e.message)) return { ok: true, maybe: true }; // 응답만 늦은 것일 수 있음 → 글로 또 보내지 않음
+      console.warn('tg photo', e.message);
+    }
   }
   return tgSend(chat, text, opts);
 }
@@ -160,8 +178,17 @@ export async function channelWatch() {
     .sort((a, b) => a.ms - b.ms);
   let n = 0;
   const errs = [];
+  // 같은 회사가 공시·보도자료를 한꺼번에 여러 건 내면 연달아 올라가던 문제 → 회사당 6시간에 1건
+  //  (단, 첫 건이 '매우 중요(5)'가 아니었고 새 건이 '매우 중요'면 한 번 더 허용)
+  const co = Object.fromEntries(Object.entries(st.co || {}).filter(([, v]) => now - v.at < 6 * 3600e3));
+  const coKey = (x) => `${x.src === 'DART' || x.market === 'KR' ? 'KR' : 'US'}:${String(x.ticker || '').toUpperCase()}`;
+  // 같은 회사 것이 같이 들어오면 중요한 것부터 보게
+  const impOf = (x) => x.impact ?? 0;
+  pool.sort((a, b) => (coKey(a.x) === coKey(b.x) ? impOf(b.x) - impOf(a.x) : 0) || a.ms - b.ms);
   for (const { x, ms } of pool) {
     if (n >= 3 || hist.length >= cfg.perHour) break;
+    const prev = co[coKey(x)];
+    if (prev && !(prev.n < 2 && (prev.imp ?? 0) < 5 && impOf(x) >= 5)) { sent.add(x.id); continue; } // 같은 회사 최근에 이미 올림
     if (!(await worth(x, cfg))) { sent.add(x.id); continue; } // 대상 아님 → 다시 안 봄
     // AI 분석을 최대 6분 기다림 (없으면 제목만으로)
     const ai = (await getJSON(`ai3/${x.id}`)) || (await getJSON(`aiq/${x.id}`));
@@ -176,11 +203,15 @@ export async function channelWatch() {
     const ev = earn ? (await getJSON('earn/vmap').catch(() => null))?.[x.id] : null;
     if (earn && !ev && now - ms < 6 * 60e3) continue; // 실적은 컨센서스 판정을 조금 기다림
     const text = `${earn}${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>${vt ? '  ' + vt : ''}\n${esc(String(await koTitle(x, ai)).slice(0, 140))}${ev ? `\n\n${ev.v === '상회' ? '🟢' : ev.v === '하회' ? '🔴' : '⚪'} <b>컨센서스 ${esc(ev.v)}</b> · ${esc(ev.line)}` : ''}${pts ? '\n\n' + pts : ''}\n\n<i>${esc(kind)} · ${kst(ms)} KST</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
-    try { await sendCard(chat, text, () => filingPng(x.id)); sent.add(x.id); hist.push(Date.now()); n++; st.last = { id: x.id, at: Date.now(), title: titleOf(x).slice(0, 80) }; }
-    catch (e) { errs.push(e.message); if (/429|Too Many/i.test(e.message)) break; if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) { st.err = e.message; break; } }
+    const ck = coKey(x), again = !!co[ck];
+    if (!(await claim(`tgch/c/${x.id}`))) { sent.add(x.id); continue; } // 다른 실행이 이미 올림
+    if (!(await claim(again ? `tgch/cc5/${ck}` : `tgch/cc/${ck}`, 6 * 3600e3))) { sent.add(x.id); continue; } // 같은 회사 6시간 안에 이미 올림
+    try { await sendCard(chat, text, () => filingPng(x.id)); sent.add(x.id); hist.push(Date.now()); n++; st.last = { id: x.id, at: Date.now(), title: titleOf(x).slice(0, 80) }; const k = coKey(x); co[k] = { at: co[k]?.at || Date.now(), n: (co[k]?.n || 0) + 1, imp: Math.max(co[k]?.imp ?? 0, impOf(x)) }; }
+    catch (e) { errs.push(e.message); await unclaim(`tgch/c/${x.id}`); await unclaim(again ? `tgch/cc5/${ck}` : `tgch/cc/${ck}`); if (/429|Too Many/i.test(e.message)) break; if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) { st.err = e.message; break; } }
   }
   st.sent = [...sent].slice(-800);
   st.hist = hist;
+  st.co = co;
   const day = new Date(now + 9 * 3600e3).toISOString().slice(0, 10);
   if (st.day !== day) { st.day = day; st.dayN = 0; }
   st.dayN = (st.dayN || 0) + n;
@@ -198,6 +229,7 @@ export async function postIssue(ed) {
   if (!cfg.on || !cfg.issues || (ed.mk === 'KR' ? !cfg.kr : !cfg.us)) return false;
   const key = `tgch/iss/${ed.id}`;
   if (await getJSON(key)) return false; // 같은 회차는 한 번만
+  if (!(await claim(`tgch/issc/${ed.id}`))) return false; // 동시에 두 번 실행돼도 한 번만
   // 직전에 채널에 올린 회차와 비교해 새 이슈가 3개 미만이면 올리지 않음 (주말·휴장일에 같은 내용 반복 방지)
   const lastKey = `tgch/isslast/${ed.mk}`;
   const last = await getJSON(lastKey);
@@ -209,7 +241,7 @@ export async function postIssue(ed) {
     return `${i + 1}. ${x.tone === '호재' ? '🟢' : x.tone === '악재' ? '🔴' : '⚪'} <b>${esc(x.title)}</b>${s0 ? `  <i>${esc(s0.name)}${pct(s0.pct)}</i>` : ''}`;
   }).join('\n');
   const text = `📰 <b>${ed.mk === 'KR' ? '국장' : '미장'} 주요 이슈 · ${esc(ed.slot || '')}</b>\n${esc(ed.headline || '')}\n\n${lines}\n\n<a href="https://gk-stock.com/i/${encodeURIComponent(ed.id)}">이슈 ${ed.issues.length}개 자세히 보기 →</a>`;
-  await sendCard(chat, text, async () => { const saved = await getJSON(`issues/og/${ed.id}`); if (saved?.b) return Uint8Array.from(atob(saved.b), (c) => c.charCodeAt(0)); return (await import('./og.mjs')).issueOgPng(NOCTX, ed.id, ed); }, { preview: true });
+  try { await sendCard(chat, text, async () => { const saved = await getJSON(`issues/og/${ed.id}`); if (saved?.b) return Uint8Array.from(atob(saved.b), (c) => c.charCodeAt(0)); return (await import('./og.mjs')).issueOgPng(NOCTX, ed.id, ed); }, { preview: true }); } catch (e) { await unclaim(`tgch/issc/${ed.id}`); throw e; }
   await setJSON(key, { at: Date.now() });
   await setJSON(lastKey, { id: ed.id, at: Date.now(), issues: ed.issues.map((x) => ({ title: x.title, sub: x.sub || '', s: (x.stocks || []).map((z) => z.code || z.name) })) });
   return true;
@@ -252,8 +284,7 @@ export async function digestWatch() {
     const slot = (wk ? DG_TIMES[mk].slice(0, 1).map(([h, mi]) => [h + 1, mi]) : DG_TIMES[mk]).find(([h, mi]) => z.m >= h * 60 + mi && z.m < h * 60 + mi + 10);
     if (!slot) continue;
     const key = `tgch/dg/${mk}/${z.date}-${slot[0]}${slot[1]}`;
-    if (await getJSON(key)) continue;
-    await setJSON(key, { at: Date.now() }); // 실패해도 이 회차는 다시 안 보냄 (중복 방지)
+    if (!(await claim(key))) continue; // 실패해도 이 회차는 다시 안 보냄 (중복 방지 · 동시 실행에도 한 번만)
     try {
       const res = await (await import('../functions/digest.mjs')).default(new Request(`http://x/api/digest?mk=${mk}`));
       const d = await res.json();
@@ -315,6 +346,7 @@ export async function surgeWatch() {
     const kind = x.src === 'DART' ? 'DART 공시' : x.src === 'SEC' ? `SEC ${x.form || '공시'}` : x.source || '보도자료';
     const pt = (ai?.summary || [])[0];
     const text = `🚀 <b>공시 후 급등</b>  ${mk === 'KR' ? '🇰🇷' : '🇺🇸'} <b>${esc(nameOf(x))}</b>  <b>+${h.r.toFixed(1)}%</b>\n발표 후 ${ago} · 지금 ${px}${sess}\n\n${esc(String(await koTitle(x, ai)).slice(0, 140))}${pt ? `\n• ${esc(String(pt).slice(0, 110))}` : ''}\n\n<i>${esc(kind)} · ${kst(h.v.t)} KST 주가 대비</i>\n<a href="https://gk-stock.com/p/${encodeURIComponent(x.id)}">자세히 보기 →</a>`;
+    if (!(await claim(`tgch/sg/${day}/${h.k}`, 86400e3))) { st.done[h.k] = { id: x.id, at: now }; continue; }
     try { await sendCard(chat, text, () => filingPng(x.id), { preview: false }); st.done[h.k] = { id: x.id, r: Math.round(h.r * 10) / 10, at: now }; st.n = (st.n || 0) + 1; n++; }
     catch (e) { st.lastErr = e.message; if (/429|Too Many|403|chat not found/i.test(e.message)) break; }
   }
