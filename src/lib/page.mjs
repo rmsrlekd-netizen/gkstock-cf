@@ -189,7 +189,7 @@ export async function renderSectionPage(env, req, slug) {
       const { earnWeek } = await import('./earnv.mjs');
       const e = await earnWeek(0);
       const li = (a, mk) => (a || []).slice(0, 10).map((x) => `<li>${esc(mk === 'KR' ? x.n : (x.ko || x.n) + ' ' + x.t)} — ${esc(x.line || x.v)}</li>`).join('');
-      live = `<h2>미장 컨센서스 상회</h2><ol>${li(e.US?.beat, 'US')}</ol><h2>국장 컨센서스 상회</h2><ol>${li(e.KR?.beat, 'KR')}</ol>`;
+      live = `<h2>국장 컨센서스 상회</h2><ol>${li(e.KR?.beat, 'KR')}</ol><h2>미장 컨센서스 상회</h2><ol>${li(e.US?.beat, 'US')}</ol>`;
     } else if (slug === 'themes') {
       const t = await getJSON('themes/v1');
       live = `<h2>국장 강세 테마</h2><ol>${(t?.kr?.themes || []).slice(0, 10).map((g) => `<li>${esc(g.name)} ${esc((g.rate > 0 ? '+' : '') + Number(g.rate || 0).toFixed(2) + '%')} — ${(g.leaders || []).slice(0, 3).map((s) => esc(s.name)).join(', ')}</li>`).join('')}</ol>`;

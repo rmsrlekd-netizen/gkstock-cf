@@ -1415,7 +1415,7 @@
   }
 
   // ───────────────────────── 실적 컨센서스 TOP (이번 주·지난주 상회/하회) ─────────────────────────
-  S.ew = { w: '0', mk: load('gk_ewmk', 'US'), data: {}, at: {} };
+  S.ew = { w: '0', mk: load('gk_ewmk2', 'KR'), data: {}, at: {} };
   async function loadEwk(force) {
     renderEwk();
     const w = S.ew.w;
@@ -1444,11 +1444,11 @@
   }
   function bindEwk() {
     $('#ewWeek').addEventListener('click', (e) => { const b = e.target.closest('[data-ew]'); if (!b) return; S.ew.w = b.dataset.ew; loadEwk(); });
-    $('#ewSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-ewm]'); if (!b) return; S.ew.mk = b.dataset.ewm; save('gk_ewmk', S.ew.mk); renderEwk(); });
+    $('#ewSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-ewm]'); if (!b) return; S.ew.mk = b.dataset.ewm; save('gk_ewmk2', S.ew.mk); renderEwk(); });
     $('#ewBody').addEventListener('click', (e) => {
       let b = e.target.closest('[data-ew-open]'); if (b) { showItem(b.dataset.ewOpen); return; }
       if ((b = e.target.closest('[data-ew-go]'))) { S.ew.w = b.dataset.ewGo; loadEwk(); return; }
-      if ((b = e.target.closest('[data-ew-mk]'))) { S.ew.mk = b.dataset.ewMk; save('gk_ewmk', S.ew.mk); renderEwk(); }
+      if ((b = e.target.closest('[data-ew-mk]'))) { S.ew.mk = b.dataset.ewMk; save('gk_ewmk2', S.ew.mk); renderEwk(); }
     });
   }
 
