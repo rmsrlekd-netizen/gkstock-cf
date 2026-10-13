@@ -111,7 +111,10 @@ export async function earnWeek(week = 0) {
   const hist = (await getJSON('earn/hist')) || {};
   const k = new Date(Date.now() + 9 * 3600e3);
   const mon = Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate() - ((k.getUTCDay() + 6) % 7)) - 9 * 3600e3 - week * 7 * 86400e3;
-  const rows = Object.values(hist).filter((x) => x.at >= mon && x.at < mon + 7 * 86400e3);
+  // 같은 회사가 8-K와 보도자료로 두 번 잡히는 경우가 있어 회사당 하나만 (먼저 판정된 것)
+  const seen = new Set();
+  const rows = Object.values(hist).filter((x) => x.at >= mon && x.at < mon + 7 * 86400e3).sort((a, b) => a.at - b.at)
+    .filter((x) => { const k = `${x.mk}|${String(x.t).toUpperCase()}`; if (seen.has(k)) return false; seen.add(k); return true; });
   const out = { from: new Date(mon + 9 * 3600e3).toISOString().slice(0, 10), to: new Date(mon + 9 * 3600e3 + 6 * 86400e3).toISOString().slice(0, 10) };
   for (const mk of ['KR', 'US']) {
     const r = rows.filter((x) => x.mk === mk);
