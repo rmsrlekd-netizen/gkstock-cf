@@ -67,17 +67,30 @@ export async function tgPhoto(chat, png, caption) {
   return postForm('sendPhoto', fd);
 }
 /** 카드 이미지를 만들어 사진으로 보내고, 실패하면 기존처럼 글로 */
+//  마지막 안전장치: 똑같은 글(캡션)은 6시간 안에 두 번 올리지 않음 — 어떤 경로로 들어오든
+//  (크론이 시간 초과로 중간에 끊겨 '보냄' 기록을 못 남긴 경우에도 같은 글이 매분 반복되지 않게)
+async function textKey(chat, text) {
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${chat}|${text}`));
+  return 'tgch/h/' + [...new Uint8Array(h)].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 export async function sendCard(chat, text, makePng, opts = {}) {
-  let png = null;
-  try { png = await makePng(); } catch (e) { console.warn('tg card', e.message); }
-  if (png?.byteLength > 1000) {
-    try { return await tgPhoto(chat, png, text); } catch (e) {
-      if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) throw e;
-      if (/abort|timeout/i.test(e.message)) return { ok: true, maybe: true }; // 응답만 늦은 것일 수 있음 → 글로 또 보내지 않음
-      console.warn('tg photo', e.message);
+  const hk = await textKey(chat, text);
+  if (!(await claim(hk, 6 * 3600e3))) return { ok: true, dup: true };
+  try {
+    let png = null;
+    try { png = await makePng(); } catch (e) { console.warn('tg card', e.message); }
+    if (png?.byteLength > 1000) {
+      try { return await tgPhoto(chat, png, text); } catch (e) {
+        if (/chat not found|not enough rights|bot is not a member|403/i.test(e.message)) throw e;
+        if (/abort|timeout/i.test(e.message)) return { ok: true, maybe: true }; // 응답만 늦은 것일 수 있음 → 글로 또 보내지 않음
+        console.warn('tg photo', e.message);
+      }
     }
+    return await tgSend(chat, text, opts);
+  } catch (e) {
+    if (!/abort|timeout/i.test(String(e.message || e))) await unclaim(hk); // 확실히 실패한 경우만 다음에 다시
+    throw e;
   }
-  return tgSend(chat, text, opts);
 }
 async function filingPng(id) {
   const { renderOgImage } = await import('./og.mjs');
@@ -174,8 +187,12 @@ export async function channelWatch() {
   const pool = [...(sec?.items || []), ...(dart?.items || []), ...(news?.items || [])]
     .filter((x) => x.id && !sent.has(x.id) && !x.dupOf)
     .map((x) => ({ x, ms: itemMs(x) }))
-    .filter(({ ms }) => ms && now - ms < 40 * 60e3 && ms > st.first - 5 * 60e3) // 켠 뒤에 나온 최근 것만
+    .filter(({ ms }) => ms && now - ms < 20 * 60e3 && ms > st.first - 5 * 60e3) // 켠 뒤에 나온 최근 20분 것만 (늦은 소식은 안 올림)
     .sort((a, b) => a.ms - b.ms);
+  // 한동안 멈췄다가(장애·업데이트) 다시 돌면 밀린 공시가 한꺼번에 쏟아지지 않게: 밀린 건 올리지 않고 넘김
+  const gap = st.runAt ? now - st.runAt : 0;
+  st.runAt = now;
+  if (gap > 8 * 60e3) { for (const { x, ms } of pool) if (now - ms > 3 * 60e3) sent.add(x.id); st.skipped = { at: now, gapMin: Math.round(gap / 60e3) }; }
   let n = 0;
   const errs = [];
   // 같은 회사가 공시·보도자료를 한꺼번에 여러 건 내면 연달아 올라가던 문제 → 회사당 6시간에 1건
@@ -186,7 +203,9 @@ export async function channelWatch() {
   const impOf = (x) => x.impact ?? 0;
   pool.sort((a, b) => (coKey(a.x) === coKey(b.x) ? impOf(b.x) - impOf(a.x) : 0) || a.ms - b.ms);
   for (const { x, ms } of pool) {
-    if (n >= 3 || hist.length >= cfg.perHour) break;
+    if (n >= 2 || hist.length >= cfg.perHour) break; // 한 번(1분)에 2건까지 — 이미지 만들기가 무거워 시간 초과로 끊기지 않게
+    if (hist.filter((t) => now - t < 10 * 60e3).length >= 4) break; // 10분에 최대 4건 (한꺼번에 쏟아지지 않게)
+    if (sent.has(x.id)) continue;
     const prev = co[coKey(x)];
     if (prev && !(prev.n < 2 && (prev.imp ?? 0) < 5 && impOf(x) >= 5)) { sent.add(x.id); continue; } // 같은 회사 최근에 이미 올림
     if (!(await worth(x, cfg))) { sent.add(x.id); continue; } // 대상 아님 → 다시 안 봄
@@ -336,7 +355,7 @@ export async function surgeWatch() {
   hits.sort((a, b) => b.r - a.r);
   let n = 0;
   for (const h of hits) {
-    if (n >= 3 || (st.n || 0) >= 40) break; // 한 번에 3건, 하루 40건까지
+    if (n >= 2 || (st.n || 0) >= 40) break; // 한 번에 2건, 하루 40건까지
     const x = h.x, mk = mkOf(x);
     const ai = (await getJSON(`ai3/${x.id}`)) || (await getJSON(`aiq/${x.id}`));
     const mins = Math.round((now - h.v.t) / 60e3);

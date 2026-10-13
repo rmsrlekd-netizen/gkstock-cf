@@ -153,7 +153,7 @@ export async function weekWatch(ctx) {
   const t = (await getJSON(tk)) || { n: 0, at: 0 };
   if (t.n >= 3 || Date.now() - t.at < 15 * 60e3) return null;
   const { claim } = await import('./tgchannel.mjs');
-  if (!(await claim(`week/c/${w.fri}`, 14 * 60e3))) return null; // 다른 실행이 지금 만드는 중
+  if (!(await claim(`week/c/${w.fri}`, 3 * 86400e3))) return null; // 주 1회만 (중간에 끊겨도 다시 안 보냄)
   await setJSON(tk, { n: t.n + 1, at: Date.now() });
-  try { return await sendWeek(ctx, { fresh: true }); } catch (e) { await setJSON(tk, { n: t.n + 1, at: Date.now(), err: String(e.message).slice(0, 200) }).catch(() => {}); return { error: e.message }; }
+  try { return await sendWeek(ctx, { fresh: true }); } catch (e) { if (!/abort|timeout/i.test(e.message)) await (await import('./tgchannel.mjs')).unclaim(`week/c/${w.fri}`); await setJSON(tk, { n: t.n + 1, at: Date.now(), err: String(e.message).slice(0, 200) }).catch(() => {}); return { error: e.message }; }
 }

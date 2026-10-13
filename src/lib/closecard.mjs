@@ -155,7 +155,9 @@ export async function sendClose(mk, { ctx = null, force = false, date = null } =
   const ymd = date.replace(/-/g, '');
   const link = d.edId ? `https://gk-stock.com/i/${d.edId}` : 'https://gk-stock.com/';
   const cap = `📊 <b>${mk === 'KR' ? '국장' : '미장'} 마감 정리</b> · ${dt.getUTCMonth() + 1}/${dt.getUTCDate()}\n${esc(d.headline || '')}\n\n${d.up.slice(0, 3).map((x) => `🔺 ${esc(x.name)} ${esc(sp(x.pct))}${x.why ? ` — ${esc(cut(x.why, 40))}` : ''}`).join('\n')}\n\n<a href="${link}">오늘 주요 이슈 자세히 →</a>`;
-  await sendPhoto(chat, png, cap.slice(0, 1000));
+  const { sendCard } = await import('./tgchannel.mjs');
+  const r = await sendCard(chat, cap.slice(0, 1000), async () => png, { preview: false });
+  if (r?.dup && !force) return { ok: true, dup: true };
   await setJSON(`close/sent/${mk}/${date}`, { at: Date.now(), force, img: `/og/close/${mk.toLowerCase()}-${ymd}.png` });
   return { ok: true, mk, date, edId: d.edId };
 }
@@ -181,10 +183,10 @@ export async function closeWatch(now = new Date(), ctx = null) {
     const has16 = await getJSON(`issues/ed/${mk.toLowerCase()}-${z.date.replace(/-/g, '')}-16`);
     if (!has16 && z.m < wait) continue;
     const { claim } = await import('./tgchannel.mjs');
-    if (!(await claim(`close/c/${mk}/${z.date}`, 4 * 60e3))) continue; // 다른 실행이 지금 보내는 중
+    if (!(await claim(`close/c/${mk}/${z.date}`, 20 * 3600e3))) continue; // 하루 한 번만 (중간에 끊겨도 다시 안 보냄)
     await setJSON(tk, { n: t.n + 1, at: Date.now() });
     try { out[mk] = await sendClose(mk, { ctx, date: z.date }); }
-    catch (e) { out[mk] = 'error: ' + e.message; await setJSON(tk, { n: t.n + 1, at: Date.now(), err: String(e.message).slice(0, 200) }).catch(() => {}); }
+    catch (e) { out[mk] = 'error: ' + e.message; if (!/abort|timeout/i.test(e.message)) await (await import('./tgchannel.mjs')).unclaim(`close/c/${mk}/${z.date}`); await setJSON(tk, { n: t.n + 1, at: Date.now(), err: String(e.message).slice(0, 200) }).catch(() => {}); }
   }
   return out;
 }
