@@ -45,7 +45,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Montserrat:wght@600;700;800&display=swap" />
-  <link rel="stylesheet" href="/styles.css?v=136" />
+  <link rel="stylesheet" href="/styles.css?v=137" />
   <script>document.documentElement.classList.add('js');</script>
   <style>.js .ssr{display:none}.ssr{max-width:860px;margin:2rem auto;padding:0 1rem;color:#eef0ff;font-family:sans-serif;line-height:1.7}</style>
 </head>
@@ -333,42 +333,35 @@
       <p class="note" id="sparkNote" hidden>작은 차트: 최근 5거래일 · 60분봉 종가 · 점선 = 전일 종가</p>
     </section>
 
-    <!-- ───────── 서비스 소개 (모든 서비스 + 투자 유의사항) ───────── -->
-    <section id="viewGuide" class="page" hidden>
-      <div class="page-head"><h2>서비스 소개</h2><span class="muted">GK의 공시레이더가 제공하는 모든 서비스</span></div>
-      <div class="card prose ab-intro">
-        <p><b>GK의 공시레이더</b>는 유튜브 <a href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener">GK의 미국 주식</a>이 만든 미국·한국 주식 공시 터미널입니다. 흩어져 있는 공시·보도자료·시세·일정을 한곳에 모아 실시간으로 보여주고, AI가 핵심만 한국어로 정리합니다. 회원가입 없이 무료로 이용할 수 있습니다.</p>
+    <!-- ───────── 서비스 소개 (설명서 형식 · 모든 서비스 + 투자 유의사항) ───────── -->
+    <section id="viewGuide" class="page mn" hidden>
+      <div class="mn-hero">
+        <small>GK의 공시레이더 이용 설명서</small>
+        <h2>공시 · 시세 · 일정을 한곳에서,<br>핵심은 AI가 한국어로.</h2>
+        <p>유튜브 <a href="https://www.youtube.com/@GK_Stock" target="_blank" rel="noopener">GK의 미국 주식</a>이 만든 미국·한국 주식 공시 터미널 · 회원가입 없이 무료</p>
+        <div class="mn-key"><div><b>실시간</b><span>공시 접수 즉시</span></div><div><b>AI 요약</b><span>호재·악재까지</span></div><div><b>알림</b><span>푸시·텔레그램</span></div></div>
       </div>
-      <h3 class="ab-sec">주요 서비스</h3>
-      <div class="ab-grid"><div class="card ab-card"><div class="ab-h"><b>라이브 피드</b><small>실시간 공시·보도자료</small></div><p>미국 SEC 공시(8-K·10-Q·Form 4 등), 미국 상장사 보도자료(GlobeNewswire·PR Newswire·Business Wire 등), 한국 DART 공시를 접수 즉시 모아 보여줍니다. 영어 공시도 금액·비율 같은 핵심 숫자로 한국어 제목을 붙이고, 중요도·호재/악재·발표 후 주가 등락을 함께 표시합니다.</p><button class="btn sm" data-go="home">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>AI 분석</b><small>공시별 AI 애널리스트 분석</small></div><p>공시를 누르면 AI가 원문을 읽고 핵심 요약, 긍정·부정 요인, 주가 영향, 앞으로 체크할 점을 정리합니다. 실적 공시는 시장 예상치(컨센서스)와 비교해 상회·부합·하회를 자동으로 표시합니다.</p><button class="btn sm" data-go="home">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>오늘 주요 이슈</b><small>국장·미장 주요 이슈 6</small></div><p>장중 매시간(개장 직후 30분마다) 뉴스·공시·시세를 종합해 지금 시장의 핵심 이슈 6개를 정리합니다. 주말·휴장일에도 2시간마다 갱신되며, AI가 고른 핵심 공시도 하루 3번 정리합니다.</p><button class="btn sm" data-go="home">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>실시간 종목</b><small>인기·상승·하락 TOP 10</small></div><p>국내·미국 실시간 인기 검색, 상승률·하락률 상위 종목과 오늘 움직임 이유를 15초마다 갱신합니다. 미국은 프리마켓·애프터마켓·주간거래 시간에도 그 시간대 등락률로 보여줍니다.</p><button class="btn sm" data-go="popular">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>당일 테마</b><small>오늘의 주도 테마·섹터</small></div><p>오늘 가장 강한·약한 테마와 업종, 테마별 대장주와 등락률, 나스닥100·S&P 500 대형주의 상승·하락 비율을 보여줍니다.</p><button class="btn sm" data-go="themes">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>테마·섹터</b><small>관련주 사전</small></div><p>네이버 증권 테마·업종 전체와 미국 테마·섹터별 관련주를 언제든 찾아볼 수 있습니다. 테마 이름이나 종목 이름으로 검색할 수 있습니다.</p><button class="btn sm" data-go="tdir">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>오늘 일정</b><small>증시 일정</small></div><p>국장·미장의 오늘과 이번 주 주요 일정(정책·기업 행사, 실적 발표, 경제지표, 공모주 상장, 휴장일)을 정리합니다.</p><button class="btn sm" data-go="sched">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>실적 캘린더</b><small>미국 실적 발표 일정</small></div><p>미국 상장사 실적 발표 날짜와 시간(장전·장후), 예상 EPS·매출, 시가총액을 날짜별로 보여줍니다.</p><button class="btn sm" data-go="earnings">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>경제지표</b><small>미국 경제지표와 AI 해석</small></div><p>CPI·고용·FOMC 등 주요 경제지표 일정과 예상치·실제치, 발표 직후 AI 해석을 제공합니다.</p><button class="btn sm" data-go="econ">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>분할 캘린더</b><small>분할·병합·배당락·유무상증자</small></div><p>국내·미국 주식분할·병합(역분할) 일정, 배당락일과 배당금, 국내 유상·무상증자와 감자의 권리락·청약·상장 일정을 날짜별로 정리합니다.</p><button class="btn sm" data-go="cact">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>VI·서킷</b><small>변동성 완화장치·거래정지</small></div><p>국장 VI 발동·해제와 미국 거래정지·재개 내역을 1분마다 기록합니다.</p><button class="btn sm" data-go="halt">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>공시 반응</b><small>공시 유형별 주가 반응 통계</small></div><p>유상증자·자사주·공급계약·실적 등 공시 유형별로 발표 후 1일·5일 주가가 실제로 어떻게 움직였는지 통계와 사례로 보여줍니다.</p><button class="btn sm" data-go="react">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>기업 분석</b><small>종목별 한눈에 보기</small></div><p>현재가와 차트, 오늘 주가 움직임 이유(AI 추정), 최근 공시, 재무 지표, 공매도·내부자 거래·기관 보유, 수급 정보를 한 화면에서 볼 수 있습니다.</p><button class="btn sm" data-go="company">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>수급</b><small>외국인·기관 매매</small></div><p>국내 주식의 외국인·기관 순매수·순매도 상위 종목을 장중 잠정치로 보여줍니다.</p><button class="btn sm" data-go="flows">바로가기 →</button></div><div class="card ab-card"><div class="ab-h"><b>시장 지표</b><small>지수·환율·금리·선물</small></div><p>코스피·코스닥, S&P 500·나스닥·다우, 원/달러, 미 국채 금리, 나스닥100 선물, 코스피200 야간선물 등을 한 화면에서 확인합니다.</p><button class="btn sm" data-go="market">바로가기 →</button></div></div>
-      <h3 class="ab-sec">알림 받기</h3>
-      <div class="ab-grid">
-        <div class="card ab-card"><div class="ab-h"><b>관심종목 알림·푸시 알림</b><small>설정(톱니바퀴)에서 켜기</small></div><p>종목의 ☆을 눌러 관심종목에 담으면 새 공시가 나올 때 알림음과 알림이 뜹니다. 푸시 알림을 켜면 사이트·앱을 닫아 둬도 휴대폰·PC로 알려줍니다. (아이폰은 '홈 화면에 추가'로 앱을 설치한 뒤 사용)</p></div>
-        <div class="card ab-card"><div class="ab-h"><b>텔레그램 채널</b><small>t.me/gkstock1</small></div><p>중요 공시, 오늘 주요 이슈, AI 핵심 공시, 공시 후 급등 종목, 국장·미장 장 마감 정리를 카드 이미지로 받아볼 수 있습니다.</p><a class="btn sm" href="https://t.me/gkstock1" target="_blank" rel="noopener">채널 열기 →</a></div>
-        <div class="card ab-card"><div class="ab-h"><b>앱으로 설치</b><small>휴대폰·PC</small></div><p>화면 위 '앱 설치' 버튼(아이폰은 Safari 공유 → 홈 화면에 추가)으로 설치하면 앱처럼 전체 화면으로 쓰고, 새 버전이 나오면 자동으로 바뀝니다.</p></div>
-      </div>
-      <h3 class="ab-sec">데이터 출처와 갱신</h3>
-      <div class="card prose">
-        <ul>
-          <li><b>공시</b>: 미국 SEC EDGAR, 금융감독원 DART. 미국 공시는 SEC 접수 시각(초 단위), 한국은 DART 공식 접수 시각(분 단위)을 한국 시간으로 표시합니다.</li>
-          <li><b>보도자료</b>: GlobeNewswire · PR Newswire · Business Wire · ACCESS Newswire · 뉴스와이어(미국 상장사).</li>
-          <li><b>시세·순위·테마</b>: 네이버 증권, Nasdaq, 한국투자증권 Open API 등. 시세는 거래소 실시간 시세와 수초~수십 초 차이가 날 수 있습니다.</li>
-          <li><b>AI 요약·분석</b>: Google Gemini가 원문을 읽고 작성합니다. 회사 로고는 각 사의 상표이며 식별 목적으로만 표시합니다.</li>
-        </ul>
-      </div>
-      <h3 class="ab-sec">투자 유의사항 (법적 고지)</h3>
-      <div class="card prose ab-legal">
-        <ol>
-          <li>이 사이트와 앱, 텔레그램 채널에서 제공하는 모든 정보(공시 요약, AI 분석, 호재·악재 판단, 주요 이슈, 급등 이유, 통계 등)는 <b>투자 판단을 돕기 위한 참고 자료</b>이며, 특정 금융투자상품의 매수·매도를 권유하거나 개별적인 투자 자문을 제공하는 것이 아닙니다.</li>
-          <li>AI가 작성한 요약·분석·추정은 원문을 잘못 해석하거나 사실과 다른 내용을 포함할 수 있습니다. 중요한 판단 전에는 반드시 <b>공시 원문과 공식 자료를 직접 확인</b>하시기 바랍니다.</li>
-          <li>시세·순위·일정 등 데이터는 외부 출처에서 받아오며, 지연·누락·오류가 있을 수 있습니다. 서비스는 정보의 정확성·완전성·적시성을 보장하지 않습니다.</li>
-          <li>과거의 주가 반응 통계와 수익률은 미래의 결과를 보장하지 않습니다.</li>
-          <li>모든 투자의 최종 판단과 책임은 투자자 본인에게 있으며, 서비스 제공자는 이 정보를 이용한 투자 결과로 발생한 손실에 대해 법적 책임을 지지 않습니다.</li>
-          <li>주식 투자는 원금 손실이 발생할 수 있으며, 레버리지·소형주·시간외 거래는 가격 변동 위험이 특히 큽니다.</li>
-          <li>공시·보도자료의 저작권은 각 발행 기관과 회사에 있습니다. 서비스의 화면·요약·이미지를 무단으로 복제·재배포하는 것을 금합니다.</li>
+      <nav class="mn-toc"><a href="#mn1" data-mn="1"><i>1</i>실시간 공시 보기</a><a href="#mn2" data-mn="2"><i>2</i>오늘 시장 한눈에</a><a href="#mn3" data-mn="3"><i>3</i>종목 찾고 분석하기</a><a href="#mn4" data-mn="4"><i>4</i>일정 챙기기</a><a href="#mn5" data-mn="5"><i>5</i>알림 받기</a><a href="#mnLegal" data-mn="Legal"><i>!</i>투자 유의사항</a></nav>
+      <section class="mn-sec" id="mn1"><div class="mn-head"><span class="mn-num">1</span><div><h3>실시간 공시 보기</h3><p>새로 나온 공시·보도자료를 가장 빨리 보고 싶을 때</p></div></div><ul class="mn-list"><li class="mn-row"><div class="mn-name"><b>라이브 피드</b><button class="mn-go" data-go="home">열기 →</button></div><ul class="mn-pts"><li>미국 SEC·한국 DART 공시, 미국 보도자료를 <b>접수 즉시</b></li><li>영어 공시도 <b>한국어 제목 + 핵심 숫자</b>로</li><li>중요도 · 호재/악재 · <b>발표 후 주가 등락</b> 표시</li></ul></li><li class="mn-row"><div class="mn-name"><b>AI 분석</b><button class="mn-go" data-go="home">열기 →</button></div><ul class="mn-pts"><li>공시를 누르면 AI가 <b>핵심 요약 · 호재/악재 요인</b> 정리</li><li>실적 공시는 <b>컨센서스 상회·부합·하회</b> 자동 판정</li></ul></li><li class="mn-row"><div class="mn-name"><b>공시 반응</b><button class="mn-go" data-go="react">열기 →</button></div><ul class="mn-pts"><li>유상증자·자사주·공급계약 등 공시 유형별로</li><li>발표 후 <b>1일·5일 주가가 실제로 어떻게 됐는지</b> 통계</li></ul></li></ul></section><section class="mn-sec" id="mn2"><div class="mn-head"><span class="mn-num">2</span><div><h3>오늘 시장 한눈에</h3><p>지금 시장에서 무슨 일이 벌어지는지 알고 싶을 때</p></div></div><ul class="mn-list"><li class="mn-row"><div class="mn-name"><b>오늘 주요 이슈</b><button class="mn-go" data-go="home">열기 →</button></div><ul class="mn-pts"><li>국장·미장 <b>핵심 이슈 6개</b>를 매시간 자동 정리</li><li>개장 직후엔 30분마다, 주말·휴장일에도 갱신</li></ul></li><li class="mn-row"><div class="mn-name"><b>실시간 종목</b><button class="mn-go" data-go="popular">열기 →</button></div><ul class="mn-pts"><li>국내·미국 <b>인기 · 급등 · 급락 TOP 10</b></li><li>종목마다 <b>오늘 움직인 이유</b> · 15초마다 갱신</li><li>미국 프리·애프터·주간거래 시간 등락률까지</li></ul></li><li class="mn-row"><div class="mn-name"><b>당일 테마</b><button class="mn-go" data-go="themes">열기 →</button></div><ul class="mn-pts"><li>오늘 <b>가장 강한 테마·약한 테마</b>와 대장주</li><li>나스닥100·S&P 500 오른 종목 비율</li></ul></li><li class="mn-row"><div class="mn-name"><b>시장 지표</b><button class="mn-go" data-go="market">열기 →</button></div><ul class="mn-pts"><li>코스피·코스닥, S&P 500·나스닥, 환율·금리</li><li>나스닥100 선물, <b>코스피200 야간선물</b></li></ul></li><li class="mn-row"><div class="mn-name"><b>수급</b><button class="mn-go" data-go="flows">열기 →</button></div><ul class="mn-pts"><li>외국인·기관 <b>순매수·순매도 상위</b> 종목 (장중 잠정치)</li></ul></li><li class="mn-row"><div class="mn-name"><b>VI·서킷</b><button class="mn-go" data-go="halt">열기 →</button></div><ul class="mn-pts"><li>국장 <b>VI 발동·해제</b>, 미국 <b>거래정지·재개</b> 1분마다 기록</li></ul></li></ul></section><section class="mn-sec" id="mn3"><div class="mn-head"><span class="mn-num">3</span><div><h3>종목 찾고 분석하기</h3><p>관심 있는 종목·테마를 깊게 보고 싶을 때</p></div></div><ul class="mn-list"><li class="mn-row"><div class="mn-name"><b>기업 분석</b><button class="mn-go" data-go="company">열기 →</button></div><ul class="mn-pts"><li>검색창에 종목명·티커 입력 → <b>종목 한 화면</b></li><li>현재가·차트, <b>오늘 움직임 이유</b>, 최근 공시</li><li>재무, 공매도·내부자 거래·기관 보유</li></ul></li><li class="mn-row"><div class="mn-name"><b>테마·섹터</b><button class="mn-go" data-go="tdir">열기 →</button></div><ul class="mn-pts"><li>네이버 테마·업종 전체 + 미국 테마·섹터 <b>관련주 사전</b></li><li>테마 이름이나 종목 이름으로 검색</li></ul></li></ul></section><section class="mn-sec" id="mn4"><div class="mn-head"><span class="mn-num">4</span><div><h3>일정 챙기기</h3><p>놓치면 안 되는 날짜를 미리 알고 싶을 때</p></div></div><ul class="mn-list"><li class="mn-row"><div class="mn-name"><b>오늘 일정</b><button class="mn-go" data-go="sched">열기 →</button></div><ul class="mn-pts"><li>국장·미장 <b>오늘·이번 주 일정</b> (정책·기업 행사·상장·휴장)</li></ul></li><li class="mn-row"><div class="mn-name"><b>실적 캘린더</b><button class="mn-go" data-go="earnings">열기 →</button></div><ul class="mn-pts"><li>미국 실적 발표일 · <b>장전/장후</b> · 예상 EPS·매출</li></ul></li><li class="mn-row"><div class="mn-name"><b>경제지표</b><button class="mn-go" data-go="econ">열기 →</button></div><ul class="mn-pts"><li>CPI·고용·FOMC 일정, 예상치 vs 실제치</li><li>발표 직후 <b>AI 해석</b></li></ul></li><li class="mn-row"><div class="mn-name"><b>분할 캘린더</b><button class="mn-go" data-go="cact">열기 →</button></div><ul class="mn-pts"><li><b>주식 분할·병합(역분할)</b> 일정 (국내·미국)</li><li><b>배당락일</b>·배당금, 국내 <b>유·무상증자</b> 권리락·청약·상장일</li></ul></li></ul></section>
+      <section class="mn-sec" id="mn5"><div class="mn-head"><span class="mn-num">5</span><div><h3>알림 받기</h3><p>사이트를 켜 두지 않아도 놓치지 않으려면</p></div></div>
+        <ol class="mn-steps">
+          <li><b>관심종목 담기</b><span>종목 옆 <em>☆</em>을 누르면 관심종목에 담겨요.</span></li>
+          <li><b>푸시 알림 켜기</b><span>오른쪽 위 <em>설정(톱니바퀴)</em> → '푸시 알림' 켜기. 관심종목에 새 공시가 나오면 휴대폰·PC로 바로 와요. (아이폰은 Safari 공유 → '홈 화면에 추가'로 설치 후)</span></li>
+          <li><b>텔레그램 채널 구독</b><span>중요 공시 · 오늘 주요 이슈 · 장 마감 정리를 <em>카드 이미지</em>로 받아요. <a href="https://t.me/gkstock1" target="_blank" rel="noopener">t.me/gkstock1 →</a></span></li>
+          <li><b>앱으로 설치 (선택)</b><span>화면 위 <em>'앱 설치'</em> 버튼을 누르면 앱처럼 전체 화면으로 쓸 수 있어요.</span></li>
         </ol>
-        <p class="muted">개인정보 처리에 관한 내용은 <a href="/privacy">개인정보처리방침</a>을 확인하세요.</p>
-      </div>
+      </section>
+      <section class="mn-sec mn-legal" id="mnLegal"><div class="mn-head"><span class="mn-num warn">!</span><div><h3>투자 유의사항 (법적 고지)</h3><p>이용 전 꼭 읽어 주세요</p></div></div>
+        <ul class="mn-legal-list">
+          <li><b>투자 권유 아님</b>모든 정보(공시 요약, AI 분석, 호재·악재 판단, 주요 이슈, 급등 이유, 통계)는 참고 자료이며, 특정 종목의 매수·매도 권유나 개별 투자 자문이 아닙니다.</li>
+          <li><b>AI는 틀릴 수 있음</b>AI 요약·분석·추정은 원문을 잘못 해석할 수 있습니다. 중요한 판단 전에는 반드시 공시 원문을 확인하세요.</li>
+          <li><b>데이터 지연·오류 가능</b>시세·순위·일정은 외부 출처(SEC, DART, 네이버 증권, Nasdaq 등)에서 받아오며 지연·누락·오류가 있을 수 있고, 정확성을 보장하지 않습니다.</li>
+          <li><b>과거 ≠ 미래</b>과거 주가 반응 통계와 수익률은 미래 결과를 보장하지 않습니다.</li>
+          <li><b>책임은 투자자 본인</b>투자 판단과 결과의 책임은 투자자 본인에게 있으며, 서비스 제공자는 이 정보를 이용한 투자 손실에 법적 책임을 지지 않습니다.</li>
+          <li><b>원금 손실 위험</b>주식 투자는 원금 손실이 날 수 있으며, 소형주·레버리지·시간외 거래는 변동 위험이 특히 큽니다.</li>
+          <li><b>저작권</b>공시·보도자료의 저작권은 각 발행 기관·회사에 있으며, 서비스 화면·요약·이미지의 무단 복제·재배포를 금합니다. 개인정보는 <a href="/privacy">개인정보처리방침</a>을 따릅니다.</li>
+        </ul>
+      </section>
       <div class="ab-foot"><button class="btn primary" data-go="home">🏠 홈으로 가기</button><button class="btn" data-to-top>↑ 맨 위로</button></div>
     </section>
   </main>
@@ -387,6 +380,6 @@
   <div class="pop-panel" id="bellPanel" hidden></div>
   <div class="toast" id="toast" hidden></div>
   <button class="to-top" id="toTop" aria-label="맨 위로" title="맨 위로"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><span>맨 위로</span></button>
-  <script src="/app.js?v=136" defer></script>
+  <script src="/app.js?v=137" defer></script>
 </body>
 </html>

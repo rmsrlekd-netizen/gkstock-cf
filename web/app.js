@@ -3118,7 +3118,7 @@
     $('#flowSub').addEventListener('click', (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; S[b.parentElement.dataset.sub] = b.dataset.v; renderFlows(); });
 
     document.addEventListener('change', (e) => { const el = e.target.closest('[data-set]'); if (el) setSetting(el.dataset.set, el.checked, el); });
-    document.addEventListener('click', (e) => { if (e.target.closest('[data-to-top]')) window.scrollTo({ top: 0, behavior: 'smooth' }); if (e.target.closest('.ab-foot [data-go="home"], .ab-card [data-go]')) setTimeout(() => window.scrollTo({ top: 0 }), 0); });
+    document.addEventListener('click', (e) => { const mn = e.target.closest('[data-mn]'); if (mn) { e.preventDefault(); document.getElementById('mn' + mn.dataset.mn)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; } if (e.target.closest('[data-to-top]')) window.scrollTo({ top: 0, behavior: 'smooth' }); if (e.target.closest('.ab-foot [data-go="home"], .mn-go')) setTimeout(() => window.scrollTo({ top: 0 }), 0); });
     // 하단 사이트 메뉴: 새로 고침 없이 화면만 바꿈
     document.addEventListener('click', (e) => { const a = e.target.closest('.f-menu a'); if (!a || e.ctrlKey || e.metaKey) return; const v = PATH_SEC[a.getAttribute('href').slice(1)]; if (!v) return; e.preventDefault(); setView(v); window.scrollTo({ top: 0 }); });
     document.addEventListener('click', (e) => {
