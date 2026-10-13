@@ -1864,3 +1864,15 @@ button.br-mv:hover { border-color: var(--accent); }
 .ca-fix { font-style: normal; font-size: .7rem; color: #fb7185; }
 .ca-src { font-size: .75rem; white-space: nowrap; }
 @media (max-width: 720px) { .ca-row { grid-template-columns: 1fr auto; } .ca-info { grid-column: 1 / -1; } .ca-src { grid-column: 2; grid-row: 1; } .ca-b { grid-column: 1; justify-self: start; } }
+
+/* 서비스 소개 */
+.ab-intro p { margin: 0; font-size: 1rem; line-height: 1.8; }
+.ab-sec { margin: 1.4rem 0 .6rem; font-size: 1.1rem; }
+.ab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .7rem; }
+.ab-card { display: flex; flex-direction: column; gap: .4rem; margin: 0; }
+.ab-h { display: flex; flex-direction: column; } .ab-h b { font-size: 1.02rem; } .ab-h small { color: var(--muted); font-size: .78rem; }
+.ab-card p { margin: 0; color: var(--muted); font-size: .88rem; line-height: 1.65; flex: 1; }
+.ab-card .btn { align-self: flex-start; margin-top: .3rem; text-decoration: none; }
+.ab-legal ol { padding-left: 1.2rem; } .ab-legal li { margin-bottom: .45rem; line-height: 1.7; }
+.ab-foot { display: flex; justify-content: center; gap: .6rem; margin: 1.6rem 0 1rem; }
+.ab-foot .btn { padding: .7rem 1.4rem; font-size: 1rem; }

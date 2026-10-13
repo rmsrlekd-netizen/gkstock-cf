@@ -255,7 +255,7 @@
     const code = r.tx?.main?.code;
     if (code === 'P') sent = 'pos'; else if (code === 'S') sent = 'neg';
     else if (n.src === 'DART' && cat === 'insider' && r.detail?.change) sent = r.detail.change > 0 ? 'pos' : 'neg';
-    else if (theme === 'offering') sent = 'neg';
+    else if (theme === 'offering') sent = /premium|above (the )?market|프리미엄|할증/i.test(text) ? null : 'neg'; // 할증(프리미엄) 발행은 무조건 악재로 보지 않음 (AI 판단이 나오면 그걸로 바뀜)
     else { const p = POS_RE.test(text), g = NEG_RE.test(text); sent = p && !g ? 'pos' : g && !p ? 'neg' : null; }
     n.theme = theme; n.sent = sent;
     let imp = r.impact ?? (n.kind === 'PR' ? (n.ticker ? 3 : 2) : n.ticker ? 3 : 2);
@@ -587,21 +587,24 @@
     $('#themes').innerHTML = T.map(([k, l]) => `<li data-theme="${k}" class="${S.theme === k ? 'on' : ''}"><span>${l}</span><i>${fmtInt(tc[k] || 0)}</i></li>`).join('');
   }
   function renderStats() {
-    const today = kstDay(), hourAgo = Date.now() - 3600e3;
-    const c = { SEC: [0, 0], DART: [0, 0], PR: [0, 0], WATCH: [0, 0] };
+    const today = kstDay(), hourAgo = Date.now() - 3600e3, dayAgo = Date.now() - 86400e3;
+    const c = { SEC: [0, 0, 0], DART: [0, 0, 0], PR: [0, 0, 0], WATCH: [0, 0, 0] }; // [오늘, 1시간, 24시간]
     for (const n of S.items.values()) {
       const isToday = fmtDT(new Date(n.ms)).date === today || (n.src === 'DART' && (n.raw.date || '').replace(/-/g, '.') === today);
       const keys = [n.src];
       if (n.ticker && inWatch(n.market, n.ticker)) keys.push('WATCH');
-      for (const k of keys) { if (!c[k]) continue; if (isToday) c[k][0]++; if (n.ms > hourAgo) c[k][1]++; }
+      for (const k of keys) { if (!c[k]) continue; if (isToday) c[k][0]++; if (n.ms > hourAgo) c[k][1]++; if (n.ms > dayAgo) c[k][2]++; }
     }
+    // 주말·휴일 아침처럼 '오늘' 들어온 게 없으면 0만 보이지 않게 최근 24시간 기준으로
+    const use24 = c.SEC[0] + c.DART[0] + c.PR[0] === 0;
     for (const k in c) {
       const src = k === 'SEC' ? 'sec' : k === 'DART' ? 'dart' : 'news';
       const el = $('#st' + k); if (!el) continue;
-      el.textContent = k === 'WATCH' ? (S.watch.length ? fmtInt(c[k][0]) : '☆') : S.loaded[src] ? fmtInt(c[k][0]) : '–';
+      const v = c[k][use24 ? 2 : 0];
+      el.textContent = k === 'WATCH' ? (S.watch.length ? fmtInt(v) : '☆') : S.loaded[src] ? fmtInt(v) : '–';
       $('#st' + k + 'd').textContent = k === 'WATCH' && !S.watch.length ? '관심종목 추가하기' : c[k][1] ? `1시간 +${c[k][1]}` : '';
     }
-    $('#statUpd').textContent = kstDay().slice(5) + ' 기준';
+    $('#statUpd').textContent = use24 ? '최근 24시간' : kstDay().slice(5) + ' 기준';
     $$('.stats4 button').forEach((b) => b.classList.toggle('on', statActive(b.dataset.stat)));
   }
   function statActive(k) {
@@ -797,7 +800,9 @@
     if (!p) { $('#popList').innerHTML = '<li class="muted">불러오는 중…</li>'; return; }
     const list = popList(p, S.popTab);
     $('#popList').innerHTML = list?.length ? list.slice(0, 10).map((x, i) => rankRow(x, i)).join('') : `<li class="muted">${list ? '데이터를 불러오지 못했습니다.' : '불러오는 중…'}</li>`;
-    $('#popSrc').textContent = `${popSrcText(p, S.popTab)} · ${fmtDT(new Date(p.at)).hm} 갱신 · ${S.popTab === 'US' && p.usSession === 'DAY' ? '1분' : '15초'}마다 업데이트`;
+    const wkEnd = (tz) => { const d = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date()); const wd = d.find((x) => x.type === 'weekday').value, h = Number(d.find((x) => x.type === 'hour').value); return tz === 'Asia/Seoul' ? wd === 'Sat' || wd === 'Sun' : wd === 'Sat' || (wd === 'Sun' && h < 20); };
+    const closed = !(S.popTab === 'US' && p.usSession) && wkEnd(S.popTab === 'KR' ? 'Asia/Seoul' : 'America/New_York');
+    $('#popSrc').textContent = `${popSrcText(p, S.popTab)} · ${closed ? '주말 휴장 · 마지막 거래일 기준' : `${fmtDT(new Date(p.at)).hm} 갱신 · ${S.popTab === 'US' && p.usSession === 'DAY' ? '1분' : '15초'}마다 업데이트`}`;
     if (S.view === 'popular') renderPopularPage();
   }
   function renderPopularPage() {
@@ -2508,7 +2513,7 @@
     }
     S.coCur = c;
     closeModal();
-    setView('company', `#company/${m}/${t}`);
+    setView('company', `s/${m}/${encodeURIComponent(t)}`); // 공유·검색용 종목 주소 (/s/US/NVDA)
     trackView(m, t, c.name);
     const on = inWatch(m, t), sec = sectorOf(m, t);
     const n = { market: m, ticker: t, corpCode: c.corpCode, name: c.name, exchange: c.exchange };
@@ -2544,7 +2549,7 @@
       : `<div class="why-reason low"><b>${d.pct != null && Math.abs(d.pct) < 1 ? '오늘은 큰 움직임이 없습니다.' : news.length ? '아래 최근 뉴스를 참고하세요.' : '관련 뉴스를 찾지 못했습니다.'}</b></div>`;
     return `<div class="box why-box"><h4><span>오늘 주가 움직임 ${pct}</span><small>공시 외 뉴스 · 동반 움직임 기준</small></h4>
       ${reason}${hint.length ? `<div class="why-hint">${hint.map((h) => `<span>${esc(h)}</span>`).join('')}</div>` : ''}
-      ${news.length ? `<ul class="why-news">${news.slice(0, 6).map((x, i) => `<li class="${used.has(i) ? 'used' : ''}"><a href="${esc(x.url || '#')}" target="_blank" rel="noopener"${x.titleKo ? ` title="${esc(x.title)}"` : ''}>${esc(x.titleKo || x.title)}</a><small>${esc(x.src || '')} · ${rel(Date.parse(x.at))}</small></li>`).join('')}</ul>` : ''}
+      ${news.length ? `<ul class="why-news">${news.map((x, i) => [x, i]).filter(([x], k, arr) => { const key = String(x.titleKo || x.title || '').replace(/\s+/g, '').slice(0, 36); return arr.findIndex(([y]) => String(y.titleKo || y.title || '').replace(/\s+/g, '').slice(0, 36) === key) === k; }).slice(0, 6).map(([x, i]) => `<li class="${used.has(i) ? 'used' : ''}"><a href="${esc(x.url || '#')}" target="_blank" rel="noopener"${x.titleKo ? ` title="${esc(x.title)}"` : ''}>${esc(x.titleKo || x.title)}</a><small>${esc(x.src || '')} · ${rel(Date.parse(x.at))}</small></li>`).join('')}</ul>` : ''}
       <p class="note">뉴스 제목과 동반 움직임을 바탕으로 AI가 추정한 내용입니다. 실제 원인과 다를 수 있으니 원문 기사를 확인하세요.</p></div>`;
   }
   function coLinks(c) {
@@ -2658,10 +2663,11 @@
   const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', tdir: '#viewTdir', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact', cact: '#viewCact' };
   const VIEW_ALIAS = { cdiv: 'cact', crights: 'cact' }; // 같은 화면, 다른 탭
   // 메뉴별 고유 주소 (/popular, /themes …) ↔ 화면 이름
-  const SEC_PATH = { cact: 'splits', cdiv: 'dividends', crights: 'rights', popular: 'popular', themes: 'themes', tdir: 'sectors', sched: 'schedule', earnings: 'earnings', econ: 'econ', halt: 'halts', react: 'reaction', flows: 'flows', market: 'market' };
+  const SEC_PATH = { guide: 'about', cact: 'splits', cdiv: 'dividends', crights: 'rights', popular: 'popular', themes: 'themes', tdir: 'sectors', sched: 'schedule', earnings: 'earnings', econ: 'econ', halt: 'halts', react: 'reaction', flows: 'flows', market: 'market' };
   const PATH_SEC = Object.fromEntries(Object.entries(SEC_PATH).map(([v, p]) => [p, v]));
   function setView(v, hash) {
     S.view = v;
+    if (v === 'guide') window.scrollTo({ top: 0 });
     const feed = v in FEED_VIEWS;
     $('#viewFeed').hidden = !feed;
     for (const [k, sel] of Object.entries(PAGES)) $(sel).hidden = k !== (VIEW_ALIAS[v] || v);
@@ -2696,7 +2702,7 @@
     if (im) { showIssuePage(im[1], location.hash.slice(1) || null); return; }
     // 종목별 공개 페이지 (/s/KR/005930) → 그 종목 기업 분석 화면
     const sm = location.pathname.match(/^\/s\/(US|KR)\/([A-Za-z0-9.\-]+)\/?$/i);
-    if (sm) { const m = sm[1].toUpperCase(), t = decodeURIComponent(sm[2]).toUpperCase(); history.replaceState(null, '', `/#company/${m}/${t}`); openCompany(m, t); return; }
+    if (sm) { openCompany(sm[1].toUpperCase(), decodeURIComponent(sm[2]).toUpperCase()); return; }
     const id = itemIdFromUrl();
     if (id) {
       if (!ITEM_RE.test(location.pathname)) history.replaceState(null, '', '/p/' + id); // 예전 #item 주소 → 새 주소
@@ -3112,6 +3118,7 @@
     $('#flowSub').addEventListener('click', (e) => { const b = e.target.closest('button[data-v]'); if (!b) return; S[b.parentElement.dataset.sub] = b.dataset.v; renderFlows(); });
 
     document.addEventListener('change', (e) => { const el = e.target.closest('[data-set]'); if (el) setSetting(el.dataset.set, el.checked, el); });
+    document.addEventListener('click', (e) => { if (e.target.closest('[data-to-top]')) window.scrollTo({ top: 0, behavior: 'smooth' }); if (e.target.closest('.ab-foot [data-go="home"], .ab-card [data-go]')) setTimeout(() => window.scrollTo({ top: 0 }), 0); });
     // 하단 사이트 메뉴: 새로 고침 없이 화면만 바꿈
     document.addEventListener('click', (e) => { const a = e.target.closest('.f-menu a'); if (!a || e.ctrlKey || e.metaKey) return; const v = PATH_SEC[a.getAttribute('href').slice(1)]; if (!v) return; e.preventDefault(); setView(v); window.scrollTo({ top: 0 }); });
     document.addEventListener('click', (e) => {
