@@ -65,6 +65,8 @@ export default async (req) => {
       catch (e) { return J({ ok: false, error: e.message }); }
     }
     if (ch === 'on' || ch === 'off') cfg.on = ch === 'on';
+    // 다시 켤 때: 지금 이전에 나온 공시·급등은 전부 '지난 것'으로 보고 올리지 않음 (밀린 게 한꺼번에 나가지 않게)
+    if (ch === 'on') await setJSON('tgch/resume', { at: Date.now() });
     if (ch === 'set') {
       const n = (k, lo, hi) => { const v = Number(u.searchParams.get(k)); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : undefined; };
       const mi = n('minImp', 3, 5), ph = n('perHour', 1, 180);

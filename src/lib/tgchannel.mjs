@@ -181,13 +181,14 @@ export async function channelWatch() {
   const now = Date.now();
   const st = (await getJSON('tgch/state')) || { sent: [], first: now, hist: [] };
   if (!st.first) st.first = now;
+  const resumeAt = (await getJSON('tgch/resume'))?.at || 0; // 관리자가 게시를 다시 켠 시각
   const sent = new Set(st.sent);
   const hist = (st.hist || []).filter((t) => now - t < 3600e3); // 최근 1시간 게시 시각
   const [sec, dart, news] = await Promise.all(['sec/feed', 'dart/feed', 'news/feed'].map((k) => getJSON(k).catch(() => null)));
   const pool = [...(sec?.items || []), ...(dart?.items || []), ...(news?.items || [])]
     .filter((x) => x.id && !sent.has(x.id) && !x.dupOf)
     .map((x) => ({ x, ms: itemMs(x) }))
-    .filter(({ ms }) => ms && now - ms < 20 * 60e3 && ms > st.first - 5 * 60e3) // 켠 뒤에 나온 최근 20분 것만 (늦은 소식은 안 올림)
+    .filter(({ ms }) => ms && now - ms < 20 * 60e3 && ms > st.first - 5 * 60e3 && ms > resumeAt) // 켠 뒤에 나온 최근 20분 것만 (늦은 소식·다시 켜기 전 것은 안 올림)
     .sort((a, b) => a.ms - b.ms);
   // 한동안 멈췄다가(장애·업데이트) 다시 돌면 밀린 공시가 한꺼번에 쏟아지지 않게: 밀린 건 올리지 않고 넘김
   const gap = st.runAt ? now - st.runAt : 0;
@@ -335,7 +336,8 @@ export async function surgeWatch() {
   const gap = lastRun ? now - lastRun : 0; // 마지막으로 돈 뒤 지난 시간 (꺼져 있었으면 길어짐)
   await setJSON('tgch/surge-run', { at: now }).catch(() => {});
   const map = (await getJSON('px0/map')) || {};
-  const recent = Object.entries(map).filter(([, v]) => v?.p > 0 && now - v.t < 6 * 3600e3);
+  const resumeAt = (await getJSON('tgch/resume'))?.at || 0;
+  const recent = Object.entries(map).filter(([, v]) => v?.p > 0 && now - v.t < 6 * 3600e3 && v.t > resumeAt); // 다시 켜기 전에 나온 공시의 급등은 안 올림
   if (!recent.length) return { n: 0 };
   const [sec, dart, news] = await Promise.all(['sec/feed', 'dart/feed', 'news/feed'].map((k) => getJSON(k).catch(() => null)));
   const all = new Map([...(sec?.items || []), ...(dart?.items || []), ...(news?.items || [])].map((x) => [x.id, x]));
