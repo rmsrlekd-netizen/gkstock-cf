@@ -2177,3 +2177,4 @@ button.br-mv:hover { border-color: var(--accent); }
 .pex-h { color: #5ff0a8 !important; } .pex-m { color: #ffd66b !important; } .pex-l { color: var(--muted) !important; }
 .pex-chip { display: inline-block; padding: .1rem .5rem; border-radius: 6px; font-size: .75rem; font-weight: 800; background: rgba(255,255,255,.07); }
 .rp-tile.pex-h b { color: #5ff0a8; } .rp-tile.pex-m b { color: #ffd66b; }
+.mp-ckg.gD { background: rgba(255,90,106,.2); color: #ff8a96; } .rp-tile.gD b { color: #ff8a96; } .rp-tile.gC b { color: var(--text2); }
