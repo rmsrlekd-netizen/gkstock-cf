@@ -174,7 +174,7 @@ export function barFeatures(B) {
   let topI = 0; for (let i = 1; i < n; i++) if (B[i].h > B[topI].h) topI = i;
   let cyc = null, pumpI = -1;
   if (topI >= 5 && n - 1 - topI >= 10) {
-    let lowI = Math.max(0, topI - 120); for (let i = lowI; i <= topI; i++) if (B[i].l < B[lowI].l) lowI = i;
+    let lowI = Math.max(0, topI - 250); for (let i = lowI; i <= topI; i++) if (B[i].l < B[lowI].l) lowI = i;
     const rise = B[topI].h / B[lowI].l, drop = last.c / B[topI].h - 1;
     if (rise >= 1.8 && drop <= -0.45) {
       const medPre = median(B.slice(Math.max(0, lowI - 60), lowI + 1).map((x) => x.v)) || med120;
@@ -728,7 +728,9 @@ export function checklistOf(x, now = Date.now()) {
     else add(P, 'money', false, `${ymdOf(SET[0].ms)} '${EV[SET[0].kind].ko}' 발표는 있지만 납입·발행 완료 공시는 아직 못 찾음 (발표만으로는 약함)`, SET[0].id);
   }
   // 원가 근처
-  if (d.gap == null) add(P, 'cost', null, '세력 원가를 계산할 근거 없음');
+  const exitedNow = !!f.cyc && !['판 깔기', '매집'].includes(x.stage); // 이미 털고 나간 종목: 지난 사이클 평단·매집은 지금 근거가 아님
+  if (exitedNow) add(P, 'cost', false, `이미 한 번 띄우고 빠진 종목 — 추정 평단(${d.cost ? fmtW(d.cost.low) + '원대' : '-'})은 지난 급등 전 가격이라 지금 세력이 남아 있다는 근거가 아님`);
+  else if (d.gap == null) add(P, 'cost', null, '세력 원가를 계산할 근거 없음');
   else add(P, 'cost', d.gap <= 20 && d.gap >= -30, `현재가가 추정 세력 평단 대비 ${d.gap >= 0 ? '+' : ''}${d.gap}% ${d.gap <= 20 && d.gap >= -30 ? '— 세력도 아직 수익 구간이 아님(올려야 이익)' : d.gap > 20 ? '— 세력은 이미 이익 구간' : '— 평단보다 많이 아래(손실 중)'}`);
   // 물량 해제일 30~120일 앞
   const nd = (d.dates || []).find((z) => !z.past);
@@ -742,8 +744,8 @@ export function checklistOf(x, now = Date.now()) {
   const pur = ev.find((e) => e.kind === 'purpose' && age(e) <= 365);
   add(P, 'story', !!pur, pur ? `${ymdOf(pur.ms)} 정관·사업목적 변경 — 새 사업(테마) 재료 준비${pur.sum ? `: ${pur.sum.slice(0, 50)}` : ''}` : '최근 1년 사업목적 추가 없음', pur?.id);
   const heldAcc = (f.marks || []).some((m) => m.ok && m.k === 'acc' && m.h === 'held');
-  const accOk = x.stage === '매집' || heldAcc || ((f.accObv ?? 0) >= 15 && (f.fromLow60 ?? 99) < 40);
-  add(P, 'acc', accOk, accOk ? `매집 흔적 있음${heldAcc ? ' (버틴 매집봉)' : ''}${x.stage === '매집' ? ' · 단계 매집' : ''}${(f.accObv ?? 0) >= 15 ? ` · 순매수 흐름 ${f.accObv}%` : ''}` : '뚜렷한 매집 흔적 없음');
+  const accOk = !exitedNow && (x.stage === '매집' || heldAcc || ((f.accObv ?? 0) >= 15 && (f.fromLow60 ?? 99) < 40));
+  add(P, 'acc', accOk, exitedNow ? '지난 급등 전 매집 흔적만 있음 (급등·급락 뒤 새 매집 흔적은 아직 없음)' : accOk ? `매집 흔적 있음${heldAcc ? ' (버틴 매집봉)' : ''}${x.stage === '매집' ? ' · 단계 매집' : ''}${(f.accObv ?? 0) >= 15 ? ` · 순매수 흐름 ${f.accObv}%` : ''}` : '뚜렷한 매집 흔적 없음');
   if (!ck.theme) add(P, 'theme', null, '업종·테마 강세 자료 없음');
   else add(P, 'theme', ck.theme.ok, ck.theme.t);
   const insP = px.filter((p) => p.kind === 'insider' && p.ins && (now - Date.parse(p.date)) <= 120 * DAY);
@@ -753,7 +755,8 @@ export function checklistOf(x, now = Date.now()) {
   if (!ck.broker?.n) add(P, 'broker', null, `거래원(증권사 창구) 자료 없음${ck.err?.broker ? ` (${ck.err.broker})` : ''}`);
   else if (ck.broker.n < 5 && !ck.broker.top) add(P, 'broker', null, `거래원 기록 ${ck.broker.n}일 — 5일 이상 쌓이면 창구 쏠림 판단 (매일 장 마감 뒤 기록)`);
   else add(P, 'broker', !!ck.broker.top, ck.broker.top ? `'${ck.broker.top.nm}' 창구가 최근 ${ck.broker.n}일 중 ${ck.broker.top.days}일 매수 상위 (순매수 추정 ${fmtW(ck.broker.top.net)}주)${ck.broker.top.retail ? ' — 개인 고객이 많은 창구라 의미 약함' : ''}` : `최근 ${ck.broker.n}일 특정 창구 쏠림 없음`);
-  if (!d.rr) add(P, 'rr', null, '손익비 계산 안 됨');
+  if (d.rr && (exitedNow || d.dir === 'down' || ['띄우기', '털기'].includes(x.stage))) add(P, 'rr', false, `손익비 1 : ${d.rr.v} — 하지만 ${exitedNow ? '엑시트 후' : d.dir === 'down' ? '하락 위험' : x.stage} 종목이라 목표까지 갈 근거가 약함`);
+  else if (!d.rr) add(P, 'rr', null, '손익비 계산 안 됨');
   else add(P, 'rr', d.rr.v >= 2, `손익비 1 : ${d.rr.v}${d.rr.v >= 2 ? '' : ' (2 미만)'}`);
   // ── 실패·폭탄 신호 ──
   const fails = ev.filter((e) => e.kind === 'fail' && age(e) <= 365);
@@ -1025,7 +1028,7 @@ function rankRow(x) {
   const rrR = d.rr ? { v: d.rr.v, t: d.rr.t, ts: d.rr.ts, s: d.rr.s, ss: d.rr.ss, up: d.rr.up, dn: d.rr.dn } : null;
   const cm = (x.f?.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k)).length || null;
   const cl = x.cl || null;
-  return { av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  return { av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;

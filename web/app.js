@@ -3260,8 +3260,9 @@
       const a = x.ai && !x.ai.error ? x.ai : null;
       const evc = Object.entries(x.by || {}).filter(([, v]) => v > 0).map(([k]) => `<span class="mp-chip ev-${esc(k)}">${esc(MP_EV[k] || k)}</span>`).join('');
       const vc = (x.sig || []).filter((t) => !/Infinity|NaN/.test(t)).map((t) => `<span class="mp-chip vol">${esc(t)}</span>`).join('');
-      const cost = a?.cost ? `${won(a.cost.low)}${a.cost.high && a.cost.high !== a.cost.low ? ' ~ ' + won(a.cost.high) : ''}` : x.f?.vwapAcc ? `${won(x.f.vwapAcc)} <small>(매집 구간 평균)</small>` : '—';
-      const mid = a?.cost ? ((a.cost.low || a.cost.high) + (a.cost.high || a.cost.low)) / 2 : x.f?.vwapAcc;
+      const rcst = x.dir?.cost || a?.cost || null; // 규칙 계산 평단 우선
+      const cost = rcst ? `${won(rcst.low)}${rcst.high && rcst.high !== rcst.low ? ' ~ ' + won(rcst.high) : ''}` : x.f?.vwapAcc ? `${won(x.f.vwapAcc)} <small>(매집 구간 평균)</small>` : '—';
+      const mid = rcst ? ((rcst.low || rcst.high) + (rcst.high || rcst.low)) / 2 : x.f?.vwapAcc;
       return `<li class="mp-row" data-mp-i="${i}">
         <div class="mp-top"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="KR|${esc(x.code)}|${esc(x.name)}">${logoHTML('KR', x.code, x.name, 'sm')}<span><b>${esc(x.name)}</b><small>${esc(x.code)} · ${x.mkt === 'P' ? '코스피' : x.mkt === 'Q' ? '코스닥' : ''}${x.streak > 1 ? ` · ${x.streak}일 연속` : ''}</small></span></button>
           <span class="mp-px">${won(x.close)}<small class="${dirCls(x.pct)}">${x.pct != null ? fmtPct(x.pct) : ''}</small></span>
@@ -3481,8 +3482,12 @@
     const MKD = { acc: '평소 4배↑ 거래량으로 +6%↑ 오른 양봉 (박스권에서)', wick: '거래량 실린 긴 윗꼬리 — 위쪽 매물을 시험', absorb: '거래량 실린 음봉인데 주가는 거의 안 빠짐 — 파는 물량을 받아먹음', dry: '물량을 모은 뒤 거래가 마르는 모습', close: '종가가 일정하게 맞춰지는 모습', up30: '참고용 (점수 없음)', dn30: '참고용 (점수 없음)' };
     const marks = (f.marks || []).slice().reverse();
     const markBox = marks.length ? `<div class="mp-marks"><h5>🕯 매집봉 흔적 <small>일봉 모양으로 찾음 · 그날·전날 공시가 있거나 시장 전체가 ±2.5% 움직인 날, 그 뒤 봉의 저점을 깬 경우는 제외${f.cscore ? ` · 점수 +${f.cscore}` : ''}</small></h5><ul>${marks.map((m) => `<li class="${m.ok ? 'ok' : 'no'}"><b>${m.ok ? '✓' : '✗'} ${esc(m.d)} ${esc(MK[m.k] || m.k)}</b>${m.p ? ` 종가 ${fmtInt(m.p)}원` : ''}${m.vx != null && m.k !== 'dry' ? ` · 거래량 ${m.vx}배` : ''}${m.ch != null ? ` · ${m.ch > 0 ? '+' : ''}${m.ch}%` : ''}<br><small class="muted">${['dry', 'close'].includes(m.k) && m.why ? esc(m.why) : `${esc(MKD[m.k] || '')}${m.why ? ' — ' + esc(m.why) : ''}`}</small></li>`).join('')}</ul></div>` : `<div class="mp-marks"><h5>🕯 매집봉 흔적</h5><p class="muted sm">${Array.isArray(f.marks) ? '최근 약 10개월 일봉에서 조건에 맞는 봉이 없어요' : '이전 방식으로 분석된 기록이에요 — 다음 분석(또는 지금 다시 분석) 때 채워져요'}</p></div>`;
-    const accLine = `<div class="mp-accbox"><b>🧲 매집 추정 시기</b> ${a?.acc?.period ? esc(a.acc.period) : f.accStart ? `${esc(f.accStart)} ~ ${esc(f.accEnd || '')}` : '—'}${f.accStart ? ` <small class="muted">(거래 흐름 기준 ${esc(f.accStart)}~${esc(f.accEnd || '')} · ${f.accDays || 0}거래일${f.accObv != null ? ` · 순매수 강도 ${f.accObv}%` : ''}${f.accLow ? ` · 그 구간 가격 ${fmtInt(f.accLow)}~${fmtInt(f.accHigh)}원` : ''})</small>` : ''}${a?.acc?.basis ? `<br><small class="muted">근거: ${esc(a.acc.basis)}</small>` : ''}
-      <br><b>💰 추정 세력 평단</b> ${a?.cost ? `${fmtInt(a.cost.low)}${a.cost.high && a.cost.high !== a.cost.low ? ' ~ ' + fmtInt(a.cost.high) : ''}원` : f.vwapAcc ? `${fmtInt(f.vwapAcc)}원 (매집 구간 평균)` : '—'}${a?.cost?.basis ? `<br><small class="muted">근거: ${esc(a.cost.basis)}</small>` : ''}</div>`;
+    // 매집 시기·평단은 규칙 계산(일봉·공시 원문)이 기본 · AI 해석은 다를 때만 작게 (예전 AI 문장이 틀린 구간을 말하던 문제)
+    const rc = x.dir?.cost;
+    const rulePer = f.accStart ? `${f.accStart} ~ ${f.accEnd || ''}` : null;
+    const aiPer = a?.acc?.period && a.acc.period !== rulePer ? a.acc.period : null;
+    const accLine = `<div class="mp-accbox"><b>🧲 매집 추정 시기</b> ${rulePer ? esc(rulePer) : f.accBeyond ? '자료 범위(약 1년 2개월) 이전 — 계산 불가' : '—'}${f.accStart ? ` <small class="muted">(${f.cyc ? (f.acc2 ? '고점 뒤 2차 매집 후보 구간 · ' : '급등 시작 전 박스 구간 · ') : ''}${f.accDays || 0}거래일${f.accObv != null ? ` · 순매수 강도 ${f.accObv}%` : ''}${f.accLow ? ` · 그 구간 가격 ${fmtInt(f.accLow)}~${fmtInt(f.accHigh)}원` : ''})</small>` : ''}${aiPer ? `<br><small class="muted">AI 해석 기간: ${esc(aiPer)} (규칙 계산과 다름 — 규칙 계산 기준으로 보세요)</small>` : ''}
+      <br><b>💰 추정 세력 평단</b> ${rc ? `${fmtInt(rc.low)}${rc.high !== rc.low ? ' ~ ' + fmtInt(rc.high) : ''}원` : f.vwapAcc ? `${fmtInt(f.vwapAcc)}원` : '—'} <small class="muted">(${[f.vwapAcc ? `매집 구간 거래량 가중 평균 ${fmtInt(f.vwapAcc)}원` : '', (x.px || []).some((p) => p.p && !['pledge', 'majsell', 'risk', 'insider'].includes(p.kind)) ? '공시 원문 가격(전환가·발행가·인수 단가 등)' : ''].filter(Boolean).join(' + ') || '근거 없음'})</small>${a?.cost && rc && (Math.abs(a.cost.low - rc.low) / rc.low > 0.05 || Math.abs((a.cost.high || a.cost.low) - rc.high) / rc.high > 0.05) ? `<br><small class="muted">AI가 인용한 평단 ${fmtInt(a.cost.low)}${a.cost.high && a.cost.high !== a.cost.low ? ' ~ ' + fmtInt(a.cost.high) : ''}원 (예전 분석일 수 있음)</small>` : ''}</div>`;
     const d = x.dir || {};
     const srcA = (r) => (/^DART-/.test(r.src || '') ? ` <a class="mp-src" href="/p/${esc(r.src)}" target="_blank">공시</a>` : ` <small class="mp-src">${esc(r.src === '계산' ? '자동 계산' : r.src === '일봉' ? '거래 데이터' : r.src || '')}</small>`);
     const reasons = (arr) => (arr || []).map((r) => `<li>${esc(r.t)}${srcA(r)}</li>`).join('');
