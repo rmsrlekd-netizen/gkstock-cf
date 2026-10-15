@@ -37,7 +37,7 @@
 
 ## 기능 메모 (v138)
 - 가격·키워드 푸시: `src/lib/push.mjs` (push_al·push_kw 표, `alertWatch` 매분). 기기 설정은 localStorage `gk_alerts`·`gk_kw`.
-- 컨센서스 TOP: `earn/hist`(3주) → `/api/earnv?week=0|1`, 화면 `/consensus`.
+- 컨센서스 TOP: `earn/hist`(3주) → `/api/earnv?week=0|1`, 화면 `/consensus`. 미국 판정 단위 보정(v194, `judgeUS`): 해외 기업(매출 4천억↑=현지 통화·6-K/20-F·ADR)은 EPS 실제/예상 비율이 ADR 주수(2~100)와 맞으면 나눠 비교, 그래도 ±150% 넘으면 매출로 판정, 현지 통화엔 '$' 안 붙임 · 미국 기업 ±150% 넘으면 '⚠ 일회성 확인' 표시 · 예전 ±150% 넘는 미국 판정은 한 번 지우고 재판정(`st.fixAdr`).
 - 투자 대가(13F): `src/lib/guru.mjs` (17명, 3분마다 한 명, OpenFIGI로 CUSIP→티커), 화면 `/gurus`, `/gurus/buffett`.
 - 대차잔고: `src/lib/loan.mjs` (KIS HHPST074500C0, 하루 2번), 수급 탭 '국내 대차잔고'.
 - 당일 분석(관리자, 예전 영상 소재 노트 · 분석 정리 형식 v2): `src/lib/vnote.mjs` · 주간 정리 카드(토 8:30): `src/lib/weekcard.mjs`, `/og/week/YYYYMMDD.png`.

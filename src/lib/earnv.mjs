@@ -93,16 +93,37 @@ async function judgeUS(x, ms) {
   }
   if (a == null) return { wait: true };
   if (e == null) return { none: '예상치 없음' };
+  // 단위 맞추기: 해외 기업(ADR)은 실제 EPS가 'ADR 1주'(보통주 여러 주) 기준, 예상치는 '보통주 1주' 기준으로 오는 경우가 있음
+  //  예) TSMC: 실제 148.94(ADR=보통주 5주) vs 예상 29.24(보통주) → 5로 나누면 29.79 (+1.9%)
+  let note = null;
+  const local = (ra || re || 0) > 4e11; // 분기 매출 4천억↑ = 달러가 아닌 현지 통화 숫자
+  const foreign = local || /^(6-K|20-F|40-F)/i.test(String(x.form || '')) || /ADR|ADS/i.test(String(x.name || x.company || ''));
+  if (foreign && a > 0 && e > 0 && Math.abs(a / e - 1) > 1) {
+    for (const r of [2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 40, 50, 100]) {
+      if (Math.abs(a / r / e - 1) < 0.15) { a = a / r; note = `실제 EPS가 ADR 1주(보통주 ${r}주) 기준이라 ${r}로 나눠 비교`; break; }
+      if (Math.abs((a * r) / e - 1) < 0.15) { a = a * r; note = `예상치와 단위(보통주 ${r}주 차이)를 맞춰 비교`; break; }
+    }
+  }
+  // 분기 매출이 4천억(달러 기준이면 불가능한 규모)을 넘으면 현지 통화로 온 숫자 → '$'를 붙이지 않음
+  const money = (n) => (local ? usd(n).replace('$', '') + ' (현지 통화)' : usd(n));
+  const cur = local ? '' : '$';
   const eps = verdictOf(a, e, 2);
   if (eps && eps.v !== '부합' && Math.abs(a - e) < 0.01) eps.v = '부합';
   const rev = ra > 0 && re > 0 ? verdictOf(ra, re, 1.5) : null; // 매출 예상치가 없거나 0이면 매출 비교는 뺌
-  const line = [`EPS $${a.toFixed(2)} · 예상 $${e.toFixed(2)}${sp(eps.pct)}`, rev ? `매출 ${usd(ra)} · 예상 ${usd(re)}${sp(rev.pct)}` : ''].filter(Boolean).join(' / ');
-  return { mk: 'US', verdict: eps.v, basis: 'EPS', eps: { a, e, pct: eps.pct }, rev: rev && { a: ra, e: re, pct: rev.pct, v: rev.v }, line, src };
+  // 그래도 EPS 차이가 ±150%를 넘으면 단위가 안 맞는 것으로 보고 EPS로 판정하지 않음 (매출이 있으면 매출로)
+  if (foreign && Math.abs(eps.pct ?? 0) > 150 && (e > 0.2 || a > 0.2)) {
+    if (!rev) return { none: `EPS 단위가 맞지 않아 판정 보류 (실제 ${a} · 예상 ${e})` };
+    const line = `매출 ${money(ra)} · 예상 ${money(re)}${sp(rev.pct)} / EPS 실제 ${a.toFixed(2)} · 예상 ${e.toFixed(2)} (단위가 달라 비교 제외)`;
+    return { mk: 'US', verdict: rev.v, basis: '매출', eps: null, rev: { a: ra, e: re, pct: rev.pct, v: rev.v }, line, src, note: 'EPS 단위 불일치 → 매출로 판정' };
+  }
+  if (!note && Math.abs(eps.pct ?? 0) > 150) note = '예상과 차이가 매우 큼 — 일회성 손익·회계 변경 여부 확인 필요';
+  const line = [`EPS ${cur}${a.toFixed(2)} · 예상 ${cur}${e.toFixed(2)}${sp(eps.pct)}${note ? (/ADR/.test(note) ? ' (ADR 환산)' : ' ⚠ 일회성 확인') : ''}`, rev ? `매출 ${money(ra)} · 예상 ${money(re)}${sp(rev.pct)}` : ''].filter(Boolean).join(' / ');
+  return { mk: 'US', verdict: eps.v, basis: 'EPS', eps: { a, e, pct: eps.pct }, rev: rev && { a: ra, e: re, pct: rev.pct, v: rev.v }, line, src, note };
 }
 
 // 주간 결과판 한 줄: 기준 지표(국장 영업이익 · 미장 EPS)의 예상 대비 %
 function histRow(id, v) {
-  const main = v.mk === 'KR' ? v.op || v.rev : v.eps;
+  const main = v.mk === 'KR' ? v.op || v.rev : v.eps || v.rev;
   return { id, t: v.t, n: v.name, mk: v.mk, v: v.verdict, pct: main?.pct != null ? Math.round(main.pct * 10) / 10 : null, b: v.basis, line: v.line, period: v.period || null, rv: v.rev?.v || null, at: v.at };
 }
 
@@ -148,6 +169,12 @@ export async function earnWatch() {
   // 주간 결과판용 기록 (3주 보관) — 처음엔 최근 3일 판정으로 채움
   let hist = await getJSON('earn/hist');
   const hist0 = hist ? Object.keys(hist).length : -1;
+  // 한 번만: 예전 방식으로 단위가 안 맞아 ±150% 넘게 나온 미국 판정은 지우고 다시 판정 (예: TSMC +409%)
+  if (hist && !st.fixAdr) {
+    for (const [id, h] of Object.entries(hist)) if (h.mk === 'US' && h.b === 'EPS' && Math.abs(h.pct ?? 0) > 150) { delete hist[id]; delete vmap[id]; delete st.tries[id]; await setJSON(`earn/v/${id}`, null).catch(() => {}); }
+    st.fixAdr = 1;
+    await setJSON('earn/hist', hist).catch(() => {}); await setJSON('earn/vmap', vmap).catch(() => {});
+  }
   if (!hist || !(await getJSON('earn/hist-bf'))) {
     // 처음 한 번: 지난 3주 동안 판정해 둔 기록(earn/v/…)을 모두 찾아 채움
     hist = hist || {};
@@ -201,3 +228,4 @@ export async function earnWatch() {
 
 /** 화면·텔레그램용 한 줄 배지 */
 export const verdictBadge = (v) => (v === '상회' ? '🟢 컨센서스 상회' : v === '하회' ? '🔴 컨센서스 하회' : '⚪ 컨센서스 부합');
+export const _judgeUS = judgeUS; // 테스트용
