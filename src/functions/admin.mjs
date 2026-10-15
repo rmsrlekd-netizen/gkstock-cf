@@ -35,7 +35,7 @@ export default async (req) => {
   if (mp) {
     try {
       const m = await import('../lib/manip.mjs');
-      if (mp === 'rank') return J({ ok: true, list: await m.manipRank(u.searchParams.get('kind') || 'all'), state: await m.manipState() });
+      if (mp === 'rank') { const list = await m.manipRank(u.searchParams.get('kind') || 'all'); return J({ ok: true, list, pat: list.pat || null, state: await m.manipState() }); }
       if (mp === 'perf') { const x = await import('../lib/manipx.mjs'); return J({ ok: true, ...(await x.perfSummary()), warn: await (async () => { const w = await getJSON('mp/warn'); return w ? { at: w.at, n: w.n, err: w.err } : null; })(), party: await (async () => { const p = await getJSON('mp/party'); return p ? { at: p.at, n: Object.keys(p.idx || {}).length } : null; })() }); }
       if (mp === 'prof') return J({ ok: true, prof: await m.manipProfile(String(u.searchParams.get('code') || '').replace(/\D/g, '').slice(0, 6)) });
       if (mp === 'my' || mp === 'myadd' || mp === 'mydel' || mp === 'myclose' || mp === 'myset') {

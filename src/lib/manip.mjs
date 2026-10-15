@@ -1318,7 +1318,7 @@ function chipsOf(x) {
   const cb = (x.events || []).filter((e) => e.kind === 'cb').sort((a, b) => b.ms - a.ms);
   return { by, sig, cbn: cb.length || null, cbd: cb[0] ? new Date(cb[0].ms + 9 * 3600e3).toISOString().slice(0, 10) : null };
 }
-function rankRow(x) {
+export function rankRow(x) {
   const a = x.ai && !x.ai.error ? x.ai : null;
   const d = x.dir || direction(x);
   const nd = (d.dates || []).find((z) => !z.past);
@@ -1328,7 +1328,8 @@ function rankRow(x) {
   const cl = x.cl || null;
   const rbk = x.rbk || null;
   const hv = x.f?.halted || evHalt(x.events);
-  return { ...chipsOf(x), pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  const cf = x.pex && ((d.dir === 'up' && x.pex.lv === '낮음') || (d.dir === 'down' && x.pex.lv === '높음')) ? 1 : 0;
+  return { ...chipsOf(x), cf, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
@@ -1388,6 +1389,46 @@ async function saveProfiles(list, reason, opt = {}) {
     await radarAlert(lines, lines.map((l) => { const nm = Object.keys(codeOf).find((n) => l.includes(` ${n} `)); return nm ? codeOf[nm] : null; })).catch(() => {});
   }
 }
+// 🎯 내 매매 후보 조건 (규칙) — 빠진 이유 목록을 돌려줌 (빈 목록이면 통과)
+export function pickFails(r) {
+  const f = [];
+  if (!['매집', '판 깔기'].includes(r.st)) f.push(`단계 '${r.st || '-'}' (매집·판 깔기만)`);
+  if (r.d !== 'up') f.push('상승 가능성 분류 아님');
+  if (!['A', 'B'].includes(r.ckg)) f.push(`체크 ${r.ckg ? r.ckg + '등급' : '없음'} (A·B만)`);
+  if (!(r.rr?.v >= 2)) f.push(r.rr ? `손익비 1:${r.rr.v} (2 이상만)` : '손익비 계산 안 됨');
+  if (r.gap != null && r.gap > 15) f.push(`평단 대비 +${r.gap}% (이미 뜸 · +15% 이하만)`);
+  const cf = r.cf ?? (r.pex && ((r.d === 'up' && r.pex.lv === '낮음') || (r.d === 'down' && r.pex.lv === '높음')) ? 1 : 0);
+  if (cf) f.push('신호 엇갈림 (털기 후 상승 낮음)');
+  if (r.wn) f.push(`거래소 ${r.wn}`);
+  if ((r.pn?.c ?? 0) >= 10) f.push(`불성실공시 벌점 ${r.pn.c}점`);
+  if ((r.by || []).includes('risk')) f.push('위험 공시(횡령·감사의견 등)');
+  return f;
+}
+// 📊 지난 성적표로 '비슷한 패턴의 20거래일 뒤 오른 비율' — 표본이 적으면 전체 평균 쪽으로 당겨서 계산 (과장 방지)
+export const PAT_MIN = 100; // 20일 결과가 이만큼 쌓여야 우선순위에 반영
+function patKeys(r) {
+  const rr = r.rr?.v ?? r.rr;
+  return [r.st && '단계:' + r.st, r.ckg || r.ck ? '체크리스트:' + (r.ckg || r.ck) + '등급' : null, rr != null ? '손익비:' + (rr >= 3 ? '3 이상' : rr >= 2 ? '2~3' : '2 미만') : null, (r.pex?.lv || r.pexl) ? '털기 후 상승:' + (r.pex?.lv || r.pexl) : null, '매집봉:' + ((r.cm || 0) > 0 ? '있음' : '없음')].filter(Boolean);
+}
+export function patScore(r, sum) {
+  const G = sum?.map, base = G?.['전체'];
+  if (!base?.n20) return null;
+  const p0 = base.win20 / 100, K = 20;
+  const parts = patKeys(r).map((k) => G[k]).filter((g) => g?.n20);
+  if (!parts.length) return null;
+  // 특징별 승률(표본 적으면 전체 평균 쪽으로 당김)의 평균 — 특징끼리 겹치는 경우가 많아 곱하지 않음 (과장 방지)
+  const det = [], ws = [];
+  for (const g of parts) { ws.push(((g.win20 / 100) * g.n20 + p0 * K) / (g.n20 + K)); det.push({ g: g.g, win: g.win20, n: g.n20 }); }
+  const est = Math.round((ws.reduce((a, b) => a + b, 0) / ws.length) * 100);
+  return { est, base: base.win20, n: base.n20, det, on: base.n20 >= PAT_MIN };
+}
+async function perfSum() {
+  let c = await getJSON('mp/perfsum').catch(() => null);
+  if (!c || Date.now() - c.at > 6 * 3600e3) {
+    try { const { perfSummary } = await import('./manipx.mjs'); const s = await perfSummary(); c = { at: Date.now(), map: Object.fromEntries(s.groups.map((g) => [g.g, g])) }; await setJSON('mp/perfsum', c).catch(() => {}); } catch { c = c || null; }
+  }
+  return c;
+}
 export async function manipRank(kind = 'all') {
   const rank = (await getJSON('mp/rank')) || {};
   let list = Object.entries(rank).map(([code, r]) => ({ code, ...r }))
@@ -1404,6 +1445,18 @@ export async function manipRank(kind = 'all') {
   else if (kind === 'pex') list = list.filter((r) => r.pex).sort((a, b) => (b.pex.net - a.pex.net) || (b.pex.su - a.pex.su));
   else if (kind === 'ck') list = list.filter((r) => r.ckg && r.d !== 'down').sort((a, b) => ((b.cnp || 0) - 2 * (b.cnr || 0)) - ((a.cnp || 0) - 2 * (a.cnr || 0)) || (b.us || 0) - (a.us || 0));
   else if (kind === 'rr') list = list.filter((r) => r.rr && r.rr.v > 0 && r.d !== 'down' && !['띄우기', '털기', '엑시트 후'].includes(r.st)).sort((a, b) => b.rr.v - a.rr.v || (b.us || 0) - (a.us || 0));
+  else if (kind === 'pick') {
+    const sum = await perfSum();
+    for (const r of list) { r.pf = pickFails(r); r.pat = patScore(r, sum); }
+    const ok = list.filter((r) => !r.pf.length), near = list.filter((r) => r.pf.length === 1 && r.d === 'up');
+    const on = !!ok[0]?.pat?.on || !!near[0]?.pat?.on;
+    const key = (r) => (on && r.pat ? r.pat.est * 10 : 0) + ({ A: 2, B: 1 }[r.ckg] || 0) * 5 + Math.min(r.rr?.v || 0, 10);
+    ok.sort((a, b) => key(b) - key(a)); near.sort((a, b) => key(b) - key(a));
+    for (const r of near) r.near = true;
+    const out = [...ok, ...near.slice(0, 20)];
+    out.pat = { on, n: sum?.map?.['전체']?.n20 || 0, need: PAT_MIN, base: sum?.map?.['전체']?.win20 ?? null, ok: ok.length };
+    return out;
+  }
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
   return list.slice(0, 150);

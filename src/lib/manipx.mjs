@@ -35,7 +35,12 @@ export async function perfWatch(max = 20) {
     let pending = 0;
     const tdays = Math.floor(age * 5 / 7) - 1; // 지난 거래일 수(대략, 휴일 무시 → 조금 적게 잡음)
     for (const x of doc.list.slice(0, 80)) {
-      const row = perf.rows[x.code] || { st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null };
+      let row = perf.rows[x.code];
+      if (!row) {
+        row = { st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null };
+        // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
+        try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; } catch {}
+      }
       if (H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
       // 아직 다음 기간(5·20·60거래일)이 안 지났으면 받지 않음 (같은 종목만 계속 받느라 다른 종목·날짜가 밀리던 문제)
       const due = H.some((h) => row['r' + h] === undefined && tdays >= h);
@@ -80,6 +85,9 @@ export async function perfSummary() {
       if (row.lv) add('AI 의심:' + row.lv, row);
       if (row.ck) add('체크리스트:' + row.ck + '등급', row);
       if (row.rr != null) add('손익비:' + (row.rr >= 3 ? '3 이상' : row.rr >= 2 ? '2~3' : '2 미만'), row);
+      if (row.pk != null) add('매매 후보 조건:' + (row.pk ? '충족' : '미충족'), row);
+      if (row.pexl) add('털기 후 상승:' + row.pexl, row);
+      if (row.cm != null) add('매집봉:' + (row.cm > 0 ? '있음' : '없음'), row);
     }
   }
   const out = Object.entries(groups).map(([g, o]) => {

@@ -2198,3 +2198,11 @@ button.br-mv:hover { border-color: var(--accent); }
 .hl-gA { color: #34d399; font-weight: 800; } .hl-gB { color: #ffd166; font-weight: 800; } .hl-gC { color: #fb923c; font-weight: 800; } .hl-gD { color: #f87171; font-weight: 800; }
 .rp-story p { color: #d6d9e0; } .mp-aisum { font-size: .95rem; line-height: 1.6; }
 .hl-ev { color: #d8b4fe; font-weight: 600; }
+/* 🎯 내 매매 후보 */
+.pk-bar { font-size: .78rem; padding: .3rem .55rem; border-radius: 8px; margin-bottom: .45rem; }
+.pk-bar.ok { background: rgba(52,211,153,.10); color: #6ee7b7; border: 1px solid rgba(52,211,153,.25); }
+.pk-bar.near { background: rgba(255,196,0,.08); color: #fcd34d; border: 1px solid rgba(255,196,0,.22); }
+.pk-pat b { color: #f9fafb; } .pk-pat.off { color: var(--muted); }
+.pk-sep { list-style: none; margin: 1rem 0 .4rem; font-size: .82rem; color: var(--muted); font-weight: 700; border-top: 1px dashed var(--line2); padding-top: .6rem; }
+.mp-rk.pk-near { opacity: .85; }
+.pk-none { margin: .6rem 0; padding: .6rem .8rem; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line2); font-size: .88rem; }
