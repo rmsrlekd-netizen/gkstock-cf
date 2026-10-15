@@ -2112,3 +2112,8 @@ button.br-mv:hover { border-color: var(--accent); }
 
 .mp-stage.done { background: rgba(150,150,170,.18); color: #c9c9d6; }
 .mp-cyc { margin: 0 0 .6rem; padding: .6rem .75rem; border-radius: 10px; background: rgba(255,90,106,.08); border: 1px solid rgba(255,90,106,.3); font-size: .85rem; line-height: 1.6; }
+
+.mp-marks { margin: 0 0 .6rem; padding: .6rem .75rem; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); }
+.mp-marks h5 { margin: 0 0 .35rem; } .mp-marks ul { margin: 0; padding-left: 0; list-style: none; }
+.mp-marks li { font-size: .82rem; padding: .3rem 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+.mp-marks li.ok b { color: #ffd166; } .mp-marks li.no { opacity: .6; }
