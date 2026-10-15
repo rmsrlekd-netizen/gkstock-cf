@@ -17,6 +17,12 @@ export default async (req) => {
   if (!want) return J({ ok: false, error: 'Cloudflare 변수에 ADMIN_KEY(관리자 비밀번호)를 먼저 등록하세요.', needsSetup: true }, 403);
   if ((u.searchParams.get('key') || '') !== want) return J({ ok: false, error: '관리자 비밀번호가 맞지 않습니다.' }, 403);
 
+  // 🧪 자동 이상치 점검: &anom=1 (최근 결과) · &anom=run (지금 점검)
+  if (u.searchParams.get('anom')) {
+    const a = await import('../lib/anomaly.mjs');
+    if (u.searchParams.get('anom') === 'run') await a.runAnomaly({ force: true }).catch((e) => console.warn('anom', e.message));
+    return J({ ok: true, ...((await getJSON('anom/last')) || {}) });
+  }
   const item = u.searchParams.get('item');
   if (item) return J({ ok: true, views: await itemViews(item.split(',').filter(Boolean).slice(0, 50)) });
 

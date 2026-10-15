@@ -2233,3 +2233,7 @@ button.br-mv:hover { border-color: var(--accent); }
 .rk-filt button.gA:not(.on) { color: #34d399; } .rk-filt button.gB:not(.on) { color: #ffd166; } .rk-filt button.gC:not(.on) { color: #fb923c; } .rk-filt button.gD:not(.on) { color: #f87171; }
 .rk-fn { margin-left: .2rem; }
 .rk-filt button { white-space: nowrap; }
+.anom-l { list-style: none; margin: .4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; }
+.anom-l li { padding: .45rem .6rem; border-radius: 8px; background: rgba(255,196,0,.06); border: 1px solid rgba(255,196,0,.2); font-size: .85rem; }
+.anom-l li.err { background: rgba(248,113,113,.08); border-color: rgba(248,113,113,.3); }
+.anom-l small { display: block; color: var(--muted); margin-top: .2rem; font-size: .74rem; word-break: break-all; }

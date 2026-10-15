@@ -3157,6 +3157,7 @@
     let d;
     try { d = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}`, { cache: 'no-store' }); }
     catch (e) { box.innerHTML = `<div class="page-head"><h2>관리자</h2></div><div class="card"><p class="err">${esc(e.message)}</p><button class="btn sm" data-admin-logout>다시 로그인</button></div>`; return; }
+    setTimeout(() => loadAnom(), 0);
     const maxPv = Math.max(1, ...d.days.map((x) => x.pv));
     const maxHr = Math.max(1, ...d.hours);
     const devT = (d.dev.m || 0) + (d.dev.d || 0) || 1;
@@ -3211,6 +3212,7 @@
           <table class="tbl"><tr><th>기능</th><th>오늘 호출</th><th>7일 호출</th><th>입력</th><th>출력</th><th>생각</th><th>비용 비중</th></tr>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${fmtInt(today[k]?.n || 0)}</td><td>${fmtInt(v.n)}</td><td>${tk(v.in)}</td><td>${tk(v.out)}</td><td>${tk(v.th)}</td><td><b>${Math.round(((v.in + (v.out + v.th) * 8) / sum) * 100)}%</b></td></tr>`).join('')}</table>
           <p class="note">토큰 = AI가 읽고 쓴 글자 양. 실제 요금은 Google AI Studio 결제 화면 기준입니다.</p></div>`;
       })()}
+      <div class="card" id="anomCard"><h3>🧪 자동 이상치 점검 <small class="muted">값이 말이 되는지 사이트 전체(작전 레이더 포함)를 3시간마다 훑어봐요 · 새 문제는 관리자 텔레그램</small></h3><div id="anomBody"><div class="loading"><span class="spin"></span>불러오는 중…</div></div><div class="chips" style="margin-top:.6rem"><button class="btn sm" data-anom-run>지금 점검</button></div></div>
       <div class="card"><h3>고장 자동 감시 <small class="muted">${d.monitor?.at ? fmtDT(new Date(d.monitor.at)).full + ' 점검 · 약 9분마다 자동 점검' : '아직 점검 기록 없음'}</small></h3>
         <table class="tbl adm-mon"><tr><th>항목</th><th>상태</th><th>내용</th></tr>${mon.map((c) => `<tr><td>${esc(c.name)}</td><td><span class="mon ${c.ok ? 'ok' : c.fails >= 2 ? 'bad' : 'warn'}">${c.ok ? '정상' : c.fails >= 2 ? '이상' : '확인 중'}</span></td><td>${esc(c.msg)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">점검 기록이 없습니다. 아래 "지금 점검"을 눌러보세요.</td></tr>'}</table>
         <div class="chips" style="margin-top:.8rem"><button class="btn sm" data-admin-act="monitor">지금 점검</button><button class="btn sm" data-admin-act="issKR">주요 이슈 다시 만들기 (국장)</button><button class="btn sm" data-admin-act="issUS">주요 이슈 다시 만들기 (미장)</button><button class="btn sm" data-admin-act="tgfind">텔레그램 채팅 ID 찾기</button><button class="btn sm" data-admin-act="tgtest">텔레그램 테스트 알림</button></div>
@@ -3550,6 +3552,17 @@
       ${pl.deep ? `<small class="pf-alert">⚠ ${esc(pl.deep)}</small>` : ''}${pl.far ? `<small class="pf-alert">⚠ ${esc(pl.far)}</small>` : ''}
       ${it?.stop && Math.abs(it.stop / pl.stop - 1) > 0.03 ? `<small class="muted">적어 둔 손절 ${fmtInt(it.stop)}원은 버팀 손절선과 달라요 — 흔들기에 걸리기 쉬운 자리인지 확인</small>` : ''}</div>`;
   }
+  async function loadAnom(run) {
+    const b = $('#anomBody'); if (!b) return;
+    if (run) b.innerHTML = '<div class="loading"><span class="spin"></span>사이트 전체 점검 중… (30초쯤)</div>';
+    let j; try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&anom=${run ? 'run' : '1'}`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    if (!$('#anomBody')) return;
+    if (!j.ok) { b.innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
+    if (!j.at) { b.innerHTML = '<p class="muted sm">아직 점검 기록이 없어요. "지금 점검"을 누르거나 3시간 안에 자동으로 돌아요.</p>'; return; }
+    const L = j.items || [];
+    b.innerHTML = `<p class="muted sm">${esc(fmtDT(new Date(j.at)).full)} 점검 · ${L.length ? `문제 ${L.length}건 (심각 ${j.nErr || 0})` : '✅ 이상한 값 없음'}</p>${L.length ? `<ul class="anom-l">${L.map((i) => `<li class="${i.lv}"><b>${i.lv === 'err' ? '🔴' : '🟡'} ${esc(i.area)}</b> ${esc(i.msg)}${i.ex?.length ? `<small>${i.ex.map((x) => esc(x)).join(' · ')}</small>` : ''}</li>`).join('')}</ul>` : ''}`;
+  }
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-anom-run]')) loadAnom(true); });
   async function loadMy(op, params) {
     const box = $('#mpBody'); if (!box) return;
     if (!op) box.innerHTML = '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
