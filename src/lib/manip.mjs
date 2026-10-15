@@ -1057,7 +1057,15 @@ export async function manipRank(kind = 'all') {
 }
 export async function manipProfile(code) {
   const p = await getJSON(`mp/prof/${code}`);
-  if (p) p.hist = ((await getJSON(`mp/hist/${code}`)) || []).slice(0, 30);
+  if (p) {
+    p.hist = ((await getJSON(`mp/hist/${code}`)) || []).slice(0, 30);
+    // 예전 방식으로 저장된 카드도 손익비·가격 사다리·체크리스트를 지금 규칙으로 다시 계산해서 보여줌 (상승/하락 분류는 저장된 값 유지)
+    try {
+      const d2 = direction(p);
+      p.dir = { ...d2, dir: p.dir?.dir ?? d2.dir, sticky: p.dir?.sticky };
+      if (!p.cl) { p.cl = checklistOf(p); p.clOld = true; }
+    } catch {}
+  }
   return p;
 }
 
