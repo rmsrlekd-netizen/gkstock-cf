@@ -2082,3 +2082,7 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-facts { margin-top: .5rem; font-size: .8rem; } .mp-facts summary { cursor: pointer; color: var(--muted); } .mp-facts ol { padding-left: 1rem; margin: .3rem 0 0; } .mp-facts li { padding: .1rem 0; }
 @media (max-width: 720px) { .mp-dir, .mp-tgt { grid-template-columns: 1fr; } .mp-dirl, .mp-why { margin-left: 0; } }
 .mp-notes { margin-bottom: .5rem; } .mp-notes p { margin: .15rem 0; font-size: .82rem; color: var(--gold); }
+.mp-chip.net { background: rgba(139,108,255,.18); color: #c4b5fd; }
+.mp-net { padding: .55rem .7rem; border-radius: 10px; background: rgba(139,108,255,.08); border: 1px solid rgba(139,108,255,.25); margin-bottom: .6rem; }
+.mp-net h5 { margin: 0 0 .3rem !important; } .mp-net h5 small { font-weight: 500; color: var(--muted); font-size: .7rem; } .mp-net li { font-size: .84rem; }
+.mp-perf { overflow-x: auto; } .mp-perf td small { display: block; font-size: .7rem; color: var(--muted); white-space: nowrap; } .mp-perf td.t small { display: block; }
