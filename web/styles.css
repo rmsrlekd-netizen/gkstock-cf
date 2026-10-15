@@ -2208,3 +2208,17 @@ button.br-mv:hover { border-color: var(--accent); }
 .pk-none { margin: .6rem 0; padding: .6rem .8rem; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line2); font-size: .88rem; }
 .ck-w { display: inline-block; font-size: .64rem; font-weight: 800; padding: .02rem .32rem; border-radius: 5px; margin-right: .15rem; background: rgba(255,255,255,.07); color: var(--muted); vertical-align: 1px; }
 .ck-w.hi { background: rgba(255,90,106,.16); color: #ff8a96; } .ck-w.md { background: rgba(255,196,0,.13); color: #fcd34d; } .ck-w.bomb { background: rgba(248,113,113,.2); color: #fca5a5; }
+/* 💼 포트폴리오 도우미 */
+.pf-cfg { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center; padding: .7rem .8rem; border-radius: 12px; background: var(--card); border: 1px solid var(--line2); margin-bottom: .6rem; }
+.pf-cfg label { display: flex; flex-direction: column; font-size: .72rem; color: var(--muted); gap: .15rem; }
+.pf-cfg input { width: 150px; padding: .35rem .5rem; border-radius: 8px; border: 1px solid var(--line2); background: var(--bg); color: inherit; }
+.pf-cfg small { flex-basis: 100%; line-height: 1.5; }
+.pf-warn { padding: .55rem .75rem; border-radius: 10px; background: rgba(255,196,0,.08); border: 1px solid rgba(255,196,0,.25); margin-bottom: .6rem; font-size: .85rem; } .pf-warn ul { margin: .3rem 0 0; padding-left: 1.1rem; }
+.pf-plan { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .45rem 0; }
+.pf-plan > span { display: flex; flex-direction: column; padding: .5rem .6rem; border-radius: 10px; background: rgba(255,255,255,.035); border: 1px solid var(--line2); }
+.pf-plan em { font-style: normal; font-size: .7rem; color: var(--muted); } .pf-plan b { font-family: var(--mono); font-size: .95rem; } .pf-plan small { font-size: .7rem; color: var(--muted); line-height: 1.4; }
+.pf-plan > small { grid-column: 1 / -1; }
+.pf-notes { margin: .3rem 0; padding-left: 1.1rem; font-size: .82rem; color: #fcd34d; }
+.pf-planbox { margin: .6rem 0; }
+@media (max-width: 720px) { .pf-plan { grid-template-columns: 1fr; } .pf-cfg input { width: 130px; } }
+.pf-plan > small.pf-alert { color: #fcd34d; }

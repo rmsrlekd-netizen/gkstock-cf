@@ -303,6 +303,7 @@ export function barFeatures(B, opt = {}) {
   const lagDays = ((opt.now || Date.now()) - Date.parse(last.d + 'T15:30:00+09:00')) / DAY;
   if (!f.halted && lagDays > 10) f.halted = { since: last.d, days: Math.round(lagDays * 5 / 7), stale: true };
   f.avgV20 = Math.round(v20);
+  f.lastD = last.d; f.lastV = last.v || 0; // 마지막 거래일 (거래정지 공시 뒤 거래가 있었는지 확인용)
   // 최근 20거래일 저점 (오늘 제외) — 손절 기준 후보
   { let li = -1; for (let i = Math.max(0, n - 21); i < n - 1; i++) if (B[i].l > 0 && (li < 0 || B[i].l < B[li].l)) li = i; f.low20 = li >= 0 ? { p: B[li].l, d: B[li].d } : null; }
   // 시장경보 예측(근사): 투자경고 지정예고 요건 — 3일 +100% · 5일 +60% · 15일 +100% (내일 종가 기준 얼마나 더 올라야 하는지)
@@ -579,14 +580,22 @@ export function extras(code, evs, by, ctx = {}) {
 
 // ───── 단계 판정 (AI 전 기본값) ─────
 // 거래정지 공시로 판단 (감사의견 거절·매매거래정지·상장폐지 사유 등 — 그 뒤 '거래 재개' 공시가 없으면 정지 중으로 봄)
-export function evHalt(evs = [], now = Date.now()) {
+//  · 공급계약·조회공시·중요 내용 공시 때문에 잠깐 거는 정지(보통 30분~다음 날 아침)는 2일 지나면 풀린 것으로 봄
+//  · 정지 공시 날 '뒤에' 일봉 거래가 있으면 이미 풀린 것 (f.lastD: 마지막 거래일)
+const LONG_HALT = /의견거절|부적정\s*의견|상장폐지|실질심사|상장적격성|정리매매|자본잠식|횡령|배임|회생|파산|부도/;
+const SHORT_HALT = /단일판매|공급계약|조회공시|중요내용|중요\s*내용|풍문|보도|주식병합|주식분할|액면|공개매수|합병|시장경보|투자경고|투자위험|단기과열|불성실공시/;
+export function evHalt(evs = [], now = Date.now(), f = null) {
   const resume = (evs || []).filter((e) => e.kind === 'resume').sort((a, b) => b.ms - a.ms)[0];
   const h = (evs || []).filter((e) => /매매거래\s*정지|거래정지|의견거절|부적정\s*의견|상장폐지|실질심사\s*대상/.test(e.title) && !/해제|재개/.test(e.title) && now - e.ms < 365 * DAY).sort((a, b) => b.ms - a.ms)[0];
   if (!h || (resume && resume.ms > h.ms)) return null;
-  return { since: new Date(h.ms + 9 * 3600e3).toISOString().slice(0, 10), why: h.title, ref: h.id, ev: true };
+  const hd = new Date(h.ms + 9 * 3600e3).toISOString().slice(0, 10);
+  if (f?.lastD && f.lastD > hd && (f.lastV ?? 1) > 0) return null; // 정지 공시 뒤에 거래가 있었음 → 풀림
+  const long = LONG_HALT.test(h.title) && !SHORT_HALT.test(h.title);
+  if (!long && now - h.ms > 2 * DAY) return null; // 공급계약·조회공시 등 잠깐 거는 정지는 2일 지나면 풀린 것으로 (상장폐지·의견거절 등은 거래가 다시 생길 때까지 유지)
+  return { since: hd, why: h.title, ref: h.id, ev: true, short: !long };
 }
 export function stageOf(by, f, evs = []) {
-  if (f?.halted || evHalt(evs)) return '거래정지';
+  if (f?.halted || evHalt(evs, Date.now(), f)) return '거래정지';
   const exit = (by.conv || 0) + (by.majsell || 0) + (by.pledge || 0);
   const setup = (by.mna || 0) + (by.rights3 || 0) + (by.cb || 0) + (by.fund5 || 0) + (by.purpose || 0) + (by.refix || 0);
   // 이미 한 번 띄우고 빠진 종목: 고점 뒤 새 '판 깔기' 공시가 있으면 2차 판 깔기, 없으면 '엑시트 후'
@@ -733,7 +742,7 @@ export function priceLevels(x) {
   return { all, above };
 }
 export function direction(x, now = Date.now()) {
-  const hv = x.f?.halted || evHalt(x.events);
+  const hv = x.f?.halted || evHalt(x.events, Date.now(), x.f);
   if (hv || x.stage === '거래정지') return { dir: 'none', upS: 0, downS: 0, upRaw: 0, downRaw: 0, net: 0, notes: [hv?.ev ? `${hv.since} '${hv.why}' 공시 뒤 거래 재개 공시가 없음 (거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤` : `${hv?.since || ''} 무렵부터 거래가 없음(거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤`], tgt: null, rr: null, levels: [], dates: [], up: [], down: [], cost: costRange(x) ? { low: Math.round(costRange(x).low), high: Math.round(costRange(x).high), rep: costRange(x).rep, repS: costRange(x).repS } : null, gap: null };
   const f = x.f || {}, ev = x.events || [], up = [], down = [];
   const age = (e) => (now - e.ms) / DAY;
@@ -856,7 +865,7 @@ export function overhangOf(x, now = Date.now()) {
 }
 export function reboundOf(x, now = Date.now()) {
   const f = x.f || {}, rb = f.rb, ev = x.events || [];
-  if (!rb || f.halted || x.stage === '거래정지' || evHalt(ev)) return null;
+  if (!rb || f.halted || x.stage === '거래정지' || evHalt(ev, Date.now(), f)) return null;
   const A = [], Bw = [], C = [];
   const add = (arr, w, t) => arr.push({ w, t });
   const ov = overhangOf(x, now);
@@ -899,7 +908,7 @@ export const RB_KO = { deadcat: '① 기술적 반등(데드캣) 쪽', dump: '�
 //  대상: 털기·엑시트 후 단계, 또는 고점에서 33%↑ 빠진 종목. 바닥 유지·물량 소진·새 판 깔기·매집 흔적 vs 남은 물량·계속되는 매도 공시·위험
 export function postExitOf(x, now = Date.now()) {
   const f = x.f || {}, pst = f.post, ev = x.events || [];
-  if (!pst || f.halted || x.stage === '거래정지' || evHalt(ev)) return null;
+  if (!pst || f.halted || x.stage === '거래정지' || evHalt(ev, Date.now(), f)) return null;
   if (!['털기', '엑시트 후', '매집', '판 깔기'].includes(x.stage) && !f.cyc) return null;
   const U = [], Dn = [];
   const add = (arr, w, t) => arr.push({ w, t });
@@ -1359,7 +1368,7 @@ export function rankRow(x) {
   const cm = (x.f?.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k)).length || null;
   const cl = x.cl || null;
   const rbk = x.rbk || null;
-  const hv = x.f?.halted || evHalt(x.events);
+  const hv = x.f?.halted || evHalt(x.events, Date.now(), x.f);
   const cf = x.pex && ((d.dir === 'up' && x.pex.lv === '낮음') || (d.dir === 'down' && x.pex.lv === '높음')) ? 1 : 0;
   return { ...chipsOf(x), cf, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
@@ -1387,7 +1396,7 @@ async function saveProfiles(list, reason, opt = {}) {
       const keepDown = pd0 === 'down' && x.dir.downS >= 2 && x.dir.downS >= x.dir.upS;
       if (keepUp || keepDown) x.dir = { ...x.dir, dir: pd0, sticky: true };
     }
-    const halted = !!x.f?.halted || x.stage === '거래정지' || !!evHalt(x.events);
+    const halted = !!x.f?.halted || x.stage === '거래정지' || !!evHalt(x.events, Date.now(), x.f);
     if (prev.at && halted && prev.stage !== '거래정지') alerts.push(`• ⛔ ${x.name} 거래정지로 보임 (${x.f?.halted?.since || ''}부터 거래 없음) — 이 종목 알림은 거래가 다시 열릴 때까지 멈춤`);
     if (prev.at && !halted) { // 처음 들어온 종목·거래정지 종목은 알림 안 함
       const nd = x.dir.dir, pd = prev.dir?.dir;
@@ -1514,7 +1523,7 @@ export function narrativeOf(x, now = Date.now()) {
   const mk = x.mkt === 'P' ? '코스피' : x.mkt === 'Q' ? '코스닥' : '';
   const won = (v) => `${fmtW(v)}원`, pc = (v) => `${v > 0 ? '+' : ''}${v}%`;
   const DIR = { up: '상승 가능성 쪽', down: '하락 위험 쪽' };
-  const hv = f.halted || evHalt(x.events);
+  const hv = f.halted || evHalt(x.events, now, f);
   if (hv || x.stage === '거래정지') return [`${x.name}${mk ? `(${mk})` : ''}은(는) ${hv?.ev ? `${hv.since} '${hv.why}' 공시 뒤 거래 재개 공시가 없어` : `${hv?.since || ''} 무렵부터 거래가 없어`} 거래정지 중으로 보입니다. 정지 중에는 시세가 멈춰 있어 단계·평단·반등 판단을 하지 않고, 이 종목 알림도 멈췄습니다. 거래가 다시 열리면 자동으로 다시 분석합니다.`, '※ 공시와 거래 데이터로 자동 계산한 패턴 판단이며, 실제 세력의 존재나 불공정거래를 뜻하지 않습니다.'];
   P.push(`${x.name}${mk ? `(${mk})` : ''}은(는) 지금 '${x.stage || '관찰'}' 단계로 보입니다.${DIR[d.dir] ? ` 공시·거래 근거를 종합하면 ${DIR[d.dir]}으로 분류됩니다` : ' 상승·하락 어느 쪽도 뚜렷하지 않습니다'} (상승 근거 ${d.upS || 0}/10점 · 하락 근거 ${d.downS || 0}/10점, 작전 패턴 종합 점수 ${x.score ?? '-'}점).`);
   // 세력 흐름
@@ -1609,7 +1618,11 @@ export async function manipProfile(code) {
   }
   let migrated = false;
   // 저장된 카드라도 지금 보니 거래정지(공시·일봉)면 바로 '거래정지'로 바꿔 저장 (랭킹에서도 빠짐)
-  if (p && p.stage !== '거래정지' && (p.f?.halted || evHalt(p.events))) { try { p.stage = '거래정지'; p.dir = direction(p); await saveProfiles([{ ...p, hist: undefined }], '거래정지 확인', { keepAi: true, touch: false }); p = await getJSON(`mp/prof/${code}`); } catch {} }
+  // 거래정지로 저장됐는데 지금 보니 풀렸으면(정지 공시 뒤 거래 있음·잠깐 정지 2일 지남) 단계를 다시 계산
+  if (p && p.stage === '거래정지' && !p.f?.halted && !evHalt(p.events, Date.now(), p.f)) {
+    try { p.stage = stageOf(p.by || {}, p.f, p.events); p.dir = direction(p); await saveProfiles([{ ...p, hist: undefined }], '거래정지 풀림 확인', { keepAi: true, touch: false }); p = await getJSON(`mp/prof/${code}`); } catch {}
+  }
+  if (p && p.stage !== '거래정지' && (p.f?.halted || evHalt(p.events, Date.now(), p.f))) { try { p.stage = '거래정지'; p.dir = direction(p); await saveProfiles([{ ...p, hist: undefined }], '거래정지 확인', { keepAi: true, touch: false }); p = await getJSON(`mp/prof/${code}`); } catch {} }
   if (p && isOldProf(p) && Date.now() - (p.migTry || 0) > 6 * 3600e3) {
     try { if (await migrateProf(code, '열어 볼 때 새 계산 방식으로 자동 갱신')) { p = await getJSON(`mp/prof/${code}`); migrated = true; } else { p.migTry = Date.now(); await setJSON(`mp/prof/${code}`, { ...p, hist: undefined }).catch(() => {}); } } catch {} // 실패하면 6시간 동안 다시 시도 안 함 (열 때마다 느려지지 않게)
   }
@@ -1636,6 +1649,7 @@ export async function manipProfile(code) {
       if (!p.rbk) p.rbk = reboundOf(p);
       p.pex = postExitOf(p);
       p.story = narrativeOf(p);
+      try { p.plan = await (await import('./manipck.mjs')).myPlanOf(p); } catch {}
       // 랭킹 줄도 지금 계산과 맞춤 (체크 등급·분류·손익비가 페이지와 다르게 보이던 문제)
       try {
         const rk = await getJSONStrict('mp/rank');

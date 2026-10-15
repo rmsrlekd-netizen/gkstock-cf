@@ -339,12 +339,15 @@ export async function myList() {
     return { ...i, cur, live: !i.closed && q[i.code] != null, pl: cur && i.entry ? r1((cur / i.entry - 1) * 100) : null, st: r.st || null, d: r.d || null, us: r.us ?? null, ds: r.ds ?? null, rr: r.rr || null, ckg: r.ckg || null };
   });
   const closed = items.filter((i) => i.closed && i.pl != null);
-  return { items, stats: closed.length ? { n: closed.length, win: Math.round((closed.filter((i) => i.pl > 0).length / closed.length) * 100), avg: r1(closed.reduce((a, i) => a + i.pl, 0) / closed.length) } : null };
+  const pf = await myPortfolio(items).catch(() => null);
+  return { items, pf, stats: closed.length ? { n: closed.length, win: Math.round((closed.filter((i) => i.pl > 0).length / closed.length) * 100), avg: r1(closed.reduce((a, i) => a + i.pl, 0) / closed.length) } : null };
 }
 export async function myEdit(op, p) {
   const d = (await getJSON('mp/my')) || { items: [] };
   const num = (v) => { const x = n0(v); return x && x > 0 ? x : null; };
-  if (op === 'add') {
+  if (op === 'cfg') {
+    d.cfg = { acct: num(p.acct), riskPct: Math.min(10, Math.max(0.2, Number(p.riskPct) || 1.5)) };
+  } else if (op === 'add') {
     const code = String(p.code || '').replace(/\D/g, '').slice(0, 6);
     if (!/^\d{6}$/.test(code)) throw new Error('종목코드가 필요해요');
     d.items.unshift({ id: Date.now().toString(36), code, name: String(p.name || code).slice(0, 30), entry: num(p.entry), stop: num(p.stop), target: num(p.target), qty: num(p.qty), memo: String(p.memo || '').slice(0, 200), at: Date.now() });
@@ -358,4 +361,168 @@ export async function myEdit(op, p) {
   }
   await setJSON('mp/my', d);
   return myList();
+}
+
+// ───── 💼 포트폴리오 도우미 (관리자 · 내 세력주) ─────
+//  · 버팀 손절선: 보이는 지지선이 아니라 '세력이 밀 수 있는 바닥'(CB 리픽싱 하한·3자배정 발행가 등) 아래 3%
+//  · 나눠 사기: 1/3 지금 · 1/3 중간 · 1/3 바닥 근처 → 흔들기가 오면 손절이 아니라 평단을 낮추는 기회
+//  · 살 금액: 계좌 × 한 종목 최대 손실% ÷ (평균 매수가 − 버팀 손절선)
+export function holdPlan(p, cfg = {}) {
+  const close = p?.close, lv = p?.dir?.levels || [], f = p?.f || {};
+  if (!close) return null;
+  // 현재가 −35%~−3% 안의 세력 원가만 바닥 후보 (그보다 깊으면 '버티기'로는 감당 못 할 폭이라 따로 경고)
+  const below = lv.filter((l) => l.p < close * 0.97 && l.p >= close * 0.65);
+  const pick = (re) => below.filter((l) => re.test(l.s)).sort((a, b) => a.p - b.p)[0];
+  const floor = pick(/리픽싱 하한/) || pick(/3자배정 발행가|발행가|인수 단가/) || pick(/전환가/) || pick(/매집 구간 최저가|5% 신고자/) || null;
+  const deep = lv.filter((l) => /리픽싱 하한/.test(l.s) && l.p < close * 0.65).sort((a, b) => a.p - b.p)[0];
+  const base = floor ? floor.p : Math.round(close * 0.85);
+  const stop = Math.round(base * 0.97);
+  const b1 = close, b3 = Math.round(base * 1.02), b2 = Math.round((b1 + b3) / 2);
+  const avg = (b1 + b2 + b3) / 3;
+  const out = { floor: base, floorS: floor ? floor.s : '현재가 −15% (근거 가격 없음)', stop, stopPct: Math.round((stop / close - 1) * 1000) / 10, buys: [b1, b2, b3], avg: Math.round(avg) };
+  if (deep) out.deep = `CB 리픽싱 하한 ${fmtW(deep.p)}원(현재가 ${Math.round((deep.p / close - 1) * 100)}%)까지 밀릴 수 있는 구조 — 비중을 더 작게`;
+  if (p?.dir?.gap != null && p.dir.gap > 30) out.far = `현재가가 세력 평단보다 +${p.dir.gap}% 위 — 이미 오른 자리라 버티기 계획이 잘 안 맞음`;
+  const acct = Number(cfg.acct) || 0, rp = Number(cfg.riskPct) || 0;
+  if (acct > 0 && rp > 0 && avg > stop) {
+    const maxLoss = acct * rp / 100, sh = Math.floor(maxLoss / (avg - stop));
+    out.maxLoss = Math.round(maxLoss); out.shares = sh; out.amount = Math.round(sh * avg); out.each = Math.floor(sh / 3);
+    out.acctPct = Math.round((out.amount / acct) * 1000) / 10;
+    const tv = (f.avgV20 || 0) * close; // 하루 평균 거래대금
+    if (tv) out.liq = Math.round((out.amount / tv) * 1000) / 10; // 하루 거래대금 대비 %
+  }
+  return out;
+}
+async function myCfg() { return ((await getJSON('mp/my'))?.cfg) || { acct: null, riskPct: 1.5 }; }
+export async function myPlanOf(p) { try { return holdPlan(p, await myCfg()); } catch { return null; } }
+// 보유 종목끼리 겹침(같은 세력·같은 업종·같은 물량 해제 달) 경고
+function overlaps(rows) {
+  const W = [];
+  for (let i = 0; i < rows.length; i++) for (let j = i + 1; j < rows.length; j++) {
+    const a = rows[i], b = rows[j];
+    if (!a.p || !b.p || a.code === b.code) continue;
+    const wa = new Set((a.p.links || []).map((l) => l.who)), sameP = (b.p.links || []).find((l) => wa.has(l.who)) || (a.p.links || []).flatMap((l) => l.others || []).find((o) => o.c === b.code);
+    if (sameP) W.push(`🕸 ${a.name} · ${b.name} — 같은 세력 이름이 함께 나옴 (함께 무너질 수 있음)`);
+    const ia = String(a.p.ind || '').split('|')[0], ib = String(b.p.ind || '').split('|')[0];
+    if (ia && ia === ib) W.push(`🏭 ${a.name} · ${b.name} — 같은 업종(${ia})`);
+    const na = (a.p.dir?.dates || []).find((z) => !z.past)?.d?.slice(0, 7), nb = (b.p.dir?.dates || []).find((z) => !z.past)?.d?.slice(0, 7);
+    if (na && na === nb) W.push(`🗓 ${a.name} · ${b.name} — 물량 해제가 같은 달(${na})`);
+  }
+  return [...new Set(W)];
+}
+export async function myPortfolio(items) {
+  const cfg = await myCfg();
+  const open = items.filter((i) => !i.closed);
+  const rows = [];
+  for (const i of open.slice(0, 20)) { const p = await getJSON(`mp/prof/${i.code}`).catch(() => null); rows.push({ code: i.code, name: i.name, p, i }); }
+  const now = Date.now();
+  const plans = {}, notes = {};
+  for (const r of rows) {
+    if (!r.p) continue;
+    plans[r.i.id] = holdPlan({ ...r.p, close: r.i.cur || r.p.close }, cfg);
+    const n = [];
+    const days = Math.round((now - (r.i.at || now)) / DAY);
+    const nd = (r.p.dir?.dates || []).find((z) => !z.past), past = (r.p.dir?.dates || []).filter((z) => z.past).pop();
+    if (days >= 84 && (r.i.pl ?? 0) < 10) n.push(`⏳ 보유 ${days}일째 +10% 미만 — 시간 손절(비중 줄이기) 검토`);
+    if (past && r.i.at && Date.parse(past.d) > r.i.at) n.push(`🗓 기다리던 물량 해제일(${past.d})이 지남 — 재료가 끝났는지 확인`);
+    if (nd) { const dd = Math.round((Date.parse(nd.d) - now) / DAY); if (dd <= 30) n.push(`🗓 물량 해제 ${dd}일 앞(${nd.d}) — 털기 주의`); }
+    const bad = (r.p.cl?.red || []).filter((x) => x.ok === true && x.bomb).map((x) => x.t.slice(0, 50));
+    if (bad.length) n.push(`💣 폭탄 신호: ${bad.join(' / ')} — 산 이유가 깨졌는지 확인`);
+    notes[r.i.id] = n;
+  }
+  return { cfg, plans, notes, warn: overlaps(rows), total: rows.reduce((a, r) => a + (r.i.qty && r.i.cur ? r.i.qty * r.i.cur : 0), 0) };
+}
+
+// 📌 내 보유·관심 종목 새 공시 → 바로 텔레그램 (매분, 공시가 나오는 시간 아무 때나)
+const BADK = ['conv', 'majsell', 'fail', 'risk', 'pledge'];
+export async function myDiscWatch(now = Date.now()) {
+  const d = (await getJSON('mp/my')) || { items: [] };
+  const open = [...new Set(d.items.filter((i) => !i.closed).map((i) => i.code))];
+  if (!open.length) return null;
+  const st = (await getJSON('mp/mydisc')) || {};
+  if (now - (st.at || 0) < 55e3) return null;
+  const since = st.last || now - 30 * 60e3;
+  const { sqlDB } = await import('./store.mjs');
+  const db = await sqlDB().catch(() => null);
+  if (!db) return null;
+  const rows = [];
+  for (const code of open.slice(0, 20)) {
+    try {
+      const r = await db.prepare("SELECT id, ms, name, title AS t, json_extract(data,'$.formKo') AS f, json_extract(data,'$.party') AS p, json_extract(data,'$.summary.title') AS st, json_extract(data,'$.summary.sub') AS ss FROM items WHERE market = 'KR' AND ticker = ? AND ms > ? ORDER BY ms DESC LIMIT 10").bind(code, since).all();
+      for (const x of r.results || []) rows.push({ ...x, code });
+    } catch {}
+  }
+  const seen = new Set(st.seen || []);
+  const fresh = rows.filter((x) => !seen.has(x.id)).sort((a, b) => a.ms - b.ms);
+  st.at = now; st.last = Math.max(since, ...rows.map((x) => x.ms), now - 5 * 60e3);
+  if (!fresh.length) { await setJSON('mp/mydisc', st); return null; }
+  const { evKind, EV } = await import('./manip.mjs');
+  const nameOf = Object.fromEntries(d.items.map((i) => [i.code, i.name]));
+  const lines = [], codes = [];
+  for (const x of fresh.slice(0, 10)) {
+    const k = evKind(`${x.f || ''} ${x.t || ''}`, x.p);
+    const bad = BADK.includes(k) || /매도|처분|철회|해제|연기|정지|의견거절|부적정|자본잠식|횡령|배임/.test(`${x.f || ''} ${x.t || ''}`);
+    const good = ['paid', 'cbbuy', 'rights3', 'fund5', 'purpose', 'contract'].includes(k);
+    const tag = bad ? '⚠ 털기·위험 신호일 수 있음' : good ? '✅ 판 깔기·자금 투입 쪽 신호' : 'ℹ️ 확인 필요';
+    const sum = [x.st, x.ss].filter(Boolean).join(' · ').slice(0, 120);
+    lines.push(`📌 ${nameOf[x.code] || x.name || x.code} 새 공시 — ${String(x.f || x.t || '').slice(0, 60)}${sum ? `\n   ${sum}` : ''}\n   ${tag}${k && EV?.[k] ? ` (${EV[k].ko})` : ''} · gk-stock.com/p/${x.id}`);
+    codes.push(x.code);
+  }
+  st.seen = [...fresh.map((x) => x.id), ...(st.seen || [])].slice(0, 300);
+  await setJSON('mp/mydisc', st);
+  const { radarAlert } = await import('./manipx.mjs');
+  await radarAlert(lines, codes, { force: true, title: '💼 내 포트폴리오 알림' }).catch(() => {});
+  return { n: lines.length };
+}
+
+// 💼 장 마감 뒤(15:45~) 하루 한 번: 보유 종목 하락이 '흔들기'인지 '털기'인지, 시간 손절·물량 해제·폭탄 신호
+export async function myDailyCheck(now = Date.now()) {
+  const z = kst(now);
+  if (!isTradingDay('KR', z.date) || z.m < 15 * 60 + 45) return null;
+  const d = (await getJSON('mp/my')) || { items: [] };
+  const open = d.items.filter((i) => !i.closed);
+  if (!open.length) return null;
+  const st = (await getJSON('mp/mydaily')) || {};
+  if (st.date === z.date) return null;
+  st.date = z.date;
+  await setJSON('mp/mydaily', st);
+  const codes = [...new Set(open.map((i) => i.code))].slice(0, 45);
+  const q = {};
+  try {
+    const r = await fetchWithTimeout(`https://polling.finance.naver.com/api/realtime/domestic/stock/${codes.join(',')}`, { headers: { Accept: 'application/json', Referer: 'https://m.stock.naver.com/' } }, 8000);
+    for (const x of (await r.json()).datas || []) { let pct = n0(x.fluctuationsRatio); if (pct != null && ['4', '5'].includes(String(x.compareToPreviousPrice?.code))) pct = -Math.abs(pct); q[x.itemCode] = { price: n0(x.closePriceRaw ?? x.closePrice), pct, vol: n0(x.accumulatedTradingVolumeRaw ?? x.accumulatedTradingVolume) }; }
+  } catch (e) { st.err = String(e.message).slice(0, 80); }
+  const cfg = await myCfg();
+  const lines = [], cs = [];
+  const sent = st.sent || {};
+  for (const it of open) {
+    const p = await getJSON(`mp/prof/${it.code}`).catch(() => null), x = q[it.code];
+    if (!p || !x?.price) continue;
+    const plan = holdPlan({ ...p, close: x.price }, cfg);
+    const av = p.f?.avgV20 || 0, vx = av && x.vol ? r1(x.vol / av) : null;
+    const recent = (p.events || []).filter((e) => now - e.ms < 5 * DAY && ['conv', 'majsell', 'fail', 'risk', 'pledge'].includes(e.kind));
+    const ins = (p.px || []).some((y) => y.kind === 'insider' && y.ins && (y.ins.sq || 0) > (y.ins.bq || 0) && now - Date.parse(y.date) < 10 * DAY);
+    const stageBad = ['털기', '엑시트 후', '거래정지'].includes(p.stage);
+    const drop = (x.pct ?? 0) <= -4 || (it.stop && x.price <= it.stop * 1.05) || (plan && x.price <= plan.buys[1]);
+    if (drop) {
+      const dump = (vx != null && vx >= 2) || recent.length || ins || stageBad;
+      const why = [vx != null ? `거래량 평소의 ${vx}배` : null, recent.length ? `최근 '${recent[0].title.slice(0, 30)}'` : null, ins ? '내부자 매도 우위' : null, stageBad ? `단계 '${p.stage}'` : null].filter(Boolean).join(' · ');
+      lines.push(dump
+        ? `🔻 ${it.name} ${x.pct}% (${fmtW(x.price)}원) — 털기 신호 가능: ${why}. 산 이유가 깨졌는지 확인하고 버팀 손절선 ${plan ? fmtW(plan.stop) + '원' : '-'} 아래 종가 2일이면 정리 검토`
+        : `🌀 ${it.name} ${x.pct}% (${fmtW(x.price)}원) — 흔들기 가능성: 거래량 적음${vx != null ? `(평소의 ${vx}배)` : ''} · 나쁜 공시 없음 · 단계 '${p.stage}' 유지. 버팀 손절선 ${plan ? fmtW(plan.stop) + '원' : '-'} 위면 버티기, 나눠 사기 ${plan ? fmtW(plan.buys[1]) + '·' + fmtW(plan.buys[2]) + '원' : ''} 참고`);
+      cs.push(it.code);
+    }
+    // 시간 손절·물량 해제·폭탄 신호 (같은 내용은 7일에 한 번)
+    const days = Math.round((now - (it.at || now)) / DAY), pl = it.entry ? (x.price / it.entry - 1) * 100 : null;
+    const once = (key, t) => { if (now - (sent[key] || 0) > 7 * DAY) { sent[key] = now; lines.push(t); cs.push(it.code); } };
+    if (days >= 84 && (pl ?? 0) < 10) once(`t${it.id}`, `⏳ ${it.name} 보유 ${days}일째 ${pl != null ? (pl >= 0 ? '+' : '') + r1(pl) + '%' : ''} — 시간 손절(비중 줄이기) 검토`);
+    const past = (p.dir?.dates || []).filter((z2) => z2.past).pop();
+    if (past && it.at && Date.parse(past.d) > it.at) once(`u${it.id}${past.d}`, `🗓 ${it.name} 기다리던 물량 해제일(${past.d}) 지남 — 재료 소멸·털기 여부 확인`);
+    const bomb = (p.cl?.red || []).filter((y) => y.ok === true && y.bomb);
+    if (bomb.length) once(`b${it.id}${bomb.map((y) => y.k).join()}`, `💣 ${it.name} 폭탄 신호: ${bomb.map((y) => y.t.slice(0, 40)).join(' / ')}`);
+  }
+  st.sent = Object.fromEntries(Object.entries(sent).filter(([, t]) => now - t < 30 * DAY));
+  st.n = lines.length;
+  await setJSON('mp/mydaily', st);
+  if (lines.length) { const { radarAlert } = await import('./manipx.mjs'); await radarAlert(lines, cs, { force: true, title: '💼 내 포트폴리오 장 마감 점검' }).catch(() => {}); }
+  return { n: lines.length };
 }

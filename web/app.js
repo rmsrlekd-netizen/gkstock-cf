@@ -3300,7 +3300,8 @@
     ].join('');
     const TABS = [['price', '💰 가격·목표'], ['check', '✅ 체크리스트'], ['why', '📈📉 근거'], ['chart', '🕯 차트 신호'], ['docs', '📄 공시'], ['ai', '🤖 AI·기록']];
     const tab = TABS.some(([t]) => t === S.rpTab) ? S.rpTab : 'price';
-    const body = { price: P.accLine + P.tgtBox, check: P.ckBox, why: P.dirBox, chart: (P.pexBox + P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>', docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
+    const planBox = x.plan ? `<div class="pf-planbox"><h5>💼 버티기 계획 <small class="muted">세력이 일부러 밀어 손절을 받아내는 '흔들기'를 버티는 기준 · ⭐ 내 세력주 탭에서 계좌 금액을 넣으면 살 금액까지 계산</small></h5>${planHTML(x.plan)}</div>` : '';
+    const body = { price: P.accLine + planBox + P.tgtBox, check: P.ckBox, why: P.dirBox, chart: (P.pexBox + P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>', docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
     box.innerHTML = `<div class="rp">
       <div class="rp-nav"><button class="btn sm" data-rp-back>← 작전 레이더</button><span class="muted sm">${x.at ? esc(rel(x.at)) + ' 분석' : ''}${j.cached ? ' · 저장된 결과' : ''}${x.migrated ? ' · 새 계산 방식으로 방금 갱신' : ''}</span></div>
       <div class="rp-head">
@@ -3522,6 +3523,14 @@
   function lookStock(code, name, refresh = false) { goRadarStock(code, { look: true, name, refresh }); }
 
   // ⭐ 내 세력주 (관심 종목 + 매매 기록) — 손절·목표 도달, 단계·분류 변화는 관리자 텔레그램으로 알림
+  function planHTML(pl, it) {
+    if (!pl) return '';
+    return `<div class="pf-plan"><span><em>버팀 손절선</em><b>${fmtInt(pl.stop)}원</b><small>${pl.stopPct}% · ${esc(pl.floorS)} ${fmtInt(pl.floor)}원 아래 3%</small></span>
+      <span><em>나눠 사기 (1/3씩)</em><b>${pl.buys.map((b) => fmtInt(b)).join(' → ')}</b><small>평균 약 ${fmtInt(pl.avg)}원${pl.each ? ` · 회당 ${fmtInt(pl.each)}주` : ''}</small></span>
+      ${pl.amount ? `<span><em>권장 금액</em><b>${fmtInt(pl.amount)}원</b><small>${fmtInt(pl.shares)}주 · 계좌의 ${pl.acctPct}% · 최대 손실 ${fmtInt(pl.maxLoss)}원${pl.liq != null ? ` · 하루 거래대금의 ${pl.liq}%${pl.liq > 5 ? ' ⚠ 많음(팔기 어려울 수 있음)' : ''}` : ''}</small></span>` : '<span><em>권장 금액</em><b>—</b><small>위에 계좌 금액을 넣으면 계산</small></span>'}
+      ${pl.deep ? `<small class="pf-alert">⚠ ${esc(pl.deep)}</small>` : ''}${pl.far ? `<small class="pf-alert">⚠ ${esc(pl.far)}</small>` : ''}
+      ${it?.stop && Math.abs(it.stop / pl.stop - 1) > 0.03 ? `<small class="muted">적어 둔 손절 ${fmtInt(it.stop)}원은 버팀 손절선과 달라요 — 흔들기에 걸리기 쉬운 자리인지 확인</small>` : ''}</div>`;
+  }
   async function loadMy(op, params) {
     const box = $('#mpBody'); if (!box) return;
     if (!op) box.innerHTML = '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
@@ -3535,14 +3544,21 @@
     if (!j.ok) { box.innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
     const open = j.items.filter((i) => !i.closed), done = j.items.filter((i) => i.closed);
     const DIRB = { up: '📈 상승 가능성', down: '📉 하락 위험' };
+    const pf = j.pf || null, cfg = pf?.cfg || {};
     const row = (i) => `<li class="mp-row mp-my ${i.closed ? 'closed' : ''}"><div class="mp-top"><span class="f-rk">${i.closed ? '✔' : '⭐'}</span><button class="ca-co" data-open-co="KR|${esc(i.code)}|${esc(i.name)}">${logoHTML('KR', i.code, i.name, 'sm')}<span><b>${esc(i.name)}</b><small>${esc(i.code)} · ${esc(rel(i.at))} 추가${i.closed ? ` · ${esc(rel(i.exitAt))} 정리` : ''}</small></span></button>
         <span class="mp-px">${i.cur != null ? fmtInt(i.cur) + '원' : '—'}<small class="${dirCls(i.pl)}">${i.pl != null ? (i.pl > 0 ? '+' : '') + i.pl + '%' : ''}</small></span>
         <span class="mp-stage ${MP_ST[i.st] || 'watch'}">${esc(i.st || '-')}</span><span class="mp-score"><b class="${dirCls(i.pl)}">${i.pl != null ? (i.pl > 0 ? '+' : '') + i.pl + '%' : '—'}</b><small>${i.closed ? '확정 수익률' : '평가 수익률'}</small></span></div>
       <div class="mp-cost">진입 <b>${i.entry ? fmtInt(i.entry) + '원' : '—'}</b> · 손절 <b>${i.stop ? fmtInt(i.stop) + '원' : '—'}</b> · 목표 <b>${i.target ? fmtInt(i.target) + '원' : '—'}</b>${i.qty ? ` · ${fmtInt(i.qty)}주` : ''}${i.closed ? ` · 정리가 <b>${i.exit ? fmtInt(i.exit) + '원' : '—'}</b>` : ''}</div>
       ${!i.closed ? `<div class="mp-dirl">${i.d && DIRB[i.d] ? `<span class="mp-dirb ${esc(i.d)}">${DIRB[i.d]}</span>` : ''}${i.ckg ? ` <span class="mp-ckg g${esc(i.ckg)}">✅ 체크 ${esc(i.ckg)}</span>` : ''}${i.rr ? ` <small class="muted">손익비 1:${i.rr.v}${i.rr.big ? '+' : ''}</small>` : ''}${i.us != null ? ` <small class="muted">상승 ${i.us}/10 · 하락 ${i.ds}/10</small>` : ''}</div>` : ''}
       ${i.memo ? `<p class="muted sm">📝 ${esc(i.memo)}</p>` : ''}
+      ${!i.closed && pf?.plans?.[i.id] ? planHTML(pf.plans[i.id], i) : ''}
+      ${!i.closed && pf?.notes?.[i.id]?.length ? `<ul class="pf-notes">${pf.notes[i.id].map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
       <div class="chips">${!i.closed ? `<button class="btn sm" data-my-look="${esc(i.code)}" data-nm="${esc(i.name)}">분석 보기</button><span class="mp-close"><input type="number" placeholder="정리 가격" data-my-exit="${esc(i.id)}" value="${i.cur || ''}"><button class="btn sm" data-my-close="${esc(i.id)}">매매 정리</button></span>` : ''}<button class="btn sm ghost" data-my-del="${esc(i.id)}">삭제</button></div></li>`;
-    box.innerHTML = `<p class="note">레이더에서 고른 종목의 진입가·손절·목표를 적어 두면 <b>장중 매분</b> 가격을 확인해 손절·목표 도달을 관리자 텔레그램으로 알려주고, 단계·분류가 바뀌어도 ⭐ 표시로 알려줘요. 종목 상세의 '⭐ 내 세력주에 추가' 버튼으로 손익비 가격이 자동으로 채워져요.</p>
+    const cfgBox = `<div class="pf-cfg"><b>💼 포트폴리오 도우미</b> <label>계좌 금액(원)<input type="number" id="pfAcct" value="${esc(cfg.acct || '')}" placeholder="예: 100000000"></label><label>한 종목 최대 손실(%)<input type="number" step="0.1" id="pfRisk" value="${esc(cfg.riskPct ?? 1.5)}"></label><button class="btn sm primary" data-pf-save>저장</button>
+      <small class="muted">버팀 손절선 = 보이는 지지선이 아니라 세력이 밀 수 있는 바닥(CB 리픽싱 하한·3자배정 발행가 등) 아래 3% · 1/3씩 나눠 사기 · 살 금액 = 계좌 × 최대 손실% ÷ (평균 매수가 − 버팀 손절선). 보유 종목에 <b>새 공시</b>가 나오면 바로, 장 마감 뒤엔 <b>하락이 흔들기인지 털기인지</b>·시간 손절·물량 해제·폭탄 신호를 관리자 텔레그램으로 보내요.</small></div>
+      ${pf?.warn?.length ? `<div class="pf-warn"><b>⚠ 겹치는 종목</b><ul>${pf.warn.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
+      ${pf?.total ? `<p class="muted sm">보유 평가 금액 약 ${fmtInt(Math.round(pf.total))}원${cfg.acct ? ` (계좌의 ${Math.round((pf.total / cfg.acct) * 1000) / 10}%)` : ''}</p>` : ''}`;
+    box.innerHTML = `${cfgBox}<p class="note">레이더에서 고른 종목의 진입가·손절·목표를 적어 두면 <b>장중 매분</b> 가격을 확인해 손절·목표 도달을 관리자 텔레그램으로 알려주고, 단계·분류가 바뀌어도 ⭐ 표시로 알려줘요. 종목 상세의 '⭐ 내 세력주에 추가' 버튼으로 손익비 가격이 자동으로 채워져요.</p>
       ${j.stats ? `<p class="mp-mystat">정리한 매매 ${j.stats.n}건 · 수익 낸 비율 ${j.stats.win}% · 평균 ${j.stats.avg > 0 ? '+' : ''}${j.stats.avg}%</p>` : ''}
       ${lv ? `<p class="muted sm">오늘 장중 알림 ${lv.n || 0}건 · 감시 종목 ${lv.codes || 0}개${lv.err ? ` · 오류: ${esc(lv.err)}` : ''}${lv.br ? ` · 거래원 기록 ${esc(lv.br.date || '')} ${lv.br.pos || 0}/${lv.br.n || 0}${lv.br.err ? ` (${esc(lv.br.err)})` : ''}` : ''}${lv.thm ? ` · 업종·테마 기록 ${esc(lv.thm)}` : ''}</p>${lv.last?.length ? `<ul class="mp-why">${lv.last.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}` : ''}
       <h5>보유·관심 (${open.length})</h5>${open.length ? `<ol class="mp-list">${open.map(row).join('')}</ol>` : '<p class="muted sm">아직 없어요. 위 검색이나 랭킹에서 종목을 열고 ⭐ 버튼을 누르세요.</p>'}
@@ -3553,6 +3569,7 @@
     if (o) { const w = o.closest('[data-mp-myform]'); w.innerHTML = `<div class="mp-myf"><b>⭐ ${esc(w.dataset.nm)}</b> <label>진입가<input type="number" data-k="entry" value="${esc(w.dataset.e)}"></label><label>손절<input type="number" data-k="stop" value="${esc(w.dataset.s)}"></label><label>목표<input type="number" data-k="target" value="${esc(w.dataset.t)}"></label><label>수량<input type="number" data-k="qty"></label><label class="w">메모<input type="text" data-k="memo" maxlength="200"></label><button class="btn sm primary" data-mp-mysave>저장</button></div>`; return; }
     const sv = e.target.closest('[data-mp-mysave]');
     if (sv) { const w = sv.closest('[data-mp-myform]'); const p = { code: w.dataset.mpMyform, name: w.dataset.nm }; w.querySelectorAll('[data-k]').forEach((i) => { if (i.value) p[i.dataset.k] = i.value; }); sv.disabled = true; mpGet(`mp=myadd&${new URLSearchParams(p)}`).then((j) => { w.innerHTML = j.ok ? '<p class="note">⭐ 내 세력주에 추가했어요 (작전 레이더 → ⭐ 내 세력주 탭)</p>' : `<p class="err">${esc(j.error || '저장 실패')}</p>`; }).catch((er) => { w.innerHTML = `<p class="err">${esc(er.message)}</p>`; }); return; }
+    const pfs = e.target.closest('[data-pf-save]'); if (pfs) { loadMy('mycfg', { acct: $('#pfAcct')?.value || '', riskPct: $('#pfRisk')?.value || '1.5' }); return; }
     const dl = e.target.closest('[data-my-del]'); if (dl) { loadMy('mydel', { id: dl.dataset.myDel }); return; }
     const cs = e.target.closest('[data-my-close]'); if (cs) { const inp = document.querySelector(`[data-my-exit="${cs.dataset.myClose}"]`); loadMy('myclose', { id: cs.dataset.myClose, exit: inp?.value || '' }); return; }
     const lk = e.target.closest('[data-my-look]'); if (lk) { goRadarStock(lk.dataset.myLook); }
@@ -3619,7 +3636,7 @@
     const px2 = x.pex;
     const pexBox = px2 ? `<div class="mp-pex"><h5>🔁 털기 후 상승 가능성 <b class="pex-${{ 높음: 'h', 중간: 'm', 낮음: 'l' }[px2.lv]}">${esc(px2.lv)}</b> <small>${esc(px2.post.topD)} 고점 ${fmtInt(px2.post.top)}원 → ${esc(px2.post.lowD)} 바닥 ${fmtInt(px2.post.low)}원(${px2.post.fall}%) · 바닥 뒤 ${px2.post.held}거래일 · 올라갈 근거 ${px2.su}점 vs 못 올라갈 근거 ${px2.sd}점 · 규칙 계산(AI 아님)</small></h5>
       <div class="mp-dir"><div class="mp-dcol up"><h5>올라갈 근거</h5>${px2.up.length ? `<ul>${px2.up.map((r) => `<li>${esc(r.t)} <small class="muted">+${r.w}</small></li>`).join('')}</ul>` : '<p class="muted sm">아직 없음</p>'}</div><div class="mp-dcol down"><h5>못 올라갈 근거</h5>${px2.down.length ? `<ul>${px2.down.map((r) => `<li>${esc(r.t)} <small class="muted">+${r.w}</small></li>`).join('')}</ul>` : '<p class="muted sm">없음</p>'}</div></div></div>` : '';
-    const myBtn = `<div class="mp-myadd" data-mp-myform="${esc(x.code)}" data-nm="${esc(x.name)}" data-e="${x.close || ''}" data-s="${x.dir?.rr?.s || ''}" data-t="${x.dir?.rr?.t || ''}"><button class="btn sm" data-mp-myopen>⭐ 내 세력주에 추가 (매매 기록)</button></div>`;
+    const myBtn = `<div class="mp-myadd" data-mp-myform="${esc(x.code)}" data-nm="${esc(x.name)}" data-e="${x.close || ''}" data-s="${x.plan?.stop || x.dir?.rr?.s || ''}" data-t="${x.dir?.rr?.t || ''}"><button class="btn sm" data-mp-myopen>⭐ 내 세력주에 추가 (매매 기록)</button></div>`;
     const cycLine = f.cyc ? `<div class="mp-cyc"><b>🔁 지난 급등·급락</b> ${esc(f.cyc.lowD)} 저점 <b>${fmtInt(f.cyc.low)}원</b> → ${esc(f.cyc.pumpD)} 급등 시작 → ${esc(f.cyc.topD)} 고점 <b>${fmtInt(f.cyc.top)}원</b> (+${f.cyc.rise}%) → 지금 고점 대비 <b class="down">${f.cyc.drop}%</b>${f.cyc.vwapPump ? ` · 급등 구간 평균 체결가 ${fmtInt(f.cyc.vwapPump)}원` : ''}${f.cyc.base2 ? `<br><b>🔁 고점 뒤 바닥</b> ${esc(f.cyc.base2.lowD)} <b>${fmtInt(f.cyc.base2.low)}원</b> — ${f.cyc.base2.held}거래일째 안 깨짐 · 최근 40일 박스 폭 ${f.cyc.base2.box}% (2차 매집 후보 조건)` : ''}<br><small class="muted">${f.acc2 ? '고점에서 120거래일 넘게 지나, 아래 매집 시기·평단은 고점 뒤 구간(2차 매집 후보)으로 계산했어요' : `매집 평단은 급등 시작 전 거래로만 계산해요${f.accBeyond ? ' — 급등 시작이 차트 자료(약 1년 2개월) 맨 앞이라 그 전 매집 구간은 계산할 수 없음' : ''}`}</small></div>` : '';
     const MK = { acc: '매집봉', wick: '윗꼬리 매물 테스트', absorb: '물량 받아먹는 음봉', dry: '거래량 마름', close: '종가 관리 의심', up30: '상한가', dn30: '하한가' };
     const MKD = { acc: '평소 4배↑ 거래량으로 +6%↑ 오른 양봉 (박스권에서)', wick: '거래량 실린 긴 윗꼬리 — 위쪽 매물을 시험', absorb: '거래량 실린 음봉인데 주가는 거의 안 빠짐 — 파는 물량을 받아먹음', dry: '물량을 모은 뒤 거래가 마르는 모습', close: '종가가 일정하게 맞춰지는 모습', up30: '참고용 (점수 없음)', dn30: '참고용 (점수 없음)' };
