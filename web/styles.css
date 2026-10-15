@@ -2099,3 +2099,5 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-ladder li.lv-res .mp-lvp { color: #ff8a96; } .mp-ladder li.lv-cost .mp-lvp { color: #ffd166; } .mp-ladder li.lv-floor .mp-lvp { color: #7ec8ff; } .mp-ladder li.lv-risk .mp-lvp { color: #c39bff; }
 .mp-ladder li.lv-now { background: rgba(255,255,255,.08); border-radius: 6px; } .mp-ladder li.lv-now .mp-lvt { font-weight: 700; }
 @media (max-width: 520px) { .mp-ladder li { grid-template-columns: 4.9rem 2.9rem 1fr; gap: .3rem; padding: .35rem .3rem; font-size: .76rem; } }
+
+.mp-score b em { font-style: normal; font-size: .6em; opacity: .6; margin-left: 1px; }

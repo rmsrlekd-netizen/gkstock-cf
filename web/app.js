@@ -3301,9 +3301,9 @@
         <div class="mp-top"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="KR|${esc(r.code)}|${esc(r.n)}">${logoHTML('KR', r.code, r.n, 'sm')}<span><b>${esc(r.n)}</b><small>${esc(r.code)} · ${r.m === 'P' ? '코스피' : r.m === 'Q' ? '코스닥' : ''} · ${esc(rel(r.up))} 갱신</small></span></button>
           <span class="mp-px">${won(r.c)}<small class="${dirCls(r.pct)}">${r.pct != null ? fmtPct(r.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[r.st] || 'watch'}">${esc(r.st || '')}${r.lv ? `<small>의심 ${esc(r.lv)}</small>` : ''}</span>
-          <span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span></div>
+          ${S.rkKind === 'up' || S.rkKind === 'down' ? `<span class="mp-score"><b>${S.rkKind === 'up' ? r.us || 0 : r.ds || 0}<em>/10</em></b><small>${S.rkKind === 'up' ? '상승' : '하락'} 근거 점수<br>종합 점수 ${r.s}</small></span>` : `<span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span>`}</div>
         ${r.lk || r.wn || r.pn ? `<div class="mp-dirl">${r.lk ? `<span class="mp-chip net">🕸 같은 세력 연결 의심 ${r.lk}건</span> ` : ''}${r.wn ? `<span class="mp-chip ev-risk">⚠ 거래소 ${esc(r.wn)}</span> ` : ''}${r.pn ? `<span class="mp-chip ev-risk">📛 불성실공시 벌점 ${r.pn.c != null ? `누계 ${r.pn.c}/15점` : r.pn.u ? '(점수 확인 중)' : ''}${r.pn.pd ? ' · 지정 예고' : ''}</span>` : ''}</div>` : ''}
-        ${DIRB[r.d] ? `<div class="mp-dirl">${DIRB[r.d]} <small class="muted">상승 근거 ${r.us || 0}/10점 · 하락 근거 ${r.ds || 0}점</small></div>` : ''}
+        ${DIRB[r.d] ? `<div class="mp-dirl">${DIRB[r.d]} <small class="muted">상승 근거 ${r.us || 0}/10점 · 하락 근거 ${r.ds || 0}/10점</small></div>` : ''}
         <div class="mp-cost">🧲 매집 추정 <b>${esc(r.acc || '—')}</b> · 💰 평단 <b>${r.cl || r.ch ? `${fmtInt(r.cl || r.ch)}${r.ch && r.cl && r.ch !== r.cl ? ' ~ ' + fmtInt(r.ch) : ''}원` : r.va ? fmtInt(r.va) + '원' : '—'}</b>${g != null ? ` · 현재가 <b class="${g >= 0 ? 'up' : 'down'}">${g >= 0 ? '+' : ''}${g}%</b>` : ''}</div>
         ${r.tg || r.nd ? `<div class="mp-cost">🎯 참고 목표 ${r.tg ? r.tg.map((t) => (typeof t === 'number' ? `<b>${fmtInt(t)}원</b>` : `${esc(t.s)} <b>${fmtInt(t.p)}원</b>`)).join(' · ') : '— (위쪽 근거 가격 없음)'}${r.nd ? ` · 🗓 다음 물량 해제 <b>${esc(r.nd)}</b>` : ''}</div>` : ''}
         ${why.length ? `<ul class="mp-why ${r.d || ''}">${why.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
@@ -3317,7 +3317,7 @@
       <li><b>털기</b>: 급등 뒤 CB 전환청구·추가 상장·최대주주 지분 변동·고점 이탈 등 '물량을 파는' 신호</li>
       <li><b>의심 높음/중간/낮음</b>: AI가 여러 근거가 위 흐름과 얼마나 잘 맞는다고 봤는지 (불법이라는 뜻 아님)</li>
       <li><b>종합 점수</b>: 공시 점수 + 거래 점수. 정해진 만점은 없음(신호를 더해 가는 방식, 이론상 최대 약 77점). <b>4점 이상만 레이더에 올라오고, 10점 이상이면 신호가 많은 편, 20점 이상이면 매우 많은 편</b>. 높을수록 작전 흐름과 '닮은 신호가 많다'는 뜻 — 오른다/내린다는 뜻이 아님</li>
-      <li><b>상승 근거 점수</b>: 최대 10점 · <b>하락 근거 점수</b>: 최대 약 20점. 상승 가능성 탭은 '상승 근거 − 하락 근거'가 큰 순서. 60일 저점 대비 +50% 넘게 이미 올랐거나 띄우기·털기 단계면 상승 가능성에 넣지 않음</li>
+      <li><b>상승 근거 점수 · 하락 근거 점수</b>: 각각 <b>10점 만점</b> (근거가 아주 많아 10점을 넘으면 10점으로 표시). 상승 가능성·하락 위험 탭에서는 오른쪽 큰 숫자가 이 점수이고, 종합 점수(작전 패턴 신호 개수, 만점 없음)는 그 아래 작게 표시. 상승 가능성 탭은 '상승 근거 − 하락 근거'가 큰 순서. 60일 저점 대비 +50% 넘게 이미 올랐거나 띄우기·털기 단계면 상승 가능성에 넣지 않음</li>
       <li><b>📈 상승 가능성</b>: 흐름상 아직 판 깔기·매집 단계이고 주가가 추정 평단 근처라 '띄우기 전'일 수 있는 종목 (규칙으로 자동 판정)</li>
       <li><b>📉 하락 위험</b>: 이미 띄운 뒤이거나 전환청구·평단 대비 큰 차익 등 '털기' 신호가 있는 종목 (규칙으로 자동 판정)</li>
       <li><b>🕸 같은 세력 연결 의심</b>: 같은 투자조합·인물(공시 제출인·새 최대주주) 이름이 다른 종목 공시에도 나옴. 동명이인·우연일 수 있어 공시 링크로 꼭 확인 (+2점씩, 최대 4점)</li>
@@ -3387,7 +3387,7 @@
     const net = (x.links || []).length ? `<div class="mp-net"><h5>🕸 같은 세력 연결 의심 <small>같은 공시 제출인·인수자 이름이 다른 종목에도 나옴 (동명이인·우연일 수 있음)</small></h5><ul>${x.links.map((l) => `<li><b>${esc(l.who)}</b> → ${l.others.map((o) => `<button class="link" data-open-co="KR|${esc(o.c)}|${esc(o.nm || '')}">${esc(o.nm || o.c)}</button> <small class="muted">${esc(o.d)} ${esc(MP_EV[o.k] || '')}</small>`).join(', ')}</li>`).join('')}</ul></div>` : '';
     const pn = penaltyBox(x);
     const meta = [x.ind ? `업종 ${esc(x.ind)}` : '', x.capPct != null ? `시가총액 순위 하위 ${Math.round(x.capPct * 100)}%` : '', x.warn ? `거래소 ${esc(x.warn.lv)}${x.warn.date ? ' ' + esc(x.warn.date) : ''}` : ''].filter(Boolean).join(' · ');
-    const dirBox = (meta ? `<p class="muted sm" style="margin:0 0 .4rem">${meta}</p>` : '') + pn + net + notes + `<div class="mp-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 근거 <small>확인된 사실·자동 계산 · ${d.upS || 0}/10점</small></h5>${d.up?.length ? `<ul>${reasons(d.up)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 근거 <small>확인된 사실·자동 계산 · ${d.downS || 0}점</small></h5>${d.down?.length ? `<ul>${reasons(d.down)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div></div>`;
+    const dirBox = (meta ? `<p class="muted sm" style="margin:0 0 .4rem">${meta}</p>` : '') + pn + net + notes + `<div class="mp-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 근거 <small>확인된 사실·자동 계산 · ${d.upS || 0}/10점</small></h5>${d.up?.length ? `<ul>${reasons(d.up)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 근거 <small>확인된 사실·자동 계산 · ${d.downS || 0}/10점</small></h5>${d.down?.length ? `<ul>${reasons(d.down)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div></div>`;
     const KN = { cost: ['원가', 'cost'], floor: ['지지', 'floor'], risk: ['위험선', 'risk'], res: ['매물대', 'res'] };
     const lvRow = (l) => `<li class="lv-${KN[l.kind]?.[1] || 'cost'}"><span class="mp-lvp">${fmtInt(l.p)}원</span><span class="mp-lvg">${l.gap == null ? '' : `${l.gap > 0 ? '+' : ''}${l.gap}%`}</span><span class="mp-lvt"><b>${esc(l.s)}</b> <span class="mp-chip">${KN[l.kind]?.[0] || ''}</span>${l.also?.length ? ` <small class="muted">(＝${esc(l.also.join(', '))})</small>` : ''}<br><small class="muted">${esc(l.t)}</small>${l.ref ? ` <a class="mp-src" href="/p/${esc(l.ref)}" target="_blank">공시</a>` : ''}</span></li>`;
     const lvs = d.levels || [];
