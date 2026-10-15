@@ -3305,7 +3305,7 @@
         ${r.lk || r.wn || r.pn ? `<div class="mp-dirl">${r.lk ? `<span class="mp-chip net">🕸 같은 세력 연결 의심 ${r.lk}건</span> ` : ''}${r.wn ? `<span class="mp-chip ev-risk">⚠ 거래소 ${esc(r.wn)}</span> ` : ''}${r.pn ? `<span class="mp-chip ev-risk">📛 불성실공시 벌점 ${r.pn.c != null ? `누계 ${r.pn.c}/15점` : r.pn.u ? '(점수 확인 중)' : ''}${r.pn.pd ? ' · 지정 예고' : ''}</span>` : ''}</div>` : ''}
         ${DIRB[r.d] ? `<div class="mp-dirl">${DIRB[r.d]} <small class="muted">상승 근거 ${r.us || 0}/10점 · 하락 근거 ${r.ds || 0}점</small></div>` : ''}
         <div class="mp-cost">🧲 매집 추정 <b>${esc(r.acc || '—')}</b> · 💰 평단 <b>${r.cl || r.ch ? `${fmtInt(r.cl || r.ch)}${r.ch && r.cl && r.ch !== r.cl ? ' ~ ' + fmtInt(r.ch) : ''}원` : r.va ? fmtInt(r.va) + '원' : '—'}</b>${g != null ? ` · 현재가 <b class="${g >= 0 ? 'up' : 'down'}">${g >= 0 ? '+' : ''}${g}%</b>` : ''}</div>
-        ${r.tg || r.nd ? `<div class="mp-cost">🎯 참고 목표 ${r.tg ? r.tg.map((p, k) => `<b>${['1.5', '2', '3'][k]}배 ${fmtInt(p)}원</b>`).join(' · ') : '—'}${r.nd ? ` · 🗓 다음 물량 해제 <b>${esc(r.nd)}</b>` : ''}</div>` : ''}
+        ${r.tg || r.nd ? `<div class="mp-cost">🎯 참고 목표 ${r.tg ? r.tg.map((t) => (typeof t === 'number' ? `<b>${fmtInt(t)}원</b>` : `${esc(t.s)} <b>${fmtInt(t.p)}원</b>`)).join(' · ') : '— (위쪽 근거 가격 없음)'}${r.nd ? ` · 🗓 다음 물량 해제 <b>${esc(r.nd)}</b>` : ''}</div>` : ''}
         ${why.length ? `<ul class="mp-why ${r.d || ''}">${why.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
         ${r.sum ? `<p class="mp-sum">🤖 ${esc(r.sum)}</p>` : ''}<div class="mp-more" hidden></div></li>`;
     }).join('');
@@ -3324,7 +3324,7 @@
       <li><b>⚠ 거래소 경보</b>: 투자주의·경고·위험 지정(최근 30일). 보통 이미 급등한 뒤 나오므로 하락 쪽 근거로도 씀</li>
       <li><b>보정</b>: 시가총액 하위 40% 소형주 +1점 · 상위 10% 대형주는 점수 ×0.6 · 건설·조선 등 공급계약이 일상인 업종은 공급계약 점수 제외 · 채권단 출자전환 증자는 제외</li>
       <li><b>CB 원문</b>: 전환청구기간(물량 해제일), 리픽싱 하한가, 콜옵션(최대주주가 CB를 되사는 권리)을 원문에서 읽음 · <b>담보</b>: 1주당 대출액 × 1.4를 반대매매 추정가로 계산(비율은 가정)</li>
-      <li><b>🎯 참고 목표</b>: 추정 평단의 1.5·2·3배 가격을 단순 계산한 것. 세력의 실제 목표가는 공개 자료로 알 수 없음</li></ul></details>`;
+      <li><b>🎯 참고 목표</b>: 현재가보다 위에 있는 '근거 있는 가격' — 공시에 적힌 CB 전환가·3자배정 발행가·인수 단가(세력이 이익을 보려면 넘어야 하는 원가)와 과거 고점(매물대). 배수 계산이 아님. 세력의 실제 목표가는 어떤 공시에도 안 나옴</li></ul></details>`;
     $('#mpBody').innerHTML = `<div class="chips" style="margin:.5rem 0">${status}<button class="btn sm" data-mp-rank-refresh>새로고침</button></div>${kinds}${legend}
       <p class="note">${S.rkKind === 'up' ? '상승 근거 점수 순.' : S.rkKind === 'down' ? '하락 근거 점수 순.' : 'AI 의심 수준(높음→중간→낮음) → 종합 점수 순.'} 근거는 공시·거래 데이터로 자동 계산한 사실이고, AI 문장은 그 사실 번호가 확인된 것만 남깁니다. 새 공시가 나오면 그 종목은 전체 공시·거래량과 함께 자동으로 다시 판단돼 순위·평단·단계가 바뀌어요. 줄을 누르면 근거·수정 기록이 열려요.</p>
       ${rows ? `<ol class="mp-list">${rows}</ol>` : `<p class="muted">${S.rkKind === 'up' ? '지금은 상승 가능성 쪽으로 분류된 종목이 없어요.' : S.rkKind === 'down' ? '지금은 하락 위험 쪽으로 분류된 종목이 없어요.' : '아직 랭킹이 없어요. 첫 정기 분석이 시작되면 약 10분 뒤 채워져요.'}</p>`}
@@ -3388,7 +3388,13 @@
     const pn = penaltyBox(x);
     const meta = [x.ind ? `업종 ${esc(x.ind)}` : '', x.capPct != null ? `시가총액 순위 하위 ${Math.round(x.capPct * 100)}%` : '', x.warn ? `거래소 ${esc(x.warn.lv)}${x.warn.date ? ' ' + esc(x.warn.date) : ''}` : ''].filter(Boolean).join(' · ');
     const dirBox = (meta ? `<p class="muted sm" style="margin:0 0 .4rem">${meta}</p>` : '') + pn + net + notes + `<div class="mp-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 근거 <small>확인된 사실·자동 계산 · ${d.upS || 0}/10점</small></h5>${d.up?.length ? `<ul>${reasons(d.up)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 근거 <small>확인된 사실·자동 계산 · ${d.downS || 0}점</small></h5>${d.down?.length ? `<ul>${reasons(d.down)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div></div>`;
-    const tgtBox = d.tgt || d.dates?.length ? `<div class="mp-tgt"><div><h5>🎯 참고 목표 가격 <small>추정 평단 기준 단순 계산 · 세력의 실제 목표는 알 수 없음</small></h5>${d.tgt ? `<div class="mp-tg">${d.tgt.map((t) => `<span class="${t.hit ? 'hit' : ''}">평단 ${t.m}배 <b>${fmtInt(t.p)}원</b>${t.hit ? ' ✓ 도달' : ''}</span>`).join('')}</div>` : '<p class="muted sm">평단 근거 없음</p>'}</div>
+    const KN = { cost: ['원가', 'cost'], floor: ['지지', 'floor'], risk: ['위험선', 'risk'], res: ['매물대', 'res'] };
+    const lvRow = (l) => `<li class="lv-${KN[l.kind]?.[1] || 'cost'}"><span class="mp-lvp">${fmtInt(l.p)}원</span><span class="mp-lvg">${l.gap == null ? '' : `${l.gap > 0 ? '+' : ''}${l.gap}%`}</span><span class="mp-lvt"><b>${esc(l.s)}</b> <span class="mp-chip">${KN[l.kind]?.[0] || ''}</span>${l.also?.length ? ` <small class="muted">(＝${esc(l.also.join(', '))})</small>` : ''}<br><small class="muted">${esc(l.t)}</small>${l.ref ? ` <a class="mp-src" href="/p/${esc(l.ref)}" target="_blank">공시</a>` : ''}</span></li>`;
+    const lvs = d.levels || [];
+    const cur = x.close != null ? `<li class="lv-now"><span class="mp-lvp">${fmtInt(x.close)}원</span><span class="mp-lvg">현재가</span><span class="mp-lvt">◀ 지금</span></li>` : '';
+    const ladder = lvs.length ? `<ul class="mp-ladder">${lvs.filter((l) => x.close == null || l.p > x.close).map(lvRow).join('')}${cur}${lvs.filter((l) => x.close != null && l.p <= x.close).map(lvRow).join('')}</ul>` : '';
+    const tgtLine = d.tgt?.length ? `<div class="mp-tg">${d.tgt.map((t, k) => `<span>${k + 1}차 <b>${fmtInt(t.p)}원</b> ${esc(t.s)}${t.gap != null ? ` (+${t.gap}%)` : ''}</span>`).join('')}</div>` : lvs.length ? '<p class="muted sm">현재가 위쪽에 근거 있는 가격이 없음 (이미 공시 원가·과거 고점을 모두 넘음)</p>' : '';
+    const tgtBox = lvs.length || d.tgt?.length || d.dates?.length ? `<div class="mp-tgt"><div><h5>🎯 참고 목표 가격 <small>공시에 적힌 원가 · 과거 고점(매물대)으로 만든 가격 사다리 · 세력의 실제 목표가는 어떤 공시에도 안 나옴</small></h5>${tgtLine}${ladder || (Array.isArray(d.tgt) && d.tgt[0]?.m ? '<p class="muted sm">이전 방식(배수) 결과 — 다음 분석 때 공시 기준으로 바뀜</p>' : '<p class="muted sm">근거 가격 없음</p>')}</div>
       <div><h5>🗓 물량이 풀릴 수 있는 날 <small>CB는 원문의 전환청구기간을 읽고, 못 읽으면 발행 1년 뒤로 추정</small></h5>${d.dates?.length ? `<ul>${d.dates.map((z) => `<li class="${z.past ? 'muted' : ''}"><b>${esc(z.d)}</b> ${esc(z.t)}${z.real ? ' <span class="mp-chip vol">원문 확인</span>' : ''}${z.past ? ' (지남)' : ''} <a class="mp-src" href="/p/${esc(z.ref)}" target="_blank">공시</a></li>`).join('')}</ul>` : '<p class="muted sm">관련 공시(CB·3자배정·전환청구) 없음</p>'}</div></div>` : '';
     const aiBox = a ? `<div class="mp-ai"><b>🤖 AI 해석</b> <small class="muted">아래 사실 목록에 근거 번호가 확인된 문장만 표시${a.dropped ? ` · 근거 확인 안 된 ${a.dropped}개 문장 자동 삭제` : ''}</small>${a.summary ? `<p>${esc(a.summary)}</p>` : ''}
       ${a.upWhy?.length ? `<h5>상승 쪽 해석</h5><ul>${a.upWhy.map(aiLine).join('')}</ul>` : ''}${a.downWhy?.length ? `<h5>하락 쪽 해석</h5><ul>${a.downWhy.map(aiLine).join('')}</ul>` : ''}

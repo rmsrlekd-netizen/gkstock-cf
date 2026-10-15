@@ -174,6 +174,9 @@ export function barFeatures(B) {
   let obv2 = 0, vsum = 0;
   for (let i = Math.max(1, accStartI); i < accEnd; i++) { obv2 += B[i].c > B[i - 1].c ? B[i].v : B[i].c < B[i - 1].c ? -B[i].v : 0; vsum += B[i].v; }
   const heavy = B.slice(-120).filter((x) => x.v >= med120 * 2);
+  // 과거 고점(매물대): 매집 시작 전 최고가 · 전체(약 170거래일) 최고가 — 위쪽 저항 가격 후보
+  const hiOf = (rows) => rows.reduce((m, x) => (!m || x.h > m.h ? x : m), null);
+  const preTop = accStartI >= 10 ? hiOf(B.slice(0, accStartI)) : null, allTop = hiOf(B);
   const f = {
     close: last.c, date: last.d,
     ret5: r1(ret(5)), ret20: r1(ret(20)), ret60: r1(ret(60)),
@@ -188,6 +191,7 @@ export function barFeatures(B) {
     vwapAcc: accRows.length >= 10 ? Math.round(vwap(accRows)) : null, // 매집 구간(추정 시작일~폭증 전) 평균 체결가(거래량 가중)
     vwapHeavy: heavy.length >= 3 ? Math.round(vwap(heavy)) : null, // 거래량이 평소 2배 넘던 날들의 평균 체결가
     vwap120: Math.round(vwap(B.slice(-120))),
+    hiPre: preTop?.h || null, hiPreD: preTop?.d || null, hiAll: allTop?.h || null, hiAllD: allTop?.d || null,
   };
   // 패턴 점수
   const sig = [];
@@ -328,6 +332,7 @@ export function factsOf(x) {
   if (f.accStart) add(`거래 흐름상 매집 추정 구간 ${f.accStart} ~ ${f.accEnd} (${f.accDays}거래일, 순매수 강도 ${f.accObv}%, 가격 ${fmtW(f.accLow)}~${fmtW(f.accHigh)}원)`, '일봉 계산');
   if (f.vwapAcc) add(`매집 추정 구간 거래량 가중 평균가 ${fmtW(f.vwapAcc)}원`, '일봉 계산', { price: f.vwapAcc });
   if (f.vwapHeavy) add(`최근 120일 중 거래량이 평소 2배 넘은 날들의 평균가 ${fmtW(f.vwapHeavy)}원`, '일봉 계산', { price: f.vwapHeavy });
+  if (f.hiPre) add(`매집 추정 시작 전 최고가 ${fmtW(f.hiPre)}원 (${f.hiPreD})${f.hiAll ? `, 최근 약 170거래일 최고가 ${fmtW(f.hiAll)}원 (${f.hiAllD})` : ''}`, '일봉 계산');
   if (f.fromLow60 != null) add(`60일 저점 대비 ${f.fromLow60 > 0 ? '+' : ''}${f.fromLow60}%, 20일 고점 대비 ${f.offHigh20}%`, '일봉 계산');
   if (f.volX5 != null) add(`거래량(평소 대비): 최근 5일 ${f.volX5}배, 20일 ${f.volX20}배, 10일 중 최대 ${f.maxVolX10}배${f.spikeDate ? `, 첫 폭증일 ${f.spikeDate}` : ''}`, '일봉 계산');
   if (f.box60 != null) add(`폭증 전 60일 박스권 폭 ${f.box60}%${f.ret20 != null ? `, 20일 수익률 ${f.ret20}%` : ''}${f.ret60 != null ? `, 60일 수익률 ${f.ret60}%` : ''}`, '일봉 계산');
@@ -375,6 +380,40 @@ export function costRange(x) {
   if (!ps.length) return null;
   return { low: Math.min(...ps), high: Math.max(...ps), mid: ps.reduce((a, b) => a + b, 0) / ps.length };
 }
+//  ※ 세력의 실제 목표가는 어떤 공시에도 나오지 않음 → 공시에 적힌 가격과 실제 거래 가격만으로 '가격 사다리'를 만듦 (배수 계산 없음)
+export function priceLevels(x) {
+  const f = x.f || {}, close = x.close || null, L = [];
+  const add = (p, kind, s, t, src, ref) => { if (p > 0) L.push({ p: Math.round(p), kind, s, t, src, ref: ref || null }); };
+  for (const p of x.px || []) {
+    if (p.p) {
+      if (p.kind === 'cb' || p.kind === 'refix') add(p.p, 'cost', `CB ${p.label || '전환가'}`, `${p.date} 공시의 ${p.label || '전환가'} — CB 투자자의 원가. 주가가 이 위로 가야 전환해서 팔면 이익`, '공시 원문', p.ref);
+      else if (p.kind === 'rights3' || (p.third && /발행가/.test(p.label || ''))) add(p.p, 'cost', '3자배정 발행가', `${p.date} 공시의 3자배정 발행가 — 신주를 받은 쪽의 원가`, '공시 원문', p.ref);
+      else if (p.kind === 'fund5') add(p.p, 'cost', '5% 신고자 매수 평균', `${p.date} 5% 보고서의 ${p.label}`, '공시 원문', p.ref);
+      else if (p.kind === 'mna') add(p.p, 'cost', '인수 단가', `${p.date} 최대주주 변경 공시의 ${p.label || '양수도 단가'} — 새 최대주주의 원가`, '공시 원문', p.ref);
+      else if (!['pledge', 'majsell', 'risk'].includes(p.kind)) add(p.p, 'cost', p.label || '공시 가격', `${p.date} 공시의 ${p.label || '가격'}`, '공시 원문', p.ref);
+    }
+    if (p.cbx?.floor) add(p.cbx.floor, 'floor', 'CB 리픽싱 하한', `${p.date} CB 원문의 최저 조정가 — 주가가 내리면 전환가가 여기까지 낮아질 수 있음 (CB 쪽은 더 싸게 주식을 받음)`, '공시 원문', p.ref);
+    if (p.pledge) add(p.pledge.perShare * 1.4, 'risk', '반대매매 추정선', `${p.date} 담보 1주당 대출 ${fmtW(p.pledge.perShare)}원의 1.4배(일반적 담보비율 가정) — 이 아래로 빠지면 담보 물량이 나올 수 있음`, '공시 원문+가정', p.ref);
+  }
+  if (f.vwapAcc) add(f.vwapAcc, 'cost', '매집 구간 평균가', `${f.accStart} ~ ${f.accEnd} 매집 추정 구간의 거래량 가중 평균가`, '일봉 계산');
+  if (f.accLow) add(f.accLow, 'floor', '매집 구간 최저가', `매집 추정 구간(${f.accStart} ~ ${f.accEnd})의 가장 낮은 가격`, '일봉 계산');
+  if (f.hiPre) add(f.hiPre, 'res', '매집 전 고점', `${f.hiPreD} 고점 — 매집 시작 전 가장 높았던 가격. 그때 산 사람들의 매물이 쌓인 자리`, '일봉 계산');
+  if (f.hiAll && (!f.hiPre || Math.abs(f.hiAll / f.hiPre - 1) > 0.03)) add(f.hiAll, 'res', '최근 고점', `${f.hiAllD} 고점 — 최근 약 170거래일 중 가장 높은 가격`, '일봉 계산');
+  if (f.vwapHeavy) add(f.vwapHeavy, close && f.vwapHeavy > close ? 'res' : 'cost', '거래 몰린 가격대', '최근 120일 중 거래량이 평소 2배 넘은 날들의 평균가 — 손바뀜이 많았던 가격', '일봉 계산');
+  // 같은 가격(3% 이내)은 하나로 (공시 원문이 우선)
+  const rankK = { cost: 0, floor: 1, risk: 2, res: 3 };
+  const all = [];
+  for (const l of L.sort((a, b) => (a.src === b.src ? rankK[a.kind] - rankK[b.kind] : a.src.startsWith('공시') ? -1 : 1))) {
+    const dup = all.find((y) => Math.abs(y.p / l.p - 1) <= 0.03);
+    if (dup) { if (!dup.also) dup.also = []; if (dup.also.length < 2 && dup.s !== l.s) dup.also.push(l.s); continue; }
+    all.push(l);
+  }
+  all.sort((a, b) => b.p - a.p);
+  for (const l of all) l.gap = close ? Math.round((l.p / close - 1) * 1000) / 10 : null;
+  // 위쪽(현재가 +3% 이상)에 있는 원가·고점 = 목표 후보: 가까운 것부터
+  const above = close ? all.filter((l) => l.p >= close * 1.03 && l.kind !== 'risk' && l.kind !== 'floor').sort((a, b) => a.p - b.p) : [];
+  return { all, above };
+}
 export function direction(x, now = Date.now()) {
   const f = x.f || {}, ev = x.events || [], up = [], down = [];
   const age = (e) => (now - e.ms) / DAY;
@@ -415,8 +454,9 @@ export function direction(x, now = Date.now()) {
   else if (pen?.pend) R(down, 1, '불성실공시법인 지정 예고 상태 — 벌점이 더해질 수 있음', '공시');
   const risk = ev.find((e) => e.kind === 'risk' && age(e) <= 180 && !/불성실공시/.test(e.title));
   if (risk) R(down, 2, `${ymdOf(risk.ms)} 위험 공시: ${risk.title}`, risk.id);
-  // 목표 가격(참고): 세력의 실제 목표가는 공개 자료로 알 수 없음 → 추정 평단 기준 수익 배수 가격만 계산
-  const tgt = c ? [1.5, 2, 3].map((m) => ({ m, p: Math.round(c.mid * m), hit: x.close ? x.close >= c.mid * m : false })) : null;
+  // 참고 가격 사다리: 공시 원문 가격(원가)·과거 고점(매물대)·담보 반대매매선 — 위쪽은 목표 후보, 아래쪽은 지지 후보
+  const lv = priceLevels(x);
+  const tgt = lv.above.length ? lv.above.slice(0, 3) : null;
   // 목표 일정(참고): 물량이 풀릴 수 있는 날 — 일반 규정(사모 CB 전환 제한·사모 신주 전매 제한 1년) 기준 추정
   const dates = [];
   for (const e of ev.filter((e) => ['cb', 'rights3'].includes(e.kind)).slice(0, 4)) {
@@ -435,7 +475,7 @@ export function direction(x, now = Date.now()) {
   for (const n of x.xnotes || []) notes.push(n);
   const restr = ev.find((e) => e.kind === 'rightsR');
   if (restr) notes.push(`${ymdOf(restr.ms)} 증자는 채권단·출자전환 등 구조조정 목적으로 보여 작전 신호에서 제외`);
-  return { dir, upS, downS, net: upS - downS, notes, tgt, dates, up: up.sort((a, b) => b.w - a.w), down: down.sort((a, b) => b.w - a.w), cost: c ? { low: Math.round(c.low), high: Math.round(c.high) } : null, gap: gap == null ? null : Math.round(gap) };
+  return { dir, upS, downS, net: upS - downS, notes, tgt, levels: lv.all, dates, up: up.sort((a, b) => b.w - a.w), down: down.sort((a, b) => b.w - a.w), cost: c ? { low: Math.round(c.low), high: Math.round(c.high) } : null, gap: gap == null ? null : Math.round(gap) };
 }
 
 // ───── AI 분석 (사실 번호 인용 강제 + 자동 검증: 확인 안 되는 문장·숫자는 버림) ─────
@@ -650,7 +690,7 @@ function rankRow(x) {
   const d = x.dir || direction(x);
   const nd = (d.dates || []).find((z) => !z.past);
   const pn = penaltyOf(x);
-  return { pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => t.p) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  return { pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason) {
   const rank = (await getJSON('mp/rank')) || {};

@@ -2092,3 +2092,10 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-penbar { position: relative; height: 22px; border-radius: 6px; background: rgba(255,255,255,.07); overflow: hidden; margin-bottom: .4rem; }
 .mp-penbar i { position: absolute; inset: 0 auto 0 0; background: #f5c542; } .mp-penbar i.warn { background: #ff9a3c; } .mp-penbar i.over { background: #ff5a6a; }
 .mp-penbar span { position: relative; padding-left: .5rem; font-size: .78rem; line-height: 22px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+
+.mp-ladder { list-style: none; margin: .5rem 0 0; padding: 0; border-left: 2px solid rgba(255,255,255,.12); }
+.mp-ladder li { display: grid; grid-template-columns: 6.2rem 3.6rem 1fr; gap: .4rem; padding: .35rem .5rem; font-size: .8rem; border-bottom: 1px solid rgba(255,255,255,.05); align-items: start; }
+.mp-lvp { font-weight: 700; color: #fff; } .mp-lvg { color: var(--muted, #9aa); font-size: .75rem; } .mp-lvt small { line-height: 1.4; }
+.mp-ladder li.lv-res .mp-lvp { color: #ff8a96; } .mp-ladder li.lv-cost .mp-lvp { color: #ffd166; } .mp-ladder li.lv-floor .mp-lvp { color: #7ec8ff; } .mp-ladder li.lv-risk .mp-lvp { color: #c39bff; }
+.mp-ladder li.lv-now { background: rgba(255,255,255,.08); border-radius: 6px; } .mp-ladder li.lv-now .mp-lvt { font-weight: 700; }
+@media (max-width: 520px) { .mp-ladder li { grid-template-columns: 4.9rem 2.9rem 1fr; gap: .3rem; padding: .35rem .3rem; font-size: .76rem; } }
