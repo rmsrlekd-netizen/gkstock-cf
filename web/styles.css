@@ -2117,3 +2117,7 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-marks h5 { margin: 0 0 .35rem; } .mp-marks ul { margin: 0; padding-left: 0; list-style: none; }
 .mp-marks li { font-size: .82rem; padding: .3rem 0; border-bottom: 1px solid rgba(255,255,255,.05); }
 .mp-marks li.ok b { color: #ffd166; } .mp-marks li.no { opacity: .6; }
+
+.mp-rrbox { margin: .4rem 0 .5rem; padding: .5rem .7rem; border-radius: 9px; background: rgba(124,140,255,.1); border: 1px solid rgba(124,140,255,.35); font-size: .85rem; line-height: 1.55; }
+.mp-rrl b { color: #c9d0ff; }
+.seg.mp-kinds { flex-wrap: wrap; overflow: visible; max-width: 100%; height: auto; } .seg.mp-kinds button { flex: 0 0 auto; }

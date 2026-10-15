@@ -601,6 +601,16 @@ export function direction(x, now = Date.now()) {
   // 참고 가격 사다리: 공시 원문 가격(원가)·과거 고점(매물대)·담보 반대매매선 — 위쪽은 목표 후보, 아래쪽은 지지 후보
   const lv = priceLevels(x);
   const tgt = lv.above.length ? lv.above.slice(0, 3) : null;
+  // 손익비(참고): 위쪽 1차 목표까지 남은 폭 ÷ 아래쪽 가장 가까운 원가·지지 가격까지의 폭
+  //  손절 기준 = 현재가보다 2% 이상 아래에 있는 '원가(세력 평단 근거)'·'지지' 가격 중 가장 높은 것. 아래 폭이 3% 미만이면 3%로 계산(비율 과장 방지)
+  let rr = null;
+  if (x.close && lv.above.length) {
+    const sup = lv.all.filter((l) => ['cost', 'floor'].includes(l.kind) && l.p <= x.close * 0.98).sort((a, b) => b.p - a.p)[0];
+    if (sup) {
+      const t1 = lv.above[0], risk = Math.max(x.close - sup.p, x.close * 0.03);
+      rr = { v: Math.round(((t1.p - x.close) / risk) * 10) / 10, t: t1.p, ts: t1.s, s: sup.p, ss: sup.s, up: Math.round((t1.p / x.close - 1) * 1000) / 10, dn: Math.round((sup.p / x.close - 1) * 1000) / 10, t2: lv.above[1]?.p || null, t2s: lv.above[1]?.s || null, min3: x.close - sup.p < x.close * 0.03 };
+    }
+  }
   // 목표 일정(참고): 물량이 풀릴 수 있는 날 — 일반 규정(사모 CB 전환 제한·사모 신주 전매 제한 1년) 기준 추정
   const dates = [];
   for (const e of ev.filter((e) => ['cb', 'rights3'].includes(e.kind)).slice(0, 4)) {
@@ -622,7 +632,7 @@ export function direction(x, now = Date.now()) {
   for (const n of x.xnotes || []) notes.push(n);
   const restr = ev.find((e) => e.kind === 'rightsR');
   if (restr) notes.push(`${ymdOf(restr.ms)} 증자는 채권단·출자전환 등 구조조정 목적으로 보여 작전 신호에서 제외`);
-  return { dir, upS, downS, upRaw, downRaw, net: upRaw - downRaw, notes, tgt, levels: lv.all, dates, up: up.sort((a, b) => b.w - a.w), down: down.sort((a, b) => b.w - a.w), cost: c ? { low: Math.round(c.low), high: Math.round(c.high) } : null, gap: gap == null ? null : Math.round(gap) };
+  return { dir, upS, downS, upRaw, downRaw, net: upRaw - downRaw, notes, tgt, rr, levels: lv.all, dates, up: up.sort((a, b) => b.w - a.w), down: down.sort((a, b) => b.w - a.w), cost: c ? { low: Math.round(c.low), high: Math.round(c.high) } : null, gap: gap == null ? null : Math.round(gap) };
 }
 
 // ───── AI 분석 (사실 번호 인용 강제 + 자동 검증: 확인 안 되는 문장·숫자는 버림) ─────
@@ -839,8 +849,9 @@ function rankRow(x) {
   const d = x.dir || direction(x);
   const nd = (d.dates || []).find((z) => !z.past);
   const pn = penaltyOf(x);
+  const rrR = d.rr ? { v: d.rr.v, t: d.rr.t, ts: d.rr.ts, s: d.rr.s, ss: d.rr.ss, up: d.rr.up, dn: d.rr.dn } : null;
   const cm = (x.f?.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k)).length || null;
-  return { cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  return { rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason, opt = {}) {
   const rank = (await getJSON('mp/rank')) || {};
@@ -883,6 +894,7 @@ export async function manipRank(kind = 'all') {
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
+  else if (kind === 'rr') list = list.filter((r) => r.rr && r.rr.v > 0 && r.d !== 'down' && !['띄우기', '털기', '엑시트 후'].includes(r.st)).sort((a, b) => b.rr.v - a.rr.v || (b.us || 0) - (a.us || 0));
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
   return list.slice(0, 150);
