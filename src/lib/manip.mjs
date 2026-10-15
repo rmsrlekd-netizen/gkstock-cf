@@ -35,11 +35,18 @@ export const EV = {
   majsell:   { w: 2, cap: 4, stage: 'exit', ko: '최대주주 지분 변동' },
   pledge:    { w: 2, cap: 4, stage: 'exit', ko: '주식 담보·질권' },
   risk:      { w: 2, cap: 4, stage: 'risk', ko: '불성실공시·횡령·관리종목 등' },
+  // 점수 없이 체크리스트·근거에만 쓰는 공시
+  paid:      { w: 0, cap: 0, stage: 'none', ko: '증자·사채 납입·발행 완료' },
+  fail:      { w: 0, cap: 0, stage: 'risk', ko: '증자·사채·양수도 철회·해제·납입 연기' },
+  insider:   { w: 0, cap: 0, stage: 'none', ko: '임원·주요주주 지분 변동' },
 };
 export function evKind(text, party = '') {
   const t = String(text || '').replace(/\s+/g, '');
-  if (/불성실공시|상장적격성|횡령|배임|관리종목|감사의견|회생절차|상장폐지/.test(t)) return 'risk';
+  if (/불성실공시|상장적격성|횡령|배임|관리종목|감사의견|회생절차|상장폐지|자본잠식|계속기업/.test(t)) return 'risk';
+  if (/(유상증자|사채|양수도|경영권|최대주주변경).*(철회|해제|해지|취소)|(철회|해제|해지|취소).*(유상증자|사채|양수도|경영권)|납입일?의?(변경|연기)/.test(t)) return 'fail';
+  if (/증권발행결과|발행결과|납입완료|주금납입/.test(t) || (/추가상장/.test(t) && /유상증자|제3자배정/.test(t))) return 'paid';
   if (/(전환청구권|신주인수권|교환청구권)행사|전환청구|추가상장/.test(t)) return 'conv';
+  if (/임원.*주요주주.*소유상황|소유상황보고서/.test(t)) return 'insider';
   if (/(전환가액|행사가액|교환가액)의?조정/.test(t)) return 'refix';
   if (/(전환사채|신주인수권부사채|교환사채)권?발행결정/.test(t)) return 'cb';
   if (/유상증자/.test(t) && /정정/.test(t)) return 'rightsfix';
@@ -57,7 +64,7 @@ export function evKind(text, party = '') {
   if (/투자판단관련/.test(t)) return 'invest';
   return null;
 }
-const KEYS = ['전환사채', '신주인수권', '교환사채', '유상증자', '최대주주', '경영권', '양수도', '정관', '공급계약', '무상증자', '감자', '청구권', '전환가액', '행사가액', '대량보유', '소유주식변동', '조회공시', '투자판단', '담보', '상장적격성', '불성실', '횡령', '추가상장', '관리종목'];
+const KEYS = ['전환사채', '신주인수권', '교환사채', '유상증자', '최대주주', '경영권', '양수도', '정관', '공급계약', '무상증자', '감자', '청구권', '전환가액', '행사가액', '대량보유', '소유주식변동', '조회공시', '투자판단', '담보', '상장적격성', '불성실', '횡령', '추가상장', '관리종목', '소유상황', '발행결과', '납입', '철회', '해제', '해지', '자본잠식', '계속기업', '감사의견'];
 
 const NAMES = new Map(); // 공시에 적힌 회사 이름 (시세 목록에 없을 때 대신)
 /** 최근 180일 DART 공시 → { 종목코드: [{ms, kind, title, sum, id}] } (보관소에서 SQL 한 번) */
@@ -227,6 +234,15 @@ export function barFeatures(B) {
   if (cyc) sig.push(`지난 급등·급락: ${cyc.pumpD} 급등 시작 → ${cyc.topD} 고점(+${cyc.rise}%) → 지금 고점 대비 ${cyc.drop}%`);
   f.score = s; f.sig = sig;
   f.marks = candleCands(B); // 매집봉 후보 (뉴스·시장 거르기는 applyMarks에서)
+  f.avgV20 = Math.round(v20);
+  // 시장경보 예측(근사): 투자경고 지정예고 요건 — 3일 +100% · 5일 +60% · 15일 +100% (내일 종가 기준 얼마나 더 올라야 하는지)
+  const W = [[3, 2, '3일 +100%'], [5, 1.6, '5일 +60%'], [15, 2, '15일 +100%']].map(([k, m, lbl]) => {
+    const base = B[n - k]; if (!base) return null;
+    const need = base.c * m;
+    return { lbl, k, base: base.c, need: Math.round(need), pct: r1((need / last.c - 1) * 100), now: B[n - 1 - k] ? r1((last.c / B[n - 1 - k].c - 1) * 100) : null };
+  }).filter(Boolean);
+  const hi15 = Math.max(...B.slice(-15).map((y) => y.c));
+  f.wf = W.length ? { items: W, min: W.reduce((a, b) => (b.pct < a.pct ? b : a)), hi15: last.c >= hi15 } : null;
   return f;
 }
 
@@ -343,22 +359,40 @@ async function docPrice(e) {
     restr = /출자전환|채권단|채무조정|기업개선|워크아웃|회생계획|대출채권|채권금융기관/.test(L.slice(0, 250).join(' '));
     const m = `${s?.title || ''} ${s?.sub || ''}`.match(/(발행가|전환가|행사가|교환가)\s*([\d,]+)원/);
     if (m) { p = n0(m[2]); label = m[1]; }
-    if (e.kind === 'fund5' || /대량보유/.test(e.title)) { // 5% 보고서 '세부변동내역': 날짜별 장내매수 수량·단가
-      const buys = [];
+    // 5% 보고서·임원/주요주주 소유상황 보고서 '세부변동내역': 날짜별 장내매수·장내매도 수량·단가
+    if (e.kind === 'fund5' || e.kind === 'insider' || /대량보유|소유상황/.test(e.title)) {
+      const trades = [];
       for (let i = 0; i < L.length; i++) {
-        if (!/장내\s*매수|장내매수/.test(L[i])) continue;
+        const sm = L[i].match(/장내\s*(매수|매도)/); if (!sm) continue;
         let d = null; for (let k = i; k >= Math.max(0, i - 4); k--) { const m2 = L[k].match(/(20\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/); if (m2) { d = `${m2[1]}-${m2[2].padStart(2, '0')}-${m2[3].padStart(2, '0')}`; break; } }
         const nums = L.slice(i + 1, i + 9).map((x) => n0((x.match(/^-?[\d,]+(\.\d+)?$/) || [])[0])).filter((v) => v != null);
         // 표 순서: 변동 전 · 증감 · 변동 후 · 취득/처분 단가 → 마지막 쪽 '단가'로 보이는 값
         const q = nums.length >= 3 ? Math.abs(nums[1]) : null, pr = nums.slice(3).find((v) => v >= 50 && v < 5e6) ?? null;
-        if (d && pr) buys.push({ d, q, p: pr });
+        if (d && pr) trades.push({ d, q, p: pr, side: sm[1] === '매수' ? 'buy' : 'sell' });
       }
+      const buys = trades.filter((t) => t.side === 'buy'), sells = trades.filter((t) => t.side === 'sell');
       if (buys.length) {
         const qs = buys.reduce((a, b) => a + (b.q || 0), 0);
         p = Math.round(qs ? buys.reduce((a, b) => a + b.p * (b.q || 0), 0) / qs : buys.reduce((a, b) => a + b.p, 0) / buys.length);
-        label = `장내 취득 평균 (${buys[0].d}~${buys[buys.length - 1].d}, ${buys.length}건)`;
+        label = `${e.kind === 'insider' ? '내부자 ' : ''}장내 취득 평균 (${buys[0].d}~${buys[buys.length - 1].d}, ${buys.length}건)`;
         e.buys = buys.slice(0, 30);
       }
+      if (e.kind === 'insider' || sells.length) {
+        const sq = (a) => a.reduce((x, t) => x + (t.q || 0), 0);
+        e.ins = { bq: sq(buys), sq: sq(sells), nb: buys.length, ns: sells.length, sp: sells.length ? Math.round(sells.reduce((x, t) => x + t.p, 0) / sells.length) : null };
+      }
+    }
+    // 증자·사채 자금 사용 목적: '타법인 증권 취득자금' 비중이 크면 돈이 회사 밖으로 나갈 수 있음
+    if (['cb', 'rights3', 'rights', 'rightsfix'].includes(e.kind) || /사채권발행결정|유상증자결정/.test(e.title)) {
+      const amt = (re) => { const i = L.findIndex((x) => re.test(x)); if (i < 0) return 0; for (let k = i; k < i + 3 && k < L.length; k++) { const v = n0((L[k].replace(re, '').match(/[\d,]{4,}/) || [])[0]); if (v) return v; } return 0; };
+      const use = { fac: amt(/시설자금/), op: amt(/운영자금/), debt: amt(/채무상환자금/), other: amt(/타법인\s*증권\s*취득자금/), biz: amt(/영업양수자금/), etc: amt(/^기타자금|기타\s*자금/) };
+      const tot = Object.values(use).reduce((a, b) => a + b, 0);
+      if (tot) e.use = { ...use, tot, otherPct: Math.round((use.other / tot) * 100) };
+    }
+    // 정정 공시: 납입일 변경·연기
+    if (e.kind === 'rightsfix' || /정정/.test(e.title)) {
+      const txt = L.slice(0, 200).join(' ');
+      if (/납입일/.test(txt) && /(변경|연기)/.test(txt) && /정정\s*사유|정정사항|정정\s*전/.test(txt)) e.delay = true;
     }
     // CB·BW·EB 상세: 전환청구기간, 최저 조정가(리픽싱 하한), 콜옵션(매도청구권)
     if (['cb', 'refix'].includes(e.kind) || /사채권발행결정/.test(e.title)) {
@@ -389,9 +423,15 @@ async function docPrice(e) {
       if (i >= 0) for (let k = i; k < i + 4 && k < L.length; k++) { const v = n0((L[k].match(/[\d,]{3,}/) || [])[0]); if (v && v >= 50 && v < 5e6) { p = v; label = /조정/.test(L[i]) ? '조정 전환가' : '양수도 단가'; break; } }
     }
   } catch {}
-  const out = { p, label, kind: e.kind, at: e.ms, third, restr, buys: e.buys || null, cbx: Object.keys(cbx).length ? cbx : null, pledge, pen };
+  const out = { p, label, kind: e.kind, at: e.ms, third, restr, buys: e.buys || null, cbx: Object.keys(cbx).length ? cbx : null, pledge, pen, ins: e.ins || null, use: e.use || null, delay: e.delay || null };
   await setJSON(ck, out).catch(() => {});
   return out;
+}
+
+// 공시 원문 결과 → 종목의 px 목록 한 줄
+function pxRow(p, e) {
+  if (!(p.p || p.cbx || p.pledge || p.pen || p.ins || p.use || p.delay)) return null;
+  return { p: p.p || null, pen: p.pen || undefined, label: p.label || (p.pen ? '불성실공시 벌점' : p.pledge ? '주식 담보' : p.ins ? '내부자 지분 변동' : p.use ? '자금 사용 목적' : p.delay ? '납입일 변경' : 'CB 조건'), kind: p.kind, date: new Date(e.ms + 9 * 3600e3).toISOString().slice(0, 10), buys: p.buys || undefined, cbx: p.cbx || undefined, pledge: p.pledge || undefined, ins: p.ins || undefined, use: p.use || undefined, delay: p.delay || undefined, ref: e.id };
 }
 
 // ───── 보강 신호: 같은 세력 연결 · 시장경보 · 시총 · 일상적 수주 업종 ─────
@@ -471,6 +511,18 @@ export function factsOf(x) {
     if (p.cbx) add(`${p.date} CB 원문 조건:${p.cbx.start ? ` 전환청구기간 ${p.cbx.start}${p.cbx.end ? ' ~ ' + p.cbx.end : ''}` : ''}${p.cbx.floor ? `, 리픽싱 최저 조정가 ${fmtW(p.cbx.floor)}원` : ''}${p.cbx.call ? `, 콜옵션(매도청구권)${p.cbx.callPct ? ' ' + p.cbx.callPct + '%' : ''} 있음` : ''}`, '공시 원문');
     if (p.pledge) add(`${p.date} 주식 담보: 담보 ${fmtW(p.pledge.sh)}주에 대출 ${fmtW(p.pledge.loan)}원 → 1주당 ${fmtW(p.pledge.perShare)}원`, '공시 원문');
   }
+  for (const p of x.px || []) {
+    if (p.ins) add(`${p.date} 임원·주요주주 지분 변동 보고: 장내 매수 ${fmtW(p.ins.bq)}주(${p.ins.nb}건) · 장내 매도 ${fmtW(p.ins.sq)}주(${p.ins.ns}건)`, '공시 원문');
+    if (p.use) add(`${p.date} 자금 사용 목적: 총 ${fmtW(p.use.tot)}원 중 타법인 증권 취득 ${p.use.otherPct}%${p.use.op ? `, 운영자금 ${fmtW(p.use.op)}원` : ''}${p.use.debt ? `, 채무상환 ${fmtW(p.use.debt)}원` : ''}`, '공시 원문');
+    if (p.delay) add(`${p.date} 정정 공시: 납입일 변경`, '공시 원문');
+  }
+  const ck = x.ck || {};
+  if (ck.major?.pct != null) add(`최대주주 등 지분율 ${ck.major.pct}% (${ck.major.src})`, 'DART');
+  if (ck.audit) add(`감사의견 ${ck.audit.op} (${ck.audit.y})`, 'DART');
+  if (ck.cap?.imp != null) add(`자본잠식률 ${ck.cap.imp}% (${ck.cap.src})`, 'DART');
+  if (ck.credit?.rate != null) add(`신용잔고율 ${ck.credit.rate}%`, '한국투자증권');
+  if (ck.broker?.top) add(`거래원: '${ck.broker.top.nm}' 최근 ${ck.broker.n}일 중 ${ck.broker.top.days}일 매수 상위`, '네이버 거래원');
+  if (ck.buzz?.news3 != null) add(`최근 3일 기사 ${ck.buzz.news3}건${ck.buzz.boardN != null ? `, 종토방 24시간 글 ${ck.buzz.boardN}건` : ''}`, '네이버');
   const pn = penaltyOf(x);
   if (pn?.cum) add(`불성실공시 벌점: 최근 1년 누계 ${pn.cum}점 (${pn.n}건${pn.last ? `, 마지막 ${pn.last.date} ${pn.last.p ?? '?'}점` : ''})${pn.pend ? ', 지정 예고 진행 중' : ''}`, '공시 원문');
   for (const l of x.links || []) add(`같은 이름 '${l.who}'이(가) 다른 종목에도 등장: ${l.others.map((o) => `${o.nm || o.c}(${o.d})`).join(', ')}`, '공시 비교');
@@ -507,7 +559,7 @@ export function penaltyOf(x, now = Date.now()) {
 //  하락 위험   = '띄우기 뒤·털기' 단계로, 주가가 평단보다 크게 높거나 물량이 풀리는 신호
 //  ※ 실제 주가 예측이 아니라 '패턴상 어느 쪽에 가까운지'
 export function costRange(x) {
-  const ps = [...(x.px || []).filter((p) => !['pledge', 'majsell', 'risk'].includes(p.kind)).map((p) => p.p), x.f?.vwapAcc].filter((v) => v > 0);
+  const ps = [...(x.px || []).filter((p) => !['pledge', 'majsell', 'risk', 'insider'].includes(p.kind)).map((p) => p.p), x.f?.vwapAcc].filter((v) => v > 0);
   if (!ps.length) return null;
   return { low: Math.min(...ps), high: Math.max(...ps), mid: ps.reduce((a, b) => a + b, 0) / ps.length };
 }
@@ -521,7 +573,7 @@ export function priceLevels(x) {
       else if (p.kind === 'rights3' || (p.third && /발행가/.test(p.label || ''))) add(p.p, 'cost', '3자배정 발행가', `${p.date} 공시의 3자배정 발행가 — 신주를 받은 쪽의 원가`, '공시 원문', p.ref);
       else if (p.kind === 'fund5') add(p.p, 'cost', '5% 신고자 매수 평균', `${p.date} 5% 보고서의 ${p.label}`, '공시 원문', p.ref);
       else if (p.kind === 'mna') add(p.p, 'cost', '인수 단가', `${p.date} 최대주주 변경 공시의 ${p.label || '양수도 단가'} — 새 최대주주의 원가`, '공시 원문', p.ref);
-      else if (!['pledge', 'majsell', 'risk'].includes(p.kind)) add(p.p, 'cost', p.label || '공시 가격', `${p.date} 공시의 ${p.label || '가격'}`, '공시 원문', p.ref);
+      else if (!['pledge', 'majsell', 'risk', 'insider'].includes(p.kind)) add(p.p, 'cost', p.label || '공시 가격', `${p.date} 공시의 ${p.label || '가격'}`, '공시 원문', p.ref);
     }
     if (p.cbx?.floor) add(p.cbx.floor, 'floor', 'CB 리픽싱 하한', `${p.date} CB 원문의 최저 조정가 — 주가가 내리면 전환가가 여기까지 낮아질 수 있음 (CB 쪽은 더 싸게 주식을 받음)`, '공시 원문', p.ref);
     if (p.pledge) add(p.pledge.perShare * 1.4, 'risk', '반대매매 추정선', `${p.date} 담보 1주당 대출 ${fmtW(p.pledge.perShare)}원의 1.4배(일반적 담보비율 가정) — 이 아래로 빠지면 담보 물량이 나올 수 있음`, '공시 원문+가정', p.ref);
@@ -568,6 +620,19 @@ export function direction(x, now = Date.now()) {
   if (okMarks.length && !(f.cyc && !['판 깔기', '매집'].includes(x.stage))) R(up, Math.min(3, okMarks.length + 1), `🕯 매집봉 흔적: ${okMarks.slice(-3).map((m) => `${m.d} ${MARK_KO[m.k]}(거래량 ${m.vx}배, 저점 ${fmtW(m.lvl)}원 지킴)`).join(' · ')}`, '일봉');
   const dryM = (f.marks || []).find((m) => m.k === 'dry' && m.ok);
   if (dryM && (f.fromLow60 ?? 99) < 40) R(up, 1, `🕯 ${dryM.why}`, '일봉');
+  // 자금 투입 완료·내부자 매매·자금 문제
+  const paidE = ev.find((e) => e.kind === 'paid' && age(e) <= 180);
+  if (paidE) R(up, 1, `${ymdOf(paidE.ms)} '${paidE.title}' — 증자·사채 대금이 실제로 들어옴`, paidE.id);
+  const insPx = (x.px || []).filter((p) => p.kind === 'insider' && p.ins && (now - Date.parse(p.date)) <= 120 * DAY);
+  const iB = insPx.reduce((a, p) => a + (p.ins.bq || 0), 0), iS = insPx.reduce((a, p) => a + (p.ins.sq || 0), 0);
+  if (iB > iS && iB > 0) R(up, 1, `최근 4개월 임원·주요주주 장내 매수 ${fmtW(iB)}주(매도 ${fmtW(iS)}주)`, insPx[0].ref);
+  if (iS > iB && iS > 0) R(down, 2, `최근 4개월 임원·주요주주 장내 매도 ${fmtW(iS)}주(매수 ${fmtW(iB)}주) — 내부자가 팔고 있음`, insPx[0].ref);
+  const failE = ev.find((e) => e.kind === 'fail' && age(e) <= 365);
+  if (failE) R(down, 3, `${ymdOf(failE.ms)} '${failE.title}' — 자금이 모자라거나 계획이 틀어진 신호`, failE.id);
+  const delayP = (x.px || []).find((p) => p.delay);
+  if (delayP && !failE) R(down, 2, `${delayP.date} 정정 공시에서 납입일 변경 — 자금 조달이 늦어지는 신호`, delayP.ref);
+  const drainP = (x.px || []).find((p) => p.use && p.use.otherPct >= 50);
+  if (drainP) R(down, 2, `${drainP.date} 조달 자금의 ${drainP.use.otherPct}%를 타법인 증권 취득에 씀 — 돈이 회사 밖으로 나갈 수 있음`, drainP.ref);
   const fund = ev.find((e) => e.kind === 'fund5' && age(e) <= 120);
   if (fund) R(up, 1, `${ymdOf(fund.ms)} 투자조합 등 5% 지분 신고${fund.party ? ` (${fund.party})` : ''}`, fund.id);
   for (const l of (x.links || []).slice(0, 2)) R(up, 2, `'${l.who}'이(가) 다른 종목(${l.others.map((o) => o.nm || o.c).slice(0, 3).join(', ')})에도 등장 — 같은 세력이 여러 종목을 다룰 가능성`, '공시');
@@ -633,6 +698,81 @@ export function direction(x, now = Date.now()) {
   const restr = ev.find((e) => e.kind === 'rightsR');
   if (restr) notes.push(`${ymdOf(restr.ms)} 증자는 채권단·출자전환 등 구조조정 목적으로 보여 작전 신호에서 제외`);
   return { dir, upS, downS, upRaw, downRaw, net: upRaw - downRaw, notes, tgt, rr, levels: lv.all, dates, up: up.sort((a, b) => b.w - a.w), down: down.sort((a, b) => b.w - a.w), cost: c ? { low: Math.round(c.low), high: Math.round(c.high) } : null, gap: gap == null ? null : Math.round(gap) };
+}
+
+// ───── ✅ 성공 가능성 체크리스트 (규칙 계산 · AI 아님) ─────
+//  ok: true 충족 · false 미충족 · null 자료 없음(계산에서 뺌)
+//  x.ck: 바깥 자료(manipck.mjs enrich) — 최대주주 지분·감사의견·자본잠식·신용잔고·거래원·뉴스/종토방·업종 강세·시장 흐름·같은 세력 다른 종목
+export function checklistOf(x, now = Date.now()) {
+  const f = x.f || {}, ev = x.events || [], px = x.px || [], ck = x.ck || {};
+  const d = x.dir || direction(x, now);
+  const age = (e) => (now - e.ms) / DAY;
+  const P = [], R = [];
+  const add = (arr, k, ok, t, src) => arr.push({ k, ok, t, src: src || null });
+  // ── 띄울 이유: 세력 자금 투입 ──
+  const SET = ev.filter((e) => ['rights3', 'cb', 'mna', 'fund5'].includes(e.kind) && age(e) <= 365);
+  const paid = ev.filter((e) => e.kind === 'paid' && age(e) <= 400);
+  const fundBuy = px.find((p) => p.kind === 'fund5' && p.buys?.length);
+  if (!SET.length) add(P, 'money', false, '세력 자금 투입 공시(3자배정·CB·최대주주 변경·투자조합 5%) 없음');
+  else if (paid.some((pe) => SET.some((e) => pe.ms >= e.ms)) || fundBuy) add(P, 'money', true, `세력 자금 실제 투입 확인 — ${paid.length ? `${ymdOf(paid[0].ms)} '${paid[0].title}'` : `${fundBuy.date} 5% 신고자 장내 매수 ${fundBuy.buys.length}건`}`, paid[0]?.id || fundBuy?.ref);
+  else add(P, 'money', false, `${ymdOf(SET[0].ms)} '${EV[SET[0].kind].ko}' 발표는 있지만 납입·발행 완료 공시는 아직 못 찾음 (발표만으로는 약함)`, SET[0].id);
+  // 원가 근처
+  if (d.gap == null) add(P, 'cost', null, '세력 원가를 계산할 근거 없음');
+  else add(P, 'cost', d.gap <= 20 && d.gap >= -30, `현재가가 추정 세력 평단 대비 ${d.gap >= 0 ? '+' : ''}${d.gap}% ${d.gap <= 20 && d.gap >= -30 ? '— 세력도 아직 수익 구간이 아님(올려야 이익)' : d.gap > 20 ? '— 세력은 이미 이익 구간' : '— 평단보다 많이 아래(손실 중)'}`);
+  // 물량 해제일 30~120일 앞
+  const nd = (d.dates || []).find((z) => !z.past);
+  if (!nd) add(P, 'unlock', null, '다가오는 물량 해제일(CB 전환청구 시작·3자배정 보호예수 해제) 없음');
+  else { const dd = Math.round((Date.parse(nd.d) - now) / DAY); add(P, 'unlock', dd >= 30 && dd <= 120, `다음 물량 해제일 ${nd.d} (${dd}일 뒤)${dd >= 30 && dd <= 120 ? ' — 보통 띄우기가 나오는 2~3개월 전 구간' : dd < 30 ? ' — 이미 코앞(털기 주의)' : ' — 아직 멀음'}`, nd.ref); }
+  // ── 띄울 힘 ──
+  if (x.capPct == null) add(P, 'small', null, '시가총액 순위 자료 없음');
+  else add(P, 'small', x.capPct <= 0.4, `시가총액 하위 ${Math.max(1, Math.round(x.capPct * 100))}%${x.capPct <= 0.4 ? ' 소형주 — 적은 돈으로 움직이기 쉬움' : ''}`);
+  if (ck.major?.pct == null) add(P, 'float', null, `최대주주 등 지분율 자료 없음${ck.err?.major ? ` (${ck.err.major})` : ''}`);
+  else add(P, 'float', ck.major.pct >= 40, `최대주주 등 지분 ${ck.major.pct}% (${ck.major.src}) ${ck.major.pct >= 40 ? '— 시장에 도는 물량이 적은 편' : '— 유통 물량이 많은 편'}`);
+  const pur = ev.find((e) => e.kind === 'purpose' && age(e) <= 365);
+  add(P, 'story', !!pur, pur ? `${ymdOf(pur.ms)} 정관·사업목적 변경 — 새 사업(테마) 재료 준비${pur.sum ? `: ${pur.sum.slice(0, 50)}` : ''}` : '최근 1년 사업목적 추가 없음', pur?.id);
+  const heldAcc = (f.marks || []).some((m) => m.ok && m.k === 'acc' && m.h === 'held');
+  const accOk = x.stage === '매집' || heldAcc || ((f.accObv ?? 0) >= 15 && (f.fromLow60 ?? 99) < 40);
+  add(P, 'acc', accOk, accOk ? `매집 흔적 있음${heldAcc ? ' (버틴 매집봉)' : ''}${x.stage === '매집' ? ' · 단계 매집' : ''}${(f.accObv ?? 0) >= 15 ? ` · 순매수 흐름 ${f.accObv}%` : ''}` : '뚜렷한 매집 흔적 없음');
+  if (!ck.theme) add(P, 'theme', null, '업종·테마 강세 자료 없음');
+  else add(P, 'theme', ck.theme.ok, ck.theme.t);
+  const insP = px.filter((p) => p.kind === 'insider' && p.ins && (now - Date.parse(p.date)) <= 120 * DAY);
+  const insB = insP.reduce((a, p) => a + (p.ins.bq || 0), 0), insS = insP.reduce((a, p) => a + (p.ins.sq || 0), 0);
+  if (!insP.length) add(P, 'insider', null, '최근 4개월 임원·주요주주 장내 매매 보고 없음(또는 원문 미확인)');
+  else add(P, 'insider', insB > insS, `최근 4개월 내부자 장내 매수 ${fmtW(insB)}주 · 매도 ${fmtW(insS)}주`);
+  if (!ck.broker?.n) add(P, 'broker', null, `거래원(증권사 창구) 자료 없음${ck.err?.broker ? ` (${ck.err.broker})` : ''}`);
+  else if (ck.broker.n < 5 && !ck.broker.top) add(P, 'broker', null, `거래원 기록 ${ck.broker.n}일 — 5일 이상 쌓이면 창구 쏠림 판단 (매일 장 마감 뒤 기록)`);
+  else add(P, 'broker', !!ck.broker.top, ck.broker.top ? `'${ck.broker.top.nm}' 창구가 최근 ${ck.broker.n}일 중 ${ck.broker.top.days}일 매수 상위 (순매수 추정 ${fmtW(ck.broker.top.net)}주)${ck.broker.top.retail ? ' — 개인 고객이 많은 창구라 의미 약함' : ''}` : `최근 ${ck.broker.n}일 특정 창구 쏠림 없음`);
+  if (!d.rr) add(P, 'rr', null, '손익비 계산 안 됨');
+  else add(P, 'rr', d.rr.v >= 2, `손익비 1 : ${d.rr.v}${d.rr.v >= 2 ? '' : ' (2 미만)'}`);
+  // ── 실패·폭탄 신호 ──
+  const fails = ev.filter((e) => e.kind === 'fail' && age(e) <= 365);
+  const delays = px.filter((p) => p.delay);
+  add(R, 'fail', fails.length + delays.length > 0, fails.length || delays.length ? `자금 문제 신호: ${[...fails.slice(0, 2).map((e) => `${ymdOf(e.ms)} ${e.title}`), ...delays.slice(0, 2).map((p) => `${p.date} 정정 공시에서 납입일 변경`)].join(' · ')}` : '증자·사채·양수도 철회·해제·납입 연기 없음', fails[0]?.id || delays[0]?.ref);
+  const pn = penaltyOf(x, now);
+  add(R, 'penalty', !!(pn && (pn.cum >= 10 || pn.pend)), pn ? `불성실공시 벌점 최근 1년 ${pn.cum ?? '?'}점${pn.pend ? ' · 지정 예고' : ''}` : '불성실공시 벌점 없음');
+  const auditBad = ck.audit && !/적정/.test(ck.audit.op || '') ? ck.audit : null, capBad = ck.cap?.imp >= 50;
+  const riskEv = ev.find((e) => e.kind === 'risk' && /감사의견|자본잠식|계속기업|상장적격성|관리종목|상장폐지/.test(e.title) && age(e) <= 365);
+  if (!ck.audit && ck.cap?.imp == null && !riskEv) add(R, 'health', null, `감사의견·자본잠식 자료 없음${ck.err?.fin ? ` (${ck.err.fin})` : ''}`);
+  else add(R, 'health', !!(auditBad || capBad || riskEv), [auditBad ? `감사의견 '${auditBad.op}' (${auditBad.y})` : ck.audit ? `감사의견 '${ck.audit.op}' (${ck.audit.y})` : '', ck.cap?.imp != null ? `자본잠식률 ${ck.cap.imp}%${capBad ? ' (50%↑ 관리종목 요건)' : ''}` : '', riskEv ? `${ymdOf(riskEv.ms)} ${riskEv.title}` : ''].filter(Boolean).join(' · '), riskEv?.id);
+  const out = px.filter((p) => p.use && p.use.otherPct >= 50);
+  const fundEv = ev.some((e) => ['cb', 'rights3', 'rights', 'rightsfix'].includes(e.kind) && age(e) <= 365);
+  if (!out.length && !px.some((p) => p.use)) add(R, 'drain', null, fundEv ? '증자·사채 자금 사용 목적 원문 미확인' : '최근 1년 증자·사채 없음 (자금 유출 점검 대상 아님)');
+  else add(R, 'drain', out.length > 0, out.length ? `${out[0].date} 조달 자금의 ${out[0].use.otherPct}%를 '타법인 증권 취득'에 씀 — 돈이 회사 밖으로 나갈 수 있음` : px.some((p) => p.use) ? '조달 자금 대부분이 운영·시설·채무상환 목적' : '자금 사용 목적 원문 미확인', out[0]?.ref);
+  const plg = (d.down || []).find((r) => /반대매매/.test(r.t));
+  add(R, 'pledge', !!plg, plg ? plg.t : '담보 반대매매선 근처 아님(또는 담보 없음)');
+  add(R, 'insell', insS > insB && insS > 0, insS > insB ? `최근 4개월 내부자 장내 매도 ${fmtW(insS)}주가 매수보다 많음` : '내부자 매도 우위 아님');
+  const badLinks = (ck.linkSt || []).filter((l) => ['엑시트 후', '털기'].includes(l.st) || l.risk);
+  add(R, 'party', badLinks.length > 0, (x.links || []).length ? (badLinks.length ? `같은 이름이 나온 다른 종목 중 ${badLinks.map((l) => `${l.nm || l.c}(${l.st || '위험 공시'})`).slice(0, 3).join(', ')} — 이미 털렸거나 위험` : '같은 세력 연결 종목 중 털린 이력은 못 찾음') : '같은 세력 연결 없음');
+  add(R, 'exited', x.stage === '엑시트 후', x.stage === '엑시트 후' ? '이미 한 번 띄우고 털고 나간 종목(엑시트 후)' : '엑시트 후 아님');
+  if (ck.mkt20 == null) add(R, 'market', null, '시장 지수 흐름 자료 없음');
+  else add(R, 'market', ck.mkt20 <= -5, `${x.mkt === 'P' ? '코스피' : '코스닥'} 최근 20거래일 ${ck.mkt20 > 0 ? '+' : ''}${ck.mkt20}%${ck.mkt20 <= -5 ? ' — 약세장이라 띄우기 성공률이 떨어짐' : ''}`);
+  if (ck.credit?.rate == null) add(R, 'credit', null, `신용잔고 자료 없음${ck.err?.credit ? ` (${ck.err.credit})` : ''}`);
+  else add(R, 'credit', ck.credit.rate >= 7, `신용잔고율 ${ck.credit.rate}%${ck.credit.rate >= 7 ? ' — 개인 신용이 많아 반대매매 유도 털기에 취약' : ''} (${ck.credit.date || ''})`);
+  if (f.wf?.min) add(R, 'warn', f.wf.min.pct <= 10, f.wf.min.pct <= 0 ? `이미 투자경고 지정예고 요건(${f.wf.min.lbl}) 수준 — 경고·정지로 띄우기가 막힐 수 있음` : `내일 종가가 +${f.wf.min.pct}% 더 오르면 투자경고 지정예고 요건(${f.wf.min.lbl}) 도달 (근사 계산)`);
+  if (ck.buzz?.newsX != null || ck.buzz?.boardN != null) add(P, 'buzz', (ck.buzz.newsX ?? 0) >= 3 || (ck.buzz.boardX ?? 0) >= 3, `기사 ${ck.buzz.news3 ?? '?'}건(최근 3일${ck.buzz.newsX != null ? `, 평소의 ${ck.buzz.newsX}배` : ''}) · 종토방 글 ${ck.buzz.boardN ?? '?'}건(24시간${ck.buzz.boardX != null ? `, 평소의 ${ck.buzz.boardX}배` : ''})${(ck.buzz.newsX ?? 0) >= 3 || (ck.buzz.boardX ?? 0) >= 3 ? ' — 기사·관심 몰이가 시작됨(띄우기 시작 신호일 수 있음)' : ' — 아직 조용함'}`);
+  const known = P.filter((i) => i.ok != null), np = known.filter((i) => i.ok).length, nr = R.filter((i) => i.ok === true).length;
+  const grade = np >= 6 && nr === 0 ? 'A' : np >= 4 && nr <= 1 ? 'B' : 'C';
+  return { pos: P, red: R, np, nk: known.length, nr, grade };
 }
 
 // ───── AI 분석 (사실 번호 인용 강제 + 자동 검증: 확인 안 되는 문장·숫자는 버림) ─────
@@ -764,7 +904,7 @@ export async function manipWatch({ force = false } = {}) {
         st.list = list.map((x) => x.code);
         await saveDay(date, list, { building: true });
         await saveProfiles(list, `${date} 정기 분석 (1차: 공시·거래량)`); // 랭킹에 바로 보이게 (원문 가격·AI는 이어서 채움)
-        st.docq = []; for (const x of list.slice(0, 30)) for (const e of x.events.filter((e) => ['cb', 'refix', 'rights3', 'rights', 'mna', 'fund5', 'pledge', 'majsell'].includes(e.kind) || (e.kind === 'risk' && /불성실공시/.test(e.title))).slice(0, 8)) st.docq.push({ code: x.code, e });
+        st.docq = []; for (const x of list.slice(0, 30)) for (const e of x.events.filter((e) => ['cb', 'refix', 'rights3', 'rights', 'rightsfix', 'mna', 'fund5', 'pledge', 'majsell', 'insider'].includes(e.kind) || (e.kind === 'risk' && /불성실공시/.test(e.title))).slice(0, 10)) st.docq.push({ code: x.code, e });
         st.dpos = 0;
         log(`일봉 분석 완료 → 의심 종목 ${list.length}개 (원문 가격 확인 ${st.docq.length}건)`);
         st.phase = 'docs';
@@ -778,7 +918,7 @@ export async function manipWatch({ force = false } = {}) {
         const q = part[gi], p = got[gi];
         const x = doc?.list.find((y) => y.code === q.code);
         if (!x || !p) continue;
-        if (p.p || p.cbx || p.pledge || p.pen) x.px.push({ p: p.p || null, pen: p.pen || undefined, label: p.label || (p.pen ? '불성실공시 벌점' : p.pledge ? '주식 담보' : 'CB 조건'), kind: p.kind, date: new Date(q.e.ms + 9 * 3600e3).toISOString().slice(0, 10), buys: p.buys || undefined, cbx: p.cbx || undefined, pledge: p.pledge || undefined, ref: q.e.id });
+        const row = pxRow(p, q.e); if (row) x.px.push(row);
         // 제목만으론 몰랐던 '제3자배정' 증자 → 원문 확인 후 점수 다시 계산
         if ((p.third && q.e.kind === 'rights') || (p.restr && ['rights', 'rights3', 'rightsfix'].includes(q.e.kind))) {
           const ev = x.events.find((y) => y.id === q.e.id); if (ev) ev.kind = p.restr ? 'rightsR' : 'rights3';
@@ -786,10 +926,19 @@ export async function manipWatch({ force = false } = {}) {
         }
       }
       st.dpos += part.length;
-      if (doc) for (const x of doc.list) x.dir = direction(x, now); // 원문 가격 반영 후 다시
+      if (doc) for (const x of doc.list) { x.dir = direction(x, now); x.cl = checklistOf(x, now); } // 원문 가격 반영 후 다시
       if (doc) doc.list.sort((a, b) => b.score - a.score);
       if (doc) await setJSON(`mp/day/${date}`, doc);
-      if (st.dpos >= (st.docq || []).length) { st.phase = 'ai'; st.apos = 0; log('원문 가격 확인 완료 → AI 분석 시작'); }
+      if (st.dpos >= (st.docq || []).length) { st.phase = 'extra'; st.epos = 0; log('원문 가격 확인 완료 → 체크리스트 자료(지분·감사의견·신용·거래원·뉴스) 수집'); }
+    } else if (st.phase === 'extra') {
+      const doc = await getJSON(`mp/day/${date}`);
+      const L = (doc?.list || []).slice(0, 40), part = L.slice(st.epos || 0, (st.epos || 0) + 5);
+      const { enrich } = await import('./manipck.mjs');
+      const ixD = await indexDaily().catch(() => ({}));
+      for (const x of part) { try { await enrich(x, { ix: ixD }); } catch (e) { x.ck = { err: { all: String(e.message).slice(0, 60) } }; } x.dir = direction(x, now); x.cl = checklistOf(x, now); }
+      st.epos = (st.epos || 0) + part.length;
+      if (doc) await setJSON(`mp/day/${date}`, doc);
+      if (st.epos >= L.length) { st.phase = 'ai'; st.apos = 0; log(`체크리스트 자료 ${L.length}종목 → AI 분석 시작`); }
     } else if (st.phase === 'ai') {
       const doc = await getJSON(`mp/day/${date}`);
       const todo = (doc?.list || []).slice(0, AI_TOP).filter((x) => !x.ai).slice(0, 3);
@@ -851,7 +1000,8 @@ function rankRow(x) {
   const pn = penaltyOf(x);
   const rrR = d.rr ? { v: d.rr.v, t: d.rr.t, ts: d.rr.ts, s: d.rr.s, ss: d.rr.ss, up: d.rr.up, dn: d.rr.dn } : null;
   const cm = (x.f?.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k)).length || null;
-  return { rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  const cl = x.cl || null;
+  return { av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason, opt = {}) {
   const rank = (await getJSON('mp/rank')) || {};
@@ -862,6 +1012,7 @@ async function saveProfiles(list, reason, opt = {}) {
     const prev = (await getJSON(k)) || {};
     // 분류 흔들림 방지: 점수가 경계선 근처에서 조금 바뀐 것만으로는 상승/하락 분류를 뒤집지 않음
     x.dir = x.dir || direction(x);
+    if (!x.ck && prev.ck) x.ck = prev.ck; // 바깥 자료를 이번에 못 붙였으면 이전 것 사용
     const pd0 = prev.dir?.dir;
     if (pd0 && pd0 !== x.dir.dir) {
       const surged = (x.f?.fromLow60 ?? 0) >= 50 || ['띄우기', '털기', '엑시트 후'].includes(x.stage);
@@ -876,6 +1027,7 @@ async function saveProfiles(list, reason, opt = {}) {
       const newConv = (x.events || []).filter((e) => e.kind === 'conv' && !(prev.events || []).some((y) => y.id === e.id));
       if (newConv.length) alerts.push(`• ${x.name} 전환청구 공시 — 1~2주 뒤 추가 상장 물량 주의`);
     }
+    x.cl = checklistOf(x);
     const log = prev.log || [];
     const changed = !prev.at || prev.score !== x.score || prev.stage !== x.stage || (prev.ai?.level || null) !== (x.ai?.level || null);
     if (changed) log.unshift({ at: Date.now(), msg: `${reason} · 점수 ${prev.score ?? '-'}→${x.score} · ${prev.stage || '-'}→${x.stage}${x.ai?.level ? ` · 의심 ${x.ai.level}` : ''}` });
@@ -885,7 +1037,10 @@ async function saveProfiles(list, reason, opt = {}) {
     if (opt.rank !== false) rank[x.code] = rankRow(prof);
   }
   await setJSON('mp/rank', rank);
-  if (alerts.length) await radarAlert(alerts).catch(() => {});
+  if (alerts.length) {
+    const mine = new Set(((await getJSON('mp/my'))?.items || []).filter((i) => !i.closed).map((i) => i.name));
+    await radarAlert(alerts.map((l) => ([...mine].some((nm) => l.startsWith(`• ${nm} `)) ? l.replace('• ', '• ⭐ ') : l))).catch(() => {});
+  }
 }
 export async function manipRank(kind = 'all') {
   const rank = (await getJSON('mp/rank')) || {};
@@ -894,6 +1049,7 @@ export async function manipRank(kind = 'all') {
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
+  else if (kind === 'ck') list = list.filter((r) => r.ckg && r.d !== 'down').sort((a, b) => ((b.cnp || 0) - 2 * (b.cnr || 0)) - ((a.cnp || 0) - 2 * (a.cnr || 0)) || (b.us || 0) - (a.us || 0));
   else if (kind === 'rr') list = list.filter((r) => r.rr && r.rr.v > 0 && r.d !== 'down' && !['띄우기', '털기', '엑시트 후'].includes(r.st)).sort((a, b) => b.rr.v - a.rr.v || (b.us || 0) - (a.us || 0));
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
@@ -937,13 +1093,15 @@ async function analyzeOne(job, { snap = {}, ctx = null, now = Date.now(), aiOk =
   if (score < 4 && !prev && !keepLow) return null; // 원래 레이더에 없던 종목이고 점수도 낮으면 넘김
   const x = { code, name: r[0] || (prev?.name && prev.name !== code ? prev.name : null) || job.name || code, mkt: r[1] || prev?.mkt || job.mkt || null, close: f?.close ?? r[2] ?? null, pct: r[3] ?? prev?.pct ?? null, mcap: r[6] ?? prev?.mcap ?? null, score, es: s.score, vs: f?.score || 0, xs: ex.add, mult: ex.mult, by: s.by, sig: [...(f?.sig || []), ...ex.sig], xnotes: ex.notes, links: ex.links, warn: ex.warn, ind: ex.ind, capPct: ex.capPct, f, stage: stageOf(s.by, f, evs), events: evs.slice(0, 15), streak: prev?.streak || 1, px: [], ai: prev?.ai || null };
   // 공시 원문 가격 (새 공시 포함)
-  for (const e of evs.filter((e) => ['cb', 'refix', 'rights3', 'rights', 'mna', 'fund5', 'pledge', 'majsell'].includes(e.kind) || (e.kind === 'risk' && /불성실공시/.test(e.title))).slice(0, 8)) {
+  for (const e of evs.filter((e) => ['cb', 'refix', 'rights3', 'rights', 'rightsfix', 'mna', 'fund5', 'pledge', 'majsell', 'insider'].includes(e.kind) || (e.kind === 'risk' && /불성실공시/.test(e.title))).slice(0, 10)) {
     const p = await docPrice(e).catch(() => null);
-    if (p?.p || p?.cbx || p?.pledge || p?.pen) x.px.push({ p: p.p || null, pen: p.pen || undefined, label: p.label || (p.pen ? '불성실공시 벌점' : p.pledge ? '주식 담보' : 'CB 조건'), kind: p.kind, date: new Date(e.ms + 9 * 3600e3).toISOString().slice(0, 10), buys: p.buys || undefined, cbx: p.cbx || undefined, pledge: p.pledge || undefined, ref: e.id });
+    const row = p ? pxRow(p, e) : null; if (row) x.px.push(row);
     if (p?.restr && ['rights', 'rights3', 'rightsfix'].includes(e.kind)) e.kind = 'rightsR';
     else if (p?.third && e.kind === 'rights') e.kind = 'rights3';
   }
   const s2 = eventScore(x.events.concat(evs.slice(15)), now); x.es = s2.score; x.by = s2.by; x.score = Math.round((s2.score + x.vs + (x.xs || 0)) * (x.mult || 1) * 10) / 10; x.stage = stageOf(s2.by, f, x.events);
+  x.dir = direction(x, now);
+  try { const { enrich } = await import('./manipck.mjs'); await enrich(x, { fresh: !!forceAi }); } catch {} // 체크리스트 바깥 자료
   x.dir = direction(x, now);
   // 공시가 바뀌었고 점수가 의미 있으면 AI 다시 (검색은 항상)
   const sig = evs.slice(0, 25).map((e) => e.id).join(',');
@@ -952,6 +1110,7 @@ async function analyzeOne(job, { snap = {}, ctx = null, now = Date.now(), aiOk =
   }
   x.evSig = sig;
   x.dir = direction(x, now);
+  x.cl = checklistOf(x, now);
   return x;
 }
 

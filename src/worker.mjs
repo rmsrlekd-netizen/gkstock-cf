@@ -188,6 +188,7 @@ export default {
       // 실적 발표 판정: 실적 공시가 나오면 컨센서스와 비교 (3분마다)
       jobs3.push(import('./lib/guru.mjs').then((x) => x.guruWatch()).then((r) => { if (Object.values(r || {}).some((v) => v === 'new' || v === 'error')) console.log('guru', JSON.stringify(r)); }).catch((e) => console.warn('guru', e.message))); // 투자 대가 13F
       jobs3.push(import('./lib/loan.mjs').then((x) => x.loanWatch()).then((r) => { if (r) console.log('loan', JSON.stringify(r)); }).catch((e) => console.warn('loan', e.message))); // 국내 대차잔고
+      jobs3.push(import('./lib/manipck.mjs').then(async (x) => { const a = await x.themeWatch(); const b = await x.brokerWatch(); if (a || b) console.log('mp-ck', JSON.stringify({ a, b })); }).catch((e) => console.warn('mp-ck', e.message))); // 작전 레이더: 업종·테마 등락 기록 · 거래원 기록
       jobs3.push(import('./lib/manip.mjs').then((x) => x.manipWatch()).then(async (r) => { if (r) console.log('manip', JSON.stringify(r)); else { const M = await import('./lib/manip.mjs'); const r2 = await M.manipIncr(); if (r2) console.log('manip-incr', JSON.stringify(r2)); else { const r3 = await M.manipAux(); if (r3) console.log('manip-aux', JSON.stringify(r3)); } } }).catch((e) => console.warn('manip', e.message))); // 작전 의심 레이더 (장 마감 뒤 정기 분석 + 장중 새 공시 자동 반영)
       jobs3.push(import('./lib/vnote.mjs').then((x) => x.vnoteWatch(now)).then((r) => { if (r && Object.keys(r).length) console.log('vnote', JSON.stringify(r)); }).catch((e) => console.warn('vnote', e.message))); // 영상 소재 노트
       jobs3.push(import('./lib/earnv.mjs').then((x) => x.earnWatch()).then((r) => { if (r?.judged) console.log('earnv', JSON.stringify(r)); }).catch((e) => console.warn('earnv', e.message)));
@@ -230,6 +231,7 @@ export default {
     jobs.push(import('./lib/push.mjs').then((x) => x.pushWatch()).then((r) => { if (r?.n || r?.fail) console.log('push', JSON.stringify(r)); }).catch((e) => console.warn('push', e.message)));
     // 장 마감 정리 카드 → 텔레그램 채널 (국장 16:08~ · 미장 뉴욕 16:10~)
     jobs.push(import('./lib/push.mjs').then((x) => x.alertWatch(now)).then((r) => { if (r?.hits) console.log('alert', JSON.stringify(r)); }).catch((e) => console.warn('alert', e.message))); // 가격 알림
+    jobs.push(import('./lib/manipck.mjs').then((x) => x.intradayWatch()).then((r) => { if (r) console.log('mp-live', JSON.stringify(r)); }).catch((e) => console.warn('mp-live', e.message))); // 작전 레이더: 장중 띄우기 시작·관심 종목 손절/목표 알림
     jobs.push(import('./lib/weekcard.mjs').then((x) => x.weekWatch(ctx)).then((r) => { if (r) console.log('week', JSON.stringify(r)); }).catch((e) => console.warn('week', e.message))); // 토요일 주간 정리 카드
     jobs.push(import('./lib/closecard.mjs').then((x) => x.closeWatch(now, ctx)).then((r) => { if (r && Object.keys(r).length) console.log('close', JSON.stringify(r)); }).catch((e) => console.warn('close', e.message)));
     if (jobs.length) ctx.waitUntil(Promise.allSettled(jobs));

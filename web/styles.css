@@ -2121,3 +2121,15 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-rrbox { margin: .4rem 0 .5rem; padding: .5rem .7rem; border-radius: 9px; background: rgba(124,140,255,.1); border: 1px solid rgba(124,140,255,.35); font-size: .85rem; line-height: 1.55; }
 .mp-rrl b { color: #c9d0ff; }
 .seg.mp-kinds { flex-wrap: wrap; overflow: visible; max-width: 100%; height: auto; } .seg.mp-kinds button { flex: 0 0 auto; }
+.mp-ck { margin: 0 0 .6rem; padding: .65rem .8rem; border-radius: 10px; background: rgba(47,208,138,.06); border: 1px solid rgba(47,208,138,.3); }
+.mp-ck h5 { margin: 0 0 .4rem; } .mp-ck h6 { margin: .2rem 0 .3rem; font-size: .8rem; color: var(--text2); }
+.mp-ckgrid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; } @media (max-width: 760px) { .mp-ckgrid { grid-template-columns: 1fr; } }
+.mp-ck ul { list-style: none; margin: 0; padding: 0; } .mp-ck li { font-size: .8rem; padding: .25rem 0; border-bottom: 1px solid rgba(255,255,255,.05); line-height: 1.45; }
+.mp-ck li b { display: inline-block; width: 1.2rem; } .mp-ck li.good b { color: #2fd08a; } .mp-ck li.bad b { color: #ff5a6a; } .mp-ck li.bad { color: #ffb3bb; } .mp-ck li.na { opacity: .55; }
+.mp-ckg { display: inline-block; padding: .05rem .45rem; border-radius: 6px; font-size: .75rem; font-weight: 800; background: rgba(255,255,255,.1); }
+.mp-ckg.gA { background: rgba(47,208,138,.22); color: #5ff0a8; } .mp-ckg.gB { background: rgba(245,197,66,.2); color: #ffd66b; } .mp-ckg.gC { background: rgba(255,255,255,.08); color: var(--muted); }
+.mp-wf { margin: 0 0 .6rem; padding: .55rem .75rem; border-radius: 10px; background: rgba(255,170,60,.07); border: 1px solid rgba(255,170,60,.3); font-size: .82rem; line-height: 1.6; }
+.mp-wf span { display: inline-block; margin-right: .8rem; }
+.mp-myadd { margin: 0 0 .5rem; } .mp-myf { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center; padding: .5rem .6rem; border-radius: 10px; background: rgba(245,197,66,.07); border: 1px solid rgba(245,197,66,.3); font-size: .8rem; }
+.mp-myf label { display: flex; align-items: center; gap: .3rem; } .mp-myf input, .mp-close input { width: 6.5rem; padding: .3rem .4rem; border-radius: 6px; border: 1px solid var(--line2); background: rgba(0,0,0,.2); color: inherit; } .mp-myf label.w input { width: 12rem; }
+.mp-my.closed { opacity: .7; } .mp-close { display: inline-flex; gap: .3rem; align-items: center; } .mp-mystat { font-weight: 700; }

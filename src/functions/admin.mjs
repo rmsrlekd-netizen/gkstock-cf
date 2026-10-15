@@ -38,6 +38,12 @@ export default async (req) => {
       if (mp === 'rank') return J({ ok: true, list: await m.manipRank(u.searchParams.get('kind') || 'all'), state: await m.manipState() });
       if (mp === 'perf') { const x = await import('../lib/manipx.mjs'); return J({ ok: true, ...(await x.perfSummary()), warn: await (async () => { const w = await getJSON('mp/warn'); return w ? { at: w.at, n: w.n, err: w.err } : null; })(), party: await (async () => { const p = await getJSON('mp/party'); return p ? { at: p.at, n: Object.keys(p.idx || {}).length } : null; })() }); }
       if (mp === 'prof') return J({ ok: true, prof: await m.manipProfile(String(u.searchParams.get('code') || '').replace(/\D/g, '').slice(0, 6)) });
+      if (mp === 'my' || mp === 'myadd' || mp === 'mydel' || mp === 'myclose' || mp === 'myset') {
+        const c = await import('../lib/manipck.mjs');
+        const P = Object.fromEntries(u.searchParams);
+        return J({ ok: true, ...(mp === 'my' ? await c.myList() : await c.myEdit(mp.slice(2), P)) });
+      }
+      if (mp === 'live') { const z = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10); const s2 = (await getJSON(`mp/live/${z}`)) || {}; return J({ ok: true, n: s2.n || 0, last: s2.last || [], codes: (s2.codes || []).length, err: s2.err || null, br: await getJSON('mp/br/state').then((b) => (b ? { date: b.date, pos: b.pos, n: (b.queue || []).length, err: b.err } : null)), thm: ((await getJSON('mp/thm/hist')) || [])[0]?.d || null }); }
       if (mp === 'look') return J({ ok: true, ...(await m.manipLookup(u.searchParams.get('code'), { name: u.searchParams.get('name') || null, refresh: u.searchParams.get('refresh') === '1' })) });
       if (mp === 'run') await m.manipStart();
       return J({ ok: true, ...(await m.manipView(u.searchParams.get('date'))) });

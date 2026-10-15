@@ -34,7 +34,7 @@ export async function perfWatch(max = 20) {
     if (!doc?.list?.length) { perf.done = true; await setJSON(pk, perf); continue; }
     let pending = 0;
     for (const x of doc.list.slice(0, 80)) {
-      const row = perf.rows[x.code] || { st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score };
+      const row = perf.rows[x.code] || { st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null };
       if (H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
       if (fetched >= max && !cache.has(x.code)) { pending++; continue; }
       let B = cache.get(x.code);
@@ -73,6 +73,8 @@ export async function perfSummary() {
       if (row.st) add('단계:' + row.st, row);
       if (row.dir) add('분류:' + (row.dir === 'up' ? '상승 가능성' : row.dir === 'down' ? '하락 위험' : '분류 없음'), row);
       if (row.lv) add('AI 의심:' + row.lv, row);
+      if (row.ck) add('체크리스트:' + row.ck + '등급', row);
+      if (row.rr != null) add('손익비:' + (row.rr >= 3 ? '3 이상' : row.rr >= 2 ? '2~3' : '2 미만'), row);
     }
   }
   const out = Object.entries(groups).map(([g, o]) => {
