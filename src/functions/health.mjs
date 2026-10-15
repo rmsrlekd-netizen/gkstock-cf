@@ -11,6 +11,15 @@ export default async (req) => {
     const bad = Object.values(mon?.checks || {}).filter((c) => !c.ok && c.fails >= 2).map((c) => c.name);
     return json({ ok: true, monAge: mon?.at ? Math.round((Date.now() - mon.at) / 1000) : null, secAge: sec?.updatedAt ? Math.round((Date.now() - Date.parse(sec.updatedAt)) / 1000) : null, dartAge: dart?.updatedAt ? Math.round((Date.now() - Date.parse(dart.updatedAt)) / 1000) : null, bad }, { cdnSeconds: 0, swr: 0 });
   }
+  // 서버(DB) 응답 속도 점검 (?db=1): 사이트가 '불러오는 중'에 멈출 때 원인 확인용
+  if (new URL(req.url).searchParams.get('db') === '1') {
+    const lim = (p, ms) => Promise.race([p, new Promise((_, rj) => setTimeout(() => rj(new Error(`${ms / 1000}초 넘게 응답 없음`)), ms))]);
+    const t = async (f) => { const t0 = Date.now(); try { const v = await lim(f(), 8000); return { ok: true, ms: Date.now() - t0, v }; } catch (e) { return { ok: false, ms: Date.now() - t0, error: String(e.message || e).slice(0, 200) }; } };
+    const ping = await t(() => getJSON('health/ping').then(() => 'ok'));
+    const st = await t(() => getJSON('mp/state').then((s) => s && { date: s.date, phase: s.phase, force: s.force, err: s.err || null, tryN: s.tryN || 0, busy: (s.busyUntil || 0) > Date.now(), log: (s.log || []).slice(-6) }));
+    const ai = await t(() => getJSON('ai/pause'));
+    return json({ ok: true, at: new Date().toISOString(), dbRead: ping, radar: st, aiPause: ai }, { cdnSeconds: 0, swr: 0 });
+  }
   const testAI = new URL(req.url).searchParams.get('ai') === '1';
   let aiTest = null;
   if (testAI) {

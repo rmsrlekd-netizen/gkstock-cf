@@ -15,7 +15,14 @@
   function load(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
   async function getJSON(url, opt) {
-    const r = await fetch(url, opt || { cache: 'no-store' });
+    // 서버가 멈춰도 '불러오는 중'에 영원히 머물지 않게 기본 25초 제한 (따로 정한 제한이 있으면 그걸 씀)
+    const o = { ...(opt || { cache: 'no-store' }) };
+    let tm = null;
+    if (!o.signal && typeof AbortController !== 'undefined') { const ac = new AbortController(); tm = setTimeout(() => ac.abort(), 25000); o.signal = ac.signal; }
+    let r;
+    try { r = await fetch(url, o); }
+    catch (e) { if (e.name === 'AbortError' && tm) throw new Error('서버 응답이 25초 넘게 없어요 — 잠시 뒤 다시 시도해 주세요'); throw e; }
+    finally { if (tm) clearTimeout(tm); }
     let j = null;
     try { j = await r.json(); } catch {}
     if (!j) throw new Error(`HTTP ${r.status}`);

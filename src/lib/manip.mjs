@@ -72,7 +72,21 @@ const KEYS = ['전환사채', '신주인수권', '교환사채', '유상증자',
 
 const NAMES = new Map(); // 공시에 적힌 회사 이름 (시세 목록에 없을 때 대신)
 /** 최근 180일 DART 공시 → { 종목코드: [{ms, kind, title, sum, id}] } (보관소에서 SQL 한 번) */
-async function loadEvents(now) {
+// 전체 공시 읽기 — 서버(D1) 부담을 줄이려고 '월별 색인'(mp/evc/YYYYMM)에 걸러 둔 공시만 모아 씀
+//  · 지난달 색인은 한 번 만들면 그대로 재사용, 이번 달은 마지막으로 읽은 시각 뒤 공시만 추가로 읽음
+//  · 색인이 없는 달은 한 번에 1개월씩만 만듦 (긴 쿼리가 DB를 붙잡아 사이트 전체가 느려지던 문제)
+const EVC_V = 2;
+const ymOf = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 7).replace('-', '');
+const monthStart = (ym) => Date.parse(`${ym.slice(0, 4)}-${ym.slice(4)}-01T00:00:00+09:00`);
+const nextYm = (ym) => { const y = +ym.slice(0, 4), m = +ym.slice(4); return m === 12 ? `${y + 1}01` : `${y}${String(m + 1).padStart(2, '0')}`; };
+async function evRows(d, from, to) {
+  const ex = "(COALESCE(title,'') || ' ' || COALESCE(json_extract(data,'$.formKo'),''))";
+  const like = KEYS.map(() => 'x LIKE ?').join(' OR ');
+  const sql = `SELECT * FROM (SELECT id, ticker AS tk, name AS nm, ms, title AS t, json_extract(data,'$.formKo') AS f, json_extract(data,'$.party') AS p, json_extract(data,'$.summary.title') AS st, json_extract(data,'$.summary.sub') AS ss, ${ex} AS x FROM items WHERE kind = 'FILING' AND market = 'KR' AND ms > ? AND ms <= ? AND src = 'DART' AND ticker IS NOT NULL) WHERE ${like} ORDER BY ms DESC LIMIT 20000`;
+  const r = await d.prepare(sql).bind(from, to, ...KEYS.map((k) => `%${k}%`)).all();
+  return r.results || [];
+}
+async function loadEvents(now, opt = {}) {
   const since = now - 180 * DAY;
   const out = {};
   const add = (r) => {
@@ -83,17 +97,32 @@ async function loadEvents(now) {
     (out[r.tk] ||= []).push({ ms: r.ms, kind: k, title: String(r.f || r.t || '').slice(0, 80), sum: [r.st, r.ss].filter(Boolean).join(' · ').slice(0, 140), id: r.id, party: r.p || null });
   };
   const d = await sqlDB().catch(() => null);
+  let pending = 0, built = 0;
   if (d) {
-    const ex = "(COALESCE(title,'') || ' ' || COALESCE(json_extract(data,'$.formKo'),''))";
-    const like = KEYS.map(() => 'x LIKE ?').join(' OR ');
-    const sql = `SELECT * FROM (SELECT id, ticker AS tk, name AS nm, ms, title AS t, json_extract(data,'$.formKo') AS f, json_extract(data,'$.party') AS p, json_extract(data,'$.summary.title') AS st, json_extract(data,'$.summary.sub') AS ss, ${ex} AS x FROM items WHERE src = 'DART' AND ms > ? AND ticker IS NOT NULL) WHERE ${like} ORDER BY ms DESC LIMIT 60000`;
-    const r = await d.prepare(sql).bind(since, ...KEYS.map((k) => `%${k}%`)).all();
-    for (const row of r.results || []) add(row);
+    const curYm = ymOf(now);
+    for (let ym = ymOf(since); ym <= curYm; ym = nextYm(ym)) {
+      const a = monthStart(ym), b = monthStart(nextYm(ym)) - 1;
+      const key = `mp/evc/${ym}`;
+      let sh = await getJSON(key).catch(() => null);
+      if (sh && sh.v !== EVC_V) sh = null;
+      const past = b < now - 2 * DAY; // 끝난 지 이틀 지난 달은 더 안 바뀜
+      if (!sh || !sh.done) {
+        if (!sh && built >= (opt.maxBuild ?? 1)) { pending++; continue; } // 이번엔 여기까지 (다음 실행 때 이어서)
+        const from = sh?.maxMs ? Math.max(a - 1, sh.maxMs - 6 * 3600e3) : a - 1; // 늦게 들어온 공시를 놓치지 않게 6시간 겹쳐 읽음 (중복은 아래에서 제거)
+        const rows = await evRows(d, from, Math.min(b, now));
+        if (!sh) built++;
+        const seen = new Set((sh?.rows || []).map((y) => y.id));
+        sh = { v: EVC_V, rows: [...rows.filter((r) => !seen.has(r.id)).map((r) => ({ id: r.id, tk: r.tk, nm: r.nm, ms: r.ms, t: String(r.t || '').slice(0, 90), f: r.f ? String(r.f).slice(0, 80) : null, p: r.p || null, st: r.st ? String(r.st).slice(0, 90) : null, ss: r.ss ? String(r.ss).slice(0, 60) : null })), ...(sh?.rows || [])], maxMs: Math.max(sh?.maxMs || a - 1, ...rows.map((r) => r.ms)), done: past, at: now };
+        if (past || rows.length || !sh.at) await setJSON(key, sh).catch((e) => console.warn('evc 저장 실패', ym, e.message));
+      }
+      for (const row of sh.rows) if (row.ms > since) add(row);
+    }
   } else {
     const { queryArchive } = await import('./archive.mjs');
     for (const x of await queryArchive({ kind: 'FILING', market: 'KR', limit: 200 })) add({ id: x.id, tk: x.ticker, nm: x.name, ms: Date.parse(`${x.date || ''}T12:00:00+09:00`) || x.approxMs || Date.now(), t: x.titleClean, f: x.formKo, p: x.party, st: x.summary?.title, ss: x.summary?.sub });
   }
   for (const k of Object.keys(out)) out[k].sort((a, b) => b.ms - a.ms);
+  Object.defineProperty(out, '__pending', { value: pending, enumerable: false });
   return out;
 }
 // 종목 카드에 남길 공시: 점수 있는 공시 15개 + 점수 없는 공시(납입·내부자·청구·되사기 등) 10개 — 잦은 내부자 보고가 CB·증자 공시를 밀어내지 않게
@@ -1085,6 +1114,16 @@ export async function manipWatch({ force = false } = {}) {
   await setJSON('mp/state', st).catch(() => {});
   const log = (m) => { st.log = [...(st.log || []), `${kst().date.slice(5)} ${String(Math.floor(kst().m / 60)).padStart(2, '0')}:${String(kst().m % 60).padStart(2, '0')} ${m}`].slice(-30); };
   const out = { phase: st.phase };
+  // 같은 자리에서 진전 없이 4번 연속 끊기거나 실패하면 오늘 분석은 멈춤 (무거운 작업이 3분마다 끝없이 반복되며 사이트 전체를 느리게 하던 문제)
+  const tk = [st.phase, st.pos, st.dpos, st.epos, st.rpos, st.apos, st.evcPend ?? ''].join(':');
+  if (tk === st.tryK) st.tryN = (st.tryN || 0) + 1; else { st.tryK = tk; st.tryN = 1; }
+  if (st.tryN >= 4 && st.phase !== 'done') {
+    log(`'${st.phase}' 단계가 4번 연속 진전 없이 멈춰 오늘 분석을 중단 (서버 부담 방지 · 다음 거래일 15:50에 다시 시작)`);
+    st.err = `${st.phase} 단계 반복 실패로 중단`; st.phase = 'done'; st.force = false; st.histDone = date; st.busyUntil = 0; st.tryN = 0;
+    await setJSON('mp/state', st).catch(() => {});
+    return { ...out, gaveUp: true };
+  }
+  await setJSON('mp/state', st).catch(() => {});
   try {
     if (st.phase === 'snap') {
       const snap = await snapshot().catch((e) => { log('시세 목록 실패: ' + e.message); return {}; });
@@ -1094,6 +1133,8 @@ export async function manipWatch({ force = false } = {}) {
       st.phase = 'events';
     } else if (st.phase === 'events') {
       const ev = await loadEvents(now);
+      st.evcPend = ev.__pending || 0;
+      if (ev.__pending) { log(`공시 월별 색인 만드는 중 (남은 달 ${ev.__pending}개 — 3분마다 한 달씩)`); st.busyUntil = 0; await setJSON('mp/state', st).catch(() => {}); return { ...out, evc: ev.__pending }; }
       const snapDoc = await getJSON(`mp/snap/${date}`);
       const snap = snapDoc?.rows || {};
       const scored = [];
@@ -1214,6 +1255,7 @@ export async function manipWatch({ force = false } = {}) {
         try { x.ai = await aiReview(x); } catch (e) { x.ai = { error: String(e.message || e).slice(0, 120) }; }
         if (doc) await setJSON(`mp/day/${date}`, doc).catch(() => {}); // 한 건마다 저장 (중간에 끊겨도 같은 AI를 다시 부르지 않게)
       }
+      st.apos = (st.apos || 0) + todo.length;
       if (doc) await setJSON(`mp/day/${date}`, doc);
       if (todo.length) await saveProfiles(todo, `${date} 정기 분석 · AI 판단`);
       if (!todo.length) {
@@ -1232,6 +1274,7 @@ export async function manipWatch({ force = false } = {}) {
       // 다 쓴 작업 목록은 비워서 상태를 가볍게 · 10일 지난 임시 자료(시세 목록·후보 공시·지수·장중 알림 상태) 정리 (mp/day 기록은 지우지 않음)
       delete st.feat; delete st.docq; delete st.queue; delete st.rq; delete st.recheck;
       for (const pre of ['mp/snap/', 'mp/ev/', 'mp/ix/', 'mp/live/']) await delKeys(pre, now - 10 * DAY).catch(() => {});
+      await delKeys('mp/evc/', now - 240 * DAY).catch(() => {});
     } catch (e) { st.err = '마무리 저장 실패: ' + String(e.message || e).slice(0, 160); log('오류: ' + st.err); st.histDone = date; } // 같은 자리에서 무한 반복하지 않게
   }
   if (st.phase !== 'done') st.histDone = null;
