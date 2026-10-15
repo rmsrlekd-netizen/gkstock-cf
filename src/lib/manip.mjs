@@ -20,6 +20,7 @@ export const EV = {
   rights3:   { w: 3, cap: 6, stage: 'setup', ko: '제3자배정 유상증자' },
   rightsfix: { w: 2, cap: 4, stage: 'setup', ko: '증자 정정(납입 연기 등)' },
   rights:    { w: 1, cap: 2, stage: 'setup', ko: '유상증자' },
+  rightsR:   { w: 0, cap: 0, stage: 'none', ko: '채권단·출자전환 증자(구조조정)' }, // 워크아웃·채무조정 목적 → 작전 신호에서 뺌
   cb:        { w: 2, cap: 6, stage: 'setup', ko: 'CB·BW·EB 발행' },
   refix:     { w: 2, cap: 4, stage: 'setup', ko: '전환가 하향 조정(리픽싱)' },
   fund5:     { w: 3, cap: 6, stage: 'setup', ko: '투자조합 5% 지분 신고' },
@@ -88,6 +89,7 @@ export function eventScore(evs, now = Date.now()) {
   for (const e of evs || []) {
     const age = (now - e.ms) / DAY;
     const w = (EV[e.kind]?.w || 0) * (age <= 90 ? 1 : 0.5);
+    if (!EV[e.kind]?.cap) continue;
     by[e.kind] = Math.min(EV[e.kind].cap, (by[e.kind] || 0) + w);
   }
   const score = Object.values(by).reduce((a, b) => a + b, 0);
@@ -145,6 +147,9 @@ export function barFeatures(B) {
   const v5 = B.slice(-5).reduce((s, x) => s + x.v, 0) / 5;
   const v20 = B.slice(-20).reduce((s, x) => s + x.v, 0) / 20;
   const maxV10 = Math.max(...B.slice(-10).map((x) => x.v));
+  // 매집이 길게 이어지면 최근 60일 기준선도 같이 올라가서 '거래 증가'가 안 보임 → 매집 전(90~170일 전) 거래량을 따로 기준으로
+  const old = B.slice(0, Math.max(0, n - 90)), longBase = old.length >= 30 ? median(old.map((x) => x.v)) : 0;
+  const L40 = B.slice(-40), box40 = Math.max(...L40.map((x) => x.h)) / Math.min(...L40.map((x) => x.l)) - 1;
   const lo60 = Math.min(...B.slice(-60).map((x) => x.l)), hi60 = Math.max(...B.slice(-60).map((x) => x.h));
   const hi20 = Math.max(...B.slice(-20).map((x) => x.h));
   const bmin = Math.min(...base.map((x) => x.l)), bmax = Math.max(...base.map((x) => x.h));
@@ -173,7 +178,8 @@ export function barFeatures(B) {
     ret5: r1(ret(5)), ret20: r1(ret(20)), ret60: r1(ret(60)),
     fromLow60: r1((last.c / lo60 - 1) * 100), offHigh20: r1((last.c / hi20 - 1) * 100),
     volX5: base60 ? r1(v5 / base60) : null, volX20: base60 ? r1(v20 / base60) : null, maxVolX10: base60 ? r1(maxV10 / base60) : null,
-    box60: r1((bmax / bmin - 1) * 100),
+    box60: r1((bmax / bmin - 1) * 100), box40: r1(box40 * 100),
+    volL20: longBase ? r1(v20 / longBase) : null, // 20일 평균 거래량 ÷ 매집 전(90~170일 전) 거래량
     spikeDate: spike > 0 ? B[spike].d : null,
     accStart: B[accStartI]?.d || null, accEnd: B[Math.max(0, accEnd - 1)]?.d || null, accDays: accRows.length,
     accObv: vsum ? r1((obv2 / vsum) * 100) : null, // 매집 구간 순매수 강도(%)
@@ -187,6 +193,7 @@ export function barFeatures(B) {
   let s = 0;
   const quiet = f.box60 != null && f.box60 < 40 && Math.abs(f.ret20 ?? 0) < 15;
   if ((f.accObv ?? 0) >= 15 && (f.accDays ?? 0) >= 30) { s += 1; sig.push(`매집 구간 순매수 흔적 (${f.accStart} 부터 추정)`); }
+  if (quiet && (f.volX20 ?? 0) < 1.5 && (f.volL20 ?? 0) >= 1.5 && (f.box40 ?? 99) < 35) { s += 3; sig.push(`박스권에서 거래량이 몇 달 전보다 ${f.volL20}배 (장기 매집 의심)`); }
   if (quiet && (f.volX20 ?? 0) >= 1.5) { s += 3; sig.push('박스권 + 거래량 증가 (매집 의심)'); }
   else if (quiet && (f.volX5 ?? 0) >= 2) { s += 2; sig.push('박스권에서 최근 거래 증가'); }
   if ((f.maxVolX10 ?? 0) >= 10) { s += 2; sig.push(`최근 10일 거래량 폭증 (평소의 ${Math.round(f.maxVolX10)}배)`); }
@@ -203,12 +210,13 @@ async function docPrice(e) {
   const ck = `mp/px/${e.id}`;
   const c = await getJSON(ck);
   if (c) return c;
-  let p = null, label = null, third = false;
+  let p = null, label = null, third = false, restr = false;
   try {
     const { fetchDartDoc, summarizeDart } = await import('./dart-doc.mjs');
     const L = await fetchDartDoc(String(e.id).replace(/^DART-/, ''));
     const s = summarizeDart(e.title, L);
     third = /제3자|3자배정/.test(`${s?.title || ''} ${L.slice(0, 120).join(' ')}`);
+    restr = /출자전환|채권단|채무조정|기업개선|워크아웃|회생계획|대출채권|채권금융기관/.test(L.slice(0, 250).join(' '));
     const m = `${s?.title || ''} ${s?.sub || ''}`.match(/(발행가|전환가|행사가|교환가)\s*([\d,]+)원/);
     if (m) { p = n0(m[2]); label = m[1]; }
     if (e.kind === 'fund5' || /대량보유/.test(e.title)) { // 5% 보고서 '세부변동내역': 날짜별 장내매수 수량·단가
@@ -233,7 +241,7 @@ async function docPrice(e) {
       if (i >= 0) for (let k = i; k < i + 4 && k < L.length; k++) { const v = n0((L[k].match(/[\d,]{3,}/) || [])[0]); if (v && v >= 50 && v < 5e6) { p = v; label = /조정/.test(L[i]) ? '조정 전환가' : '양수도 단가'; break; } }
     }
   } catch {}
-  const out = { p, label, kind: e.kind, at: e.ms, third, buys: e.buys || null };
+  const out = { p, label, kind: e.kind, at: e.ms, third, restr, buys: e.buys || null };
   await setJSON(ck, out).catch(() => {});
   return out;
 }
@@ -243,8 +251,13 @@ function stageOf(by, f) {
   const exit = (by.conv || 0) + (by.majsell || 0) + (by.pledge || 0);
   const setup = (by.mna || 0) + (by.rights3 || 0) + (by.cb || 0) + (by.fund5 || 0) + (by.purpose || 0) + (by.refix || 0);
   if (f && (f.fromLow60 ?? 0) >= 50 && ((f.offHigh20 ?? 0) <= -20 || exit >= 3)) return '털기';
-  if (f && ((f.fromLow60 ?? 0) >= 50 || (f.maxVolX10 ?? 0) >= 10)) return '띄우기';
-  if (f && (f.box60 ?? 99) < 40 && (f.volX20 ?? 0) >= 1.5) return '매집';
+  if (f && ((f.fromLow60 ?? 0) >= 50 || ((f.maxVolX10 ?? 0) >= 10 && (f.ret20 ?? 0) >= 20))) return '띄우기';
+  // 매집: 아직 크게 안 올랐고(60일 저점 대비 +40% 미만), 박스권에서 거래가 늘거나 순매수 흐름이 이어짐
+  if (f && (f.fromLow60 ?? 99) < 40) {
+    const box = (f.box40 ?? f.box60 ?? 99);
+    if (box < 35 && ((f.volX20 ?? 0) >= 1.3 || (f.volL20 ?? 0) >= 1.5)) return '매집';
+    if ((f.accObv ?? 0) >= 15 && (f.accDays ?? 0) >= 30 && box < 45) return '매집';
+  }
   if (setup >= 3) return '판 깔기';
   return '관찰';
 }
@@ -281,7 +294,7 @@ export function costRange(x) {
 export function direction(x, now = Date.now()) {
   const f = x.f || {}, ev = x.events || [], up = [], down = [];
   const age = (e) => (now - e.ms) / DAY;
-  const SETUP = ['mna', 'rights3', 'cb', 'fund5', 'purpose', 'refix', 'rights'];
+  const SETUP = ['mna', 'rights3', 'cb', 'fund5', 'purpose', 'refix', 'rights']; // rightsR(구조조정 증자)은 제외
   const EXIT = ['conv', 'majsell', 'pledge'];
   const lastSetup = ev.filter((e) => SETUP.includes(e.kind) && age(e) <= 150).sort((a, b) => b.ms - a.ms)[0];
   const exitsAfter = ev.filter((e) => EXIT.includes(e.kind) && (!lastSetup || e.ms >= lastSetup.ms) && age(e) <= 90);
@@ -319,8 +332,14 @@ export function direction(x, now = Date.now()) {
   for (const e of ev.filter((e) => e.kind === 'conv' && age(e) <= 30).slice(0, 2)) dates.push({ d: ymdOf(e.ms + 14 * DAY), t: `${ymdOf(e.ms)} 전환청구 → 추가 상장(보통 1~2주 뒤, 정확한 날은 원문 확인)`, ref: e.id, past: false });
   dates.sort((a, b) => (a.d < b.d ? -1 : 1));
   const upS = up.reduce((a, b) => a + b.w, 0), downS = down.reduce((a, b) => a + b.w, 0);
-  const dir = upS >= 3 && upS >= downS + 2 ? 'up' : downS >= 3 && downS >= upS ? 'down' : 'none';
-  return { dir, upS, downS, tgt, dates, up: up.sort((a, b) => b.w - a.w), down: down.sort((a, b) => b.w - a.w), cost: c ? { low: Math.round(c.low), high: Math.round(c.high) } : null, gap: gap == null ? null : Math.round(gap) };
+  // 이미 크게 오른 종목(60일 저점 대비 +50% 이상)이나 띄우기·털기 단계는 '상승 가능성'으로 분류하지 않음
+  const surged = (f.fromLow60 ?? 0) >= 50 || ['띄우기', '털기'].includes(x.stage);
+  const dir = !surged && upS >= 3 && upS >= downS + 2 ? 'up' : downS >= 3 && (downS >= upS || surged) ? 'down' : 'none';
+  const notes = [];
+  if (surged && upS >= 3) notes.push('상승 근거도 있지만 이미 크게 오른 뒤(또는 띄우기·털기 단계)라 상승 가능성 분류에서 제외');
+  const restr = ev.find((e) => e.kind === 'rightsR');
+  if (restr) notes.push(`${ymdOf(restr.ms)} 증자는 채권단·출자전환 등 구조조정 목적으로 보여 작전 신호에서 제외`);
+  return { dir, upS, downS, net: upS - downS, notes, tgt, dates, up: up.sort((a, b) => b.w - a.w), down: down.sort((a, b) => b.w - a.w), cost: c ? { low: Math.round(c.low), high: Math.round(c.high) } : null, gap: gap == null ? null : Math.round(gap) };
 }
 
 // ───── AI 분석 (사실 번호 인용 강제 + 자동 검증: 확인 안 되는 문장·숫자는 버림) ─────
@@ -344,6 +363,7 @@ async function aiReview(x) {
 - 사실 목록에 없는 숫자·날짜·회사명·사건을 절대 쓰지 말 것. 계산이나 추측 숫자도 금지(목록의 숫자만 그대로 인용).
 - 모르면 쓰지 말 것. 부족한 정보는 "확인되지 않음"으로.
 - 단정 금지("~로 보임", "~가능성"). 불법이라고 판단하지 말 것.
+- 단계는 규칙으로 '${x.stage}'(으)로 판정됨. 단계를 바꾸지 말고 설명만 할 것.
 - 규칙 판단 결과(방향: ${D.dir === 'up' ? '상승 가능성 쪽' : D.dir === 'down' ? '하락 위험 쪽' : '뚜렷하지 않음'})는 바꾸지 말고, 그 이유와 반대 근거를 설명할 것.
 출력은 JSON 하나만:
 {"stage":"판 깔기|매집|띄우기|털기|관찰","level":"높음|중간|낮음","summary":"2문장 요약, 각 문장 끝에 [F번호]","upWhy":["상승 쪽 근거 문장 [F번호]"],"downWhy":["하락 쪽 근거 문장 [F번호]"],"counter":["정상적인 회사 활동일 가능성 [F번호]"],"acc":{"period":"매집 추정 기간(사실 목록의 날짜만 사용)","refs":["F번호"]},"cost":{"refs":["평단 근거 F번호들"]},"watch":["앞으로 확인할 신호(숫자 없이)"]}
@@ -462,8 +482,8 @@ export async function manipWatch({ force = false } = {}) {
         if (!x || !p) continue;
         if (p.p) x.px.push({ p: p.p, label: p.label, kind: p.kind, date: new Date(q.e.ms + 9 * 3600e3).toISOString().slice(0, 10), buys: p.buys || undefined });
         // 제목만으론 몰랐던 '제3자배정' 증자 → 원문 확인 후 점수 다시 계산
-        if (p.third && q.e.kind === 'rights') {
-          const ev = x.events.find((y) => y.id === q.e.id); if (ev) ev.kind = 'rights3';
+        if ((p.third && q.e.kind === 'rights') || (p.restr && ['rights', 'rights3', 'rightsfix'].includes(q.e.kind))) {
+          const ev = x.events.find((y) => y.id === q.e.id); if (ev) ev.kind = p.restr ? 'rightsR' : 'rights3';
           const s2 = eventScore(x.events, now); x.score = Math.round((x.score - x.es + s2.score) * 10) / 10; x.es = s2.score; x.by = s2.by; x.stage = stageOf(s2.by, x.f);
         }
       }
@@ -476,7 +496,7 @@ export async function manipWatch({ force = false } = {}) {
       const doc = await getJSON(`mp/day/${date}`);
       const todo = (doc?.list || []).slice(0, AI_TOP).filter((x) => !x.ai).slice(0, 3);
       for (const x of todo) {
-        try { x.ai = await aiReview(x); if (x.ai.stage) x.stage = x.ai.stage; } catch (e) { x.ai = { error: String(e.message || e).slice(0, 120) }; }
+        try { x.ai = await aiReview(x); } catch (e) { x.ai = { error: String(e.message || e).slice(0, 120) }; }
       }
       if (doc) await setJSON(`mp/day/${date}`, doc);
       if (todo.length) await saveProfiles(todo, `${date} 정기 분석 · AI 판단`);
@@ -530,7 +550,7 @@ function rankRow(x) {
   const a = x.ai && !x.ai.error ? x.ai : null;
   const d = x.dir || direction(x);
   const nd = (d.dates || []).find((z) => !z.past);
-  return { d: d.dir, us: d.upS, ds: d.downS, tg: d.tgt ? d.tgt.map((t) => t.p) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  return { fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => t.p) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason) {
   const rank = (await getJSON('mp/rank')) || {};
@@ -551,8 +571,10 @@ export async function manipRank(kind = 'all') {
   const rank = (await getJSON('mp/rank')) || {};
   let list = Object.entries(rank).map(([code, r]) => ({ code, ...r }))
     .filter((r) => Date.now() - (r.up || 0) < 45 * DAY); // 45일 넘게 신호가 없던 종목은 랭킹에서만 내림 (카드·기록은 남김)
-  if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.us || 0) - (a.us || 0) || b.s - a.s);
-  else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => (b.ds || 0) - (a.ds || 0) || b.s - a.s);
+  // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
+  for (const r of list) if (r.d === 'up' && (['띄우기', '털기'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
+  if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => ((b.us || 0) - (b.ds || 0)) - ((a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
+  else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => ((b.ds || 0) - (b.us || 0)) - ((a.ds || 0) - (a.us || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
   return list.slice(0, 150);
 }
@@ -617,14 +639,15 @@ export async function manipIncr() {
       for (const e of evs.filter((e) => ['cb', 'refix', 'rights3', 'rights', 'mna', 'fund5'].includes(e.kind)).slice(0, 5)) {
         const p = await docPrice(e);
         if (p?.p) x.px.push({ p: p.p, label: p.label, kind: p.kind, date: new Date(e.ms + 9 * 3600e3).toISOString().slice(0, 10), buys: p.buys || undefined });
-        if (p?.third && e.kind === 'rights') e.kind = 'rights3';
+        if (p?.restr && ['rights', 'rights3', 'rightsfix'].includes(e.kind)) e.kind = 'rightsR';
+        else if (p?.third && e.kind === 'rights') e.kind = 'rights3';
       }
       const s2 = eventScore(x.events.concat(evs.slice(15)), now); x.es = s2.score; x.by = s2.by; x.score = Math.round((s2.score + x.vs) * 10) / 10; x.stage = stageOf(s2.by, f);
       x.dir = direction(x, now);
       // 공시가 바뀌었고 점수가 의미 있으면 AI 다시 (하루 최대 30회)
       const sig = evs.slice(0, 25).map((e) => e.id).join(',');
       if (x.score >= 6 && sig !== prev?.evSig && iq.ai < AI_INCR_DAY) {
-        try { x.ai = await aiReview(x); if (x.ai.stage) x.stage = x.ai.stage; iq.ai++; } catch (e) { x.ai = prev?.ai || { error: String(e.message || e).slice(0, 120) }; }
+        try { x.ai = await aiReview(x); iq.ai++; } catch (e) { x.ai = prev?.ai || { error: String(e.message || e).slice(0, 120) }; }
       }
       x.evSig = sig;
       x.dir = direction(x, now);

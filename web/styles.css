@@ -2081,3 +2081,4 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-tg { display: flex; flex-wrap: wrap; gap: .3rem; } .mp-tg span { font-size: .8rem; padding: .2rem .5rem; border-radius: 7px; background: rgba(255,255,255,.06); } .mp-tg span.hit { background: rgba(255,90,106,.14); color: #ff8a96; } .mp-tg b { color: #fff; }
 .mp-facts { margin-top: .5rem; font-size: .8rem; } .mp-facts summary { cursor: pointer; color: var(--muted); } .mp-facts ol { padding-left: 1rem; margin: .3rem 0 0; } .mp-facts li { padding: .1rem 0; }
 @media (max-width: 720px) { .mp-dir, .mp-tgt { grid-template-columns: 1fr; } .mp-dirl, .mp-why { margin-left: 0; } }
+.mp-notes { margin-bottom: .5rem; } .mp-notes p { margin: .15rem 0; font-size: .82rem; color: var(--gold); }

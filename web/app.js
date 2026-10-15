@@ -3234,7 +3234,7 @@
   });
   // ───── 작전 의심 레이더 ─────
   const MP_ST = { '판 깔기': 'setup', 매집: 'acc', 띄우기: 'pump', 털기: 'exit', 관찰: 'watch' };
-  const MP_EV = { mna: '최대주주·경영권', rights3: '3자배정 증자', rightsfix: '증자 정정', rights: '유상증자', cb: 'CB·BW', refix: '리픽싱', fund5: '투자조합 지분', purpose: '사업목적 변경', bonus: '무상증자', capred: '감자', contract: '공급계약', invest: 'MOU·투자판단', inquiry: '조회공시', conv: '전환청구', majsell: '최대주주 지분변동', pledge: '담보·질권', risk: '불성실·횡령 등' };
+  const MP_EV = { mna: '최대주주·경영권', rights3: '3자배정 증자', rightsfix: '증자 정정', rights: '유상증자', rightsR: '구조조정 증자(제외)', cb: 'CB·BW', refix: '리픽싱', fund5: '투자조합 지분', purpose: '사업목적 변경', bonus: '무상증자', capred: '감자', contract: '공급계약', invest: 'MOU·투자판단', inquiry: '조회공시', conv: '전환청구', majsell: '최대주주 지분변동', pledge: '담보·질권', risk: '불성실·횡령 등' };
   async function loadManip(date, run) {
     const box = $('#mpBody'); if (!box) return;
     if (run) box.innerHTML = '<div class="loading"><span class="spin"></span>분석을 시작했어요. 단계별로 진행돼 끝까지 약 1시간 걸려요 (중간 결과도 바로 보여요)…</div>';
@@ -3290,8 +3290,8 @@
         <div class="mp-top"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="KR|${esc(r.code)}|${esc(r.n)}">${logoHTML('KR', r.code, r.n, 'sm')}<span><b>${esc(r.n)}</b><small>${esc(r.code)} · ${r.m === 'P' ? '코스피' : r.m === 'Q' ? '코스닥' : ''} · ${esc(rel(r.up))} 갱신</small></span></button>
           <span class="mp-px">${won(r.c)}<small class="${dirCls(r.pct)}">${r.pct != null ? fmtPct(r.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[r.st] || 'watch'}">${esc(r.st || '')}${r.lv ? `<small>의심 ${esc(r.lv)}</small>` : ''}</span>
-          <span class="mp-score"><b>${r.s}</b><small>종합 점수</small></span></div>
-        ${DIRB[r.d] ? `<div class="mp-dirl">${DIRB[r.d]} <small class="muted">상승 근거 ${r.us || 0}점 · 하락 근거 ${r.ds || 0}점</small></div>` : ''}
+          <span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span></div>
+        ${DIRB[r.d] ? `<div class="mp-dirl">${DIRB[r.d]} <small class="muted">상승 근거 ${r.us || 0}/10점 · 하락 근거 ${r.ds || 0}점</small></div>` : ''}
         <div class="mp-cost">🧲 매집 추정 <b>${esc(r.acc || '—')}</b> · 💰 평단 <b>${r.cl || r.ch ? `${fmtInt(r.cl || r.ch)}${r.ch && r.cl && r.ch !== r.cl ? ' ~ ' + fmtInt(r.ch) : ''}원` : r.va ? fmtInt(r.va) + '원' : '—'}</b>${g != null ? ` · 현재가 <b class="${g >= 0 ? 'up' : 'down'}">${g >= 0 ? '+' : ''}${g}%</b>` : ''}</div>
         ${r.tg || r.nd ? `<div class="mp-cost">🎯 참고 목표 ${r.tg ? r.tg.map((p, k) => `<b>${['1.5', '2', '3'][k]}배 ${fmtInt(p)}원</b>`).join(' · ') : '—'}${r.nd ? ` · 🗓 다음 물량 해제 <b>${esc(r.nd)}</b>` : ''}</div>` : ''}
         ${why.length ? `<ul class="mp-why ${r.d || ''}">${why.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
@@ -3304,7 +3304,8 @@
       <li><b>띄우기</b>: 거래량 폭증과 함께 급등 (테마·공급계약·MOU 공시가 같이 나오는 경우가 많음)</li>
       <li><b>털기</b>: 급등 뒤 CB 전환청구·추가 상장·최대주주 지분 변동·고점 이탈 등 '물량을 파는' 신호</li>
       <li><b>의심 높음/중간/낮음</b>: AI가 여러 근거가 위 흐름과 얼마나 잘 맞는다고 봤는지 (불법이라는 뜻 아님)</li>
-      <li><b>종합 점수</b>: 공시 점수 + 거래 점수. 높을수록 작전 흐름과 '닮은 신호가 많다'는 뜻 — 오른다/내린다는 뜻이 아님</li>
+      <li><b>종합 점수</b>: 공시 점수 + 거래 점수. 정해진 만점은 없음(신호를 더해 가는 방식, 이론상 최대 약 77점). <b>4점 이상만 레이더에 올라오고, 10점 이상이면 신호가 많은 편, 20점 이상이면 매우 많은 편</b>. 높을수록 작전 흐름과 '닮은 신호가 많다'는 뜻 — 오른다/내린다는 뜻이 아님</li>
+      <li><b>상승 근거 점수</b>: 최대 10점 · <b>하락 근거 점수</b>: 최대 약 20점. 상승 가능성 탭은 '상승 근거 − 하락 근거'가 큰 순서. 60일 저점 대비 +50% 넘게 이미 올랐거나 띄우기·털기 단계면 상승 가능성에 넣지 않음</li>
       <li><b>📈 상승 가능성</b>: 흐름상 아직 판 깔기·매집 단계이고 주가가 추정 평단 근처라 '띄우기 전'일 수 있는 종목 (규칙으로 자동 판정)</li>
       <li><b>📉 하락 위험</b>: 이미 띄운 뒤이거나 전환청구·평단 대비 큰 차익 등 '털기' 신호가 있는 종목 (규칙으로 자동 판정)</li>
       <li><b>🎯 참고 목표</b>: 추정 평단의 1.5·2·3배 가격을 단순 계산한 것. 세력의 실제 목표가는 공개 자료로 알 수 없음</li></ul></details>`;
@@ -3336,7 +3337,8 @@
     const srcA = (r) => (/^DART-/.test(r.src || '') ? ` <a class="mp-src" href="/p/${esc(r.src)}" target="_blank">공시</a>` : ` <small class="mp-src">${esc(r.src === '계산' ? '자동 계산' : r.src === '일봉' ? '거래 데이터' : r.src || '')}</small>`);
     const reasons = (arr) => (arr || []).map((r) => `<li>${esc(r.t)}${srcA(r)}</li>`).join('');
     const aiLine = (r) => `<li>${esc(r.t)} <small class="mp-ref">근거 ${esc(r.refs.join(','))}</small></li>`;
-    const dirBox = `<div class="mp-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 근거 <small>확인된 사실·자동 계산 · ${d.upS || 0}점</small></h5>${d.up?.length ? `<ul>${reasons(d.up)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 근거 <small>확인된 사실·자동 계산 · ${d.downS || 0}점</small></h5>${d.down?.length ? `<ul>${reasons(d.down)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div></div>`;
+    const notes = (d.notes || []).length ? `<div class="mp-notes">${d.notes.map((n) => `<p>ℹ️ ${esc(n)}</p>`).join('')}</div>` : '';
+    const dirBox = notes + `<div class="mp-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 근거 <small>확인된 사실·자동 계산 · ${d.upS || 0}/10점</small></h5>${d.up?.length ? `<ul>${reasons(d.up)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 근거 <small>확인된 사실·자동 계산 · ${d.downS || 0}점</small></h5>${d.down?.length ? `<ul>${reasons(d.down)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div></div>`;
     const tgtBox = d.tgt || d.dates?.length ? `<div class="mp-tgt"><div><h5>🎯 참고 목표 가격 <small>추정 평단 기준 단순 계산 · 세력의 실제 목표는 알 수 없음</small></h5>${d.tgt ? `<div class="mp-tg">${d.tgt.map((t) => `<span class="${t.hit ? 'hit' : ''}">평단 ${t.m}배 <b>${fmtInt(t.p)}원</b>${t.hit ? ' ✓ 도달' : ''}</span>`).join('')}</div>` : '<p class="muted sm">평단 근거 없음</p>'}</div>
       <div><h5>🗓 물량이 풀릴 수 있는 날 <small>일반 규정 기준 추정 · 원문 확인 필요</small></h5>${d.dates?.length ? `<ul>${d.dates.map((z) => `<li class="${z.past ? 'muted' : ''}"><b>${esc(z.d)}</b> ${esc(z.t)}${z.past ? ' (지남)' : ''} <a class="mp-src" href="/p/${esc(z.ref)}" target="_blank">공시</a></li>`).join('')}</ul>` : '<p class="muted sm">관련 공시(CB·3자배정·전환청구) 없음</p>'}</div></div>` : '';
     const aiBox = a ? `<div class="mp-ai"><b>🤖 AI 해석</b> <small class="muted">아래 사실 목록에 근거 번호가 확인된 문장만 표시${a.dropped ? ` · 근거 확인 안 된 ${a.dropped}개 문장 자동 삭제` : ''}</small>${a.summary ? `<p>${esc(a.summary)}</p>` : ''}
