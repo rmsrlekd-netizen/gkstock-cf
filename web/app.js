@@ -3270,12 +3270,23 @@
     $('#mpBody').innerHTML = dates + btns + `<p class="note">${esc(doc.date)} 기준 · 의심 종목 ${doc.list.length}개${doc.building ? ' (분석 진행 중 — 잠시 뒤 새로고침)' : ''} · 줄을 누르면 근거 공시·AI 상세가 열려요.</p><ol class="mp-list">${rows}</ol>
       <p class="note">⚠ 공시·거래 패턴이 '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐, 불공정거래의 증거가 아닙니다. 평단가는 전환가·발행가·거래량 가중 평균으로 추정한 값입니다. 종목명을 공개적으로 '작전주'라고 지칭하면 법적 문제가 생길 수 있어요.</p>`;
   }
-  async function loadRank() {
+  const RK_KINDS = [['all', '전체 (의심 순)'], ['up', '📈 상승 가능성'], ['down', '📉 하락 위험']];
+  const rkKindsHTML = () => `<div class="seg mp-kinds">${RK_KINDS.map(([k, l]) => `<button data-rk-kind="${k}" class="${(S.rkKind || 'all') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  async function loadRank(retry = 0) {
     const box = $('#mpBody'); if (!box) return;
+    // 늦게 도착한 이전 요청이 화면을 덮어쓰지 않게 (탭을 빨리 바꿀 때 분류가 뒤섞여 보이던 문제)
+    const seq = (S.rkSeq = (S.rkSeq || 0) + 1), kind = S.rkKind || 'all';
+    if (!box.querySelector('.mp-kinds')) box.innerHTML = rkKindsHTML() + '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
+    else { box.querySelectorAll('[data-rk-kind]').forEach((b) => b.classList.toggle('on', b.dataset.rkKind === kind)); box.classList.add('mp-loading'); }
     let j;
-    try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=rank&kind=${S.rkKind || 'all'}`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=rank&kind=${kind}`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    if (seq !== S.rkSeq) return;
+    box.classList.remove('mp-loading');
     if (!$('#mpBody') || (S.mpTab || 'rank') !== 'rank') return;
-    if (!j.ok) { $('#mpBody').innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
+    if (!j.ok) {
+      if (retry < 1) { setTimeout(() => { if (seq === S.rkSeq) loadRank(retry + 1); }, 1500); return; } // 잠깐 실패면 한 번 더
+      $('#mpBody').innerHTML = rkKindsHTML() + `<p class="err">불러오지 못했어요: ${esc(j.error || '')} <button class="btn sm" data-mp-rank-refresh>다시 시도</button></p>`; return;
+    }
     S.mpRank = j.list || [];
     const st = j.state || {};
     const PH = { snap: '전 종목 시세 받는 중', events: '공시 패턴 찾는 중', bars: `일봉 분석 중 (${st.bars || ''})`, docs: '공시 원문에서 가격 확인 중', ai: 'AI 분석 중' };
@@ -3291,14 +3302,14 @@
           <span class="mp-px">${won(r.c)}<small class="${dirCls(r.pct)}">${r.pct != null ? fmtPct(r.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[r.st] || 'watch'}">${esc(r.st || '')}${r.lv ? `<small>의심 ${esc(r.lv)}</small>` : ''}</span>
           <span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span></div>
-        ${r.lk || r.wn ? `<div class="mp-dirl">${r.lk ? `<span class="mp-chip net">🕸 같은 세력 연결 의심 ${r.lk}건</span> ` : ''}${r.wn ? `<span class="mp-chip ev-risk">⚠ 거래소 ${esc(r.wn)}</span>` : ''}</div>` : ''}
+        ${r.lk || r.wn || r.pn ? `<div class="mp-dirl">${r.lk ? `<span class="mp-chip net">🕸 같은 세력 연결 의심 ${r.lk}건</span> ` : ''}${r.wn ? `<span class="mp-chip ev-risk">⚠ 거래소 ${esc(r.wn)}</span> ` : ''}${r.pn ? `<span class="mp-chip ev-risk">📛 불성실공시 벌점 ${r.pn.c != null ? `누계 ${r.pn.c}/15점` : r.pn.u ? '(점수 확인 중)' : ''}${r.pn.pd ? ' · 지정 예고' : ''}</span>` : ''}</div>` : ''}
         ${DIRB[r.d] ? `<div class="mp-dirl">${DIRB[r.d]} <small class="muted">상승 근거 ${r.us || 0}/10점 · 하락 근거 ${r.ds || 0}점</small></div>` : ''}
         <div class="mp-cost">🧲 매집 추정 <b>${esc(r.acc || '—')}</b> · 💰 평단 <b>${r.cl || r.ch ? `${fmtInt(r.cl || r.ch)}${r.ch && r.cl && r.ch !== r.cl ? ' ~ ' + fmtInt(r.ch) : ''}원` : r.va ? fmtInt(r.va) + '원' : '—'}</b>${g != null ? ` · 현재가 <b class="${g >= 0 ? 'up' : 'down'}">${g >= 0 ? '+' : ''}${g}%</b>` : ''}</div>
         ${r.tg || r.nd ? `<div class="mp-cost">🎯 참고 목표 ${r.tg ? r.tg.map((p, k) => `<b>${['1.5', '2', '3'][k]}배 ${fmtInt(p)}원</b>`).join(' · ') : '—'}${r.nd ? ` · 🗓 다음 물량 해제 <b>${esc(r.nd)}</b>` : ''}</div>` : ''}
         ${why.length ? `<ul class="mp-why ${r.d || ''}">${why.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
         ${r.sum ? `<p class="mp-sum">🤖 ${esc(r.sum)}</p>` : ''}<div class="mp-more" hidden></div></li>`;
     }).join('');
-    const kinds = `<div class="seg mp-kinds">${[['all', '전체 (의심 순)'], ['up', '📈 상승 가능성'], ['down', '📉 하락 위험']].map(([k, l]) => `<button data-rk-kind="${k}" class="${(S.rkKind || 'all') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    const kinds = rkKindsHTML();
     const legend = `<details class="mp-legend"><summary>용어 설명 (단계·의심 수준·점수·상승/하락)</summary><ul>
       <li><b>판 깔기</b>: 최대주주 변경·투자조합 3자배정 증자·CB 발행·사업목적 추가처럼 '준비' 공시가 나왔지만 주가는 아직 크게 안 움직인 상태</li>
       <li><b>매집</b>: 주가는 박스권인데 거래량이 늘고, 오를 때 거래가 많고 내릴 때 적은 흐름 (조용히 사 모으는 모습)</li>
@@ -3345,6 +3356,23 @@
     const row = e.target.closest('.mp-rk');
     if (row && !e.target.closest('a, button, .mp-more')) openRankRow(row);
   });
+  // 불성실공시 벌점 (최근 1년) — 서버 penaltyOf와 같은 계산
+  function penaltyBox(x) {
+    const now = Date.now();
+    const L = (x.px || []).filter((p) => p.pen && now - Date.parse(p.date + 'T12:00:00+09:00') < 365 * 86400e3).sort((a, b) => (a.date < b.date ? 1 : -1));
+    const ev = (x.events || []).filter((e) => e.kind === 'risk' && /불성실공시/.test(e.title) && now - e.ms < 365 * 86400e3);
+    if (!L.length && !ev.length) return '';
+    const fixed = L.filter((p) => !p.pen.pre);
+    const sum = fixed.reduce((a, p) => a + (p.pen.p || 0), 0), cumDoc = fixed.find((p) => p.pen.cum != null)?.pen.cum ?? null;
+    const cum = Math.max(sum, cumDoc || 0);
+    const kospi = x.mkt === 'P', stop1 = kospi ? 10 : 8;
+    const pct = Math.min(100, Math.round((cum / 15) * 100));
+    return `<div class="mp-pen"><h5>📛 불성실공시 벌점 <small>최근 1년 · 공시 원문 기준</small></h5>
+      ${L.length ? `<div class="mp-penbar"><i style="width:${pct}%" class="${cum >= 15 ? 'over' : cum >= 10 ? 'warn' : ''}"></i><span>누계 <b>${cum}점</b> / 15점${cum < 15 ? ` · ${15 - cum}점 남음` : ' · 기준 초과'}</span></div>
+      <ul>${L.map((p) => `<li>${esc(p.date)} ${p.pen.pre ? '<b>지정 예고</b> (벌점 확정 전)' : `부과벌점 <b>${p.pen.p ?? '?'}점</b>${p.pen.p >= stop1 ? ` <span class="err">→ ${stop1}점 이상: 지정일 하루 매매정지</span>` : ''}`}${p.pen.cum != null ? ` · 원문상 누계 ${p.pen.cum}점` : ''} <a class="mp-src" href="/p/${esc(p.ref || '')}" target="_blank">공시</a></li>`).join('')}</ul>`
+        : `<p class="muted sm">불성실공시 관련 공시 ${ev.length}건이 있지만 원문에서 점수를 아직 못 읽었어요 (다음 분석 때 다시 확인). ${ev.map((e) => `<a class="mp-src" href="/p/${esc(e.id)}" target="_blank">${esc(e.title)}</a>`).join(' ')}</p>`}
+      <p class="muted sm">${kospi ? '코스피: 1회 10점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 15점 이상이면 관리종목 지정 (관리종목 후 1년간 추가 15점이면 상장적격성 실질심사)' : '코스닥: 1회 8점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 15점 이상이면 상장적격성 실질심사'}</p></div>`;
+  }
   function mpDetail(x) {
     const a = x.ai && !x.ai.error ? x.ai : null, f = x.f || {};
     const li = (arr) => arr.map((t) => `<li>${esc(t)}</li>`).join('');
@@ -3357,8 +3385,9 @@
     const aiLine = (r) => `<li>${esc(r.t)} <small class="mp-ref">근거 ${esc(r.refs.join(','))}</small></li>`;
     const notes = (d.notes || []).length ? `<div class="mp-notes">${d.notes.map((n) => `<p>ℹ️ ${esc(n)}</p>`).join('')}</div>` : '';
     const net = (x.links || []).length ? `<div class="mp-net"><h5>🕸 같은 세력 연결 의심 <small>같은 공시 제출인·인수자 이름이 다른 종목에도 나옴 (동명이인·우연일 수 있음)</small></h5><ul>${x.links.map((l) => `<li><b>${esc(l.who)}</b> → ${l.others.map((o) => `<button class="link" data-open-co="KR|${esc(o.c)}|${esc(o.nm || '')}">${esc(o.nm || o.c)}</button> <small class="muted">${esc(o.d)} ${esc(MP_EV[o.k] || '')}</small>`).join(', ')}</li>`).join('')}</ul></div>` : '';
+    const pn = penaltyBox(x);
     const meta = [x.ind ? `업종 ${esc(x.ind)}` : '', x.capPct != null ? `시가총액 순위 하위 ${Math.round(x.capPct * 100)}%` : '', x.warn ? `거래소 ${esc(x.warn.lv)}${x.warn.date ? ' ' + esc(x.warn.date) : ''}` : ''].filter(Boolean).join(' · ');
-    const dirBox = (meta ? `<p class="muted sm" style="margin:0 0 .4rem">${meta}</p>` : '') + net + notes + `<div class="mp-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 근거 <small>확인된 사실·자동 계산 · ${d.upS || 0}/10점</small></h5>${d.up?.length ? `<ul>${reasons(d.up)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 근거 <small>확인된 사실·자동 계산 · ${d.downS || 0}점</small></h5>${d.down?.length ? `<ul>${reasons(d.down)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div></div>`;
+    const dirBox = (meta ? `<p class="muted sm" style="margin:0 0 .4rem">${meta}</p>` : '') + pn + net + notes + `<div class="mp-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 근거 <small>확인된 사실·자동 계산 · ${d.upS || 0}/10점</small></h5>${d.up?.length ? `<ul>${reasons(d.up)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 근거 <small>확인된 사실·자동 계산 · ${d.downS || 0}점</small></h5>${d.down?.length ? `<ul>${reasons(d.down)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div></div>`;
     const tgtBox = d.tgt || d.dates?.length ? `<div class="mp-tgt"><div><h5>🎯 참고 목표 가격 <small>추정 평단 기준 단순 계산 · 세력의 실제 목표는 알 수 없음</small></h5>${d.tgt ? `<div class="mp-tg">${d.tgt.map((t) => `<span class="${t.hit ? 'hit' : ''}">평단 ${t.m}배 <b>${fmtInt(t.p)}원</b>${t.hit ? ' ✓ 도달' : ''}</span>`).join('')}</div>` : '<p class="muted sm">평단 근거 없음</p>'}</div>
       <div><h5>🗓 물량이 풀릴 수 있는 날 <small>CB는 원문의 전환청구기간을 읽고, 못 읽으면 발행 1년 뒤로 추정</small></h5>${d.dates?.length ? `<ul>${d.dates.map((z) => `<li class="${z.past ? 'muted' : ''}"><b>${esc(z.d)}</b> ${esc(z.t)}${z.real ? ' <span class="mp-chip vol">원문 확인</span>' : ''}${z.past ? ' (지남)' : ''} <a class="mp-src" href="/p/${esc(z.ref)}" target="_blank">공시</a></li>`).join('')}</ul>` : '<p class="muted sm">관련 공시(CB·3자배정·전환청구) 없음</p>'}</div></div>` : '';
     const aiBox = a ? `<div class="mp-ai"><b>🤖 AI 해석</b> <small class="muted">아래 사실 목록에 근거 번호가 확인된 문장만 표시${a.dropped ? ` · 근거 확인 안 된 ${a.dropped}개 문장 자동 삭제` : ''}</small>${a.summary ? `<p>${esc(a.summary)}</p>` : ''}
