@@ -3234,7 +3234,7 @@
           <p class="note">${c.last ? `마지막 게시: ${fmtDT(new Date(c.last.at)).full} · ${esc(c.last.title || '')}` : '아직 게시한 글이 없어요.'}${c.err ? `<br><b class="err">⚠ ${esc(c.err)}</b> — 봇이 채널 관리자인지, 채널 주소가 맞는지 확인하세요.` : ''}${c.lastErr && !c.err ? `<br><span class="muted">최근 오류(${fmtDT(new Date(c.lastErr.at)).hm}): ${esc(c.lastErr.msg)}</span>` : ''}</p></div>`;
       })()}`;
   }
-  S.admTab = load('gk_admtab', 'stats'); S.rpTab = load('gk_rptab', 'price');
+  S.admTab = load('gk_admtab', 'stats'); S.rpTab = load('gk_rptab', 'price'); S.fg = load('gk_fg', 'all'); S.fs = load('gk_fs', 'all');
   S.mpTab = load('gk_mptab', 'rank'); S.rkKind = load('gk_rkkind', 'all');
   // 작전 레이더 요청: 응답이 늦으면 멈춘 것처럼 보이지 않게 시간 제한
   async function mpGet(q, ms = 40000) {
@@ -3399,6 +3399,18 @@
   }
   const RK_KINDS = [['all', '전체 (의심 순)'], ['pick', '🎯 내 매매 후보'], ['up', '📈 상승 가능성'], ['down', '📉 하락 위험'], ['rr', '⚖️ 손익비 순'], ['ck', '✅ 체크리스트 순'], ['pex', '🔁 털기 후 상승']];
   const rkKindsHTML = () => `<div class="seg mp-kinds">${RK_KINDS.map(([k, l]) => `<button data-rk-kind="${k}" class="${(S.rkKind || 'all') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  function applyRkFilter() {
+    const box = $('#mpBody'); if (!box) return;
+    const fg = S.fg || 'all', fs = S.fs || 'all';
+    let shown = 0, total = 0;
+    box.querySelectorAll('li.mp-rk').forEach((li) => { total++; const ok = (fg === 'all' || li.dataset.g === fg) && (fs === 'all' || li.dataset.st === fs); li.hidden = !ok; if (ok) shown++; });
+    box.querySelectorAll('li.pk-sep').forEach((sep) => { let n = sep.nextElementSibling, any = false; while (n && !n.classList.contains('pk-sep')) { if (n.classList.contains('mp-rk') && !n.hidden) any = true; n = n.nextElementSibling; } sep.hidden = !any; });
+    box.querySelectorAll('[data-fg]').forEach((b) => b.classList.toggle('on', b.dataset.fg === fg));
+    box.querySelectorAll('[data-fs]').forEach((b) => b.classList.toggle('on', b.dataset.fs === fs));
+    const fn = box.querySelector('.rk-fn'); if (fn) fn.textContent = fg === 'all' && fs === 'all' ? '' : `${shown}개 표시 (전체 ${total}개)`;
+    let empty = box.querySelector('.rk-empty');
+    if (!shown && total) { if (!empty) { empty = document.createElement('p'); empty.className = 'muted rk-empty'; box.querySelector('.mp-list')?.before(empty); } empty.textContent = '이 등급·단계에 해당하는 종목이 없어요. 위에서 다른 조건을 골라 보세요.'; } else empty?.remove();
+  }
   async function loadRank(retry = 0) {
     const box = $('#mpBody'); if (!box) return;
     // 늦게 도착한 이전 요청이 화면을 덮어쓰지 않게 (탭을 빨리 바꿀 때 분류가 뒤섞여 보이던 문제)
@@ -3429,7 +3441,7 @@
       const why = (S.rkKind === 'down' ? r.dr : S.rkKind === 'up' ? r.ur : r.d === 'down' ? r.dr : r.ur) || [];
       const pkBar = S.rkKind === 'pick' ? `<div class="pk-bar ${r.near ? 'near' : 'ok'}">${r.near ? `⚠ 조건 하나 부족: <b>${esc(r.pf?.[0] || '')}</b>` : '✅ 매매 후보 조건 모두 통과'}${r.pat ? ` · <span class="pk-pat${r.pat.on ? '' : ' off'}">📊 비슷한 패턴 20일 뒤 오른 비율 ${r.pat.on ? `<b>약 ${r.pat.est}%</b> (전체 ${r.pat.base}%)` : '데이터 모으는 중'}</span>` : ''}</div>` : '';
       const sep = S.rkKind === 'pick' && r.near && !S.mpRank[i - 1]?.near ? `<li class="pk-sep">조건 하나만 부족한 종목 (참고 · 그 조건이 풀리는지 지켜볼 후보)</li>` : '';
-      return `${sep}<li class="mp-row mp-rk${r.near ? ' pk-near' : ''}" data-mp-code="${esc(r.code)}">${pkBar}
+      return `${sep}<li class="mp-row mp-rk${r.near ? ' pk-near' : ''}" data-mp-code="${esc(r.code)}" data-g="${esc(r.ckg || '-')}" data-st="${esc(r.st || '관찰')}">${pkBar}
         <div class="mp-top"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="KR|${esc(r.code)}|${esc(r.n)}">${logoHTML('KR', r.code, r.n, 'sm')}<span><b>${esc(r.n)}</b><small>${esc(r.code)} · ${r.m === 'P' ? '코스피' : r.m === 'Q' ? '코스닥' : ''} · ${esc(rel(r.up))} 갱신</small></span></button>
           <span class="mp-px">${won(r.c)}<small class="${dirCls(r.pct)}">${r.pct != null ? fmtPct(r.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[r.st] || 'watch'}">${esc(r.st || '')}${r.lv ? `<small>의심 ${esc(r.lv)}</small>` : ''}</span>
@@ -3473,10 +3485,17 @@
       <li><b>✅ 성공 가능성 체크리스트</b>: 띄울 이유(세력 자금 실제 납입·원가 근처·물량 해제일 2~3개월 전) · 띄울 힘(소형주·최대주주 지분 40%↑·사업목적 추가·매집 흔적·업종/테마 강세·내부자 매수·창구 쏠림·손익비 2↑·기사/종토방 증가)과 위험 신호(납입 연기·철회, 벌점, 감사의견·자본잠식, 자금 외부 유출, 담보 반대매매, 내부자 매도, 같은 세력 실패 이력, 엑시트 후, 약세장, 신용잔고 7%↑, 투자경고 요건 근접)를 ✓/✗로 표시. 자료를 못 받은 항목은 '?'로 두고 계산에서 뺌</li>
       <li><b>⚖️ 손익비</b>: (1차 목표 − 현재가) ÷ (현재가 − 손절 기준). 손절 기준은 현재가 바로 아래의 세력 원가·지지 가격 — 그 아래로 빠지면 '세력 평단 근처'라는 근거가 깨짐. 1 : 3이면 3% 잃을 위험에 9% 오를 여지라는 뜻 (확률이 아니라 폭의 비율)</li>
       <li><b>🎯 참고 목표</b>: 현재가보다 위에 있는 '근거 있는 가격' — 공시에 적힌 CB 전환가·3자배정 발행가·인수 단가(세력이 이익을 보려면 넘어야 하는 원가)와 과거 고점(매물대). 배수 계산이 아님. 세력의 실제 목표가는 어떤 공시에도 안 나옴</li></ul></details>`;
-    $('#mpBody').innerHTML = `<div class="chips" style="margin:.5rem 0">${status}<button class="btn sm" data-mp-rank-refresh>새로고침</button></div>${kinds}${legend}
+    // 등급·단계로 거르기 (화면에서만 거름 — 다시 불러오지 않음)
+    const cnt = (f) => S.mpRank.filter(f).length;
+    const GR = [['all', '전체'], ['A', 'A등급'], ['B', 'B등급'], ['C', 'C등급'], ['D', 'D등급']];
+    const STG = [['all', '전체'], ['판 깔기', '판 깔기'], ['매집', '매집'], ['띄우기', '띄우기'], ['털기', '털기'], ['엑시트 후', '엑시트 후'], ['관찰', '관찰']];
+    const filt = `<div class="rk-filt"><div><em>✅ 등급</em>${GR.map(([k, l]) => { const n = k === 'all' ? S.mpRank.length : cnt((r) => r.ckg === k); return `<button data-fg="${k}" class="${(S.fg || 'all') === k ? 'on' : ''} g${k}"${n || k === 'all' ? '' : ' disabled'}>${l} <small>${n}</small></button>`; }).join('')}</div>
+      <div><em>🧭 단계</em>${STG.map(([k, l]) => { const n = k === 'all' ? S.mpRank.length : cnt((r) => (r.st || '관찰') === k); return `<button data-fs="${esc(k)}" class="${(S.fs || 'all') === k ? 'on' : ''} ${MP_ST[k] || ''}"${n || k === 'all' ? '' : ' disabled'}>${l} <small>${n}</small></button>`; }).join('')}</div><span class="rk-fn muted sm"></span></div>`;
+    $('#mpBody').innerHTML = `<div class="chips" style="margin:.5rem 0">${status}<button class="btn sm" data-mp-rank-refresh>새로고침</button></div>${kinds}${filt}${legend}
       <p class="note">${S.rkKind === 'pick' ? `🎯 <b>내 매매 후보</b> = 아래 조건을 <b>모두</b> 통과한 종목: ① 단계 매집·판 깔기 ② 상승 가능성 분류 ③ 체크리스트 A·B등급 ④ 손익비 1:2 이상 ⑤ 현재가가 추정 평단 대비 +15% 이하(이미 뜬 종목 제외) ⑥ 신호 엇갈림 없음 ⑦ 거래소 경보·벌점 10점↑·횡령/감사의견 등 위험 공시 없음. 순서는 ${j.pat?.on ? `<b>지난 성적표에서 비슷한 패턴이 20거래일 뒤 오른 비율(추정)</b> → 체크 등급 → 손익비 순 (성적표 20일 결과 ${j.pat.n}건 기준, 표본 적은 특징은 전체 평균 쪽으로 당겨 과장 방지)` : `체크 등급 → 손익비 순. <b>📊 패턴 우선순위는 성적표 20일 결과가 ${j.pat?.need || 100}건 쌓이면 자동으로 켜져요 (지금 ${j.pat?.n || 0}건)</b> — 그 뒤엔 실제로 잘 맞은 패턴(단계·등급·손익비·털기 후 상승·매집봉)을 가진 종목이 위로 올라와요`}. 통과 ${j.pat?.ok ?? 0}종목. 사는 자리는 추정 평단 근처, 손절은 화면의 손절 기준, 분할 매수 권장 — 결과를 보장하지 않아요.` : S.rkKind === 'pex' ? '🔁 털기·엑시트 후 종목(또는 고점에서 33% 넘게 빠진 종목) 중 다시 오를 근거가 많은 순. 올라갈 근거(바닥 유지·남은 CB 물량 소진/되사기·새 판 깔기 공시·바닥 뒤 매집 흔적·거래량 마름·내부자 매수·2차 작전 반등) − 못 올라갈 근거(남은 전환 물량·계속되는 전환청구/지분 매도·털기 중 반등·내부자 매도·새 저점·상장 위험·약세장·자금 문제). 높음 = 올라갈 근거 5점↑이고 차이 3점↑. 패턴상 가능성일 뿐이에요.' : S.rkKind === 'ck' ? '✅ 성공 가능성 체크리스트 순: (충족한 성공 조건 수) − 2×(위험 신호 수). 자료가 없는 항목은 계산에서 빼요. A = 충족 60%↑(4개 이상)·위험 0 · B = 충족 40%↑(3개 이상)·위험 1개 이하 · C = 나머지 · D = 종목 위험 신호 3개↑ (시장 전체 약세는 등급에서 제외). 하락 위험 종목 제외. 패턴상 기준일 뿐 결과를 보장하지 않아요.' : S.rkKind === 'rr' ? '⚖️ 손익비 = (1차 목표 − 현재가) ÷ (현재가 − 손절 기준). 1차 목표는 현재가 위 가장 가까운 근거 가격(공시 원가·매집 전 고점·매물대), 손절 기준은 현재가 3% 이상 아래의 가장 가까운 세력 원가·지지 가격(공시 원가·매집 구간 최저가·최근 20일 저점·버틴 매집봉 저점 — 이 아래로 빠지면 세력 평단 근거가 깨짐). 하락 위험·띄우기·털기·엑시트 후 종목은 제외. 손익비가 높아도 그 목표까지 간다는 보장은 없어요 — 매매 판단은 직접.' : S.rkKind === 'up' ? '상승 근거 점수 순.' : S.rkKind === 'down' ? '하락 근거 점수 순.' : 'AI 의심 수준(높음→중간→낮음) → 종합 점수 순.'} 근거는 공시·거래 데이터로 자동 계산한 사실이고, AI 문장은 그 사실 번호가 확인된 것만 남깁니다. 새 공시가 나오면 그 종목은 전체 공시·거래량과 함께 자동으로 다시 판단돼 순위·평단·단계가 바뀌어요. 줄을 누르면 그 종목 페이지가 열려요.</p>
       ${S.rkKind === 'pick' && rows && !j.pat?.ok ? '<p class="pk-none">지금 조건을 모두 통과한 종목은 없어요. 억지로 고르지 않는 것도 전략이에요 — 아래는 조건 하나만 부족한 참고 종목이에요.</p>' : ''}      ${rows ? `<ol class="mp-list">${rows}</ol>` : `<p class="muted">${S.rkKind === 'pick' ? '지금은 조건을 모두 통과한 종목도, 하나만 부족한 종목도 없어요. 억지로 고르지 않는 것도 전략이에요 — 새 분석이 끝나면 다시 확인해 보세요.' : S.rkKind === 'pex' ? '털기 후 상승 가능성을 계산한 종목이 아직 없어요 (장 마감 뒤 정기 분석·재확인부터 채워져요).' : S.rkKind === 'ck' ? '체크리스트가 계산된 종목이 아직 없어요 (장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'rr' ? '손익비를 계산할 수 있는 종목이 아직 없어요 (위쪽 목표와 아래쪽 원가·지지 가격이 모두 있어야 해요. 장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'up' ? '지금은 상승 가능성 쪽으로 분류된 종목이 없어요.' : S.rkKind === 'down' ? '지금은 하락 위험 쪽으로 분류된 종목이 없어요.' : '아직 랭킹이 없어요. 첫 정기 분석이 시작되면 약 10분 뒤 채워져요.'}</p>`}
       <p class="note">⚠ '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐 불공정거래의 증거가 아닙니다. 외부에 종목명을 '작전주'로 공개하지 마세요.</p>`;
+    applyRkFilter();
     if (S.reopen) { const c = S.reopen; S.reopen = null; const r2 = document.querySelector(`.mp-rk[data-mp-code="${c}"]`); if (r2) openRankRow(r2); }
     } catch (er) { // 한 줄이라도 그리다 오류가 나면 '불러오는 중'에 멈추지 않고 이유를 보여줌
       console.error('작전 레이더 랭킹 그리기 오류', er);
@@ -3595,6 +3614,8 @@
     if (e.target.closest('[data-mp-look-close]')) { const b = $('#mpLook'); if (b) b.innerHTML = ''; return; }
     if (!e.target.closest('.mp-search')) { const l = $('#mpQList'); if (l) l.hidden = true; }
     if (e.target.closest('[data-mp-rank-refresh]')) { loadRank(); return; }
+    const fgb = e.target.closest('[data-fg]'); if (fgb) { S.fg = fgb.dataset.fg; save('gk_fg', S.fg); applyRkFilter(); return; }
+    const fsb = e.target.closest('[data-fs]'); if (fsb) { S.fs = fsb.dataset.fs; save('gk_fs', S.fs); applyRkFilter(); return; }
     const kb = e.target.closest('[data-rk-kind]'); if (kb) { S.rkKind = kb.dataset.rkKind; save('gk_rkkind', S.rkKind); loadRank(); return; }
     const row = e.target.closest('.mp-rk');
     if (row && !e.target.closest('a, button')) openRankRow(row);

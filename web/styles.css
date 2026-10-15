@@ -2222,3 +2222,14 @@ button.br-mv:hover { border-color: var(--accent); }
 .pf-planbox { margin: .6rem 0; }
 @media (max-width: 720px) { .pf-plan { grid-template-columns: 1fr; } .pf-cfg input { width: 130px; } }
 .pf-plan > small.pf-alert { color: #fcd34d; }
+/* 랭킹 등급·단계 거르기 */
+.rk-filt { display: flex; flex-direction: column; gap: .35rem; margin: .5rem 0 .3rem; }
+.rk-filt > div { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+.rk-filt em { font-style: normal; font-size: .75rem; color: var(--muted); min-width: 3.6rem; font-weight: 700; }
+.rk-filt button { font-size: .78rem; padding: .25rem .6rem; border-radius: 999px; border: 1px solid var(--line2); background: transparent; color: inherit; cursor: pointer; }
+.rk-filt button small { color: var(--muted); margin-left: .15rem; }
+.rk-filt button.on { background: var(--accent, #7c6cff); border-color: transparent; color: #fff; } .rk-filt button.on small { color: rgba(255,255,255,.8); }
+.rk-filt button:disabled { opacity: .35; cursor: default; }
+.rk-filt button.gA:not(.on) { color: #34d399; } .rk-filt button.gB:not(.on) { color: #ffd166; } .rk-filt button.gC:not(.on) { color: #fb923c; } .rk-filt button.gD:not(.on) { color: #f87171; }
+.rk-fn { margin-left: .2rem; }
+.rk-filt button { white-space: nowrap; }
