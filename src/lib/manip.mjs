@@ -5,7 +5,7 @@
 //  · 결과는 날짜별로 영구 보관 (mp/day/YYYY-MM-DD, 지우지 않음) — 관리자 화면에서 날짜를 골라 다시 볼 수 있음
 //  · 크론(3분마다)이 장 마감 뒤(15:50~) 단계별로 조금씩 진행: 전 종목 시세 → 공시 → 후보 일봉 → 원문 가격 → AI
 //  ※ '패턴이 비슷하다'는 신호일 뿐 불공정거래의 증거가 아님. 외부 공개 금지(관리자 화면 전용)
-import { getJSON, setJSON, sqlDB } from './store.mjs';
+import { getJSON, setJSON, sqlDB, getJSONStrict, delKeys } from './store.mjs';
 import { fetchWithTimeout, BROWSER_UA } from './util.mjs';
 import { isTradingDay } from './schedule.mjs';
 import { buildPartyIndex, linksOf, radarAlert } from './manipx.mjs';
@@ -82,7 +82,7 @@ async function loadEvents(now) {
   if (d) {
     const ex = "(COALESCE(title,'') || ' ' || COALESCE(json_extract(data,'$.formKo'),''))";
     const like = KEYS.map(() => 'x LIKE ?').join(' OR ');
-    const sql = `SELECT * FROM (SELECT id, ticker AS tk, name AS nm, ms, title AS t, json_extract(data,'$.formKo') AS f, json_extract(data,'$.party') AS p, json_extract(data,'$.summary.title') AS st, json_extract(data,'$.summary.sub') AS ss, ${ex} AS x FROM items WHERE src = 'DART' AND ms > ? AND ticker IS NOT NULL) WHERE ${like} LIMIT 60000`;
+    const sql = `SELECT * FROM (SELECT id, ticker AS tk, name AS nm, ms, title AS t, json_extract(data,'$.formKo') AS f, json_extract(data,'$.party') AS p, json_extract(data,'$.summary.title') AS st, json_extract(data,'$.summary.sub') AS ss, ${ex} AS x FROM items WHERE src = 'DART' AND ms > ? AND ticker IS NOT NULL) WHERE ${like} ORDER BY ms DESC LIMIT 60000`;
     const r = await d.prepare(sql).bind(since, ...KEYS.map((k) => `%${k}%`)).all();
     for (const row of r.results || []) add(row);
   } else {
@@ -115,10 +115,12 @@ async function snapshot() {
   const rows = {};
   for (const mkt of ['KOSPI', 'KOSDAQ']) {
     for (let p = 1; p <= 30; p += 5) {
-      const pages = await Promise.all([0, 1, 2, 3, 4].map((i) => nget(`https://m.stock.naver.com/api/stocks/marketValue/${mkt}?page=${p + i}&pageSize=100`).catch(() => null)));
+      const get1 = async (pg) => { for (let t = 0; t < 3; t++) { try { return await nget(`https://m.stock.naver.com/api/stocks/marketValue/${mkt}?page=${pg}&pageSize=100`); } catch {} } return null; };
+      const pages = await Promise.all([0, 1, 2, 3, 4].map((i) => get1(p + i)));
       let end = false;
       for (const j of pages) {
-        const list = j?.stocks || [];
+        if (!j) { rows.__partial = true; continue; } // 3번 실패한 쪽은 건너뜀 (뒤쪽 종목까지 버리지 않음)
+        const list = j.stocks || [];
         if (list.length < 100) end = true;
         for (const x of list) {
           if (!x.itemCode || (x.stockEndType && x.stockEndType !== 'stock') || halted(x)) continue;
@@ -132,6 +134,8 @@ async function snapshot() {
       if (end) break;
     }
   }
+  const partial = !!rows.__partial; delete rows.__partial;
+  Object.defineProperty(rows, 'partial', { value: partial, enumerable: false });
   return rows; // code → [이름, 시장(P코스피/Q코스닥), 종가, 등락률, 거래량, 거래대금, 시총]
 }
 
@@ -140,7 +144,8 @@ async function bars(code) {
   const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${code}&timeframe=day&count=300&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 9000);
   if (!r.ok) throw new Error('일봉 HTTP ' + r.status);
   const xml = await r.text();
-  return [...xml.matchAll(/data="(\d{8})\|([\d.]+)\|([\d.]+)\|([\d.]+)\|([\d.]+)\|(\d+)"/g)].map((m) => ({ d: `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6)}`, o: +m[2], h: +m[3], l: +m[4], c: +m[5], v: +m[6] })).filter((x) => x.c > 0);
+  // 거래정지·단일가 날은 시가·고가·저가가 0으로 올 때가 있음 → 종가로 채움 (0이면 '60일 저점 대비 +Infinity%' 같은 오류)
+  return [...xml.matchAll(/data="(\d{8})\|([\d.]+)\|([\d.]+)\|([\d.]+)\|([\d.]+)\|(\d+)"/g)].map((m) => { const c = +m[5]; const o = +m[2] || c, h = Math.max(+m[3] || c, c), l = Math.min(+m[4] || c, c); return { d: `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6)}`, o, h, l, c, v: +m[6] }; }).filter((x) => x.c > 0);
 }
 const median = (a) => { const s = a.filter((x) => x > 0).sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
 const vwap = (rows) => { let pv = 0, v = 0; for (const x of rows) { pv += ((x.h + x.l + x.c) / 3) * x.v; v += x.v; } return v ? pv / v : null; };
@@ -149,6 +154,7 @@ const r1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
 /** 일봉 → 거래량·주가 패턴 + 매집 구간 평단 추정 */
 export function barFeatures(B) {
   if (!B || B.length < 40) return null;
+  B = B.filter((x) => x.c > 0).map((x) => ({ ...x, o: x.o || x.c, h: Math.max(x.h || x.c, x.c), l: Math.min(x.l || x.c, x.c) })); // 0 가격 방어
   const last = B[B.length - 1], n = B.length;
   const win = (a, b) => B.slice(Math.max(0, n - a), n - b);
   const base = win(65, 5), base60 = median(base.map((x) => x.v));
@@ -205,7 +211,7 @@ export function barFeatures(B) {
   const f = {
     close: last.c, date: last.d,
     ret5: r1(ret(5)), ret20: r1(ret(20)), ret60: r1(ret(60)),
-    fromLow60: r1((last.c / lo60 - 1) * 100), offHigh20: r1((last.c / hi20 - 1) * 100),
+    fromLow60: lo60 > 0 ? r1((last.c / lo60 - 1) * 100) : null, offHigh20: hi20 > 0 ? r1((last.c / hi20 - 1) * 100) : null,
     volX5: base60 ? r1(v5 / base60) : null, volX20: base60 ? r1(v20 / base60) : null, maxVolX10: base60 ? r1(maxV10 / base60) : null,
     box60: r1((bmax / bmin - 1) * 100), box40: r1(box40 * 100),
     volL20: longBase ? r1(v20 / longBase) : null, // 20일 평균 거래량 ÷ 매집 전(90~170일 전) 거래량
@@ -292,20 +298,22 @@ export function candleCands(B) {
 export const MARK_KO = { acc: '매집봉', wick: '윗꼬리 매물 테스트', absorb: '물량 받아먹는 음봉', dry: '거래량 마름', close: '종가 관리 의심', up30: '상한가', dn30: '하한가' };
 /** 지수 일별 등락률 (코스피 P · 코스닥 Q) — 시장 전체가 급등한 날의 봉은 매집 흔적에서 제외하려고 */
 export async function indexDaily() {
-  const k = `mp/ix/${kst().date}`;
+  const z = kst(), k = `mp/ix/${z.date}`;
   const c = await getJSON(k).catch(() => null);
-  if (c) return c;
-  const out = {};
+  // 장 마감(15:40) 뒤에 받은 것만 하루 종일 씀 · 장중에 받은 건 10분만 (오늘 등락률이 아직 확정 전이라)
+  if (c?.data && (c.after || Date.now() - (c.at || 0) < 10 * 60e3)) return c.data;
+  const out = {}, got = { P: false, Q: false };
   for (const [sym, key] of [['KOSPI', 'P'], ['KOSDAQ', 'Q']]) {
     try {
       const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${sym}&timeframe=day&count=300&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 9000);
       const xml = await r.text();
       const rows = [...xml.matchAll(/data="(\d{8})\|[^|]*\|[^|]*\|[^|]*\|([\d.]+)\|/g)].map((m) => ({ d: `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6)}`, c: +m[2] }));
       for (let i = 1; i < rows.length; i++) ((out[rows[i].d] ||= {})[key] = Math.round((rows[i].c / rows[i - 1].c - 1) * 1000) / 10);
+      if (rows.length > 20) got[key] = true;
     } catch {}
   }
-  if (Object.keys(out).length) await setJSON(k, out).catch(() => {});
-  return out;
+  if (got.P && got.Q) await setJSON(k, { at: Date.now(), after: z.m >= 15 * 60 + 40 || !isTradingDay('KR', z.date), data: out }).catch(() => {}); // 두 지수 다 받았을 때만 저장
+  return Object.keys(out).length ? out : c?.data || {};
 }
 /** 후보 → 그날·전날 공시가 있거나 시장 전체가 급등(±2.5%↑)한 날은 제외, 버팀 확인 → 점수·신호 반영 (f를 직접 바꿈, 한 번만) */
 export function applyMarks(f, evs = [], ix = {}, mkt = 'Q') {
@@ -714,8 +722,11 @@ export function checklistOf(x, now = Date.now()) {
   const paid = ev.filter((e) => e.kind === 'paid' && age(e) <= 400);
   const fundBuy = px.find((p) => p.kind === 'fund5' && p.buys?.length);
   if (!SET.length) add(P, 'money', false, '세력 자금 투입 공시(3자배정·CB·최대주주 변경·투자조합 5%) 없음');
-  else if (paid.some((pe) => SET.some((e) => pe.ms >= e.ms)) || fundBuy) add(P, 'money', true, `세력 자금 실제 투입 확인 — ${paid.length ? `${ymdOf(paid[0].ms)} '${paid[0].title}'` : `${fundBuy.date} 5% 신고자 장내 매수 ${fundBuy.buys.length}건`}`, paid[0]?.id || fundBuy?.ref);
-  else add(P, 'money', false, `${ymdOf(SET[0].ms)} '${EV[SET[0].kind].ko}' 발표는 있지만 납입·발행 완료 공시는 아직 못 찾음 (발표만으로는 약함)`, SET[0].id);
+  else {
+    const pd = paid.filter((pe) => SET.some((e) => pe.ms >= e.ms))[0] || null; // 세력 공시 '뒤에' 나온 납입·발행 완료만
+    if (pd || fundBuy) add(P, 'money', true, `세력 자금 실제 투입 확인 — ${pd ? `${ymdOf(pd.ms)} '${pd.title}'` : `${fundBuy.date} 5% 신고자 장내 매수 ${fundBuy.buys.length}건`}`, pd?.id || fundBuy?.ref);
+    else add(P, 'money', false, `${ymdOf(SET[0].ms)} '${EV[SET[0].kind].ko}' 발표는 있지만 납입·발행 완료 공시는 아직 못 찾음 (발표만으로는 약함)`, SET[0].id);
+  }
   // 원가 근처
   if (d.gap == null) add(P, 'cost', null, '세력 원가를 계산할 근거 없음');
   else add(P, 'cost', d.gap <= 20 && d.gap >= -30, `현재가가 추정 세력 평단 대비 ${d.gap >= 0 ? '+' : ''}${d.gap}% ${d.gap <= 20 && d.gap >= -30 ? '— 세력도 아직 수익 구간이 아님(올려야 이익)' : d.gap > 20 ? '— 세력은 이미 이익 구간' : '— 평단보다 많이 아래(손실 중)'}`);
@@ -829,8 +840,9 @@ ${F.map((f) => `${f.id}. ${f.t} (출처: ${f.src})`).join('\n')}`;
 async function saveDay(date, list, extra = {}) {
   const doc = { date, at: Date.now(), n: list.length, list, ...extra };
   await setJSON(`mp/day/${date}`, doc);
-  const idx = (await getJSON('mp/idx')) || [];
-  if (!idx.includes(date)) { idx.unshift(date); idx.sort((a, b) => (a < b ? 1 : -1)); await setJSON('mp/idx', idx); } // 날짜 목록은 계속 쌓음 (지우지 않음)
+  let idx = null;
+  try { idx = (await getJSONStrict('mp/idx')) || []; } catch (e) { console.warn('mp/idx 읽기 실패 — 목록은 그대로 둠', e.message); }
+  if (idx && !idx.includes(date)) { idx.unshift(date); idx.sort((a, b) => (a < b ? 1 : -1)); await setJSON('mp/idx', idx); } // 날짜 목록은 계속 쌓음 (지우지 않음, 읽기 실패 땐 덮어쓰지 않음)
   return doc;
 }
 
@@ -838,27 +850,33 @@ const AI_TOP = 15;
 /** 크론(3분마다) — 한 번에 한 단계씩 */
 export async function manipWatch({ force = false } = {}) {
   const now = Date.now(), z = kst(now);
-  const st = (await getJSON('mp/state')) || {};
+  let st;
+  try { st = (await getJSONStrict('mp/state')) || {}; } catch (e) { return { err: '상태 읽기 실패: ' + e.message }; } // 읽기 오류를 '처음 실행'으로 착각하지 않게
+  if ((st.busyUntil || 0) > now) return { busy: true }; // 이전 실행이 아직 도는 중 (겹쳐 돌면 같은 일을 두 번 함)
   if (st.force && !force) force = true;
   if (!force && !st.date) force = true; // 처음 올린 뒤엔 시간과 상관없이 한 번 바로 분석
   if (!force) {
     if (!isTradingDay('KR', z.date) || z.m < 15 * 60 + 50) return null;
     if (st.date === z.date && st.phase === 'done') return null;
   }
-  if (st.date !== z.date || (force && st.phase === 'done' && st.force)) Object.assign(st, { date: z.date, phase: 'snap', force: !!force, started: now, log: [] });
+  const midForced = st.force && st.phase && st.phase !== 'done'; // 밤 12시를 넘겨 이어지는 수동 분석은 날짜를 바꾸지 않음
+  if ((st.date !== z.date && !midForced) || (force && st.phase === 'done' && st.force)) Object.assign(st, { date: z.date, phase: 'snap', force: !!force, started: now, log: [], histDone: null });
   const date = st.date;
+  st.busyUntil = now + 170e3;
+  await setJSON('mp/state', st).catch(() => {});
   const log = (m) => { st.log = [...(st.log || []), `${kst().date.slice(5)} ${String(Math.floor(kst().m / 60)).padStart(2, '0')}:${String(kst().m % 60).padStart(2, '0')} ${m}`].slice(-30); };
   const out = { phase: st.phase };
   try {
     if (st.phase === 'snap') {
       const snap = await snapshot().catch((e) => { log('시세 목록 실패: ' + e.message); return {}; });
-      await setJSON(`mp/snap/${date}`, { at: now, rows: snap });
+      await setJSON(`mp/snap/${date}`, { at: now, rows: snap, partial: !!snap.partial });
       st.nSnap = Object.keys(snap).length;
-      log(`전 종목 시세 ${st.nSnap}개`);
+      log(`전 종목 시세 ${st.nSnap}개${snap.partial ? ' (일부 쪽 실패 — 빠진 종목도 공시 후보면 분석)' : ''}`);
       st.phase = 'events';
     } else if (st.phase === 'events') {
       const ev = await loadEvents(now);
-      const snap = (await getJSON(`mp/snap/${date}`))?.rows || {};
+      const snapDoc = await getJSON(`mp/snap/${date}`);
+      const snap = snapDoc?.rows || {};
       const scored = [];
       for (const [code, evs] of Object.entries(ev)) {
         const s = eventScore(evs, now);
@@ -870,7 +888,7 @@ export async function manipWatch({ force = false } = {}) {
       const idx = (await getJSON('mp/idx')) || [];
       const prev = [];
       for (const d of idx.filter((d) => d < date).slice(0, 5)) { const doc = await getJSON(`mp/day/${d}`); for (const x of (doc?.list || []).slice(0, 20)) prev.push(x.code); }
-      const pick = [...new Set([...scored.sort((a, b) => b.es - a.es).slice(0, 140).map((x) => x.code), ...hot, ...prev])].filter((c) => !Object.keys(snap).length || snap[c]);
+      const pick = [...new Set([...scored.sort((a, b) => b.es - a.es).slice(0, 140).map((x) => x.code), ...hot, ...prev])].filter((c) => !Object.keys(snap).length || snapDoc?.partial || snap[c]);
       try { await setJSON('mp/party', { at: now, idx: buildPartyIndex(ev, Object.fromEntries(NAMES)) }); } catch (e) { log('세력 연결 색인 실패: ' + e.message); }
       await setJSON(`mp/ev/${date}`, { ev: Object.fromEntries(pick.map((c) => [c, (ev[c] || []).slice(0, 25)])), names: Object.fromEntries(pick.map((c) => [c, NAMES.get(c) || null])) });
       st.queue = pick.slice(0, 220); st.pos = 0; st.feat = {};
@@ -932,7 +950,7 @@ export async function manipWatch({ force = false } = {}) {
       if (st.dpos >= (st.docq || []).length) { st.phase = 'extra'; st.epos = 0; log('원문 가격 확인 완료 → 체크리스트 자료(지분·감사의견·신용·거래원·뉴스) 수집'); }
     } else if (st.phase === 'extra') {
       const doc = await getJSON(`mp/day/${date}`);
-      const L = (doc?.list || []).slice(0, 40), part = L.slice(st.epos || 0, (st.epos || 0) + 5);
+      const L = (doc?.list || []).slice(0, 40), part = L.slice(st.epos || 0, (st.epos || 0) + 4);
       const { enrich } = await import('./manipck.mjs');
       const ixD = await indexDaily().catch(() => ({}));
       for (const x of part) { try { await enrich(x, { ix: ixD }); } catch (e) { x.ck = { err: { all: String(e.message).slice(0, 60) } }; } x.dir = direction(x, now); x.cl = checklistOf(x, now); }
@@ -955,12 +973,18 @@ export async function manipWatch({ force = false } = {}) {
   } catch (e) { st.err = String(e.message || e).slice(0, 200); log('오류: ' + st.err); }
   // 종목별 등장 기록·종목 카드(프로필)·랭킹 갱신 (지우지 않음)
   if (st.phase === 'done' && !st.histDone) {
-    const doc = await getJSON(`mp/day/${date}`);
-    for (const x of (doc?.list || []).slice(0, 40)) { const k = `mp/hist/${x.code}`; const h = (await getJSON(k)) || []; if (!h.some((y) => y.d === date)) { h.unshift({ d: date, s: x.score, st: x.stage }); await setJSON(k, h.slice(0, 200)); } }
-    await saveProfiles(doc?.list || [], `${date} 장 마감 정기 분석`);
-    st.histDone = date;
+    try {
+      const doc = await getJSON(`mp/day/${date}`);
+      for (const x of (doc?.list || []).slice(0, 40)) { const k = `mp/hist/${x.code}`; let h; try { h = (await getJSONStrict(k)) || []; } catch { continue; } if (!h.some((y) => y.d === date)) { h.unshift({ d: date, s: x.score, st: x.stage }); await setJSON(k, h.slice(0, 200)); } }
+      await saveProfiles(doc?.list || [], `${date} 장 마감 정기 분석`);
+      st.histDone = date;
+      // 다 쓴 작업 목록은 비워서 상태를 가볍게 · 10일 지난 임시 자료(시세 목록·후보 공시·지수·장중 알림 상태) 정리 (mp/day 기록은 지우지 않음)
+      delete st.feat; delete st.docq; delete st.queue;
+      for (const pre of ['mp/snap/', 'mp/ev/', 'mp/ix/', 'mp/live/']) await delKeys(pre, now - 10 * DAY).catch(() => {});
+    } catch (e) { st.err = '마무리 저장 실패: ' + String(e.message || e).slice(0, 160); log('오류: ' + st.err); st.histDone = date; } // 같은 자리에서 무한 반복하지 않게
   }
   if (st.phase !== 'done') st.histDone = null;
+  st.busyUntil = 0;
   await setJSON('mp/state', st);
   out.next = st.phase;
   return out;
@@ -1004,7 +1028,8 @@ function rankRow(x) {
   return { av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: a?.cost?.low ?? d.cost?.low ?? null, ch: a?.cost?.high ?? d.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: a?.acc?.period || (x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : null), up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason, opt = {}) {
-  const rank = (await getJSON('mp/rank')) || {};
+  let rank = null;
+  try { rank = (await getJSONStrict('mp/rank')) || {}; } catch (e) { console.warn('mp/rank 읽기 실패 — 랭킹은 이번에 안 고침', e.message); }
   const alerts = [];
   const DK = { up: '📈 상승 가능성', down: '📉 하락 위험' };
   for (const x of list) {
@@ -1034,9 +1059,12 @@ async function saveProfiles(list, reason, opt = {}) {
     const ai = x.ai && !x.ai.error ? x.ai : prev.ai || null; // 이번에 AI를 못 돌렸으면 이전 분석 유지
     const prof = { ...x, ai, hist: undefined, first: prev.first || Date.now(), at: Date.now(), log: log.slice(0, 60) };
     await setJSON(k, prof);
-    if (opt.rank !== false) rank[x.code] = rankRow(prof);
+    if (opt.rank !== false && rank) rank[x.code] = rankRow(prof);
   }
-  await setJSON('mp/rank', rank);
+  if (rank) {
+    for (const [c, r] of Object.entries(rank)) if (Date.now() - (r.up || 0) > 120 * DAY) delete rank[c]; // 4개월 넘게 신호 없는 줄은 랭킹 목록에서만 정리 (종목 카드는 남김)
+    await setJSON('mp/rank', rank);
+  }
   if (alerts.length) {
     const mine = new Set(((await getJSON('mp/my'))?.items || []).filter((i) => !i.closed).map((i) => i.name));
     await radarAlert(alerts.map((l) => ([...mine].some((nm) => l.startsWith(`• ${nm} `)) ? l.replace('• ', '• ⭐ ') : l))).catch(() => {});
@@ -1150,9 +1178,11 @@ const AI_INCR_DAY = 30;
 export async function manipIncr() {
   const now = Date.now(), z = kst(now);
   if (z.m < 7 * 60 || z.m > 23 * 60) return null;
-  const st = (await getJSON('mp/state')) || {};
+  let st, iq;
+  try { st = (await getJSONStrict('mp/state')) || {}; iq = (await getJSONStrict('mp/iq')) || { seen: [], q: [], day: '', ai: 0 }; } catch { return null; }
   if (st.phase && st.phase !== 'done' && st.date === z.date) return null; // 정기 분석 중엔 쉼
-  const iq = (await getJSON('mp/iq')) || { seen: [], q: [], day: '', ai: 0 };
+  if ((st.busyUntil || 0) > now || (iq.busyUntil || 0) > now) return null; // 다른 실행이 도는 중
+  iq.busyUntil = now + 170e3; await setJSON('mp/iq', iq).catch(() => {});
   if (iq.day !== z.date) { iq.day = z.date; iq.ai = 0; }
   const seen = new Set(iq.seen);
   const feed = (await getJSON('dart/feed').catch(() => null))?.items || [];
@@ -1177,6 +1207,7 @@ export async function manipIncr() {
       out.n++;
     } catch (e) { out.err = String(e.message || e).slice(0, 120); }
   }
+  iq.busyUntil = 0;
   await setJSON('mp/iq', iq);
   out.left = iq.q.length;
   return out.n || out.err ? out : null;

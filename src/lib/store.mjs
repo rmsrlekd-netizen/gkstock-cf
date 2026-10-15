@@ -45,6 +45,24 @@ export async function getJSON(key, fallback = null) {
   }
 }
 
+/** 읽기 오류를 '없음'과 구분 (읽고-고쳐-쓰는 중요한 키용): 오류면 throw, 없으면 fallback */
+export async function getJSONStrict(key, fallback = null) {
+  if (useMem()) return mem.has(key) ? structuredClone(mem.get(key)) : fallback;
+  await init();
+  const row = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first();
+  if (!row || row.v == null) return fallback;
+  const v = row.v;
+  const text = typeof v === 'string' ? v : await gunzip(v instanceof Uint8Array ? v : new Uint8Array(v));
+  return JSON.parse(text);
+}
+/** 키 지우기 (오래된 임시 자료 정리용) */
+export async function delKeys(prefix, beforeT) {
+  if (useMem()) { let n = 0; for (const k of [...mem.keys()]) if (k.startsWith(prefix)) { mem.delete(k); n++; } return n; }
+  await init();
+  const r = await db.prepare('DELETE FROM kv WHERE k LIKE ? AND t < ?').bind(prefix + '%', beforeT).run();
+  return r.meta?.changes ?? 0;
+}
+
 /** 여러 키를 한 번에 (없는 키는 빠짐) */
 export async function getManyJSON(keys) {
   const out = {};

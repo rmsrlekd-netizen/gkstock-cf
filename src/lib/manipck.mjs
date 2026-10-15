@@ -21,7 +21,7 @@ async function html(url, ms = 9000) {
 const strip = (t) => String(t || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 
 // ───── DART: 최대주주 등 지분율 · 감사의견 · 자본잠식률 ─────
-async function dart(ep, params) {
+async function dartRaw(ep, params) {
   const key = process.env.DART_API_KEY;
   if (!key) throw new Error('DART 키 없음');
   const r = await fetchWithTimeout(`https://opendart.fss.or.kr/api/${ep}.json?crtfc_key=${encodeURIComponent(key)}&${new URLSearchParams(params)}`, {}, 8000);
@@ -40,9 +40,11 @@ async function dartFacts(code) {
   if (!corp) throw new Error('DART 고유번호 못 찾음');
   const y = Number(kst().date.slice(0, 4));
   const out = {};
+  let errs = 0, oks = 0;
+  const dart = (ep, p) => dartRaw(ep, p).then((r) => { oks++; return r; }).catch(() => { errs++; return []; });
   // 최근 보고서부터: 최대주주 현황
   outer: for (const yr of [y, y - 1]) for (const [rc, nm] of REPORTS) {
-    const L = await dart('hyslrSttus', { corp_code: corp, bsns_year: String(yr), reprt_code: rc }).catch(() => []);
+    const L = await dart('hyslrSttus', { corp_code: corp, bsns_year: String(yr), reprt_code: rc });
     const common = L.filter((r) => /보통/.test(r.stock_knd || ''));
     if (!common.length) continue;
     const tot = common.find((r) => /^계$|합계/.test(String(r.nm || '').trim()));
@@ -51,7 +53,7 @@ async function dartFacts(code) {
   }
   // 감사의견 (사업보고서)
   for (const yr of [y - 1, y - 2]) {
-    const L = await dart('accnutAdtorNmNdAdtOpinion', { corp_code: corp, bsns_year: String(yr), reprt_code: '11011' }).catch(() => []);
+    const L = await dart('accnutAdtorNmNdAdtOpinion', { corp_code: corp, bsns_year: String(yr), reprt_code: '11011' });
     const row = L.find((r) => r.adt_opinion && r.adt_opinion !== '-');
     if (row) { out.audit = { op: String(row.adt_opinion).trim(), y: `${row.bsns_year || yr}년` }; break; }
   }
@@ -59,7 +61,7 @@ async function dartFacts(code) {
   for (const yr of [y, y - 1]) {
     let done = false;
     for (const [rc, nm] of REPORTS) {
-      const L = await dart('fnlttSinglAcnt', { corp_code: corp, bsns_year: String(yr), reprt_code: rc }).catch(() => []);
+      const L = await dart('fnlttSinglAcnt', { corp_code: corp, bsns_year: String(yr), reprt_code: rc });
       if (!L.length) continue;
       const pick = (names) => { for (const fs of ['CFS', 'OFS']) for (const n of names) { const r = L.find((x) => x.fs_div === fs && String(x.account_nm).replace(/\s/g, '') === n); if (r) return n0(r.thstrm_amount); } return null; };
       const eq = pick(['자본총계']), capital = pick(['자본금']);
@@ -67,6 +69,7 @@ async function dartFacts(code) {
     }
     if (done) break;
   }
+  if (!Object.keys(out).length && errs && !oks) throw new Error('DART 응답 오류'); // 오류를 '자료 없음'으로 5일 저장하지 않게
   return out;
 }
 

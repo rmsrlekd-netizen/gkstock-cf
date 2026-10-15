@@ -33,12 +33,17 @@ export async function perfWatch(max = 20) {
     const doc = await getJSON(`mp/day/${date}`);
     if (!doc?.list?.length) { perf.done = true; await setJSON(pk, perf); continue; }
     let pending = 0;
+    const tdays = Math.floor(age * 5 / 7) - 1; // 지난 거래일 수(대략, 휴일 무시 → 조금 적게 잡음)
     for (const x of doc.list.slice(0, 80)) {
       const row = perf.rows[x.code] || { st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null };
       if (H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
+      // 아직 다음 기간(5·20·60거래일)이 안 지났으면 받지 않음 (같은 종목만 계속 받느라 다른 종목·날짜가 밀리던 문제)
+      const due = H.some((h) => row['r' + h] === undefined && tdays >= h);
+      if (!due && age <= 120) { pending++; perf.rows[x.code] = row; continue; }
       if (fetched >= max && !cache.has(x.code)) { pending++; continue; }
       let B = cache.get(x.code);
-      if (!B) { try { B = await bars(x.code); } catch { B = []; } cache.set(x.code, B); fetched++; }
+      if (!B) { try { B = await bars(x.code); } catch { B = null; } cache.set(x.code, B); fetched++; }
+      if (!B || !B.length) { pending++; perf.rows[x.code] = row; continue; } // 일봉을 못 받았으면 다음에 다시 (빈 값으로 영구 저장하지 않음)
       let i = -1; for (let k = 0; k < B.length; k++) if (B[k].d <= date) i = k;
       if (i < 0) { for (const h of H) row['r' + h] = null; perf.rows[x.code] = row; continue; } // 일봉 범위 밖
       row.c0 = B[i].c;
