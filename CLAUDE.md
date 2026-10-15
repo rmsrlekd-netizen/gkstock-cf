@@ -40,9 +40,9 @@
 - 컨센서스 TOP: `earn/hist`(3주) → `/api/earnv?week=0|1`, 화면 `/consensus`.
 - 투자 대가(13F): `src/lib/guru.mjs` (17명, 3분마다 한 명, OpenFIGI로 CUSIP→티커), 화면 `/gurus`, `/gurus/buffett`.
 - 대차잔고: `src/lib/loan.mjs` (KIS HHPST074500C0, 하루 2번), 수급 탭 '국내 대차잔고'.
-- 영상 소재 노트(관리자): `src/lib/vnote.mjs` · 주간 정리 카드(토 8:30): `src/lib/weekcard.mjs`, `/og/week/YYYYMMDD.png`.
+- 당일 분석(관리자, 예전 영상 소재 노트 · 분석 정리 형식 v2): `src/lib/vnote.mjs` · 주간 정리 카드(토 8:30): `src/lib/weekcard.mjs`, `/og/week/YYYYMMDD.png`.
 - 더보기 메뉴는 항상 '서비스 소개'가 맨 끝.
-- 작전 의심 레이더(관리자): `src/lib/manip.mjs` — 장 마감 뒤 단계별(시세→공시→일봉→원문 가격→AI), 결과 `mp/day/날짜` **영구 보관(삭제 금지)**, 전 종목(ETF·ETN·거래정지만 제외). 외부 공개 금지.
+- 작전 의심 레이더(관리자): `src/lib/manip.mjs` — 장 마감 뒤 단계별(시세→공시→일봉→원문 가격→AI), 결과 `mp/day/날짜` **영구 보관(삭제 금지)**, 전 종목(ETF·ETN·거래정지만 제외). 외부 공개 금지. 종목 카드 `mp/prof/코드`(자동 수정 기록 포함)·랭킹 `mp/rank`, 장중 새 공시는 `manipIncr`가 자동 재판단. 관리자 화면 탭: 방문 통계 · 당일 분석 · 작전 레이더.
 - 텔레그램: 같은 글 6시간 중복 금지(`claim`), 회사당 6시간 1건, 10분 4건, 다시 켜면 이전 공시는 안 올림(`tgch/resume`).
 
 ## 앞으로 할 일 (메모)

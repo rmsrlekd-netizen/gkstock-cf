@@ -2053,3 +2053,16 @@ button.br-mv:hover { border-color: var(--accent); }
   .mp-top { grid-template-columns: 1.4rem minmax(0, 1fr) auto; } .mp-px { display: none; } .mp-score { grid-column: 3; }
   .mp-stage { grid-column: 2; justify-self: start; } .mp-chips, .mp-cost, .mp-sum, .mp-more { margin-left: 0; } .mp-grid { grid-template-columns: 1fr; }
 }
+/* 관리자 탭 */
+.adm-head { flex-wrap: wrap; gap: .6rem; }
+.adm-tabs { display: flex; gap: .3rem; flex-wrap: wrap; }
+.adm-tabs button { padding: .5rem .95rem; border-radius: 10px; font-weight: 800; font-size: 1rem; color: var(--text2); background: rgba(255,255,255,.04); border: 1px solid var(--line); }
+.adm-tabs button.on { color: #fff; background: linear-gradient(135deg, var(--purple), var(--blue)); border-color: transparent; }
+.mp-tabs { margin: .2rem 0 .4rem; }
+.vn-ixs { display: flex; flex-wrap: wrap; gap: .4rem .9rem; margin: .2rem 0 .5rem; font-size: .85rem; color: var(--text2); } .vn-ix b { color: #fff; font-family: var(--mono); } .vn-ix em { font-style: normal; font-family: var(--mono); }
+.vn-ov { margin: .3rem 0 .8rem; padding: .6rem .75rem; border-radius: 10px; background: rgba(255,255,255,.04); font-size: .92rem; line-height: 1.65; }
+.vn-plain { list-style: none; margin: 0 0 .5rem; padding: 0; display: grid; gap: .25rem; font-size: .88rem; } .vn-plain li { padding: .3rem .5rem; border-radius: 8px; background: rgba(255,255,255,.04); }
+.mp-accbox { padding: .55rem .7rem; border-radius: 10px; background: rgba(245,197,66,.08); border: 1px solid rgba(245,197,66,.2); font-size: .88rem; margin-bottom: .6rem; line-height: 1.7; }
+.mp-buys { display: flex; flex-wrap: wrap; gap: .2rem .5rem; font-size: .72rem; color: var(--muted); margin: .15rem 0 .3rem; font-family: var(--mono); }
+.mp-logl { list-style: none; padding: 0 !important; } .mp-logl li { font-size: .78rem; color: var(--text2); padding: .15rem 0; } .mp-logl li span { color: var(--muted); font-family: var(--mono); margin-right: .3rem; }
+@media (max-width: 720px) { .adm-tabs button { padding: .45rem .7rem; font-size: .9rem; } }

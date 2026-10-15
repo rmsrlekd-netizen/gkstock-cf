@@ -1,4 +1,4 @@
-// 영상 소재 노트 (관리자 전용) — 장 마감 뒤 "오늘 영상으로 다룰 만한 이슈 5개 + 핵심 숫자 + 제목·썸네일 후보"를 자동으로 만들어 둠
+// 당일 분석 (관리자 전용, 예전 '영상 소재 노트') — 장 마감 뒤 그날 국장·미장의 중요 내용을 분석 정리 형태로 자동 기록
 //  · 국장: 한국 시간 평일 16:45~18:00 / 미장: 뉴욕 시간 평일 16:40~18:00 (한국 시간 새벽~아침)
 //  · 재료: 그날 마지막 '오늘 주요 이슈' 회차 + 급등·급락 이유 + 강세 테마 + 실적 컨센서스 판정
 //  · 저장: vnote/{KR|US}/{날짜} · 목록 vnote/idx (최근 20개) · 관리자 화면에서 보기·복사·다시 만들기
@@ -31,36 +31,37 @@ export async function buildNote(mk, date) {
   };
   if (!mat.주요이슈.length && !mat.급등.length) throw new Error('오늘 재료가 부족합니다');
   const { askAI, parseJSON } = await import('./ai.mjs');
-  const prompt = `당신은 구독자 많은 한국 주식 유튜브 채널 'GK의 미국 주식'의 기획 작가입니다. 아래는 오늘(${date}) ${mk === 'KR' ? '한국 증시(국장)' : '미국 증시(미장)'} 마감 기준 재료입니다.
-오늘 영상으로 만들면 조회수와 정보 가치가 둘 다 높을 소재 5개를 고르고, 영상 제목·썸네일 문구 후보를 제안하세요.
+  const prompt = `당신은 한국 개인투자자를 위한 증권 애널리스트입니다. 아래는 오늘(${date}) ${mk === 'KR' ? '한국 증시(국장)' : '미국 증시(미장)'} 마감 기준 재료입니다.
+오늘 하루 시장의 중요한 내용을 '분석 정리' 형태로 써 주세요. (영상 대본·제목·썸네일·오프닝 멘트 같은 것은 쓰지 말 것)
 규칙:
 - 재료에 있는 사실·숫자만 사용 (지어내지 말 것). 숫자는 재료 그대로.
 - 주가가 떨어졌다는 이유만으로 실적이 나빴다고 단정하지 말 것. 실적 평가는 '실적' 항목의 컨센서스 판정을 따를 것.
-- 제목은 궁금증을 주되 거짓·과장(예: "무조건", "100% 오른다") 금지. 30자 안팎.
-- 투자 권유가 아니라 정보 전달 관점.
+- 담백한 보고서 문체(~함, ~임 또는 ~다). 과장·감탄 없이. 투자 권유 아님.
 출력은 JSON 하나만:
-{"summary":"오늘 장을 한 줄로(40자 이내)",
-"topics":[{"title":"소재 이름(20자 이내)","why":"왜 지금 다룰 만한지(60자 이내)","facts":["영상에서 말할 핵심 숫자·사실 3개(각 50자 이내)"],"angle":"영상 전개 방향 한 줄(50자 이내)","tickers":["관련 종목명"]}],
-"titles":["영상 제목 후보 5개"],
-"thumbs":["썸네일 큰 글자 후보 3개(각 12자 이내)"],
-"shorts":["쇼츠(60초)로 뽑을 아이디어 2개(각 40자 이내)"],
-"hook":"영상 첫 10초 오프닝 멘트(70자 이내)"}
+{"headline":"오늘 장 한 줄 요약(45자 이내)",
+"overview":"시장 전체 흐름 3~4문장(지수·수급·분위기, 250자 이내)",
+"sections":[{"title":"핵심 이슈 이름(25자 이내)","body":"무슨 일이 있었고 왜 중요한지 2~3문장(200자 이내)","facts":["관련 숫자·사실 2~4개(각 60자 이내)"],"stocks":["관련 종목명"]}],
+"themes":{"strong":["강세 테마·업종과 이유(각 50자 이내)"],"weak":["약세 테마·업종과 이유"]},
+"earnings":["실적 발표 정리(종목 · 컨센서스 판정 · 숫자, 각 70자 이내)"],
+"checks":["다음 거래일에 확인할 점 2~4개(각 60자 이내)"]}
+sections는 중요도 순으로 4~6개.
 재료: ${JSON.stringify(mat).slice(0, 20000)}`;
-  const j = parseJSON(await askAI(prompt, { maxTokens: 3500, timeout: 70000, tag: '영상 소재 노트' }));
+  const j = parseJSON(await askAI(prompt, { maxTokens: 3500, timeout: 70000, tag: '당일 분석' }));
   const arr = (a, n, len) => (Array.isArray(a) ? a : []).map((x) => cut(x, len)).filter(Boolean).slice(0, n);
   const note = {
-    mk, date, at: Date.now(), edId: c.edId,
-    summary: cut(j.summary, 60),
-    topics: (Array.isArray(j.topics) ? j.topics : []).filter((t) => t?.title).slice(0, 5).map((t) => ({ title: cut(t.title, 30), why: cut(t.why, 90), facts: arr(t.facts, 4, 80), angle: cut(t.angle, 80), tickers: arr(t.tickers, 4, 20) })),
-    titles: arr(j.titles, 6, 50), thumbs: arr(j.thumbs, 4, 20), shorts: arr(j.shorts, 3, 60), hook: cut(j.hook, 120),
+    v: 2, mk, date, at: Date.now(), edId: c.edId,
+    summary: cut(j.headline, 70), overview: cut(j.overview, 320),
+    sections: (Array.isArray(j.sections) ? j.sections : []).filter((t) => t?.title).slice(0, 6).map((t) => ({ title: cut(t.title, 34), body: cut(t.body, 260), facts: arr(t.facts, 4, 80), stocks: arr(t.stocks, 4, 20) })),
+    themes: { strong: arr(j.themes?.strong, 4, 70), weak: arr(j.themes?.weak, 3, 70) },
+    earnings: arr(j.earnings, 8, 90), checks: arr(j.checks, 4, 80),
     ix: c.ix, up: c.up.slice(0, 5), down: c.down.slice(0, 3),
   };
-  if (note.topics.length < 3) throw new Error('AI 소재 부족');
+  if (note.sections.length < 3) throw new Error('AI 정리 부족');
   await setJSON(`vnote/${mk}/${date}`, note);
   const idx = ((await getJSON('vnote/idx')) || []).filter((x) => !(x.mk === mk && x.date === date));
   idx.unshift({ mk, date, at: note.at, summary: note.summary });
   idx.sort((a, b) => b.at - a.at);
-  await setJSON('vnote/idx', idx.slice(0, 20));
+  await setJSON('vnote/idx', idx.slice(0, 2000)); // 날짜별 기록은 계속 남김
   return note;
 }
 

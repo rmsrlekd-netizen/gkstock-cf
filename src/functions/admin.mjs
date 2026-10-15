@@ -35,6 +35,8 @@ export default async (req) => {
   if (mp) {
     try {
       const m = await import('../lib/manip.mjs');
+      if (mp === 'rank') return J({ ok: true, list: await m.manipRank(), state: await m.manipState() });
+      if (mp === 'prof') return J({ ok: true, prof: await m.manipProfile(String(u.searchParams.get('code') || '').replace(/\D/g, '').slice(0, 6)) });
       if (mp === 'run') await m.manipStart();
       return J({ ok: true, ...(await m.manipView(u.searchParams.get('date'))) });
     } catch (e) { return J({ ok: false, error: e.message }); }
