@@ -1159,7 +1159,9 @@ export async function migrateProf(code, reason = '새 계산 방식으로 자동
 }
 export async function manipProfile(code) {
   let p = await getJSON(`mp/prof/${code}`);
-  if (p && isOldProf(p)) { try { if (await migrateProf(code, '열어 볼 때 새 계산 방식으로 자동 갱신')) p = await getJSON(`mp/prof/${code}`); } catch {} }
+  let migrated = false;
+  if (p && isOldProf(p)) { try { if (await migrateProf(code, '열어 볼 때 새 계산 방식으로 자동 갱신')) { p = await getJSON(`mp/prof/${code}`); migrated = true; } } catch {} }
+  if (p && migrated) p.migrated = true;
   if (p) {
     p.hist = ((await getJSON(`mp/hist/${code}`)) || []).slice(0, 30);
     // 그래도 예전 카드면(일봉 못 받음) 저장된 자료로 손익비·사다리·체크리스트만 다시 계산 (상승/하락 분류는 저장된 값 유지)

@@ -3341,6 +3341,7 @@
       <p class="note">${S.rkKind === 'ck' ? '✅ 성공 가능성 체크리스트 순: (충족한 성공 조건 수) − 2×(위험 신호 수). 자료가 없는 항목은 계산에서 빼요. A = 조건 6개↑·위험 0 · B = 4개↑·위험 1개 이하 · C = 나머지. 하락 위험 종목 제외. 패턴상 기준일 뿐 결과를 보장하지 않아요.' : S.rkKind === 'rr' ? '⚖️ 손익비 = (1차 목표 − 현재가) ÷ (현재가 − 손절 기준). 1차 목표는 현재가 위 가장 가까운 근거 가격(공시 원가·매집 전 고점·매물대), 손절 기준은 현재가 2% 이상 아래의 가장 가까운 세력 원가·지지 가격(이 아래로 빠지면 세력 평단 근거가 깨짐). 아래 폭이 3% 미만이면 3%로 계산. 하락 위험·띄우기·털기·엑시트 후 종목은 제외. 손익비가 높아도 그 목표까지 간다는 보장은 없어요 — 매매 판단은 직접.' : S.rkKind === 'up' ? '상승 근거 점수 순.' : S.rkKind === 'down' ? '하락 근거 점수 순.' : 'AI 의심 수준(높음→중간→낮음) → 종합 점수 순.'} 근거는 공시·거래 데이터로 자동 계산한 사실이고, AI 문장은 그 사실 번호가 확인된 것만 남깁니다. 새 공시가 나오면 그 종목은 전체 공시·거래량과 함께 자동으로 다시 판단돼 순위·평단·단계가 바뀌어요. 줄을 누르면 근거·수정 기록이 열려요.</p>
       ${rows ? `<ol class="mp-list">${rows}</ol>` : `<p class="muted">${S.rkKind === 'ck' ? '체크리스트가 계산된 종목이 아직 없어요 (장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'rr' ? '손익비를 계산할 수 있는 종목이 아직 없어요 (위쪽 목표와 아래쪽 원가·지지 가격이 모두 있어야 해요. 장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'up' ? '지금은 상승 가능성 쪽으로 분류된 종목이 없어요.' : S.rkKind === 'down' ? '지금은 하락 위험 쪽으로 분류된 종목이 없어요.' : '아직 랭킹이 없어요. 첫 정기 분석이 시작되면 약 10분 뒤 채워져요.'}</p>`}
       <p class="note">⚠ '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐 불공정거래의 증거가 아닙니다. 외부에 종목명을 '작전주'로 공개하지 마세요.</p>`;
+    if (S.reopen) { const c = S.reopen; S.reopen = null; const r2 = document.querySelector(`.mp-rk[data-mp-code="${c}"]`); if (r2) openRankRow(r2); }
   }
   async function loadPerf() {
     const box = $('#mpBody'); if (!box) return;
@@ -3439,6 +3440,7 @@
     m.hidden = false; row.classList.add('open'); m.innerHTML = '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
     let j; try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=prof&code=${row.dataset.mpCode}`, { cache: 'no-store' }); } catch (e) { j = { error: e.message }; }
     m.innerHTML = j?.prof ? mpDetail(j.prof) : `<p class="muted sm">${esc(j?.error || '상세 기록이 없어요')}</p>`;
+    if (j?.prof?.migrated) { S.reopen = row.dataset.mpCode; loadRank(); } // 예전 기록을 방금 새로 계산했으면 랭킹 줄(평단·목표·단계)도 새 값으로 다시 그림
   }
   document.addEventListener('click', (e) => {
     const lb = e.target.closest('[data-mp-look]'); if (lb) { const l = $('#mpQList'); if (l) l.hidden = true; lookStock(lb.dataset.mpLook, lb.dataset.mpNm, lb.dataset.mpRefresh === '1'); return; }

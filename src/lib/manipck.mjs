@@ -95,7 +95,7 @@ async function buzzOf(code) {
   // 뉴스: 최근 3페이지 기사 날짜 → 최근 3일 건수 vs 그 전 일평균
   try {
     const ts = [];
-    for (let p = 1; p <= 3; p++) { const h = await html(`https://finance.naver.com/item/news_news.naver?code=${code}&page=${p}&clusterId=`); for (const m of h.matchAll(dtRe)) ts.push(msOf(m)); }
+    for (let p = 1; p <= 3; p++) { const h = await html(`https://finance.naver.com/item/news_news.naver?code=${code}&page=${p}&clusterId=`); const n0l = ts.length; for (const m of h.matchAll(dtRe)) ts.push(msOf(m)); if (p === 1 && ts.length === n0l) throw new Error('뉴스 목록 형식을 읽지 못함'); }
     if (ts.length) {
       const n3 = ts.filter((t) => now - t <= 3 * DAY).length, old = ts.filter((t) => now - t > 3 * DAY);
       const span = old.length ? Math.max(1, (now - 3 * DAY - Math.min(...old)) / DAY) : null;
@@ -108,7 +108,7 @@ async function buzzOf(code) {
     for (let p = 1; p <= 5 && !stop; p++) {
       const h = await html(`https://finance.naver.com/item/board.naver?code=${code}&page=${p}`);
       const ts = [...h.matchAll(dtRe)].map(msOf);
-      if (!ts.length) break;
+      if (!ts.length) { if (p === 1) throw new Error('종토방 목록 형식을 읽지 못함'); break; } // 0건과 '못 읽음'을 구분
       for (const t of ts) { if (now - t <= DAY) n24++; else stop = true; }
     }
     out.boardN = n24;
