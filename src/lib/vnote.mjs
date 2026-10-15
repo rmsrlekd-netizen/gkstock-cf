@@ -20,9 +20,13 @@ export async function buildNote(mk, date) {
   const ed = c.edId ? await getJSON(`issues/ed/${c.edId}`) : null;
   const vmap = (await getJSON('earn/vmap')) || {};
   const earn = Object.values(vmap).filter((v) => v.mk === mk && Date.now() - (v.at || 0) < 30 * 3600e3).slice(0, 12).map((v) => `${v.n}(${v.t}) 컨센서스 ${v.v}: ${v.line}`);
+  // 미국 종목은 한국어 이름으로 (AI가 영어 이름을 잘라서 쓰던 문제)
+  let ko = {};
+  if (mk === 'US') { try { const codes = [...new Set((ed?.issues || []).flatMap((x) => (x.stocks || []).map((s) => s.code)).filter(Boolean))]; if (codes.length) ko = (await (await import('./usko.mjs')).usKoNames(codes)) || {}; } catch {} }
+  const nm = (s) => (s.code && ko[s.code]) || s.name;
   const mat = {
     지수: c.ix.map((x) => `${x.label} ${x.price ?? ''} ${x.pct != null ? (x.pct > 0 ? '+' : '') + Number(x.pct).toFixed(2) + '%' : ''}`),
-    주요이슈: (ed?.issues || []).map((x) => ({ 분류: x.tag, 제목: x.title, 요약: x.sub, 포인트: x.points, 성격: x.tone, 종목: (x.stocks || []).map((s) => `${s.name}${s.pct != null ? ' ' + (s.pct > 0 ? '+' : '') + s.pct + '%' : ''}`) })),
+    주요이슈: (ed?.issues || []).map((x) => ({ 분류: x.tag, 제목: x.title, 요약: x.sub, 포인트: x.points, 성격: x.tone, 종목: (x.stocks || []).map((s) => `${nm(s)}${s.pct != null ? ' ' + (s.pct > 0 ? '+' : '') + s.pct + '%' : ''}`) })),
     급등: c.up.map((x) => `${x.name}${x.sub ? '(' + x.sub + ')' : ''} ${x.pct > 0 ? '+' : ''}${Number(x.pct).toFixed(1)}%${x.why ? ' — ' + x.why : ''}`),
     급락: c.down.map((x) => `${x.name}${x.sub ? '(' + x.sub + ')' : ''} ${Number(x.pct).toFixed(1)}%${x.why ? ' — ' + x.why : ''}`),
     강세테마: c.th.map((x) => `${x.name} ${x.pct > 0 ? '+' : ''}${Number(x.pct || 0).toFixed(1)}%`),

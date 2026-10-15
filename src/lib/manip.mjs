@@ -5,7 +5,7 @@
 //  · 결과는 날짜별로 영구 보관 (mp/day/YYYY-MM-DD, 지우지 않음) — 관리자 화면에서 날짜를 골라 다시 볼 수 있음
 //  · 크론(3분마다)이 장 마감 뒤(15:50~) 단계별로 조금씩 진행: 전 종목 시세 → 공시 → 후보 일봉 → 원문 가격 → AI
 //  ※ '패턴이 비슷하다'는 신호일 뿐 불공정거래의 증거가 아님. 외부 공개 금지(관리자 화면 전용)
-import { getJSON, setJSON, sqlDB, getJSONStrict, delKeys } from './store.mjs';
+import { getJSON, setJSON, sqlDB, getJSONStrict, delKeys, listKeys } from './store.mjs';
 import { fetchWithTimeout, BROWSER_UA } from './util.mjs';
 import { isTradingDay } from './schedule.mjs';
 import { buildPartyIndex, linksOf, radarAlert } from './manipx.mjs';
@@ -822,7 +822,7 @@ export function direction(x, now = Date.now()) {
     const d = real?.start || ymdOf(e.ms + 365 * DAY);
     dates.push({ d, t: `${ymdOf(e.ms)} ${e.kind === 'cb' ? (real ? `CB 발행 → 전환청구 가능 시작 (원문 기준${real.end ? `, ~${real.end}` : ''})` : 'CB 발행 → 전환청구 가능 시작(발행 1년 뒤로 추정)') : '3자배정 신주 → 전매 제한 해제(1년 뒤로 추정)'}`, ref: e.id, past: d < ymdOf(now), real: !!real });
   }
-  for (const e of ev.filter((e) => e.kind === 'conv' && age(e) <= 30).slice(0, 2)) dates.push({ d: ymdOf(e.ms + 14 * DAY), t: `${ymdOf(e.ms)} 전환청구 → 추가 상장(보통 1~2주 뒤, 정확한 날은 원문 확인)`, ref: e.id, past: false });
+  for (const e of ev.filter((e) => e.kind === 'conv' && age(e) <= 30).slice(0, 2)) dates.push({ d: ymdOf(e.ms + 14 * DAY), t: `${ymdOf(e.ms)} 전환청구 → 추가 상장(보통 1~2주 뒤, 정확한 날은 원문 확인)`, ref: e.id, past: ymdOf(e.ms + 14 * DAY) < ymdOf(now) });
   dates.sort((a, b) => (a.d < b.d ? -1 : 1));
   // 상승·하락 근거 점수는 각각 10점 만점 (근거가 많아 10점을 넘으면 10점으로 표시, 순위는 원래 합계로 비교)
   const upRaw = up.reduce((a, b) => a + b.w, 0), downRaw = down.reduce((a, b) => a + b.w, 0);
@@ -995,7 +995,7 @@ export function checklistOf(x, now = Date.now()) {
   // ── 실패·폭탄 신호 ──
   const fails = ev.filter((e) => e.kind === 'fail' && age(e) <= 365);
   const delays = px.filter((p) => p.delay);
-  add(R, 'fail', fails.length + delays.length > 0, fails.length || delays.length ? `자금 문제 신호: ${[...fails.slice(0, 2).map((e) => `${ymdOf(e.ms)} ${e.title}`), ...delays.slice(0, 2).map((p) => `${p.date} 정정 공시에서 납입일 변경`)].join(' · ')}` : '증자·사채·양수도 철회·해제·납입 연기 없음', fails[0]?.id || delays[0]?.ref);
+  add(R, 'fail', fails.length + delays.length > 0, fails.length || delays.length ? `자금 문제 신호: ${[...fails.slice(0, 2).map((e) => `${ymdOf(e.ms)} ${e.title}`), ...delays.slice(0, 2).map((p) => `${p.date} 정정 공시에서 납입일 변경`)].filter((t, i, A) => A.indexOf(t) === i).join(' · ')}` : '증자·사채·양수도 철회·해제·납입 연기 없음', fails[0]?.id || delays[0]?.ref);
   const pn = penaltyOf(x, now);
   add(R, 'penalty', !!(pn && (pn.cum >= 10 || pn.pend)), pn ? `불성실공시 벌점 최근 1년 ${pn.cum ?? '?'}점${pn.pend ? ' · 지정 예고' : ''}` : '불성실공시 벌점 없음');
   const auditBad = ck.audit && !/적정/.test(ck.audit.op || '') ? ck.audit : null, capBad = ck.cap?.imp >= 50;
@@ -1726,6 +1726,17 @@ export async function manipAux() {
   await setJSON('mp/auxlock', { busyUntil: Date.now() + 170e3 }).catch(() => {});
   try {
     const { warnWatch, perfWatch } = await import('./manipx.mjs');
+    // 날짜 목록(mp/idx)이 예전 오류로 줄어든 경우 실제 저장된 날짜 기록(mp/day/*)으로 복구 (6시간에 한 번)
+    try {
+      const ck = (await getJSON('mp/idxck').catch(() => null)) || {};
+      if (Date.now() - (ck.at || 0) > 6 * 3600e3) {
+        const days = (await listKeys('mp/day/')).map((k) => k.slice(7)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+        const cur = await getJSONStrict('mp/idx');
+        const merged = [...new Set([...(cur || []), ...days])].sort((a, b) => (a < b ? 1 : -1));
+        if (cur && merged.length > cur.length) { await setJSON('mp/idx', merged); out.idxFix = merged.length - cur.length; }
+        await setJSON('mp/idxck', { at: Date.now(), n: merged.length }).catch(() => {});
+      }
+    } catch (e) { out.idxErr = String(e.message || e).slice(0, 80); }
     const idx = (await getJSON('mp/idx')) || [];
     const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows || {} : {};
     const n2c = {}; for (const [c, r] of Object.entries(snap)) if (r[0]) n2c[r[0]] = c;

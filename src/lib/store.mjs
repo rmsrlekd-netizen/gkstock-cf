@@ -63,6 +63,13 @@ export async function delKeys(prefix, beforeT) {
   return r.meta?.changes ?? 0;
 }
 
+/** 접두어로 시작하는 키 이름 목록 (기본키 범위 검색이라 가벼움) */
+export async function listKeys(prefix, limit = 2000) {
+  if (useMem()) return [...mem.keys()].filter((k) => k.startsWith(prefix)).sort().slice(0, limit);
+  await init();
+  const r = await db.prepare('SELECT k FROM kv WHERE k >= ? AND k < ? ORDER BY k LIMIT ?').bind(prefix, prefix + '\uffff', limit).all();
+  return (r.results || []).map((x) => x.k);
+}
 /** 여러 키를 한 번에 (없는 키는 빠짐) */
 export async function getManyJSON(keys) {
   const out = {};
