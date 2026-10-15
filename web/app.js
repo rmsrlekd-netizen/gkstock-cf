@@ -1309,7 +1309,7 @@
   }
 
   // ───────────────────────── 메뉴 '더보기' (화면이 좁을 때 숨는 메뉴를 묶음) ─────────────────────────
-  const navHidden = () => $$('#nav > button[data-go]').filter((b) => getComputedStyle(b).display === 'none');
+  const navHidden = () => $$('#nav > button[data-go]').filter((b) => getComputedStyle(b).display === 'none' && (b.dataset.adminOnly == null || S.admin)); // 관리자 전용 메뉴는 관리자 키가 있는 기기에서만
   function syncNavMore() {
     const mb = $('#nav [data-nav-more]');
     if (!mb) return;
@@ -2766,7 +2766,7 @@
 
   // ───────────────────────── 화면 전환 ─────────────────────────
   const FEED_VIEWS = { home: 'PR', filings: 'FILING', pr: 'PR', watch: 'ALL' };
-  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', tdir: '#viewTdir', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact', cact: '#viewCact', ewk: '#viewEwk', guru: '#viewGuru' };
+  const PAGES = { issue: '#viewIssue', sched: '#viewSched', themes: '#viewThemes', econ: '#viewEcon', admin: '#viewAdmin', item: '#viewItem', earnings: '#viewEarnings', popular: '#viewPopular', company: '#viewCompany', tdir: '#viewTdir', flows: '#viewFlows', market: '#viewMarket', guide: '#viewGuide', halt: '#viewHalt', react: '#viewReact', cact: '#viewCact', ewk: '#viewEwk', guru: '#viewGuru', radar: '#viewRadar' };
   const VIEW_ALIAS = { cdiv: 'cact', crights: 'cact' }; // 같은 화면, 다른 탭
   // 메뉴별 고유 주소 (/popular, /themes …) ↔ 화면 이름
   const SEC_PATH = { guide: 'about', cact: 'splits', cdiv: 'dividends', crights: 'rights', popular: 'popular', themes: 'themes', tdir: 'sectors', sched: 'schedule', earnings: 'earnings', econ: 'econ', halt: 'halts', react: 'reaction', flows: 'flows', market: 'market', ewk: 'consensus', guru: 'gurus' };
@@ -2795,6 +2795,7 @@
     if (v === 'ewk') loadEwk();
     if (v === 'guru' && !(hash && /^gurus\//.test(hash))) loadGuru(null);
     if (v === 'admin') renderAdmin();
+    if (v === 'radar') renderRadar();
     if (v === 'popular') { renderPopularPage(); pollViews(); }
     if (v === 'flows') { renderFlows(); if (!S.flows || Date.now() - (S.flowsAt || 0) > 180e3) { S.flowsAt = Date.now(); pollFlows(); } }
     if (v === 'company' && !S.coCur) renderCoQuick();
@@ -2823,6 +2824,7 @@
     const m = h.match(/^company\/(US|KR)\/([A-Z0-9.\-]+)/i);
     if (m) { openCompany(m[1].toUpperCase(), m[2]); return; }
     if (/^item\//.test(h)) { showItem(h.slice(5)); return; }
+    { const rm = h.match(/^radar(?:\/(\d{6}))?$/); if (rm) { S.radarCode = rm[1] || null; setView('radar', false); return; } }
     if (h === 'company') { S.coCur = null; $('#coBody').innerHTML = CO_EMPTY; } // 종목 화면에서 뒤로 → 기업 분석 첫 화면
     setView(h in FEED_VIEWS || h in PAGES ? h : 'home', false); // (#news 등 없어진 메뉴는 홈으로)
   }
@@ -3125,22 +3127,12 @@
       });
       return;
     }
-    const tab = S.admTab || 'stats';
+    const tab = S.admTab === 'daily' ? 'daily' : 'stats'; // 작전 레이더는 더보기 메뉴의 별도 페이지로 옮김
     if (tab === 'daily') {
       box.innerHTML = `${admHead()}<div class="card adm-vn"><h3>📝 당일 분석 <small class="muted">장 마감 뒤 자동 정리 (국장 16:45 · 미장 뉴욕 16:40 = 한국 새벽~아침) · 날짜별로 계속 보관</small></h3><div id="vnBody"><div class="loading"><span class="spin"></span>불러오는 중…</div></div>
         <div class="chips" style="margin-top:.6rem"><button class="btn sm" data-admin-act="vnKR">국장 분석 지금 만들기</button><button class="btn sm" data-admin-act="vnUS">미장 분석 지금 만들기</button><button class="btn sm" data-admin-act="wkMake">주간 정리 카드 미리 만들기</button><button class="btn sm" data-admin-act="wkSend">주간 카드 채널로 보내기</button></div>
         <p class="note" id="vnMsg">주간 정리 카드는 매주 토요일 아침 8:30 이후 텔레그램 채널에 자동 게시돼요.</p><div id="wkPrev"></div></div>`;
       loadVnote();
-      return;
-    }
-    if (tab === 'radar') {
-      box.innerHTML = `${admHead()}<div class="card adm-mp"><h3>🕵️ 작전 레이더 <small class="muted">국장 전 종목 · 매일 장 마감 뒤 자동 분석 + 장중 새 공시가 나오면 그 종목 자동 재판단 · 모든 기록 보관 · 관리자만 보임</small></h3>
-        <div class="seg mp-tabs" id="mpTabs"><button data-mp-tab="rank" class="${(S.mpTab || 'rank') === 'rank' ? 'on' : ''}">작전 가능성 랭킹</button><button data-mp-tab="day" class="${S.mpTab === 'day' ? 'on' : ''}">날짜별 기록</button><button data-mp-tab="perf" class="${S.mpTab === 'perf' ? 'on' : ''}">📊 성적표</button><button data-mp-tab="my" class="${S.mpTab === 'my' ? 'on' : ''}">⭐ 내 세력주</button></div>
-        <div class="mp-search"><input id="mpQ" type="search" placeholder="🔍 종목 검색 (이름·코드) — 랭킹에 없어도 지금 바로 같은 방식으로 분석" autocomplete="off"><div id="mpQList" class="mp-qlist" hidden></div></div>
-        <div id="mpLook"></div>
-        <div id="mpBody"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>`;
-      bindMpSearch();
-      if ((S.mpTab || 'rank') === 'rank') loadRank(); else if (S.mpTab === 'perf') loadPerf(); else if (S.mpTab === 'my') loadMy(); else loadManip();
       return;
     }
     box.innerHTML = `${admHead()}<div class="card"><div class="loading"><span class="spin"></span>불러오는 중…</div></div>`;
@@ -3224,20 +3216,97 @@
           <p class="note">${c.last ? `마지막 게시: ${fmtDT(new Date(c.last.at)).full} · ${esc(c.last.title || '')}` : '아직 게시한 글이 없어요.'}${c.err ? `<br><b class="err">⚠ ${esc(c.err)}</b> — 봇이 채널 관리자인지, 채널 주소가 맞는지 확인하세요.` : ''}${c.lastErr && !c.err ? `<br><span class="muted">최근 오류(${fmtDT(new Date(c.lastErr.at)).hm}): ${esc(c.lastErr.msg)}</span>` : ''}</p></div>`;
       })()}`;
   }
-  S.admTab = load('gk_admtab', 'stats');
+  S.admTab = load('gk_admtab', 'stats'); S.rpTab = load('gk_rptab', 'price');
   S.mpTab = load('gk_mptab', 'rank'); S.rkKind = load('gk_rkkind', 'all');
+  // ───── 🕵️ 작전 레이더 (더보기 메뉴 · 관리자 키가 있는 기기에서만 보임 · 데이터도 관리자 키로만 받음) ─────
+  function renderRadar() {
+    const box = $('#radarBody'); if (!box) return;
+    document.body.classList.toggle('is-admin', !!S.admin);
+    if (!S.admin) { box.innerHTML = '<div class="card"><h3>🕵️ 작전 레이더</h3><p class="muted">관리자 전용 페이지예요. <a href="/#admin">관리자 로그인</a> 후 다시 열어 주세요.</p></div>'; return; }
+    document.title = '작전 레이더 | GK의 공시레이더';
+    if (S.radarCode) { renderRadarStock(S.radarCode, S.radarOpt || {}); return; }
+    box.innerHTML = `<div class="card adm-mp"><h3>🕵️ 작전 레이더 <small class="muted">국장 전 종목 · 매일 장 마감 뒤 자동 분석 + 장중 새 공시가 나오면 그 종목 자동 재판단 · 모든 기록 보관 · 나만 보는 페이지</small></h3>
+        <div class="seg mp-tabs" id="mpTabs"><button data-mp-tab="rank" class="${(S.mpTab || 'rank') === 'rank' ? 'on' : ''}">작전 가능성 랭킹</button><button data-mp-tab="day" class="${S.mpTab === 'day' ? 'on' : ''}">날짜별 기록</button><button data-mp-tab="perf" class="${S.mpTab === 'perf' ? 'on' : ''}">📊 성적표</button><button data-mp-tab="my" class="${S.mpTab === 'my' ? 'on' : ''}">⭐ 내 세력주</button><button data-mp-tab="alerts" class="${S.mpTab === 'alerts' ? 'on' : ''}">🔔 알림 기록</button></div>
+        <div class="mp-search"><input id="mpQ" type="search" placeholder="🔍 종목 검색 (이름·코드) — 랭킹에 없어도 지금 바로 같은 방식으로 분석" autocomplete="off"><div id="mpQList" class="mp-qlist" hidden></div></div>
+        <div id="mpLook"></div>
+        <div id="mpBody"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>`;
+    bindMpSearch();
+    if ((S.mpTab || 'rank') === 'rank') loadRank(); else if (S.mpTab === 'perf') loadPerf(); else if (S.mpTab === 'my') loadMy(); else if (S.mpTab === 'alerts') loadAlerts(); else loadManip();
+  }
+  function goRadarStock(code, opt = {}) {
+    S.radarCode = code; S.radarOpt = opt;
+    setView('radar', '#radar/' + code);
+    window.scrollTo({ top: 0 });
+  }
+  async function renderRadarStock(code, opt = {}) {
+    const box = $('#radarBody'); if (!box) return;
+    const my = (S.rpSeq = (S.rpSeq || 0) + 1);
+    box.innerHTML = `<div class="rp"><button class="btn sm" data-rp-back>← 작전 레이더</button><div class="loading" style="margin-top:1rem"><span class="spin"></span>${opt.look || opt.refresh ? '분석 중… 공시 180일 · 일봉 · 공시 원문 가격 · 체크리스트 자료 · AI까지 확인해요 (최대 1~2분)' : '불러오는 중… (예전 기록이면 새 방식으로 다시 계산해요)'}</div></div>`;
+    let j;
+    const k = encodeURIComponent(S.admin);
+    try {
+      if (!opt.look && !opt.refresh) { j = await getJSON(`/api/admin?key=${k}&mp=prof&code=${code}`, { cache: 'no-store' }); if (!j?.prof) j = null; }
+      if (!j) j = await getJSON(`/api/admin?key=${k}&mp=look&code=${code}&name=${encodeURIComponent(opt.name || '')}${opt.refresh ? '&refresh=1' : ''}`, { cache: 'no-store' });
+    } catch (e) { j = { ok: false, error: e.message }; }
+    if (my !== S.rpSeq || S.view !== 'radar' || S.radarCode !== code) return;
+    S.radarOpt = {};
+    if (!j?.prof) { box.innerHTML = `<div class="rp"><button class="btn sm" data-rp-back>← 작전 레이더</button><p class="err">분석하지 못했어요: ${esc(j?.error || '결과 없음')}</p></div>`; return; }
+    S.rpProf = j.prof; S.rpMeta = j;
+    drawRadarStock();
+  }
+  function drawRadarStock() {
+    const box = $('#radarBody'), x = S.rpProf, j = S.rpMeta || {}; if (!box || !x) return;
+    const d = x.dir || {}, cl = x.cl, rk = x.rbk, f = x.f || {}, a = x.ai && !x.ai.error ? x.ai : null;
+    const P = mpParts(x);
+    const DIRB = { up: '<span class="mp-dirb up">📈 상승 가능성</span>', down: '<span class="mp-dirb down">📉 하락 위험</span>' };
+    const RBS = { deadcat: '① 기술적 반등', dump: '② 털기 중 반등', second: '③ 2차 작전', unclear: '판단 보류' };
+    const nd = (d.dates || []).find((z) => !z.past);
+    const tile = (label, val, sub, cls = '') => `<div class="rp-tile ${cls}"><em>${label}</em><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+    const tiles = [
+      tile('추정 세력 평단', d.cost ? `${fmtInt(d.cost.low)}${d.cost.high !== d.cost.low ? '~' + fmtInt(d.cost.high) : ''}원` : '—', d.gap != null ? `현재가는 평단 대비 <span class="${d.gap >= 0 ? 'up' : 'down'}">${d.gap >= 0 ? '+' : ''}${d.gap}%</span>` : ''),
+      tile('손익비', d.rr ? `1 : ${d.rr.v}` : '—', d.rr ? `목표 ${fmtInt(d.rr.t)} · 손절 ${fmtInt(d.rr.s)}` : '계산 안 됨', d.rr && (d.dir === 'down' || ['띄우기', '털기', '엑시트 후'].includes(x.stage)) ? 'warn' : ''),
+      tile('1차 목표', d.tgt?.length && typeof d.tgt[0] !== 'number' ? `${fmtInt(d.tgt[0].p)}원` : '—', d.tgt?.[0]?.s ? esc(d.tgt[0].s) : '위쪽 근거 가격 없음'),
+      tile('매집 추정 구간', f.accStart ? `${esc(f.accStart.slice(2))}~${esc((f.accEnd || '').slice(2))}` : '—', f.accDays ? `${f.accDays}거래일${f.cyc ? (f.acc2 ? ' · 2차 매집 후보' : ' · 급등 전 박스') : ''}` : ''),
+      tile('다음 물량 해제', nd ? esc(nd.d) : '—', nd ? (nd.real ? '공시 원문 기준' : '추정') : '예정 없음'),
+      tile('성공 체크리스트', cl ? `${esc(cl.grade)}등급` : '—', cl ? `조건 ${cl.np}/${cl.nk} · 위험 ${cl.nr}개` : '', cl ? 'g' + cl.grade : ''),
+      tile('반등 성격', rk ? RBS[rk.type] : '—', rk ? `바닥 대비 +${rk.rb.up}%` : '하락 뒤 반등 아님', rk ? 'rb-' + rk.type : ''),
+      tile('투자경고 요건까지', f.wf?.min ? (f.wf.min.pct <= 0 ? '이미 도달' : `+${f.wf.min.pct}%`) : '—', f.wf?.min ? esc(f.wf.min.lbl) + ' (근사)' : ''),
+    ].join('');
+    const TABS = [['price', '💰 가격·목표'], ['check', '✅ 체크리스트'], ['why', '📈📉 근거'], ['chart', '🕯 차트 신호'], ['docs', '📄 공시'], ['ai', '🤖 AI·기록']];
+    const tab = TABS.some(([t]) => t === S.rpTab) ? S.rpTab : 'price';
+    const body = { price: P.accLine + P.tgtBox, check: P.ckBox, why: P.dirBox, chart: (P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>', docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
+    box.innerHTML = `<div class="rp">
+      <div class="rp-nav"><button class="btn sm" data-rp-back>← 작전 레이더</button><span class="muted sm">${x.at ? esc(rel(x.at)) + ' 분석' : ''}${j.cached ? ' · 저장된 결과' : ''}${x.migrated ? ' · 새 계산 방식으로 방금 갱신' : ''}</span></div>
+      <div class="rp-head">
+        <button class="ca-co" data-open-co="KR|${esc(x.code)}|${esc(x.name)}">${logoHTML('KR', x.code, x.name)}<span><b>${esc(x.name)}</b><small>${esc(x.code)}${x.mkt === 'P' ? ' · 코스피' : x.mkt === 'Q' ? ' · 코스닥' : ''}${x.ind ? ' · ' + esc(String(x.ind).split('|')[0]) : ''}</small></span></button>
+        <div class="rp-px"><b>${x.close != null ? fmtInt(x.close) + '원' : '—'}</b><small class="${dirCls(x.pct)}">${x.pct != null ? fmtPct(x.pct) : ''}</small></div>
+        <div class="rp-chips"><span class="mp-stage ${MP_ST[x.stage] || 'watch'}">${esc(x.stage || '')}${a?.level ? `<small>의심 ${esc(a.level)}</small>` : ''}</span>${DIRB[d.dir] || '<span class="mp-dirb">분류 없음</span>'}<span class="muted sm">상승 ${d.upS || 0}/10 · 하락 ${d.downS || 0}/10 · 종합 ${x.score ?? '-'}점</span></div>
+      </div>
+      <div class="rp-actions"><button class="btn sm" data-rp-refresh>지금 다시 분석</button>${P.myBtn}${j.aiLeft != null ? `<small class="muted">검색 AI 남은 횟수 ${j.aiLeft}회</small>` : ''}</div>
+      ${j.aiErr ? `<p class="muted sm">AI: ${esc(j.aiErr)}</p>` : ''}
+      <div class="rp-tiles">${tiles}</div>
+      ${(x.story || []).length ? `<div class="rp-story"><h4>📝 한눈에 보는 정리 <small class="muted">계산된 숫자로만 쓴 요약 (AI 아님)</small></h4>${x.story.map((t, i) => `<p class="${i === x.story.length - 1 ? 'muted sm' : ''}">${esc(t)}</p>`).join('')}</div>` : ''}
+      <div class="seg rp-tabs">${TABS.map(([t, l]) => `<button data-rp-tab="${t}" class="${t === tab ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="rp-body">${body}</div>
+    </div>`;
+  }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-rp-back]')) { S.radarCode = null; setView('radar', '#radar'); return; }
+    const t = e.target.closest('[data-rp-tab]'); if (t) { S.rpTab = t.dataset.rpTab; save('gk_rptab', S.rpTab); drawRadarStock(); return; }
+    if (e.target.closest('[data-rp-refresh]') && S.radarCode) { renderRadarStock(S.radarCode, { refresh: true, name: S.rpProf?.name }); }
+  });
   function admHead() {
-    const T = [['stats', '방문 통계'], ['daily', '당일 분석'], ['radar', '작전 레이더']];
-    return `<div class="page-head adm-head"><div class="adm-tabs">${T.map(([k, l]) => `<button data-adm-tab="${k}" class="${(S.admTab || 'stats') === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="chips" style="margin:0"><button class="btn sm" data-admin-act="refresh">새로고침</button><button class="btn sm" data-admin-logout>로그아웃</button></div></div>`;
+    const T = [['stats', '방문 통계'], ['daily', '당일 분석']];
+    return `<div class="page-head adm-head"><div class="adm-tabs">${T.map(([k, l]) => `<button data-adm-tab="${k}" class="${(S.admTab || 'stats') === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="chips" style="margin:0"><button class="btn sm" data-go="radar">🕵️ 작전 레이더</button><button class="btn sm" data-admin-act="refresh">새로고침</button><button class="btn sm" data-admin-logout>로그아웃</button></div></div>`;
   }
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-adm-tab]');
     if (b) { S.admTab = b.dataset.admTab; save('gk_admtab', S.admTab); renderAdmin(); return; }
     const t = e.target.closest('[data-mp-tab]');
-    if (t) { S.mpTab = t.dataset.mpTab; save('gk_mptab', S.mpTab); $$('#mpTabs button').forEach((x) => x.classList.toggle('on', x === t)); if (S.mpTab === 'rank') loadRank(); else if (S.mpTab === 'perf') loadPerf(); else if (S.mpTab === 'my') loadMy(); else loadManip(); }
+    if (t) { S.mpTab = t.dataset.mpTab; save('gk_mptab', S.mpTab); $$('#mpTabs button').forEach((x) => x.classList.toggle('on', x === t)); if (S.mpTab === 'rank') loadRank(); else if (S.mpTab === 'perf') loadPerf(); else if (S.mpTab === 'my') loadMy(); else if (S.mpTab === 'alerts') loadAlerts(); else loadManip(); }
   });
   // ───── 작전 의심 레이더 ─────
-  const MP_ST = { '판 깔기': 'setup', 매집: 'acc', 띄우기: 'pump', 털기: 'exit', '엑시트 후': 'done', 관찰: 'watch' };
+  const MP_ST = { '판 깔기': 'setup', 매집: 'acc', 띄우기: 'pump', 털기: 'exit', '엑시트 후': 'done', 거래정지: 'halt', 관찰: 'watch' };
   const MP_EV = { mna: '최대주주·경영권', rights3: '3자배정 증자', rightsfix: '증자 정정', rights: '유상증자', rightsR: '구조조정 증자(제외)', cb: 'CB·BW', refix: '리픽싱', fund5: '투자조합 지분', purpose: '사업목적 변경', bonus: '무상증자', capred: '감자', contract: '공급계약', invest: 'MOU·투자판단', inquiry: '조회공시', conv: '전환청구', majsell: '최대주주 지분변동', pledge: '담보·질권', risk: '불성실·횡령 등' };
   async function loadManip(date, run) {
     const box = $('#mpBody'); if (!box) return;
@@ -3273,7 +3342,7 @@
         ${a?.summary ? `<p class="mp-sum">🤖 ${esc(a.summary)}</p>` : x.ai?.error ? `<p class="muted sm">AI 분석 실패: ${esc(x.ai.error)}</p>` : i < 15 && doc.building ? '<p class="muted sm">AI 분석 대기 중…</p>' : ''}
         <div class="mp-more" hidden></div></li>`;
     }).join('');
-    $('#mpBody').innerHTML = dates + btns + `<p class="note">${esc(doc.date)} 기준 · 의심 종목 ${doc.list.length}개${doc.building ? ' (분석 진행 중 — 잠시 뒤 새로고침)' : ''} · 줄을 누르면 근거 공시·AI 상세가 열려요.</p><ol class="mp-list">${rows}</ol>
+    $('#mpBody').innerHTML = dates + btns + `<p class="note">${esc(doc.date)} 기준 · 의심 종목 ${doc.list.length}개${doc.building ? ' (분석 진행 중 — 잠시 뒤 새로고침)' : ''} · 줄을 누르면 그 종목 페이지가 열려요.</p><ol class="mp-list">${rows}</ol>
       <p class="note">⚠ 공시·거래 패턴이 '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐, 불공정거래의 증거가 아닙니다. 평단가는 전환가·발행가·거래량 가중 평균으로 추정한 값입니다. 종목명을 공개적으로 '작전주'라고 지칭하면 법적 문제가 생길 수 있어요.</p>`;
   }
   const RK_KINDS = [['all', '전체 (의심 순)'], ['up', '📈 상승 가능성'], ['down', '📉 하락 위험'], ['rr', '⚖️ 손익비 순'], ['ck', '✅ 체크리스트 순']];
@@ -3308,14 +3377,19 @@
           <span class="mp-px">${won(r.c)}<small class="${dirCls(r.pct)}">${r.pct != null ? fmtPct(r.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[r.st] || 'watch'}">${esc(r.st || '')}${r.lv ? `<small>의심 ${esc(r.lv)}</small>` : ''}</span>
           ${S.rkKind === 'rr' && r.rr ? `<span class="mp-score"><b>1:${r.rr.v}</b><small>손익비<br>종합 점수 ${r.s}</small></span>` : S.rkKind === 'up' || S.rkKind === 'down' ? `<span class="mp-score"><b>${S.rkKind === 'up' ? r.us || 0 : r.ds || 0}<em>/10</em></b><small>${S.rkKind === 'up' ? '상승' : '하락'} 근거 점수<br>종합 점수 ${r.s}</small></span>` : `<span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span>`}</div>
-        ${r.rbt ? `<div class="mp-dirl"><span class="mp-rbchip rb-${esc(r.rbt)}">🔄 반등: ${{ deadcat: '① 기술적 반등 쪽', dump: '② 털기 중 반등 쪽', second: '③ 2차 작전 쪽', unclear: '판단 보류' }[r.rbt] || ''}</span></div>` : ''}${r.ckg ? `<div class="mp-dirl"><span class="mp-ckg g${esc(r.ckg)}">✅ 체크 ${esc(r.ckg)}</span> <small class="muted">성공 조건 ${r.cnp}/${r.cnk} 충족 · 위험 신호 ${r.cnr}개</small></div>` : ''}
-        ${r.lk || r.wn || r.pn || r.cm ? `<div class="mp-dirl">${r.cm ? `<span class="mp-chip vol">🕯 매집봉 흔적 ${r.cm}개</span> ` : ''}${r.lk ? `<span class="mp-chip net">🕸 같은 세력 연결 의심 ${r.lk}건</span> ` : ''}${r.wn ? `<span class="mp-chip ev-risk">⚠ 거래소 ${esc(r.wn)}</span> ` : ''}${r.pn ? `<span class="mp-chip ev-risk">📛 불성실공시 벌점 ${r.pn.c != null ? `누계 ${r.pn.c}/15점` : r.pn.u ? '(점수 확인 중)' : ''}${r.pn.pd ? ' · 지정 예고' : ''}</span>` : ''}</div>` : ''}
-        ${DIRB[r.d] ? `<div class="mp-dirl">${DIRB[r.d]} <small class="muted">상승 근거 ${r.us || 0}/10점 · 하락 근거 ${r.ds || 0}/10점</small></div>` : ''}
-        <div class="mp-cost">🧲 매집 추정 <b>${esc(r.acc || '—')}</b> · 💰 평단 <b>${r.cl || r.ch ? `${fmtInt(r.cl || r.ch)}${r.ch && r.cl && r.ch !== r.cl ? ' ~ ' + fmtInt(r.ch) : ''}원` : r.va ? fmtInt(r.va) + '원' : '—'}</b>${g != null ? ` · 현재가 <b class="${g >= 0 ? 'up' : 'down'}">${g >= 0 ? '+' : ''}${g}%</b>` : ''}</div>
-        ${r.tg || r.nd ? `<div class="mp-cost">🎯 참고 목표 ${r.tg ? r.tg.map((t) => (typeof t === 'number' ? `<b>${fmtInt(t)}원</b>` : `${esc(t.s)} <b>${fmtInt(t.p)}원</b>`)).join(' · ') : '— (위쪽 근거 가격 없음)'}${r.nd ? ` · 🗓 다음 물량 해제 <b>${esc(r.nd)}</b>` : ''}</div>` : ''}
-        ${r.rr ? `<div class="mp-cost mp-rrl">⚖️ 손익비 <b>1 : ${r.rr.v}</b> · 손절 기준 <b>${fmtInt(r.rr.s)}원</b> <small>(${esc(r.rr.ss)}, ${r.rr.dn}%)</small> · 1차 목표 <b>${fmtInt(r.rr.t)}원</b> <small>(${esc(r.rr.ts)}, +${r.rr.up}%)</small>${r.d === 'down' || ['띄우기', '털기', '엑시트 후'].includes(r.st) ? ` <span class="mp-chip ev-risk">⚠ ${r.d === 'down' ? '하락 위험' : esc(r.st)} 종목 — 손익비 순위 제외</span>` : ''}</div>` : `<div class="mp-cost muted sm">⚖️ 손익비 — ${'rr' in r ? '계산 안 됨 (현재가 위 목표 또는 아래 원가·지지 가격이 없음)' : '오늘 장 마감 뒤 정기 분석부터 표시 (줄을 누르면 지금 기준으로 계산해서 보여줘요)'}</div>`}
-        ${why.length ? `<ul class="mp-why ${r.d || ''}">${why.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
-        ${r.sum ? `<p class="mp-sum">🤖 ${esc(r.sum)}</p>` : ''}<div class="mp-more" hidden></div></li>`;
+        <div class="rk-strip">
+          ${DIRB[r.d] ? DIRB[r.d] : ''}
+          ${r.ckg ? `<span class="mp-ckg g${esc(r.ckg)}">체크 ${esc(r.ckg)}</span>` : ''}
+          ${r.rbt && r.rbt !== 'unclear' ? `<span class="mp-rbchip rb-${esc(r.rbt)}">🔄 ${{ deadcat: '기술적 반등', dump: '털기 중 반등', second: '2차 작전' }[r.rbt]}</span>` : ''}
+          ${r.cm ? `<span class="mp-chip vol">🕯 매집봉 ${r.cm}</span>` : ''}${r.lk ? `<span class="mp-chip net">🕸 연결 ${r.lk}</span>` : ''}${r.wn ? `<span class="mp-chip ev-risk">⚠ ${esc(r.wn)}</span>` : ''}${r.pn?.c != null ? `<span class="mp-chip ev-risk">📛 벌점 ${r.pn.c}/15</span>` : ''}
+        </div>
+        <div class="rk-kv">
+          <span><em>추정 평단</em><b>${r.cl || r.ch ? `${fmtInt(r.cl || r.ch)}${r.ch && r.cl && r.ch !== r.cl ? '~' + fmtInt(r.ch) : ''}원` : r.va ? fmtInt(r.va) + '원' : '—'}</b>${g != null ? `<small class="${g >= 0 ? 'up' : 'down'}">현재 ${g >= 0 ? '+' : ''}${g}%</small>` : ''}</span>
+          <span><em>손익비</em><b>${r.rr ? '1 : ' + r.rr.v : '—'}</b>${r.rr ? `<small>목표 ${fmtInt(r.rr.t)} · 손절 ${fmtInt(r.rr.s)}</small>` : ''}</span>
+          <span><em>1차 목표</em><b>${r.tg?.length ? fmtInt(typeof r.tg[0] === 'number' ? r.tg[0] : r.tg[0].p) + '원' : '—'}</b>${r.tg?.length && typeof r.tg[0] !== 'number' ? `<small>${esc(r.tg[0].s)}</small>` : ''}</span>
+          <span><em>다음 물량 해제</em><b>${r.nd ? esc(r.nd.split(' ')[0]) : '—'}</b>${r.nd ? `<small>${esc(r.nd.split(' ').slice(1).join(' '))}</small>` : ''}</span>
+        </div>
+        ${why.length ? `<p class="rk-why ${r.d || ''}">${esc(why[0])}</p>` : ''}</li>`;
     }).join('');
     const kinds = rkKindsHTML();
     const legend = `<details class="mp-legend"><summary>용어 설명 (단계·의심 수준·점수·상승/하락)</summary><ul>
@@ -3339,7 +3413,7 @@
       <li><b>⚖️ 손익비</b>: (1차 목표 − 현재가) ÷ (현재가 − 손절 기준). 손절 기준은 현재가 바로 아래의 세력 원가·지지 가격 — 그 아래로 빠지면 '세력 평단 근처'라는 근거가 깨짐. 1 : 3이면 3% 잃을 위험에 9% 오를 여지라는 뜻 (확률이 아니라 폭의 비율)</li>
       <li><b>🎯 참고 목표</b>: 현재가보다 위에 있는 '근거 있는 가격' — 공시에 적힌 CB 전환가·3자배정 발행가·인수 단가(세력이 이익을 보려면 넘어야 하는 원가)와 과거 고점(매물대). 배수 계산이 아님. 세력의 실제 목표가는 어떤 공시에도 안 나옴</li></ul></details>`;
     $('#mpBody').innerHTML = `<div class="chips" style="margin:.5rem 0">${status}<button class="btn sm" data-mp-rank-refresh>새로고침</button></div>${kinds}${legend}
-      <p class="note">${S.rkKind === 'ck' ? '✅ 성공 가능성 체크리스트 순: (충족한 성공 조건 수) − 2×(위험 신호 수). 자료가 없는 항목은 계산에서 빼요. A = 조건 6개↑·위험 0 · B = 4개↑·위험 1개 이하 · C = 나머지. 하락 위험 종목 제외. 패턴상 기준일 뿐 결과를 보장하지 않아요.' : S.rkKind === 'rr' ? '⚖️ 손익비 = (1차 목표 − 현재가) ÷ (현재가 − 손절 기준). 1차 목표는 현재가 위 가장 가까운 근거 가격(공시 원가·매집 전 고점·매물대), 손절 기준은 현재가 2% 이상 아래의 가장 가까운 세력 원가·지지 가격(이 아래로 빠지면 세력 평단 근거가 깨짐). 아래 폭이 3% 미만이면 3%로 계산. 하락 위험·띄우기·털기·엑시트 후 종목은 제외. 손익비가 높아도 그 목표까지 간다는 보장은 없어요 — 매매 판단은 직접.' : S.rkKind === 'up' ? '상승 근거 점수 순.' : S.rkKind === 'down' ? '하락 근거 점수 순.' : 'AI 의심 수준(높음→중간→낮음) → 종합 점수 순.'} 근거는 공시·거래 데이터로 자동 계산한 사실이고, AI 문장은 그 사실 번호가 확인된 것만 남깁니다. 새 공시가 나오면 그 종목은 전체 공시·거래량과 함께 자동으로 다시 판단돼 순위·평단·단계가 바뀌어요. 줄을 누르면 근거·수정 기록이 열려요.</p>
+      <p class="note">${S.rkKind === 'ck' ? '✅ 성공 가능성 체크리스트 순: (충족한 성공 조건 수) − 2×(위험 신호 수). 자료가 없는 항목은 계산에서 빼요. A = 조건 6개↑·위험 0 · B = 4개↑·위험 1개 이하 · C = 나머지. 하락 위험 종목 제외. 패턴상 기준일 뿐 결과를 보장하지 않아요.' : S.rkKind === 'rr' ? '⚖️ 손익비 = (1차 목표 − 현재가) ÷ (현재가 − 손절 기준). 1차 목표는 현재가 위 가장 가까운 근거 가격(공시 원가·매집 전 고점·매물대), 손절 기준은 현재가 2% 이상 아래의 가장 가까운 세력 원가·지지 가격(이 아래로 빠지면 세력 평단 근거가 깨짐). 아래 폭이 3% 미만이면 3%로 계산. 하락 위험·띄우기·털기·엑시트 후 종목은 제외. 손익비가 높아도 그 목표까지 간다는 보장은 없어요 — 매매 판단은 직접.' : S.rkKind === 'up' ? '상승 근거 점수 순.' : S.rkKind === 'down' ? '하락 근거 점수 순.' : 'AI 의심 수준(높음→중간→낮음) → 종합 점수 순.'} 근거는 공시·거래 데이터로 자동 계산한 사실이고, AI 문장은 그 사실 번호가 확인된 것만 남깁니다. 새 공시가 나오면 그 종목은 전체 공시·거래량과 함께 자동으로 다시 판단돼 순위·평단·단계가 바뀌어요. 줄을 누르면 그 종목 페이지가 열려요.</p>
       ${rows ? `<ol class="mp-list">${rows}</ol>` : `<p class="muted">${S.rkKind === 'ck' ? '체크리스트가 계산된 종목이 아직 없어요 (장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'rr' ? '손익비를 계산할 수 있는 종목이 아직 없어요 (위쪽 목표와 아래쪽 원가·지지 가격이 모두 있어야 해요. 장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'up' ? '지금은 상승 가능성 쪽으로 분류된 종목이 없어요.' : S.rkKind === 'down' ? '지금은 하락 위험 쪽으로 분류된 종목이 없어요.' : '아직 랭킹이 없어요. 첫 정기 분석이 시작되면 약 10분 뒤 채워져요.'}</p>`}
       <p class="note">⚠ '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐 불공정거래의 증거가 아닙니다. 외부에 종목명을 '작전주'로 공개하지 마세요.</p>`;
     if (S.reopen) { const c = S.reopen; S.reopen = null; const r2 = document.querySelector(`.mp-rk[data-mp-code="${c}"]`); if (r2) openRankRow(r2); }
@@ -3377,28 +3451,8 @@
     });
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const b = list.querySelector('[data-mp-look]'); if (b) b.click(); } else if (e.key === 'Escape') list.hidden = true; });
   }
-  async function lookStock(code, name, refresh = false) {
-    const box = $('#mpLook'); if (!box) return;
-    const my = (S.mpLookSeq = (S.mpLookSeq || 0) + 1);
-    box.innerHTML = `<div class="mp-lookcard"><div class="loading"><span class="spin"></span>${esc(name || code)} 분석 중… 공시 180일 · 일봉 · 공시 원문 가격 · AI까지 정기 분석과 같은 순서로 확인해요 (최대 1~2분)</div></div>`;
-    let j; try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=look&code=${code}&name=${encodeURIComponent(name || '')}${refresh ? '&refresh=1' : ''}`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
-    if (my !== S.mpLookSeq || !$('#mpLook')) return;
-    const box2 = $('#mpLook'); // 화면이 다시 그려졌을 수 있어 새로 찾음
-    if (!j.ok || !j.prof) { box2.innerHTML = `<div class="mp-lookcard"><p class="err">분석하지 못했어요: ${esc(j.error || '결과 없음')}</p><button class="btn sm" data-mp-look-close>닫기</button></div>`; return; }
-    const x = j.prof, d = x.dir || {}, a = x.ai && !x.ai.error ? x.ai : null;
-    const DB = { up: '<span class="mp-dirb up">📈 상승 가능성</span>', down: '<span class="mp-dirb down">📉 하락 위험</span>' };
-    const lowNote = x.score < 4 && !j.inRank ? '<p class="note">종합 점수가 4점 미만이라 작전 패턴 신호가 적은 종목이에요 (랭킹에는 안 올리고 종목 카드만 저장).</p>' : '';
-    box2.innerHTML = `<div class="mp-lookcard"><div class="mp-row open">
-      <div class="mp-top"><span class="f-rk">🔍</span><button class="ca-co" data-open-co="KR|${esc(x.code)}|${esc(x.name)}">${logoHTML('KR', x.code, x.name, 'sm')}<span><b>${esc(x.name)}</b><small>${esc(x.code)}${x.mkt === 'P' ? ' · 코스피' : x.mkt === 'Q' ? ' · 코스닥' : ''} · ${x.at ? esc(rel(x.at)) + ' 분석' : '이전 분석'}${j.cached && !j.keptOld ? ' (3시간 안에 분석한 결과 · 다시 분석 가능)' : ''}${j.inRank ? ' · 랭킹 포함' : ''}</small></span></button>
-        <span class="mp-px">${x.close != null ? fmtInt(x.close) + '원' : '—'}<small class="${dirCls(x.pct)}">${x.pct != null ? fmtPct(x.pct) : ''}</small></span>
-        <span class="mp-stage ${MP_ST[x.stage] || 'watch'}">${esc(x.stage || '')}${a?.level ? `<small>의심 ${esc(a.level)}</small>` : ''}</span>
-        <span class="mp-score"><b>${x.score}</b><small>종합 점수</small></span></div>
-      <div class="mp-dirl">${DB[d.dir] || '<span class="mp-dirb">분류 없음</span>'} <small class="muted">상승 근거 ${d.upS || 0}/10점 · 하락 근거 ${d.downS || 0}/10점</small></div>
-      ${d.rr ? `<div class="mp-cost mp-rrl">⚖️ 손익비 <b>1 : ${d.rr.v}</b> · 손절 기준 <b>${fmtInt(d.rr.s)}원</b> <small>(${esc(d.rr.ss)}, ${d.rr.dn}%)</small> · 1차 목표 <b>${fmtInt(d.rr.t)}원</b> <small>(${esc(d.rr.ts)}, +${d.rr.up}%)</small>${d.dir === 'down' || ['띄우기', '털기', '엑시트 후'].includes(x.stage) ? ` <span class="mp-chip ev-risk">⚠ ${d.dir === 'down' ? '하락 위험' : esc(x.stage)} 종목이라 손익비 순위에서는 제외</span>` : ''}</div>` : `<div class="mp-cost muted">⚖️ 손익비 — 계산 안 됨 (${!x.close ? '현재가 없음' : !(d.tgt || []).length ? '현재가 위쪽에 근거 있는 목표 가격이 없음' : '현재가 아래쪽에 세력 원가·지지 가격이 없음'})</div>`}
-      ${a?.summary ? `<p class="mp-sum">🤖 ${esc(a.summary)}</p>` : x.ai?.error ? `<p class="muted sm">AI 분석 실패: ${esc(x.ai.error)}</p>` : ''}
-      ${j.noBars && !j.keptOld ? '<p class="err sm">일봉(거래량·가격) 데이터를 받지 못해 공시만으로 판단했어요. 잠시 뒤 다시 분석해 보세요.</p>' : ''}${j.aiErr ? `<p class="muted sm">AI: ${esc(j.aiErr)}</p>` : ''}${lowNote}<div class="chips" style="margin:.4rem 0"><button class="btn sm" data-mp-look="${esc(x.code)}" data-mp-nm="${esc(x.name)}" data-mp-refresh="1">지금 다시 분석</button><button class="btn sm" data-mp-look-close>닫기</button>${j.aiLeft != null ? `<small class="muted">오늘 검색 AI 분석 남은 횟수 ${j.aiLeft}회</small>` : ''}</div>
-      <div class="mp-more">${mpDetail(x)}</div></div></div>`;
-  }
+  function lookStock(code, name, refresh = false) { goRadarStock(code, { look: true, name, refresh }); }
+
   // ⭐ 내 세력주 (관심 종목 + 매매 기록) — 손절·목표 도달, 단계·분류 변화는 관리자 텔레그램으로 알림
   async function loadMy(op, params) {
     const box = $('#mpBody'); if (!box) return;
@@ -3433,16 +3487,24 @@
     if (sv) { const w = sv.closest('[data-mp-myform]'); const p = { code: w.dataset.mpMyform, name: w.dataset.nm }; w.querySelectorAll('[data-k]').forEach((i) => { if (i.value) p[i.dataset.k] = i.value; }); sv.disabled = true; getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=myadd&${new URLSearchParams(p)}`, { cache: 'no-store' }).then((j) => { w.innerHTML = j.ok ? '<p class="note">⭐ 내 세력주에 추가했어요 (작전 레이더 → ⭐ 내 세력주 탭)</p>' : `<p class="err">${esc(j.error || '저장 실패')}</p>`; }).catch((er) => { w.innerHTML = `<p class="err">${esc(er.message)}</p>`; }); return; }
     const dl = e.target.closest('[data-my-del]'); if (dl) { loadMy('mydel', { id: dl.dataset.myDel }); return; }
     const cs = e.target.closest('[data-my-close]'); if (cs) { const inp = document.querySelector(`[data-my-exit="${cs.dataset.myClose}"]`); loadMy('myclose', { id: cs.dataset.myClose, exit: inp?.value || '' }); return; }
-    const lk = e.target.closest('[data-my-look]'); if (lk) { lookStock(lk.dataset.myLook, lk.dataset.nm); window.scrollTo({ top: ($('#mpLook')?.getBoundingClientRect().top || 0) + window.scrollY - 80, behavior: 'smooth' }); }
+    const lk = e.target.closest('[data-my-look]'); if (lk) { goRadarStock(lk.dataset.myLook); }
   });
-  async function openRankRow(row) {
-    const m = row.querySelector('.mp-more'); if (!m) return;
-    if (!m.hidden) { m.hidden = true; row.classList.remove('open'); return; }
-    m.hidden = false; row.classList.add('open'); m.innerHTML = '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
-    let j; try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=prof&code=${row.dataset.mpCode}`, { cache: 'no-store' }); } catch (e) { j = { error: e.message }; }
-    m.innerHTML = j?.prof ? mpDetail(j.prof) : `<p class="muted sm">${esc(j?.error || '상세 기록이 없어요')}</p>`;
-    if (j?.prof?.migrated) { S.reopen = row.dataset.mpCode; loadRank(); } // 예전 기록을 방금 새로 계산했으면 랭킹 줄(평단·목표·단계)도 새 값으로 다시 그림
+  // 🔔 알림 기록: 관리자 텔레그램으로 보낸 작전 레이더 알림을 사이트에서도 날짜순으로 (텔레그램 하루 한도를 넘은 것도 여기엔 남음)
+  async function loadAlerts() {
+    const box = $('#mpBody'); if (!box) return;
+    const seq = (S.mpSeq = (S.mpSeq || 0) + 1);
+    box.innerHTML = '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
+    let j; try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=alerts`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    if (!$('#mpBody') || S.mpTab !== 'alerts' || seq !== S.mpSeq) return;
+    if (!j.ok) { box.innerHTML = `<p class="err">${esc(j.error || '')}</p>`; return; }
+    const groups = [];
+    for (const a of j.list || []) { const d = fmtDT(new Date(a.at)); const key = `${d.md} ${d.hm}`; const g = groups[groups.length - 1]; if (g && g.key === key) g.items.push(a); else groups.push({ key, items: [a] }); }
+    box.innerHTML = `<p class="note">관리자 텔레그램으로 보낸 작전 레이더 알림 기록이에요 (단계·분류 변화, 재매집, 2차 작전 반등, 장중 띄우기 시작, 손절·목표 도달, 거래정지). 공개 채널에는 올리지 않아요. 줄을 누르면 그 종목 페이지가 열려요.</p>
+      ${groups.length ? `<div class="al-log">${groups.map((g) => `<div class="al-grp"><b>${esc(g.key)}</b><ul>${g.items.map((a) => `<li class="${a.c ? 'go' : ''}" ${a.c ? `data-al-code="${esc(a.c)}"` : ''}>${esc(a.t)}</li>`).join('')}</ul></div>`).join('')}</div>` : '<p class="muted">아직 알림 기록이 없어요.</p>'}`;
   }
+  document.addEventListener('click', (e) => { const a = e.target.closest('[data-al-code]'); if (a) goRadarStock(a.dataset.alCode); });
+  function openRankRow(row) { goRadarStock(row.dataset.mpCode); }
+
   document.addEventListener('click', (e) => {
     const lb = e.target.closest('[data-mp-look]'); if (lb) { const l = $('#mpQList'); if (l) l.hidden = true; lookStock(lb.dataset.mpLook, lb.dataset.mpNm, lb.dataset.mpRefresh === '1'); return; }
     if (e.target.closest('[data-mp-look-close]')) { const b = $('#mpLook'); if (b) b.innerHTML = ''; return; }
@@ -3450,7 +3512,7 @@
     if (e.target.closest('[data-mp-rank-refresh]')) { loadRank(); return; }
     const kb = e.target.closest('[data-rk-kind]'); if (kb) { S.rkKind = kb.dataset.rkKind; save('gk_rkkind', S.rkKind); loadRank(); return; }
     const row = e.target.closest('.mp-rk');
-    if (row && !e.target.closest('a, button, .mp-more')) openRankRow(row);
+    if (row && !e.target.closest('a, button')) openRankRow(row);
   });
   // 불성실공시 벌점 (최근 1년) — 서버 penaltyOf와 같은 계산
   function penaltyBox(x) {
@@ -3469,7 +3531,8 @@
         : `<p class="muted sm">불성실공시 관련 공시 ${ev.length}건이 있지만 원문에서 점수를 아직 못 읽었어요 (다음 분석 때 다시 확인). ${ev.map((e) => `<a class="mp-src" href="/p/${esc(e.id)}" target="_blank">${esc(e.title)}</a>`).join(' ')}</p>`}
       <p class="muted sm">${kospi ? '코스피: 1회 10점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 15점 이상이면 관리종목 지정 (관리종목 후 1년간 추가 15점이면 상장적격성 실질심사)' : '코스닥: 1회 8점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 15점 이상이면 상장적격성 실질심사'}</p></div>`;
   }
-  function mpDetail(x) {
+  function mpDetail(x) { const p = mpParts(x); return `${p.myBtn}${p.rbBox}${p.ckBox}${p.cycLine}${p.accLine}${p.markBox}${p.wf}${p.dirBox}${p.tgtBox}${p.aiBox}${p.grid}`; }
+  function mpParts(x) {
     const a = x.ai && !x.ai.error ? x.ai : null, f = x.f || {};
     const li = (arr) => arr.map((t) => `<li>${esc(t)}</li>`).join('');
     const pxs = (x.px || []).map((p) => `<li>${esc(p.date || '')} ${esc(p.label || '')}${p.p ? ` <b>${fmtInt(p.p)}원</b>` : ''} <small class="muted">(${esc(MP_EV[p.kind] || p.kind)})</small>${p.cbx ? `<div class="mp-buys">${p.cbx.start ? `<span>전환청구 ${esc(p.cbx.start)}${p.cbx.end ? '~' + esc(p.cbx.end) : ''}</span>` : ''}${p.cbx.floor ? `<span>리픽싱 하한 ${fmtInt(p.cbx.floor)}원</span>` : ''}${p.cbx.call ? `<span>콜옵션${p.cbx.callPct ? ' ' + p.cbx.callPct + '%' : ''}</span>` : ''}</div>` : ''}${p.pledge ? `<div class="mp-buys"><span>담보 ${fmtInt(p.pledge.sh)}주 · 대출 ${fmtInt(p.pledge.loan)}원 → 1주당 ${fmtInt(p.pledge.perShare)}원 · 반대매매 추정 ${fmtInt(p.pledge.perShare * 1.4)}원</span></div>` : ''}${p.buys?.length ? `<div class="mp-buys">${p.buys.slice(0, 12).map((b) => `<span>${esc(b.d.slice(5))} ${b.q ? fmtInt(b.q) + '주 ' : ''}@${fmtInt(b.p)}</span>`).join('')}</div>` : ''}</li>`).join('');
@@ -3519,18 +3582,18 @@
       ${a.upWhy?.length ? `<h5>상승 쪽 해석</h5><ul>${a.upWhy.map(aiLine).join('')}</ul>` : ''}${a.downWhy?.length ? `<h5>하락 쪽 해석</h5><ul>${a.downWhy.map(aiLine).join('')}</ul>` : ''}
       ${a.evidence?.length ? `<h5>의심 근거 <small class="muted">(이전 방식 분석 · 근거 검증 전 — 다음 분석 때 새 방식으로 바뀜)</small></h5><ul>${li(a.evidence)}</ul>` : ''}${a.counter?.length ? `<h5>반대 근거 (정상일 가능성)</h5><ul>${a.counter.map((c) => (typeof c === 'string' ? `<li>${esc(c)}</li>` : aiLine(c))).join('')}</ul>` : ''}${a.watch?.length ? `<h5>앞으로 볼 신호</h5><ul>${li(a.watch)}</ul>` : ''}
       ${a.facts?.length ? `<details class="mp-facts"><summary>AI에게 준 사실 목록 (${a.facts.length}개)</summary><ol>${a.facts.map((f) => `<li><b>${esc(f.id)}</b> ${esc(f.t)} <small class="muted">· ${esc(f.src)}</small></li>`).join('')}</ol></details>` : ''}</div>` : '';
-    return `${myBtn}${rbBox}${ckBox}${cycLine}${accLine}${markBox}${wf}${dirBox}${tgtBox}${aiBox}
-      <div class="mp-grid"><div><h5>공시에서 찾은 가격</h5>${pxs ? `<ul>${pxs}</ul>` : '<p class="muted sm">없음</p>'}<h5>거래 패턴</h5><ul class="mp-f"><li>매집 구간 평균가 <b>${f.vwapAcc ? fmtInt(f.vwapAcc) + '원' : '—'}</b>${f.accStart ? ` <small class="muted">(${esc(f.accStart)}~)</small>` : ''}</li><li>고거래량일 평균가 <b>${f.vwapHeavy ? fmtInt(f.vwapHeavy) + '원' : '—'}</b></li><li>120일 평균가 <b>${f.vwap120 ? fmtInt(f.vwap120) + '원' : '—'}</b></li><li>60일 저점 대비 <b>${f.fromLow60 ?? '—'}%</b> · 20일 고점 대비 <b>${f.offHigh20 ?? '—'}%</b></li><li>거래량(평소 대비) 5일 <b>${f.volX5 ?? '—'}배</b> · 20일 <b>${f.volX20 ?? '—'}배</b> · 10일 최대 <b>${f.maxVolX10 ?? '—'}배</b></li><li>폭증 전 60일 박스 폭 <b>${f.box60 ?? '—'}%</b>${f.spikeDate ? ` · 첫 폭증일 ${esc(f.spikeDate)}` : ''}</li></ul>
+    const grid = `<div class="mp-grid"><div><h5>공시에서 찾은 가격</h5>${pxs ? `<ul>${pxs}</ul>` : '<p class="muted sm">없음</p>'}<h5>거래 패턴</h5><ul class="mp-f"><li>매집 구간 평균가 <b>${f.vwapAcc ? fmtInt(f.vwapAcc) + '원' : '—'}</b>${f.accStart ? ` <small class="muted">(${esc(f.accStart)}~)</small>` : ''}</li><li>고거래량일 평균가 <b>${f.vwapHeavy ? fmtInt(f.vwapHeavy) + '원' : '—'}</b></li><li>120일 평균가 <b>${f.vwap120 ? fmtInt(f.vwap120) + '원' : '—'}</b></li><li>60일 저점 대비 <b>${f.fromLow60 ?? '—'}%</b> · 20일 고점 대비 <b>${f.offHigh20 ?? '—'}%</b></li><li>거래량(평소 대비) 5일 <b>${f.volX5 ?? '—'}배</b> · 20일 <b>${f.volX20 ?? '—'}배</b> · 10일 최대 <b>${f.maxVolX10 ?? '—'}배</b></li><li>폭증 전 60일 박스 폭 <b>${f.box60 ?? '—'}%</b>${f.spikeDate ? ` · 첫 폭증일 ${esc(f.spikeDate)}` : ''}</li></ul>
         ${x.log?.length ? `<h5>자동 수정 기록</h5><ul class="mp-logl">${x.log.slice(0, 8).map((l) => `<li><span>${esc(fmtDT(new Date(l.at)).md)} ${esc(fmtDT(new Date(l.at)).hm)}</span> ${esc(l.msg)}</li>`).join('')}</ul>` : ''}
         ${x.hist?.length > 1 ? `<h5>레이더 등장 기록</h5><p class="muted sm">${x.hist.map((h) => `${esc(md(h.d))} ${esc(h.st)}(${h.s})`).join(' · ')}</p>` : ''}</div>
       <div><h5>근거 공시 (최근 180일)</h5><ul class="mp-ev">${(x.events || []).map((e) => `<li><span>${esc(new Date(e.ms + 9 * 3600e3).toISOString().slice(2, 10))}</span><em>${esc(MP_EV[e.kind] || e.kind)}</em><a href="/p/${esc(e.id)}" target="_blank">${esc(e.title)}</a>${e.sum ? `<small>${esc(e.sum)}</small>` : ''}</li>`).join('') || '<li class="muted">없음 (거래 패턴만)</li>'}</ul></div></div>`;
+    return { myBtn, rbBox, ckBox, cycLine, accLine, markBox, wf, dirBox, tgtBox, aiBox, grid };
   }
   document.addEventListener('click', (e) => {
     let b;
     if ((b = e.target.closest('[data-mp-date]'))) { loadManip(b.dataset.mpDate || null); return; }
     if (e.target.closest('[data-mp-run]')) { if (confirm('오늘 작전 의심 레이더 분석을 지금 시작할까요? (전 종목 · 약 1시간 · AI 15회 사용)')) loadManip(null, true); return; }
     const row = e.target.closest('.mp-row[data-mp-i]');
-    if (row && !e.target.closest('a, button, .mp-more')) { const m = row.querySelector('.mp-more'); const x = S.mp?.doc?.list?.[Number(row.dataset.mpI)]; if (m && x) { if (m.hidden) m.innerHTML = mpDetail(x); m.hidden = !m.hidden; row.classList.toggle('open', !m.hidden); } }
+    if (row && !e.target.closest('a, button')) { const x = S.mp?.doc?.list?.[Number(row.dataset.mpI)]; if (x) goRadarStock(x.code); }
   });
   document.addEventListener('change', (e) => { if (e.target.id === 'mpOld' && e.target.value) loadManip(e.target.value); });
   // 영상 소재 노트

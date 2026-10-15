@@ -166,7 +166,7 @@ const vwap = (rows) => { let pv = 0, v = 0; for (const x of rows) { pv += ((x.h 
 const r1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
 
 /** 일봉 → 거래량·주가 패턴 + 매집 구간 평단 추정 */
-export function barFeatures(B) {
+export function barFeatures(B, opt = {}) {
   if (!B || B.length < 40) return null;
   B = B.filter((x) => x.c > 0).map((x) => ({ ...x, o: x.o || x.c, h: Math.max(x.h || x.c, x.c), l: Math.min(x.l || x.c, x.c) })); // 0 가격 방어
   const last = B[B.length - 1], n = B.length;
@@ -265,6 +265,12 @@ export function barFeatures(B) {
   if (cyc) sig.push(`지난 급등·급락: ${cyc.pumpD} 급등 시작 → ${cyc.topD} 고점(+${cyc.rise}%) → 지금 고점 대비 ${cyc.drop}%`);
   f.score = s; f.sig = sig;
   f.marks = candleCands(B); // 매집봉 후보 (뉴스·시장 거르기는 applyMarks에서)
+  // 거래정지 판단: 최근 거래량 0인 날이 3일 이상 이어짐 (정지 중엔 시세가 그대로 멈춰 있어 모든 신호가 엉터리가 됨)
+  let z0 = 0; for (let i = n - 1; i >= 0 && !B[i].v; i--) z0++;
+  f.halted = z0 >= 3 ? { since: B[n - z0].d, days: z0 } : null;
+  // 일봉이 열흘 넘게 안 들어옴 → 그 뒤로 거래가 없는 것(정지)으로 봄
+  const lagDays = ((opt.now || Date.now()) - Date.parse(last.d + 'T15:30:00+09:00')) / DAY;
+  if (!f.halted && lagDays > 10) f.halted = { since: last.d, days: Math.round(lagDays * 5 / 7), stale: true };
   f.avgV20 = Math.round(v20);
   // 시장경보 예측(근사): 투자경고 지정예고 요건 — 3일 +100% · 5일 +60% · 15일 +100% (내일 종가 기준 얼마나 더 올라야 하는지)
   const W = [[3, 2, '3일 +100%'], [5, 1.6, '5일 +60%'], [15, 2, '15일 +100%']].map(([k, m, lbl]) => {
@@ -537,6 +543,7 @@ export function extras(code, evs, by, ctx = {}) {
 
 // ───── 단계 판정 (AI 전 기본값) ─────
 export function stageOf(by, f, evs = []) {
+  if (f?.halted) return '거래정지';
   const exit = (by.conv || 0) + (by.majsell || 0) + (by.pledge || 0);
   const setup = (by.mna || 0) + (by.rights3 || 0) + (by.cb || 0) + (by.fund5 || 0) + (by.purpose || 0) + (by.refix || 0);
   // 이미 한 번 띄우고 빠진 종목: 고점 뒤 새 '판 깔기' 공시가 있으면 2차 판 깔기, 없으면 '엑시트 후'
@@ -675,6 +682,7 @@ export function priceLevels(x) {
   return { all, above };
 }
 export function direction(x, now = Date.now()) {
+  if (x.f?.halted || x.stage === '거래정지') return { dir: 'none', upS: 0, downS: 0, upRaw: 0, downRaw: 0, net: 0, notes: [`${x.f?.halted?.since || ''} 무렵부터 거래가 없음(거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤`], tgt: null, rr: null, levels: [], dates: [], up: [], down: [], cost: costRange(x) ? { low: Math.round(costRange(x).low), high: Math.round(costRange(x).high) } : null, gap: null };
   const f = x.f || {}, ev = x.events || [], up = [], down = [];
   const age = (e) => (now - e.ms) / DAY;
   const SETUP = ['mna', 'rights3', 'cb', 'fund5', 'purpose', 'refix', 'rights']; // rightsR(구조조정 증자)은 제외
@@ -796,7 +804,7 @@ export function overhangOf(x, now = Date.now()) {
 }
 export function reboundOf(x, now = Date.now()) {
   const f = x.f || {}, rb = f.rb, ev = x.events || [];
-  if (!rb) return null;
+  if (!rb || f.halted || x.stage === '거래정지') return null;
   const A = [], Bw = [], C = [];
   const add = (arr, w, t) => arr.push({ w, t });
   const ov = overhangOf(x, now);
@@ -1189,7 +1197,7 @@ function rankRow(x) {
   const cm = (x.f?.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k)).length || null;
   const cl = x.cl || null;
   const rbk = x.rbk || null;
-  return { rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  return { ht: x.f?.halted ? x.f.halted.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
@@ -1215,7 +1223,9 @@ async function saveProfiles(list, reason, opt = {}) {
       const keepDown = pd0 === 'down' && x.dir.downS >= 2 && x.dir.downS >= x.dir.upS;
       if (keepUp || keepDown) x.dir = { ...x.dir, dir: pd0, sticky: true };
     }
-    if (prev.at) { // 처음 들어온 종목은 알림 안 함 (첫 분석 때 알림 폭탄 방지)
+    const halted = !!x.f?.halted || x.stage === '거래정지';
+    if (prev.at && halted && prev.stage !== '거래정지') alerts.push(`• ⛔ ${x.name} 거래정지로 보임 (${x.f?.halted?.since || ''}부터 거래 없음) — 이 종목 알림은 거래가 다시 열릴 때까지 멈춤`);
+    if (prev.at && !halted) { // 처음 들어온 종목·거래정지 종목은 알림 안 함
       const nd = x.dir.dir, pd = prev.dir?.dir;
       if (prev.stage === '엑시트 후' && ['매집', '판 깔기'].includes(x.stage)) alerts.push(`• 🔁 ${x.name} 재매집 의심 — 엑시트 후 → ${x.stage}(2차)${x.f?.cyc?.base2 ? ` · ${x.f.cyc.base2.lowD} 바닥 ${fmtW(x.f.cyc.base2.low)}원 ${x.f.cyc.base2.held}거래일째 유지` : ''}`);
       else if (prev.stage && prev.stage !== x.stage && ['매집', '띄우기', '털기'].includes(x.stage)) alerts.push(`• ${x.name} 단계 ${prev.stage} → ${x.stage} (점수 ${prev.score}→${x.score})`);
@@ -1225,7 +1235,7 @@ async function saveProfiles(list, reason, opt = {}) {
     }
     x.cl = checklistOf(x);
     x.rbk = reboundOf(x);
-    if (prev.at && x.rbk?.type === 'second' && prev.rbk?.type !== 'second') alerts.push(`• 🔄 ${x.name} 반등 성격이 '2차 작전(재매집 뒤 상승)' 쪽으로 바뀜 — ${x.rbk.why.c.slice(0, 2).map((r) => r.t).join(' / ').slice(0, 160)}`);
+    if (prev.at && !halted && x.rbk?.type === 'second' && prev.rbk?.type !== 'second') alerts.push(`• 🔄 ${x.name} 반등 성격이 '2차 작전(재매집 뒤 상승)' 쪽으로 바뀜 — ${x.rbk.why.c.slice(0, 2).map((r) => r.t).join(' / ').slice(0, 160)}`);
     const log = prev.log || [];
     const changed = !prev.at || prev.score !== x.score || prev.stage !== x.stage || (prev.ai?.level || null) !== (x.ai?.level || null);
     if (changed) log.unshift({ at: Date.now(), msg: `${reason} · 점수 ${prev.score ?? '-'}→${x.score} · ${prev.stage || '-'}→${x.stage}${x.ai?.level ? ` · 의심 ${x.ai.level}` : ''}` });
@@ -1240,13 +1250,16 @@ async function saveProfiles(list, reason, opt = {}) {
   }
   if (alerts.length) {
     const mine = new Set(((await getJSON('mp/my'))?.items || []).filter((i) => !i.closed).map((i) => i.name));
-    await radarAlert(alerts.map((l) => ([...mine].some((nm) => l.startsWith(`• ${nm} `)) ? l.replace('• ', '• ⭐ ') : l))).catch(() => {});
+    const codeOf = Object.fromEntries(list.map((x) => [x.name, x.code]));
+    const lines = alerts.map((l) => ([...mine].some((nm) => l.startsWith(`• ${nm} `)) ? l.replace('• ', '• ⭐ ') : l));
+    await radarAlert(lines, lines.map((l) => { const nm = Object.keys(codeOf).find((n) => l.includes(` ${n} `)); return nm ? codeOf[nm] : null; })).catch(() => {});
   }
 }
 export async function manipRank(kind = 'all') {
   const rank = (await getJSON('mp/rank')) || {};
   let list = Object.entries(rank).map(([code, r]) => ({ code, ...r }))
     .filter((r) => Date.now() - (r.up || 0) < 45 * DAY); // 45일 넘게 신호가 없던 종목은 랭킹에서만 내림 (카드·기록은 남김)
+  list = list.filter((r) => !r.ht && r.st !== '거래정지'); // 거래정지 종목은 랭킹에서 뺌 (카드는 남김)
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
@@ -1256,6 +1269,58 @@ export async function manipRank(kind = 'all') {
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
   return list.slice(0, 150);
 }
+// ───── 📝 서술형 정리 (규칙으로 문장 조립 · AI 아님 → 계산된 숫자만 씀) ─────
+export function narrativeOf(x, now = Date.now()) {
+  const f = x.f || {}, d = x.dir || direction(x, now), cl = x.cl, rk = x.rbk || reboundOf(x, now), P = [];
+  const mk = x.mkt === 'P' ? '코스피' : x.mkt === 'Q' ? '코스닥' : '';
+  const won = (v) => `${fmtW(v)}원`, pc = (v) => `${v > 0 ? '+' : ''}${v}%`;
+  const DIR = { up: '상승 가능성 쪽', down: '하락 위험 쪽' };
+  if (f.halted || x.stage === '거래정지') return [`${x.name}${mk ? `(${mk})` : ''}은(는) ${f.halted?.since || ''} 무렵부터 거래가 없어 거래정지 중으로 보입니다. 정지 중에는 시세가 멈춰 있어 단계·평단·반등 판단을 하지 않고, 이 종목 알림도 멈췄습니다. 거래가 다시 열리면 자동으로 다시 분석합니다.`, '※ 공시와 거래 데이터로 자동 계산한 패턴 판단이며, 실제 세력의 존재나 불공정거래를 뜻하지 않습니다.'];
+  P.push(`${x.name}${mk ? `(${mk})` : ''}은(는) 지금 '${x.stage || '관찰'}' 단계로 보입니다.${DIR[d.dir] ? ` 공시·거래 근거를 종합하면 ${DIR[d.dir]}으로 분류됩니다` : ' 상승·하락 어느 쪽도 뚜렷하지 않습니다'} (상승 근거 ${d.upS || 0}/10점 · 하락 근거 ${d.downS || 0}/10점, 작전 패턴 종합 점수 ${x.score ?? '-'}점).`);
+  // 세력 흐름
+  if (f.cyc) {
+    let t = `${f.cyc.pumpD}부터 급등해 ${f.cyc.topD}에 ${won(f.cyc.top)}(급등 전 저점 대비 +${f.cyc.rise}%)까지 올랐다가, 지금은 그 고점 대비 ${f.cyc.drop}%입니다.`;
+    if (f.cyc.base2) t += ` 고점 뒤 ${f.cyc.base2.lowD}에 찍은 바닥 ${won(f.cyc.base2.low)}을 ${f.cyc.base2.held}거래일째 깨지 않고 박스(폭 ${f.cyc.base2.box}%)를 만들고 있습니다.`;
+    else if (x.stage === '엑시트 후') t += ' 한 번 띄우고 물량을 정리한 흔적으로 보며, 아직 새로 사 모으는 흔적은 뚜렷하지 않습니다.';
+    P.push(t);
+  }
+  if (f.accStart) P.push(`${f.cyc ? (f.acc2 ? '고점 뒤 다시 사 모으는 구간(2차 매집 후보)은' : '급등 전에 사 모은 구간(매집 추정)은') : '거래 흐름상 매집 추정 구간은'} ${f.accStart} ~ ${f.accEnd}(${f.accDays}거래일)이며, 이 구간 가격은 ${won(f.accLow)}~${won(f.accHigh)}입니다${f.accObv != null ? ` (오른 날 거래가 내린 날보다 많은 정도 ${f.accObv}%)` : ''}.`);
+  else if (f.accBeyond) P.push('급등 시작이 일봉 자료(약 1년 2개월) 맨 앞이라, 그 전 매집 구간과 평단은 계산할 수 없습니다.');
+  // 평단·가격
+  if (d.cost && x.close) {
+    const exited = f.cyc && !['판 깔기', '매집'].includes(x.stage);
+    let t = `공시 원문 가격과 매집 구간 평균가로 추정한 세력 평단은 ${d.cost.low === d.cost.high ? won(d.cost.low) : `${won(d.cost.low)}~${won(d.cost.high)}`}이고, 현재가 ${won(x.close)}은 평단 대비 ${pc(d.gap)}입니다${exited ? ' (이미 털고 나간 종목이라 이 평단은 지난 사이클 기준입니다)' : d.gap > 20 ? ' — 세력은 이미 이익 구간입니다' : d.gap >= -30 ? ' — 세력도 아직 크게 남는 구간이 아닙니다' : ''}.`;
+    P.push(t);
+  }
+  if (d.rr) P.push(`위쪽 가장 가까운 근거 가격은 ${won(d.rr.t)}(${d.rr.ts}, ${pc(d.rr.up)}), 아래 손절 기준은 ${won(d.rr.s)}(${d.rr.ss}, ${d.rr.dn}%)로 손익비는 1 : ${d.rr.v}입니다${d.dir === 'down' || ['띄우기', '털기', '엑시트 후'].includes(x.stage) ? ' — 다만 지금 단계에서는 목표까지 갈 근거가 약합니다' : ''}.`);
+  else if ((d.tgt || []).length === 0 && d.levels?.length) P.push('현재가 위쪽에는 공시 원가나 과거 고점 같은 근거 가격이 없습니다.');
+  // 공시·물량
+  const ev = x.events || [], age = (e) => (now - e.ms) / DAY;
+  const setup = ev.filter((e) => ['mna', 'rights3', 'cb', 'fund5', 'purpose', 'refix'].includes(e.kind) && age(e) <= 365).slice(0, 3);
+  if (setup.length) P.push(`최근 1년 판 깔기 성격 공시: ${setup.map((e) => `${ymdOf(e.ms)} ${EV[e.kind].ko}`).join(', ')}.`);
+  const exitE = ev.filter((e) => ['conv', 'majsell', 'pledge'].includes(e.kind) && age(e) <= 90);
+  if (exitE.length) P.push(`최근 3개월 물량이 나올 수 있는 공시가 ${exitE.length}건 있습니다 (가장 최근 ${ymdOf(exitE[0].ms)} ${EV[exitE[0].kind].ko}).`);
+  const nd = (d.dates || []).find((z) => !z.past);
+  if (nd) P.push(`다음 물량 해제 예정일은 ${nd.d}입니다 (${nd.t}${nd.real ? ', 공시 원문 기준' : ', 추정'}).`);
+  const ov = rk?.ov || overhangOf(x, now);
+  if (ov?.shares) P.push(`아직 주식으로 바뀌지 않은 CB 등 잠재 물량이 약 ${fmtW(ov.shares)}주${ov.days != null ? `(하루 평균 거래량의 ${ov.days}일치)` : ''} 남아 있는 것으로 추정됩니다${ov.est ? ' (일부는 발행 총액 기준)' : ''}.`);
+  const pn = penaltyOf(x, now);
+  if (pn?.cum) P.push(`불성실공시 벌점은 최근 1년 누계 ${pn.cum}점입니다 (15점이 넘으면 ${x.mkt === 'P' ? '관리종목' : '상장적격성 실질심사'} 기준).`);
+  // 반등·매집봉·경보
+  if (rk) P.push(`최근 반등(${rk.rb.lowD} 바닥 대비 +${rk.rb.up}%)은 ${RB_KO[rk.type]}으로 봅니다${rk.type !== 'unclear' ? ` — ${({ deadcat: rk.why.a, dump: rk.why.b, second: rk.why.c }[rk.type][0] || {}).t || ''}` : ''}.`);
+  const marks = (f.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k));
+  if (marks.length) P.push(`일봉에서 인정된 매집 흔적이 ${marks.length}개 있습니다 (${marks.slice(-3).map((m) => `${m.d} ${MARK_KO[m.k]}`).join(', ')}).`);
+  if (f.wf?.min && f.wf.min.pct <= 15) P.push(f.wf.min.pct <= 0 ? `이미 투자경고 지정예고 요건(${f.wf.min.lbl}) 수준이라 경고·매매정지로 띄우기가 막힐 수 있습니다.` : `내일 종가가 +${f.wf.min.pct}% 더 오르면 투자경고 지정예고 요건(${f.wf.min.lbl})에 닿습니다 (근사 계산).`);
+  // 체크리스트
+  if (cl) {
+    const bad = cl.red.filter((i) => i.ok === true).map((i) => i.t);
+    const good = cl.pos.filter((i) => i.ok === true).map((i) => i.t);
+    P.push(`성공 가능성 체크리스트는 ${cl.grade}등급입니다 (성공 조건 ${cl.np}/${cl.nk} 충족 · 위험 신호 ${cl.nr}개).${good.length ? ` 좋은 점: ${good.slice(0, 2).join(' / ')}.` : ''}${bad.length ? ` 조심할 점: ${bad.slice(0, 2).join(' / ')}.` : ''}`);
+  }
+  P.push('※ 공시와 거래 데이터로 자동 계산한 패턴 판단이며, 실제 세력의 존재나 불공정거래를 뜻하지 않습니다. 매매 판단은 직접 하세요.');
+  return P;
+}
+
 // 예전 방식으로 저장된 카드인지 (매집봉·지난 사이클·시장경보 계산이 없음)
 export const isOldProf = (p) => !p?.f || !Array.isArray(p.f.marks) || !('cyc' in p.f) || !('wf' in p.f);
 // 예전 AI 문장 중 새 사실 목록에 없는 숫자를 말하는 문장은 숨김 (예: 틀린 평단 84,099원)
@@ -1298,7 +1363,9 @@ export async function manipProfile(code) {
       const d2 = direction(p);
       p.dir = { ...d2, dir: p.dir?.dir ?? d2.dir, sticky: p.dir?.sticky };
       if (!p.cl) { p.cl = checklistOf(p); p.clOld = true; }
-    } catch {}
+      if (!p.rbk) p.rbk = reboundOf(p);
+      p.story = narrativeOf(p);
+    } catch (e) { console.warn('manipProfile', e.message); }
   }
   return p;
 }

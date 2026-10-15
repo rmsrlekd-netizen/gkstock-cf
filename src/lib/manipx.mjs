@@ -173,8 +173,16 @@ export async function warnWatch(nameToCode = {}) {
 }
 
 // ───── ④ 관리자 텔레그램 알림 ─────
-export async function radarAlert(lines) {
-  if (!lines.length || !process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) return false;
+export async function radarAlert(lines, codes = []) {
+  if (!lines.length) return false;
+  // 사이트 '🔔 알림 기록'에 남김 (텔레그램이 꺼져 있거나 하루 한도를 넘어도 기록은 남음)
+  try {
+    const h = (await getJSON('mp/alerts')) || { list: [] };
+    const at = Date.now();
+    h.list = [...lines.map((t, i) => ({ at, t: String(t).replace(/^•\s*/, ''), c: codes[i] || null })), ...h.list].slice(0, 500);
+    await setJSON('mp/alerts', h);
+  } catch {}
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) return false;
   const st = (await getJSON('mp/alert')) || {};
   const day = kstDate();
   if (st.day !== day) { st.day = day; st.n = 0; }
@@ -182,7 +190,7 @@ export async function radarAlert(lines) {
   if (!room) return false;
   const send = lines.slice(0, Math.min(room, 12));
   const { telegram } = await import('./monitor.mjs');
-  const ok = await telegram(`🕵️ 작전 레이더 알림 (관리자 전용)\n\n${send.join('\n')}${lines.length > send.length ? `\n…외 ${lines.length - send.length}건` : ''}\n\n※ 패턴 신호일 뿐 증거 아님 · gk-stock.com/#admin`).catch(() => false);
+  const ok = await telegram(`🕵️ 작전 레이더 알림 (관리자 전용)\n\n${send.join('\n')}${lines.length > send.length ? `\n…외 ${lines.length - send.length}건` : ''}\n\n※ 패턴 신호일 뿐 증거 아님 · gk-stock.com/#radar`).catch(() => false);
   if (ok) { st.n = (st.n || 0) + send.length; await setJSON('mp/alert', st); }
   return ok;
 }

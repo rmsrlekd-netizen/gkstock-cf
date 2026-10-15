@@ -44,6 +44,7 @@ export default async (req) => {
         return J({ ok: true, ...(mp === 'my' ? await c.myList() : await c.myEdit(mp.slice(2), P)) });
       }
       if (mp === 'live') { const z = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10); const s2 = (await getJSON(`mp/live/${z}`)) || {}; return J({ ok: true, n: s2.n || 0, last: s2.last || [], codes: (s2.codes || []).length, err: s2.err || null, br: await getJSON('mp/br/state').then((b) => (b ? { date: b.date, pos: b.pos, n: (b.queue || []).length, err: b.err } : null)), thm: ((await getJSON('mp/thm/hist')) || [])[0]?.d || null }); }
+      if (mp === 'alerts') return J({ ok: true, list: ((await getJSON('mp/alerts')) || { list: [] }).list.slice(0, 300) });
       if (mp === 'look') return J({ ok: true, ...(await m.manipLookup(u.searchParams.get('code'), { name: u.searchParams.get('name') || null, refresh: u.searchParams.get('refresh') === '1' })) });
       if (mp === 'run') await m.manipStart();
       return J({ ok: true, ...(await m.manipView(u.searchParams.get('date'))) });

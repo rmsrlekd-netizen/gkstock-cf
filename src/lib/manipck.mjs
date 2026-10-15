@@ -220,7 +220,7 @@ export async function brokerWatch() {
 export async function watchCodes(max = 80) {
   const rank = (await getJSON('mp/rank')) || {};
   const my = ((await getJSON('mp/my'))?.items || []).filter((i) => !i.closed).map((i) => i.code);
-  const rows = Object.entries(rank).filter(([, r]) => Date.now() - (r.up || 0) < 30 * DAY && (['매집', '판 깔기'].includes(r.st) || r.d === 'up' || (r.rr?.v ?? 0) >= 2))
+  const rows = Object.entries(rank).filter(([, r]) => Date.now() - (r.up || 0) < 30 * DAY && (!r.ht && r.st !== '거래정지' && (['매집', '판 깔기'].includes(r.st) || r.d === 'up' || (r.rr?.v ?? 0) >= 2)))
     .sort((a, b) => (b[1].us || 0) - (a[1].us || 0)).map(([c]) => c);
   return [...new Set([...my, ...rows])].slice(0, max);
 }

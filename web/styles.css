@@ -2141,3 +2141,32 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-rbc { padding: .45rem .55rem; border-radius: 8px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); } .mp-rbc.on { border-color: rgba(124,140,255,.7); background: rgba(124,140,255,.12); }
 .mp-rbc h6 { margin: 0 0 .3rem; font-size: .82rem; } .mp-rbc ul { margin: 0; padding-left: 1rem; } .mp-rbc li { font-size: .78rem; line-height: 1.45; margin: .15rem 0; }
 .mp-rbchip { display: inline-block; padding: .1rem .5rem; border-radius: 6px; font-size: .75rem; font-weight: 800; background: rgba(255,255,255,.07); }
+/* ── 작전 레이더 종목 페이지 ── */
+.rp { display: flex; flex-direction: column; gap: .8rem; }
+.rp-nav { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.rp-head { display: grid; grid-template-columns: 1fr auto; gap: .5rem 1rem; align-items: center; padding: .9rem 1rem; border-radius: 14px; background: var(--card); border: 1px solid var(--line2); }
+.rp-head .ca-co b { font-size: 1.25rem; } .rp-px { text-align: right; } .rp-px b { display: block; font-size: 1.3rem; font-family: var(--mono); } .rp-px small { font-family: var(--mono); }
+.rp-chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.rp-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; } .rp-actions .mp-myadd { margin: 0; }
+.rp-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .55rem; }
+@media (max-width: 760px) { .rp-tiles { grid-template-columns: repeat(2, 1fr); } .rp-head { grid-template-columns: 1fr; } .rp-px { text-align: left; } }
+.rp-tile { padding: .6rem .7rem; border-radius: 12px; background: rgba(255,255,255,.04); border: 1px solid var(--line); display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.rp-tile em { font-style: normal; font-size: .72rem; color: var(--muted); } .rp-tile b { font-size: 1.02rem; color: #fff; word-break: keep-all; } .rp-tile small { font-size: .72rem; color: var(--text2); line-height: 1.35; }
+.rp-tile.warn b { color: #ffb3bb; } .rp-tile.gA b { color: #5ff0a8; } .rp-tile.gB b { color: #ffd66b; } .rp-tile.rb-second b { color: #5ff0a8; } .rp-tile.rb-dump b { color: #ff8a96; } .rp-tile.rb-deadcat b { color: #ffd66b; }
+.rp-story { padding: .9rem 1rem; border-radius: 14px; background: rgba(124,140,255,.07); border: 1px solid rgba(124,140,255,.3); }
+.rp-story h4 { margin: 0 0 .5rem; } .rp-story p { margin: .35rem 0; line-height: 1.7; font-size: .9rem; }
+.seg.rp-tabs { flex-wrap: wrap; height: auto; max-width: 100%; } .seg.rp-tabs button { flex: 0 0 auto; }
+.rp-body { min-height: 120px; }
+/* ── 랭킹 줄 (간단하게) ── */
+.rk-strip { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin: .45rem 0 .2rem; }
+.rk-kv { display: grid; grid-template-columns: repeat(4, 1fr); gap: .4rem; margin: .35rem 0; }
+@media (max-width: 760px) { .rk-kv { grid-template-columns: repeat(2, 1fr); } }
+.rk-kv span { display: flex; flex-direction: column; padding: .4rem .5rem; border-radius: 9px; background: rgba(255,255,255,.035); min-width: 0; }
+.rk-kv em { font-style: normal; font-size: .68rem; color: var(--muted); } .rk-kv b { font-size: .88rem; color: #fff; } .rk-kv small { font-size: .7rem; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rk-why { margin: .3rem 0 0; font-size: .8rem; color: var(--text2); } .rk-why.up::before { content: '📈 '; } .rk-why.down::before { content: '📉 '; }
+.mp-rk { cursor: pointer; } .mp-rk:hover { border-color: rgba(124,140,255,.5); }
+.mp-stage.halt { background: rgba(160,160,160,.2); color: #ccc; }
+
+.al-log { display: flex; flex-direction: column; gap: .6rem; } .al-grp { padding: .55rem .7rem; border-radius: 10px; background: rgba(255,255,255,.035); border: 1px solid var(--line); }
+.al-grp b { font-size: .78rem; color: var(--muted); } .al-grp ul { margin: .3rem 0 0; padding-left: 1rem; } .al-grp li { font-size: .84rem; line-height: 1.55; margin: .15rem 0; } .al-grp li.go { cursor: pointer; } .al-grp li.go:hover { color: #c9d0ff; text-decoration: underline; }
+.seg.mp-tabs { flex-wrap: wrap; height: auto; max-width: 100%; } .seg.mp-tabs button { flex: 0 0 auto; }
