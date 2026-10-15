@@ -2133,3 +2133,11 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-myadd { margin: 0 0 .5rem; } .mp-myf { display: flex; flex-wrap: wrap; gap: .4rem .6rem; align-items: center; padding: .5rem .6rem; border-radius: 10px; background: rgba(245,197,66,.07); border: 1px solid rgba(245,197,66,.3); font-size: .8rem; }
 .mp-myf label { display: flex; align-items: center; gap: .3rem; } .mp-myf input, .mp-close input { width: 6.5rem; padding: .3rem .4rem; border-radius: 6px; border: 1px solid var(--line2); background: rgba(0,0,0,.2); color: inherit; } .mp-myf label.w input { width: 12rem; }
 .mp-my.closed { opacity: .7; } .mp-close { display: inline-flex; gap: .3rem; align-items: center; } .mp-mystat { font-weight: 700; }
+
+.mp-rb { margin: 0 0 .6rem; padding: .65rem .8rem; border-radius: 10px; background: rgba(124,140,255,.07); border: 1px solid rgba(124,140,255,.35); }
+.mp-rb h5 { margin: 0 0 .45rem; } .mp-rb h5 b { margin-left: .3rem; }
+.rb-second { color: #5ff0a8; } .rb-dump { color: #ff8a96; } .rb-deadcat { color: #ffd66b; } .rb-unclear { color: var(--muted); }
+.mp-rbgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; } @media (max-width: 760px) { .mp-rbgrid { grid-template-columns: 1fr; } }
+.mp-rbc { padding: .45rem .55rem; border-radius: 8px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); } .mp-rbc.on { border-color: rgba(124,140,255,.7); background: rgba(124,140,255,.12); }
+.mp-rbc h6 { margin: 0 0 .3rem; font-size: .82rem; } .mp-rbc ul { margin: 0; padding-left: 1rem; } .mp-rbc li { font-size: .78rem; line-height: 1.45; margin: .15rem 0; }
+.mp-rbchip { display: inline-block; padding: .1rem .5rem; border-radius: 6px; font-size: .75rem; font-weight: 800; background: rgba(255,255,255,.07); }
