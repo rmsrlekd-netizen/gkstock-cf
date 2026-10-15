@@ -3301,8 +3301,8 @@
       <div class="rp-actions"><button class="btn sm" data-rp-refresh>지금 다시 분석</button>${P.myBtn}${j.aiLeft != null ? `<small class="muted">검색 AI 남은 횟수 ${j.aiLeft}회</small>` : ''}</div>
       ${j.aiErr ? `<p class="muted sm">AI: ${esc(j.aiErr)}</p>` : ''}
       <div class="rp-tiles">${tiles}</div>
-      ${(() => { const cf = (x.story || []).find((t) => t.startsWith('ℹ️')); return cf ? `<p class="rp-conf">${esc(cf)}</p>` : ''; })()}
-      ${(x.story || []).length ? `<div class="rp-story"><h4>📝 한눈에 보는 정리 <small class="muted">계산된 숫자로만 쓴 요약 (AI 아님)</small></h4>${x.story.map((t, i) => `<p class="${i === x.story.length - 1 ? 'muted sm' : ''}">${esc(t)}</p>`).join('')}</div>` : ''}
+      ${(() => { const cf = (x.story || []).find((t) => t.startsWith('ℹ️')); return cf ? `<p class="rp-conf">${hl(cf)}</p>` : ''; })()}
+      ${(x.story || []).length ? `<div class="rp-story"><h4>📝 한눈에 보는 정리 <small class="muted">계산된 숫자로만 쓴 요약 (AI 아님)</small></h4>${x.story.map((t, i) => (i === x.story.length - 1 ? `<p class="muted sm">${esc(t)}</p>` : `<p>${hl(t)}</p>`)).join('')}</div>` : ''}
       <div class="seg rp-tabs">${TABS.map(([t, l]) => `<button data-rp-tab="${t}" class="${t === tab ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="rp-body">${body}</div>
     </div>`;
@@ -3325,6 +3325,28 @@
   // ───── 작전 의심 레이더 ─────
   const MP_ST = { '판 깔기': 'setup', 매집: 'acc', 띄우기: 'pump', 털기: 'exit', '엑시트 후': 'done', 거래정지: 'halt', 관찰: 'watch' };
   const mpChips = (by, sig, wn, pn, cbn, cbd) => `${wn ? `<span class="mp-chip ev-risk">⚠ 거래소 ${esc(wn)}</span>` : ''}${cbn ? `<span class="mp-chip ev-cb">💳 최근 CB·BW ${cbn}건${cbd ? ` · ${esc(cbd.slice(2))}` : ''}</span>` : ''}${(by || []).filter((k) => !(k === 'cb' && cbn)).map((k) => `<span class="mp-chip ev-${esc(k)}">${esc(MP_EV[k] || k)}</span>`).join('')}${(sig || []).map((t) => `<span class="mp-chip vol">${esc(t)}</span>`).join('')}${pn != null ? `<span class="mp-chip ev-risk">📛 벌점 ${pn}/15</span>` : ''}`;
+  // 서술형 정리·AI 문장의 핵심 단어에 색 (가격·등락률·날짜·단계·좋은 점/조심할 점)
+  const HL_RE = new RegExp([
+    '(\\d{4}-\\d{2}-\\d{2}(?:\\s*~\\s*\\d{4}-\\d{2}-\\d{2})?)',
+    '(1\\s*:\\s*\\d+(?:\\.\\d+)?\\+?)',
+    '((?:약\\s)?\\d[\\d,]*(?:\\.\\d+)?원)',
+    '([+\\-−]\\d+(?:\\.\\d+)?%)',
+    '(\\d+(?:\\.\\d+)?%)',
+    '([ABCD]등급)',
+    '(\\d+(?:\\.\\d+)?\\/10점|\\d+(?:\\.\\d+)?점)',
+    '(판 깔기|매집봉|매집|띄우기|털기|엑시트 후|거래정지|2차 작전)',
+    '(상승 가능성|좋은 점|올라갈 근거|높음|지킴|이익 구간|수익 구간|되사기|바닥 확인|성공 조건)',
+    '(하락 위험|조심할 점|걸림돌|못 올라갈 근거|위험 신호|위험|낮음|잠재 물량|물량|벌점|약세장|새 저점|손절|매도|차익 실현|불성실공시|의견거절|자본잠식)',
+    '(3자배정(?: 증자| 유상증자| 발행가)?|CB·BW·EB|CB·BW|CB|BW|리픽싱|전환청구|전환가|유상증자|최대주주 변경|최대주주|투자조합|5% 지분 신고|담보|반대매매)',
+  ].join('|'), 'g');
+  const HL_C = ['hl-d', 'hl-rr', 'hl-p', null, 'hl-n', null, 'hl-sc', 'hl-st', 'hl-good', 'hl-bad', 'hl-ev'];
+  const hl = (t) => esc(t).replace(HL_RE, (m, ...g) => {
+    const i = g.slice(0, 11).findIndex((v) => v !== undefined);
+    let c = HL_C[i];
+    if (i === 3) c = m[0] === '+' ? 'hl-up' : 'hl-dn';
+    if (i === 5) c = 'hl-g' + m[0];
+    return c ? `<span class="${c}">${m}</span>` : m;
+  });
   const MP_EV = { mna: '최대주주·경영권', rights3: '3자배정 증자', rightsfix: '증자 정정', rights: '유상증자', rightsR: '구조조정 증자(제외)', cb: 'CB·BW', refix: '리픽싱', fund5: '투자조합 지분', purpose: '사업목적 변경', bonus: '무상증자', capred: '감자', contract: '공급계약', invest: 'MOU·투자판단', inquiry: '조회공시', conv: '전환청구', majsell: '최대주주 지분변동', pledge: '담보·질권', risk: '불성실·횡령 등' };
   async function loadManip(date, run) {
     const box = $('#mpBody'); if (!box) return;
@@ -3563,7 +3585,7 @@
   function mpDetail(x) { const p = mpParts(x); return `${p.myBtn}${p.pexBox}${p.rbBox}${p.ckBox}${p.cycLine}${p.accLine}${p.markBox}${p.wf}${p.dirBox}${p.tgtBox}${p.aiBox}${p.grid}`; }
   function mpParts(x) {
     const a = x.ai && !x.ai.error ? x.ai : null, f = x.f || {};
-    const li = (arr) => arr.map((t) => `<li>${esc(t)}</li>`).join('');
+    const li = (arr) => arr.map((t) => `<li>${hl(t)}</li>`).join('');
     const pxs = (x.px || []).map((p) => `<li>${esc(p.date || '')} ${esc(p.label || '')}${p.p ? ` <b>${fmtInt(p.p)}원</b>` : ''} <small class="muted">(${esc(MP_EV[p.kind] || p.kind)})</small>${p.cbx ? `<div class="mp-buys">${p.cbx.start ? `<span>전환청구 ${esc(p.cbx.start)}${p.cbx.end ? '~' + esc(p.cbx.end) : ''}</span>` : ''}${p.cbx.floor ? `<span>리픽싱 하한 ${fmtInt(p.cbx.floor)}원</span>` : ''}${p.cbx.call ? `<span>콜옵션${p.cbx.callPct ? ' ' + p.cbx.callPct + '%' : ''}</span>` : ''}</div>` : ''}${p.pledge ? `<div class="mp-buys"><span>담보 ${fmtInt(p.pledge.sh)}주 · 대출 ${fmtInt(p.pledge.loan)}원 → 1주당 ${fmtInt(p.pledge.perShare)}원 · 반대매매 추정 ${fmtInt(p.pledge.perShare * 1.4)}원</span></div>` : ''}${p.buys?.length ? `<div class="mp-buys">${p.buys.slice(0, 12).map((b) => `<span>${esc(b.d.slice(5))} ${b.q ? fmtInt(b.q) + '주 ' : ''}@${fmtInt(b.p)}</span>`).join('')}</div>` : ''}</li>`).join('');
     const cl = x.cl;
     const ckItem = (i, red) => `<li class="${i.ok == null ? 'na' : (red ? (i.ok ? 'bad' : 'good') : (i.ok ? 'good' : 'bad'))}"><b>${i.ok == null ? '?' : red ? (i.ok ? '⚠' : '✓') : (i.ok ? '✓' : '✗')}</b> ${esc(i.t)}${i.src && /^DART|^[A-Z]+-/.test(i.src) ? ` <a class="mp-src" href="/p/${esc(i.src)}" target="_blank">공시</a>` : ''}</li>`;
@@ -3595,7 +3617,7 @@
     const d = x.dir || {};
     const srcA = (r) => (/^DART-/.test(r.src || '') ? ` <a class="mp-src" href="/p/${esc(r.src)}" target="_blank">공시</a>` : ` <small class="mp-src">${esc(r.src === '계산' ? '자동 계산' : r.src === '일봉' ? '거래 데이터' : r.src || '')}</small>`);
     const reasons = (arr) => (arr || []).map((r) => `<li>${esc(r.t)}${srcA(r)}</li>`).join('');
-    const aiLine = (r) => `<li>${esc(r.t)} <small class="mp-ref">근거 ${esc(r.refs.join(','))}</small></li>`;
+    const aiLine = (r) => `<li>${hl(r.t)} <small class="mp-ref">근거 ${esc(r.refs.join(','))}</small></li>`;
     const notes = (d.notes || []).length ? `<div class="mp-notes">${d.notes.map((n) => `<p>ℹ️ ${esc(n)}</p>`).join('')}</div>` : '';
     const net = (x.links || []).length ? `<div class="mp-net"><h5>🕸 같은 세력 연결 의심 <small>같은 공시 제출인·인수자 이름이 다른 종목에도 나옴 (동명이인·우연일 수 있음)</small></h5><ul>${x.links.map((l) => `<li><b>${esc(l.who)}</b> → ${l.others.map((o) => `<button class="link" data-open-co="KR|${esc(o.c)}|${esc(o.nm || '')}">${esc(o.nm || o.c)}</button> <small class="muted">${esc(o.d)} ${esc(MP_EV[o.k] || '')}</small>`).join(', ')}</li>`).join('')}</ul></div>` : '';
     const pn = penaltyBox(x);
@@ -3611,10 +3633,10 @@
     const tgtBox = lvs.length || d.tgt?.length || d.dates?.length ? `<div class="mp-tgt"><div><h5>🎯 참고 목표 가격 <small>공시에 적힌 원가 · 과거 고점(매물대)으로 만든 가격 사다리 · 세력의 실제 목표가는 어떤 공시에도 안 나옴</small></h5>${rrLine}${tgtLine}${ladder || (Array.isArray(d.tgt) && d.tgt[0]?.m ? '<p class="muted sm">이전 방식(배수) 결과 — 다음 분석 때 공시 기준으로 바뀜</p>' : '<p class="muted sm">근거 가격 없음</p>')}</div>
       <div><h5>🗓 물량이 풀릴 수 있는 날 <small>CB는 원문의 전환청구기간을 읽고, 못 읽으면 발행 1년 뒤로 추정</small></h5>${d.dates?.length ? `<ul>${d.dates.map((z) => `<li class="${z.past ? 'muted' : ''}"><b>${esc(z.d)}</b> ${esc(z.t)}${z.real ? ' <span class="mp-chip vol">원문 확인</span>' : ''}${z.past ? ' (지남)' : ''} <a class="mp-src" href="/p/${esc(z.ref)}" target="_blank">공시</a></li>`).join('')}</ul>` : '<p class="muted sm">관련 공시(CB·3자배정·전환청구) 없음</p>'}</div></div>` : '';
     const UK = { summary: '요약', upWhy: '상승 쪽', downWhy: '하락 쪽', counter: '반대 근거', watch: '볼 신호', evidence: '의심 근거' };
-    const aiBox = a ? `<div class="mp-ai"><b>🤖 AI 해석</b> <small class="muted">근거 번호가 확인된 문장은 그대로, 확인 안 된 문장은 아래 ⚠ 참고용으로 따로 보여줘요</small>${a.summary ? `<p>${esc(a.summary)}</p>` : a.oldSummary ? `<p>${esc(a.oldSummary)} <small class="mp-unv">⚠ 예전 분석 요약 — 지금 계산과 숫자가 다른 부분이 있어요</small></p>` : ''}
+    const aiBox = a ? `<div class="mp-ai"><b>🤖 AI 해석</b> <small class="muted">근거 번호가 확인된 문장은 그대로, 확인 안 된 문장은 아래 ⚠ 참고용으로 따로 보여줘요</small>${a.summary ? `<p class="mp-aisum">${hl(a.summary)}</p>` : a.oldSummary ? `<p>${hl(a.oldSummary)} <small class="mp-unv">⚠ 예전 분석 요약 — 지금 계산과 숫자가 다른 부분이 있어요</small></p>` : ''}
       ${a.upWhy?.length || a.downWhy?.length ? `<div class="mp-dir ai-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 해석</h5>${a.upWhy?.length ? `<ul>${a.upWhy.map(aiLine).join('')}</ul>` : '<p class="muted sm">없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 해석</h5>${a.downWhy?.length ? `<ul>${a.downWhy.map(aiLine).join('')}</ul>` : '<p class="muted sm">없음</p>'}</div></div>` : ''}
-      ${a.evidence?.length ? `<h5>의심 근거 <small class="muted">(이전 방식 분석 · 근거 검증 전 — 다음 분석 때 새 방식으로 바뀜)</small></h5><ul>${li(a.evidence)}</ul>` : ''}${a.counter?.length ? `<h5>반대 근거 (정상일 가능성)</h5><ul>${a.counter.map((c) => (typeof c === 'string' ? `<li>${esc(c)}</li>` : aiLine(c))).join('')}</ul>` : ''}${a.watch?.length ? `<h5>앞으로 볼 신호</h5><ul>${li(a.watch)}</ul>` : ''}
-      ${a.unv?.length ? `<h5>⚠ 근거 확인이 안 된 AI 문장 <small class="muted">(참고용 — 사실 목록에서 숫자·근거를 찾지 못했어요. 그대로 믿지 말고 원문 공시로 확인)</small></h5><ul class="mp-unvl">${a.unv.map((u) => `<li class="${u.k === 'upWhy' ? 'ai-u' : u.k === 'downWhy' ? 'ai-d' : ''}"><span class="mp-chip">${esc(UK[u.k] || u.k)}</span> ${esc(u.t)} <small class="muted">· ${esc(u.why)}</small></li>`).join('')}</ul>` : ''}
+      ${a.evidence?.length ? `<h5>의심 근거 <small class="muted">(이전 방식 분석 · 근거 검증 전 — 다음 분석 때 새 방식으로 바뀜)</small></h5><ul>${li(a.evidence)}</ul>` : ''}${a.counter?.length ? `<h5>반대 근거 (정상일 가능성)</h5><ul>${a.counter.map((c) => (typeof c === 'string' ? `<li>${hl(c)}</li>` : aiLine(c))).join('')}</ul>` : ''}${a.watch?.length ? `<h5>앞으로 볼 신호</h5><ul>${li(a.watch)}</ul>` : ''}
+      ${a.unv?.length ? `<h5>⚠ 근거 확인이 안 된 AI 문장 <small class="muted">(참고용 — 사실 목록에서 숫자·근거를 찾지 못했어요. 그대로 믿지 말고 원문 공시로 확인)</small></h5><ul class="mp-unvl">${a.unv.map((u) => `<li class="${u.k === 'upWhy' ? 'ai-u' : u.k === 'downWhy' ? 'ai-d' : ''}"><span class="mp-chip">${esc(UK[u.k] || u.k)}</span> ${hl(u.t)} <small class="muted">· ${esc(u.why)}</small></li>`).join('')}</ul>` : ''}
       ${a.facts?.length ? `<details class="mp-facts"><summary>AI에게 준 사실 목록 (${a.facts.length}개)</summary><ol>${a.facts.map((f) => `<li><b>${esc(f.id)}</b> ${esc(f.t)} <small class="muted">· ${esc(f.src)}</small></li>`).join('')}</ol></details>` : ''}</div>` : '';
     const grid = `<div class="mp-grid"><div><h5>공시에서 찾은 가격</h5>${pxs ? `<ul>${pxs}</ul>` : '<p class="muted sm">없음</p>'}<h5>거래 패턴</h5><ul class="mp-f"><li>매집 구간 평균가 <b>${f.vwapAcc ? fmtInt(f.vwapAcc) + '원' : '—'}</b>${f.accStart ? ` <small class="muted">(${esc(f.accStart)}~)</small>` : ''}</li><li>고거래량일 평균가 <b>${f.vwapHeavy ? fmtInt(f.vwapHeavy) + '원' : '—'}</b></li><li>120일 평균가 <b>${f.vwap120 ? fmtInt(f.vwap120) + '원' : '—'}</b></li><li>60일 저점 대비 <b>${f.fromLow60 ?? '—'}%</b> · 20일 고점 대비 <b>${f.offHigh20 ?? '—'}%</b></li><li>거래량(평소 대비) 5일 <b>${f.volX5 ?? '—'}배</b> · 20일 <b>${f.volX20 ?? '—'}배</b> · 10일 최대 <b>${f.maxVolX10 ?? '—'}배</b></li><li>폭증 전 60일 박스 폭 <b>${f.box60 ?? '—'}%</b>${f.spikeDate ? ` · 첫 폭증일 ${esc(f.spikeDate)}` : ''}</li></ul>
         ${x.log?.length ? `<h5>자동 수정 기록</h5><ul class="mp-logl">${x.log.slice(0, 8).map((l) => `<li><span>${esc(fmtDT(new Date(l.at)).md)} ${esc(fmtDT(new Date(l.at)).hm)}</span> ${esc(l.msg)}</li>`).join('')}</ul>` : ''}

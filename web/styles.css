@@ -2186,3 +2186,15 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-dcol.up li::marker { color: #ff6b7a; } .mp-dcol.down li::marker { color: #5aa8ff; }
 .mp-unvl li.ai-u { border-left: 3px solid rgba(255,90,106,.6); padding-left: .4rem; } .mp-unvl li.ai-d { border-left: 3px solid rgba(76,157,255,.6); padding-left: .4rem; }
 .rp-conf { margin: .6rem 0 0; padding: .55rem .75rem; border-radius: 10px; background: rgba(255,196,0,.08); border: 1px solid rgba(255,196,0,.25); font-size: .86rem; line-height: 1.55; }
+/* 핵심 단어 색 (서술형 정리·AI 해석) */
+.hl-p { color: #ffd166; font-weight: 700; }
+.hl-up { color: #ff6b7a; font-weight: 700; } .hl-dn { color: #5aa8ff; font-weight: 700; } .hl-n { color: #e5e7eb; font-weight: 700; }
+.hl-d { color: #7dd3fc; }
+.hl-rr { color: #c4b5fd; font-weight: 800; }
+.hl-sc { color: #f9fafb; font-weight: 700; text-decoration: underline dotted rgba(255,255,255,.35); text-underline-offset: 3px; }
+.hl-st { color: #ffb86b; font-weight: 700; }
+.hl-good { color: #ff8a96; font-weight: 700; background: rgba(255,90,106,.10); border-radius: 4px; padding: 0 .15em; }
+.hl-bad { color: #7ab8ff; font-weight: 700; background: rgba(76,157,255,.10); border-radius: 4px; padding: 0 .15em; }
+.hl-gA { color: #34d399; font-weight: 800; } .hl-gB { color: #ffd166; font-weight: 800; } .hl-gC { color: #fb923c; font-weight: 800; } .hl-gD { color: #f87171; font-weight: 800; }
+.rp-story p { color: #d6d9e0; } .mp-aisum { font-size: .95rem; line-height: 1.6; }
+.hl-ev { color: #d8b4fe; font-weight: 600; }
