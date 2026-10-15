@@ -3221,6 +3221,7 @@
   // ───── 🕵️ 작전 레이더 (더보기 메뉴 · 관리자 키가 있는 기기에서만 보임 · 데이터도 관리자 키로만 받음) ─────
   function renderRadar() {
     const box = $('#radarBody'); if (!box) return;
+    if (!S.admin) S.admin = load('gk_admin', '') || ''; // 다른 탭에서 로그인했을 수 있음
     document.body.classList.toggle('is-admin', !!S.admin);
     if (!S.admin) { box.innerHTML = '<div class="card"><h3>🕵️ 작전 레이더</h3><p class="muted">관리자 전용 페이지예요. <a href="/#admin">관리자 로그인</a> 후 다시 열어 주세요.</p></div>'; return; }
     document.title = '작전 레이더 | GK의 공시레이더';
@@ -3269,12 +3270,12 @@
       tile('매집 추정 구간', f.accStart ? `${esc(f.accStart.slice(2))}~${esc((f.accEnd || '').slice(2))}` : '—', f.accDays ? `${f.accDays}거래일${f.cyc ? (f.acc2 ? ' · 2차 매집 후보' : ' · 급등 전 박스') : ''}` : ''),
       tile('다음 물량 해제', nd ? esc(nd.d) : '—', nd ? (nd.real ? '공시 원문 기준' : '추정') : '예정 없음'),
       tile('성공 체크리스트', cl ? `${esc(cl.grade)}등급` : '—', cl ? `조건 ${cl.np}/${cl.nk} · 위험 ${cl.nr}개` : '', cl ? 'g' + cl.grade : ''),
-      tile('반등 성격', rk ? RBS[rk.type] : '—', rk ? `바닥 대비 +${rk.rb.up}%` : '하락 뒤 반등 아님', rk ? 'rb-' + rk.type : ''),
+      x.pex ? tile('털기 후 상승 가능성', esc(x.pex.lv), `근거 ${x.pex.su} vs ${x.pex.sd}${rk ? ' · ' + RBS[rk.type] : ''}`, 'pex-' + ({ 높음: 'h', 중간: 'm', 낮음: 'l' }[x.pex.lv])) : tile('반등 성격', rk ? RBS[rk.type] : '—', rk ? `바닥 대비 +${rk.rb.up}%` : '하락 뒤 반등 아님', rk ? 'rb-' + rk.type : ''),
       tile('투자경고 요건까지', f.wf?.min ? (f.wf.min.pct <= 0 ? '이미 도달' : `+${f.wf.min.pct}%`) : '—', f.wf?.min ? esc(f.wf.min.lbl) + ' (근사)' : ''),
     ].join('');
     const TABS = [['price', '💰 가격·목표'], ['check', '✅ 체크리스트'], ['why', '📈📉 근거'], ['chart', '🕯 차트 신호'], ['docs', '📄 공시'], ['ai', '🤖 AI·기록']];
     const tab = TABS.some(([t]) => t === S.rpTab) ? S.rpTab : 'price';
-    const body = { price: P.accLine + P.tgtBox, check: P.ckBox, why: P.dirBox, chart: (P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>', docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
+    const body = { price: P.accLine + P.tgtBox, check: P.ckBox, why: P.dirBox, chart: (P.pexBox + P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>', docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
     box.innerHTML = `<div class="rp">
       <div class="rp-nav"><button class="btn sm" data-rp-back>← 작전 레이더</button><span class="muted sm">${x.at ? esc(rel(x.at)) + ' 분석' : ''}${j.cached ? ' · 저장된 결과' : ''}${x.migrated ? ' · 새 계산 방식으로 방금 갱신' : ''}</span></div>
       <div class="rp-head">
@@ -3345,7 +3346,7 @@
     $('#mpBody').innerHTML = dates + btns + `<p class="note">${esc(doc.date)} 기준 · 의심 종목 ${doc.list.length}개${doc.building ? ' (분석 진행 중 — 잠시 뒤 새로고침)' : ''} · 줄을 누르면 그 종목 페이지가 열려요.</p><ol class="mp-list">${rows}</ol>
       <p class="note">⚠ 공시·거래 패턴이 '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐, 불공정거래의 증거가 아닙니다. 평단가는 전환가·발행가·거래량 가중 평균으로 추정한 값입니다. 종목명을 공개적으로 '작전주'라고 지칭하면 법적 문제가 생길 수 있어요.</p>`;
   }
-  const RK_KINDS = [['all', '전체 (의심 순)'], ['up', '📈 상승 가능성'], ['down', '📉 하락 위험'], ['rr', '⚖️ 손익비 순'], ['ck', '✅ 체크리스트 순']];
+  const RK_KINDS = [['all', '전체 (의심 순)'], ['up', '📈 상승 가능성'], ['down', '📉 하락 위험'], ['rr', '⚖️ 손익비 순'], ['ck', '✅ 체크리스트 순'], ['pex', '🔁 털기 후 상승']];
   const rkKindsHTML = () => `<div class="seg mp-kinds">${RK_KINDS.map(([k, l]) => `<button data-rk-kind="${k}" class="${(S.rkKind || 'all') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   async function loadRank(retry = 0) {
     const box = $('#mpBody'); if (!box) return;
@@ -3376,10 +3377,11 @@
         <div class="mp-top"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="KR|${esc(r.code)}|${esc(r.n)}">${logoHTML('KR', r.code, r.n, 'sm')}<span><b>${esc(r.n)}</b><small>${esc(r.code)} · ${r.m === 'P' ? '코스피' : r.m === 'Q' ? '코스닥' : ''} · ${esc(rel(r.up))} 갱신</small></span></button>
           <span class="mp-px">${won(r.c)}<small class="${dirCls(r.pct)}">${r.pct != null ? fmtPct(r.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[r.st] || 'watch'}">${esc(r.st || '')}${r.lv ? `<small>의심 ${esc(r.lv)}</small>` : ''}</span>
-          ${S.rkKind === 'rr' && r.rr ? `<span class="mp-score"><b>1:${r.rr.v}</b><small>손익비<br>종합 점수 ${r.s}</small></span>` : S.rkKind === 'up' || S.rkKind === 'down' ? `<span class="mp-score"><b>${S.rkKind === 'up' ? r.us || 0 : r.ds || 0}<em>/10</em></b><small>${S.rkKind === 'up' ? '상승' : '하락'} 근거 점수<br>종합 점수 ${r.s}</small></span>` : `<span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span>`}</div>
+          ${S.rkKind === 'pex' && r.pex ? `<span class="mp-score"><b>${esc(r.pex.lv)}</b><small>털기 후 상승<br>근거 차이 ${r.pex.net > 0 ? '+' : ''}${r.pex.net}</small></span>` : S.rkKind === 'rr' && r.rr ? `<span class="mp-score"><b>1:${r.rr.v}</b><small>손익비<br>종합 점수 ${r.s}</small></span>` : S.rkKind === 'up' || S.rkKind === 'down' ? `<span class="mp-score"><b>${S.rkKind === 'up' ? r.us || 0 : r.ds || 0}<em>/10</em></b><small>${S.rkKind === 'up' ? '상승' : '하락'} 근거 점수<br>종합 점수 ${r.s}</small></span>` : `<span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span>`}</div>
         <div class="rk-strip">
           ${DIRB[r.d] ? DIRB[r.d] : ''}
           ${r.ckg ? `<span class="mp-ckg g${esc(r.ckg)}">체크 ${esc(r.ckg)}</span>` : ''}
+          ${r.pex ? `<span class="pex-chip pex-${{ 높음: 'h', 중간: 'm', 낮음: 'l' }[r.pex.lv]}">🔁 털기 후 상승 ${esc(r.pex.lv)}</span>` : ''}
           ${r.rbt && r.rbt !== 'unclear' ? `<span class="mp-rbchip rb-${esc(r.rbt)}">🔄 ${{ deadcat: '기술적 반등', dump: '털기 중 반등', second: '2차 작전' }[r.rbt]}</span>` : ''}
           ${r.cm ? `<span class="mp-chip vol">🕯 매집봉 ${r.cm}</span>` : ''}${r.lk ? `<span class="mp-chip net">🕸 연결 ${r.lk}</span>` : ''}${r.wn ? `<span class="mp-chip ev-risk">⚠ ${esc(r.wn)}</span>` : ''}${r.pn?.c != null ? `<span class="mp-chip ev-risk">📛 벌점 ${r.pn.c}/15</span>` : ''}
         </div>
@@ -3408,13 +3410,14 @@
       <li><b>⚠ 거래소 경보</b>: 투자주의·경고·위험 지정(최근 30일). 보통 이미 급등한 뒤 나오므로 하락 쪽 근거로도 씀</li>
       <li><b>보정</b>: 시가총액 하위 40% 소형주 +1점 · 상위 10% 대형주는 점수 ×0.6 · 건설·조선 등 공급계약이 일상인 업종은 공급계약 점수 제외 · 채권단 출자전환 증자는 제외</li>
       <li><b>CB 원문</b>: 전환청구기간(물량 해제일), 리픽싱 하한가, 콜옵션(최대주주가 CB를 되사는 권리)을 원문에서 읽음 · <b>담보</b>: 1주당 대출액 × 1.4를 반대매매 추정가로 계산(비율은 가정)</li>
+      <li><b>🔁 털기 후 상승 가능성</b>: 털기·엑시트 후(또는 고점에서 33%↑ 빠진) 종목이 다시 오를 근거와 못 오를 근거를 점수로 비교해 높음/중간/낮음. 반등을 시작하기 전에도 계산하고, '높음'으로 바뀌면 관리자 텔레그램 알림</li>
       <li><b>🔄 반등 성격</b>: 고점에서 33%↑ 빠진 뒤 바닥 대비 15%↑ 반등 중인 종목을 ① 기술적 반등(거래량 줄며 매물대에서 막힘) ② 털기 중 반등(윗꼬리·전환청구 계속·남은 CB 물량 많음·내부자 매도) ③ 2차 작전(바닥 유지·매집봉·새 판 깔기 공시·CB 되사기·물량 소진) 중 근거 점수가 높은 쪽으로 분류. 남은 CB 물량은 전환청구 공시의 미전환 잔액으로 추정. ③으로 바뀌면 관리자 텔레그램 알림</li>
       <li><b>✅ 성공 가능성 체크리스트</b>: 띄울 이유(세력 자금 실제 납입·원가 근처·물량 해제일 2~3개월 전) · 띄울 힘(소형주·최대주주 지분 40%↑·사업목적 추가·매집 흔적·업종/테마 강세·내부자 매수·창구 쏠림·손익비 2↑·기사/종토방 증가)과 위험 신호(납입 연기·철회, 벌점, 감사의견·자본잠식, 자금 외부 유출, 담보 반대매매, 내부자 매도, 같은 세력 실패 이력, 엑시트 후, 약세장, 신용잔고 7%↑, 투자경고 요건 근접)를 ✓/✗로 표시. 자료를 못 받은 항목은 '?'로 두고 계산에서 뺌</li>
       <li><b>⚖️ 손익비</b>: (1차 목표 − 현재가) ÷ (현재가 − 손절 기준). 손절 기준은 현재가 바로 아래의 세력 원가·지지 가격 — 그 아래로 빠지면 '세력 평단 근처'라는 근거가 깨짐. 1 : 3이면 3% 잃을 위험에 9% 오를 여지라는 뜻 (확률이 아니라 폭의 비율)</li>
       <li><b>🎯 참고 목표</b>: 현재가보다 위에 있는 '근거 있는 가격' — 공시에 적힌 CB 전환가·3자배정 발행가·인수 단가(세력이 이익을 보려면 넘어야 하는 원가)와 과거 고점(매물대). 배수 계산이 아님. 세력의 실제 목표가는 어떤 공시에도 안 나옴</li></ul></details>`;
     $('#mpBody').innerHTML = `<div class="chips" style="margin:.5rem 0">${status}<button class="btn sm" data-mp-rank-refresh>새로고침</button></div>${kinds}${legend}
-      <p class="note">${S.rkKind === 'ck' ? '✅ 성공 가능성 체크리스트 순: (충족한 성공 조건 수) − 2×(위험 신호 수). 자료가 없는 항목은 계산에서 빼요. A = 조건 6개↑·위험 0 · B = 4개↑·위험 1개 이하 · C = 나머지. 하락 위험 종목 제외. 패턴상 기준일 뿐 결과를 보장하지 않아요.' : S.rkKind === 'rr' ? '⚖️ 손익비 = (1차 목표 − 현재가) ÷ (현재가 − 손절 기준). 1차 목표는 현재가 위 가장 가까운 근거 가격(공시 원가·매집 전 고점·매물대), 손절 기준은 현재가 2% 이상 아래의 가장 가까운 세력 원가·지지 가격(이 아래로 빠지면 세력 평단 근거가 깨짐). 아래 폭이 3% 미만이면 3%로 계산. 하락 위험·띄우기·털기·엑시트 후 종목은 제외. 손익비가 높아도 그 목표까지 간다는 보장은 없어요 — 매매 판단은 직접.' : S.rkKind === 'up' ? '상승 근거 점수 순.' : S.rkKind === 'down' ? '하락 근거 점수 순.' : 'AI 의심 수준(높음→중간→낮음) → 종합 점수 순.'} 근거는 공시·거래 데이터로 자동 계산한 사실이고, AI 문장은 그 사실 번호가 확인된 것만 남깁니다. 새 공시가 나오면 그 종목은 전체 공시·거래량과 함께 자동으로 다시 판단돼 순위·평단·단계가 바뀌어요. 줄을 누르면 그 종목 페이지가 열려요.</p>
-      ${rows ? `<ol class="mp-list">${rows}</ol>` : `<p class="muted">${S.rkKind === 'ck' ? '체크리스트가 계산된 종목이 아직 없어요 (장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'rr' ? '손익비를 계산할 수 있는 종목이 아직 없어요 (위쪽 목표와 아래쪽 원가·지지 가격이 모두 있어야 해요. 장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'up' ? '지금은 상승 가능성 쪽으로 분류된 종목이 없어요.' : S.rkKind === 'down' ? '지금은 하락 위험 쪽으로 분류된 종목이 없어요.' : '아직 랭킹이 없어요. 첫 정기 분석이 시작되면 약 10분 뒤 채워져요.'}</p>`}
+      <p class="note">${S.rkKind === 'pex' ? '🔁 털기·엑시트 후 종목(또는 고점에서 33% 넘게 빠진 종목) 중 다시 오를 근거가 많은 순. 올라갈 근거(바닥 유지·남은 CB 물량 소진/되사기·새 판 깔기 공시·바닥 뒤 매집 흔적·거래량 마름·내부자 매수·2차 작전 반등) − 못 올라갈 근거(남은 전환 물량·계속되는 전환청구/지분 매도·털기 중 반등·내부자 매도·새 저점·상장 위험·약세장·자금 문제). 높음 = 올라갈 근거 5점↑이고 차이 3점↑. 패턴상 가능성일 뿐이에요.' : S.rkKind === 'ck' ? '✅ 성공 가능성 체크리스트 순: (충족한 성공 조건 수) − 2×(위험 신호 수). 자료가 없는 항목은 계산에서 빼요. A = 조건 6개↑·위험 0 · B = 4개↑·위험 1개 이하 · C = 나머지. 하락 위험 종목 제외. 패턴상 기준일 뿐 결과를 보장하지 않아요.' : S.rkKind === 'rr' ? '⚖️ 손익비 = (1차 목표 − 현재가) ÷ (현재가 − 손절 기준). 1차 목표는 현재가 위 가장 가까운 근거 가격(공시 원가·매집 전 고점·매물대), 손절 기준은 현재가 2% 이상 아래의 가장 가까운 세력 원가·지지 가격(이 아래로 빠지면 세력 평단 근거가 깨짐). 아래 폭이 3% 미만이면 3%로 계산. 하락 위험·띄우기·털기·엑시트 후 종목은 제외. 손익비가 높아도 그 목표까지 간다는 보장은 없어요 — 매매 판단은 직접.' : S.rkKind === 'up' ? '상승 근거 점수 순.' : S.rkKind === 'down' ? '하락 근거 점수 순.' : 'AI 의심 수준(높음→중간→낮음) → 종합 점수 순.'} 근거는 공시·거래 데이터로 자동 계산한 사실이고, AI 문장은 그 사실 번호가 확인된 것만 남깁니다. 새 공시가 나오면 그 종목은 전체 공시·거래량과 함께 자동으로 다시 판단돼 순위·평단·단계가 바뀌어요. 줄을 누르면 그 종목 페이지가 열려요.</p>
+      ${rows ? `<ol class="mp-list">${rows}</ol>` : `<p class="muted">${S.rkKind === 'pex' ? '털기 후 상승 가능성을 계산한 종목이 아직 없어요 (장 마감 뒤 정기 분석·재확인부터 채워져요).' : S.rkKind === 'ck' ? '체크리스트가 계산된 종목이 아직 없어요 (장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'rr' ? '손익비를 계산할 수 있는 종목이 아직 없어요 (위쪽 목표와 아래쪽 원가·지지 가격이 모두 있어야 해요. 장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'up' ? '지금은 상승 가능성 쪽으로 분류된 종목이 없어요.' : S.rkKind === 'down' ? '지금은 하락 위험 쪽으로 분류된 종목이 없어요.' : '아직 랭킹이 없어요. 첫 정기 분석이 시작되면 약 10분 뒤 채워져요.'}</p>`}
       <p class="note">⚠ '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐 불공정거래의 증거가 아닙니다. 외부에 종목명을 '작전주'로 공개하지 마세요.</p>`;
     if (S.reopen) { const c = S.reopen; S.reopen = null; const r2 = document.querySelector(`.mp-rk[data-mp-code="${c}"]`); if (r2) openRankRow(r2); }
   }
@@ -3531,7 +3534,7 @@
         : `<p class="muted sm">불성실공시 관련 공시 ${ev.length}건이 있지만 원문에서 점수를 아직 못 읽었어요 (다음 분석 때 다시 확인). ${ev.map((e) => `<a class="mp-src" href="/p/${esc(e.id)}" target="_blank">${esc(e.title)}</a>`).join(' ')}</p>`}
       <p class="muted sm">${kospi ? '코스피: 1회 10점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 15점 이상이면 관리종목 지정 (관리종목 후 1년간 추가 15점이면 상장적격성 실질심사)' : '코스닥: 1회 8점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 15점 이상이면 상장적격성 실질심사'}</p></div>`;
   }
-  function mpDetail(x) { const p = mpParts(x); return `${p.myBtn}${p.rbBox}${p.ckBox}${p.cycLine}${p.accLine}${p.markBox}${p.wf}${p.dirBox}${p.tgtBox}${p.aiBox}${p.grid}`; }
+  function mpDetail(x) { const p = mpParts(x); return `${p.myBtn}${p.pexBox}${p.rbBox}${p.ckBox}${p.cycLine}${p.accLine}${p.markBox}${p.wf}${p.dirBox}${p.tgtBox}${p.aiBox}${p.grid}`; }
   function mpParts(x) {
     const a = x.ai && !x.ai.error ? x.ai : null, f = x.f || {};
     const li = (arr) => arr.map((t) => `<li>${esc(t)}</li>`).join('');
@@ -3548,6 +3551,9 @@
     const rbBox = rk ? `<div class="mp-rb"><h5>🔄 반등 성격 <b class="rb-${esc(rk.type)}">${esc(RBK[rk.type]?.[0] || '')}</b> <small>${esc(rk.rb.topD)} 고점 ${fmtInt(rk.rb.top)}원 → ${esc(rk.rb.lowD)} 바닥 ${fmtInt(rk.rb.low)}원(${rk.rb.fall}%) → 지금 바닥 대비 +${rk.rb.up}% (${rk.rb.days}거래일) · 규칙 계산(AI 아님)</small></h5>
       <div class="mp-rbgrid">${rbCol('a', '① 기술적 반등', '다시 빠지기 쉬움')}${rbCol('b', '② 털기 중 반등', '가장 위험')}${rbCol('c', '③ 2차 작전', '같이 탈 만한 쪽')}</div>
       ${rk.ov?.list?.length ? `<p class="muted sm">남은 전환 가능 물량(추정): ${rk.ov.list.map((v) => `${v.date} ${v.src === 'conv' ? '청구 공시의 미전환 잔액' : 'CB 발행 총액(청구 공시 없음)'} ${fmtInt(v.amt)}원${v.price ? ` ÷ 전환가 ${fmtInt(v.price)}원 ≈ ${fmtInt(v.shares)}주` : ''}`).join(' · ')}${rk.ov.days != null ? ` → 하루 평균 거래량의 ${rk.ov.days}일치` : ''}${rk.ov.bought ? ` · CB 되사기 공시 ${rk.ov.bought}건` : ''}</p>` : ''}</div>` : '';
+    const px2 = x.pex;
+    const pexBox = px2 ? `<div class="mp-pex"><h5>🔁 털기 후 상승 가능성 <b class="pex-${{ 높음: 'h', 중간: 'm', 낮음: 'l' }[px2.lv]}">${esc(px2.lv)}</b> <small>${esc(px2.post.topD)} 고점 ${fmtInt(px2.post.top)}원 → ${esc(px2.post.lowD)} 바닥 ${fmtInt(px2.post.low)}원(${px2.post.fall}%) · 바닥 뒤 ${px2.post.held}거래일 · 올라갈 근거 ${px2.su}점 vs 못 올라갈 근거 ${px2.sd}점 · 규칙 계산(AI 아님)</small></h5>
+      <div class="mp-dir"><div class="mp-dcol up"><h5>올라갈 근거</h5>${px2.up.length ? `<ul>${px2.up.map((r) => `<li>${esc(r.t)} <small class="muted">+${r.w}</small></li>`).join('')}</ul>` : '<p class="muted sm">아직 없음</p>'}</div><div class="mp-dcol down"><h5>못 올라갈 근거</h5>${px2.down.length ? `<ul>${px2.down.map((r) => `<li>${esc(r.t)} <small class="muted">+${r.w}</small></li>`).join('')}</ul>` : '<p class="muted sm">없음</p>'}</div></div></div>` : '';
     const myBtn = `<div class="mp-myadd" data-mp-myform="${esc(x.code)}" data-nm="${esc(x.name)}" data-e="${x.close || ''}" data-s="${x.dir?.rr?.s || ''}" data-t="${x.dir?.rr?.t || ''}"><button class="btn sm" data-mp-myopen>⭐ 내 세력주에 추가 (매매 기록)</button></div>`;
     const cycLine = f.cyc ? `<div class="mp-cyc"><b>🔁 지난 급등·급락</b> ${esc(f.cyc.lowD)} 저점 <b>${fmtInt(f.cyc.low)}원</b> → ${esc(f.cyc.pumpD)} 급등 시작 → ${esc(f.cyc.topD)} 고점 <b>${fmtInt(f.cyc.top)}원</b> (+${f.cyc.rise}%) → 지금 고점 대비 <b class="down">${f.cyc.drop}%</b>${f.cyc.vwapPump ? ` · 급등 구간 평균 체결가 ${fmtInt(f.cyc.vwapPump)}원` : ''}${f.cyc.base2 ? `<br><b>🔁 고점 뒤 바닥</b> ${esc(f.cyc.base2.lowD)} <b>${fmtInt(f.cyc.base2.low)}원</b> — ${f.cyc.base2.held}거래일째 안 깨짐 · 최근 40일 박스 폭 ${f.cyc.base2.box}% (2차 매집 후보 조건)` : ''}<br><small class="muted">${f.acc2 ? '고점에서 120거래일 넘게 지나, 아래 매집 시기·평단은 고점 뒤 구간(2차 매집 후보)으로 계산했어요' : `매집 평단은 급등 시작 전 거래로만 계산해요${f.accBeyond ? ' — 급등 시작이 차트 자료(약 1년 2개월) 맨 앞이라 그 전 매집 구간은 계산할 수 없음' : ''}`}</small></div>` : '';
     const MK = { acc: '매집봉', wick: '윗꼬리 매물 테스트', absorb: '물량 받아먹는 음봉', dry: '거래량 마름', close: '종가 관리 의심', up30: '상한가', dn30: '하한가' };
@@ -3578,15 +3584,17 @@
     const tgtLine = d.tgt?.length ? `<div class="mp-tg">${d.tgt.map((t, k) => (typeof t === 'number' ? `<span>${k + 1}차 <b>${fmtInt(t)}원</b> <small class="muted">이전 방식(평단 배수)</small></span>` : `<span>${k + 1}차 <b>${fmtInt(t.p)}원</b> ${t.s ? esc(t.s) : t.m ? `<small class="muted">평단 ${t.m}배(이전 방식)</small>` : ''}${t.gap != null ? ` (+${t.gap}%)` : ''}</span>`)).join('')}</div>` : lvs.length ? '<p class="muted sm">현재가 위쪽에 근거 있는 가격이 없음 (이미 공시 원가·과거 고점을 모두 넘음)</p>' : '';
     const tgtBox = lvs.length || d.tgt?.length || d.dates?.length ? `<div class="mp-tgt"><div><h5>🎯 참고 목표 가격 <small>공시에 적힌 원가 · 과거 고점(매물대)으로 만든 가격 사다리 · 세력의 실제 목표가는 어떤 공시에도 안 나옴</small></h5>${rrLine}${tgtLine}${ladder || (Array.isArray(d.tgt) && d.tgt[0]?.m ? '<p class="muted sm">이전 방식(배수) 결과 — 다음 분석 때 공시 기준으로 바뀜</p>' : '<p class="muted sm">근거 가격 없음</p>')}</div>
       <div><h5>🗓 물량이 풀릴 수 있는 날 <small>CB는 원문의 전환청구기간을 읽고, 못 읽으면 발행 1년 뒤로 추정</small></h5>${d.dates?.length ? `<ul>${d.dates.map((z) => `<li class="${z.past ? 'muted' : ''}"><b>${esc(z.d)}</b> ${esc(z.t)}${z.real ? ' <span class="mp-chip vol">원문 확인</span>' : ''}${z.past ? ' (지남)' : ''} <a class="mp-src" href="/p/${esc(z.ref)}" target="_blank">공시</a></li>`).join('')}</ul>` : '<p class="muted sm">관련 공시(CB·3자배정·전환청구) 없음</p>'}</div></div>` : '';
-    const aiBox = a ? `<div class="mp-ai"><b>🤖 AI 해석</b> <small class="muted">아래 사실 목록에 근거 번호가 확인된 문장만 표시${a.dropped ? ` · 근거 확인 안 된 ${a.dropped}개 문장 자동 삭제` : ''}${a.stale ? ' · 예전 AI 문장 중 지금 계산과 숫자가 맞지 않는 것은 숨겼어요 (다음 AI 분석 때 새로 써요)' : ''}</small>${a.summary ? `<p>${esc(a.summary)}</p>` : ''}
+    const UK = { summary: '요약', upWhy: '상승 쪽', downWhy: '하락 쪽', counter: '반대 근거', watch: '볼 신호', evidence: '의심 근거' };
+    const aiBox = a ? `<div class="mp-ai"><b>🤖 AI 해석</b> <small class="muted">근거 번호가 확인된 문장은 그대로, 확인 안 된 문장은 아래 ⚠ 참고용으로 따로 보여줘요</small>${a.summary ? `<p>${esc(a.summary)}</p>` : a.oldSummary ? `<p>${esc(a.oldSummary)} <small class="mp-unv">⚠ 예전 분석 요약 — 지금 계산과 숫자가 다른 부분이 있어요</small></p>` : ''}
       ${a.upWhy?.length ? `<h5>상승 쪽 해석</h5><ul>${a.upWhy.map(aiLine).join('')}</ul>` : ''}${a.downWhy?.length ? `<h5>하락 쪽 해석</h5><ul>${a.downWhy.map(aiLine).join('')}</ul>` : ''}
       ${a.evidence?.length ? `<h5>의심 근거 <small class="muted">(이전 방식 분석 · 근거 검증 전 — 다음 분석 때 새 방식으로 바뀜)</small></h5><ul>${li(a.evidence)}</ul>` : ''}${a.counter?.length ? `<h5>반대 근거 (정상일 가능성)</h5><ul>${a.counter.map((c) => (typeof c === 'string' ? `<li>${esc(c)}</li>` : aiLine(c))).join('')}</ul>` : ''}${a.watch?.length ? `<h5>앞으로 볼 신호</h5><ul>${li(a.watch)}</ul>` : ''}
+      ${a.unv?.length ? `<h5>⚠ 근거 확인이 안 된 AI 문장 <small class="muted">(참고용 — 사실 목록에서 숫자·근거를 찾지 못했어요. 그대로 믿지 말고 원문 공시로 확인)</small></h5><ul class="mp-unvl">${a.unv.map((u) => `<li><span class="mp-chip">${esc(UK[u.k] || u.k)}</span> ${esc(u.t)} <small class="muted">· ${esc(u.why)}</small></li>`).join('')}</ul>` : ''}
       ${a.facts?.length ? `<details class="mp-facts"><summary>AI에게 준 사실 목록 (${a.facts.length}개)</summary><ol>${a.facts.map((f) => `<li><b>${esc(f.id)}</b> ${esc(f.t)} <small class="muted">· ${esc(f.src)}</small></li>`).join('')}</ol></details>` : ''}</div>` : '';
     const grid = `<div class="mp-grid"><div><h5>공시에서 찾은 가격</h5>${pxs ? `<ul>${pxs}</ul>` : '<p class="muted sm">없음</p>'}<h5>거래 패턴</h5><ul class="mp-f"><li>매집 구간 평균가 <b>${f.vwapAcc ? fmtInt(f.vwapAcc) + '원' : '—'}</b>${f.accStart ? ` <small class="muted">(${esc(f.accStart)}~)</small>` : ''}</li><li>고거래량일 평균가 <b>${f.vwapHeavy ? fmtInt(f.vwapHeavy) + '원' : '—'}</b></li><li>120일 평균가 <b>${f.vwap120 ? fmtInt(f.vwap120) + '원' : '—'}</b></li><li>60일 저점 대비 <b>${f.fromLow60 ?? '—'}%</b> · 20일 고점 대비 <b>${f.offHigh20 ?? '—'}%</b></li><li>거래량(평소 대비) 5일 <b>${f.volX5 ?? '—'}배</b> · 20일 <b>${f.volX20 ?? '—'}배</b> · 10일 최대 <b>${f.maxVolX10 ?? '—'}배</b></li><li>폭증 전 60일 박스 폭 <b>${f.box60 ?? '—'}%</b>${f.spikeDate ? ` · 첫 폭증일 ${esc(f.spikeDate)}` : ''}</li></ul>
         ${x.log?.length ? `<h5>자동 수정 기록</h5><ul class="mp-logl">${x.log.slice(0, 8).map((l) => `<li><span>${esc(fmtDT(new Date(l.at)).md)} ${esc(fmtDT(new Date(l.at)).hm)}</span> ${esc(l.msg)}</li>`).join('')}</ul>` : ''}
         ${x.hist?.length > 1 ? `<h5>레이더 등장 기록</h5><p class="muted sm">${x.hist.map((h) => `${esc(md(h.d))} ${esc(h.st)}(${h.s})`).join(' · ')}</p>` : ''}</div>
       <div><h5>근거 공시 (최근 180일)</h5><ul class="mp-ev">${(x.events || []).map((e) => `<li><span>${esc(new Date(e.ms + 9 * 3600e3).toISOString().slice(2, 10))}</span><em>${esc(MP_EV[e.kind] || e.kind)}</em><a href="/p/${esc(e.id)}" target="_blank">${esc(e.title)}</a>${e.sum ? `<small>${esc(e.sum)}</small>` : ''}</li>`).join('') || '<li class="muted">없음 (거래 패턴만)</li>'}</ul></div></div>`;
-    return { myBtn, rbBox, ckBox, cycLine, accLine, markBox, wf, dirBox, tgtBox, aiBox, grid };
+    return { pexBox, myBtn, rbBox, ckBox, cycLine, accLine, markBox, wf, dirBox, tgtBox, aiBox, grid };
   }
   document.addEventListener('click', (e) => {
     let b;

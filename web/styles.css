@@ -2170,3 +2170,10 @@ button.br-mv:hover { border-color: var(--accent); }
 .al-log { display: flex; flex-direction: column; gap: .6rem; } .al-grp { padding: .55rem .7rem; border-radius: 10px; background: rgba(255,255,255,.035); border: 1px solid var(--line); }
 .al-grp b { font-size: .78rem; color: var(--muted); } .al-grp ul { margin: .3rem 0 0; padding-left: 1rem; } .al-grp li { font-size: .84rem; line-height: 1.55; margin: .15rem 0; } .al-grp li.go { cursor: pointer; } .al-grp li.go:hover { color: #c9d0ff; text-decoration: underline; }
 .seg.mp-tabs { flex-wrap: wrap; height: auto; max-width: 100%; } .seg.mp-tabs button { flex: 0 0 auto; }
+
+.mp-unv { color: #ffb86b; } .mp-unvl li { opacity: .85; } .mp-unvl li .mp-chip { font-size: .68rem; }
+
+.mp-pex { margin: 0 0 .6rem; padding: .65rem .8rem; border-radius: 10px; background: rgba(47,208,138,.05); border: 1px solid rgba(47,208,138,.3); } .mp-pex h5 b { margin-left: .3rem; }
+.pex-h { color: #5ff0a8 !important; } .pex-m { color: #ffd66b !important; } .pex-l { color: var(--muted) !important; }
+.pex-chip { display: inline-block; padding: .1rem .5rem; border-radius: 6px; font-size: .75rem; font-weight: 800; background: rgba(255,255,255,.07); }
+.rp-tile.pex-h b { color: #5ff0a8; } .rp-tile.pex-m b { color: #ffd66b; }

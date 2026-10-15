@@ -287,6 +287,8 @@ export function barFeatures(B, opt = {}) {
     let tI = S0; for (let i = S0; i < n; i++) if (B[i].h > B[tI].h) tI = i;
     let bI = tI; for (let i = tI; i < n; i++) if (B[i].l < B[bI].l) bI = i;
     const fall = B[bI].l / B[tI].h - 1, up = last.c / B[bI].l - 1;
+    // 고점에서 크게 빠진 뒤의 바닥 정보 (반등 여부와 상관없이) — '털기 후 상승 가능성' 계산용
+    f.post = fall <= -0.33 ? { topD: B[tI].d, top: B[tI].h, lowD: B[bI].d, low: B[bI].l, fall: Math.round(fall * 100), up: Math.round(up * 100), held: n - 1 - bI, newLow5: n - 1 - bI <= 5 } : null;
     if (fall <= -0.33 && up >= 0.15 && n - 1 - bI >= 3) {
       const seg = B.slice(bI + 1), pre = B.slice(Math.max(tI, bI - 20), bI + 1);
       const med = median(B.slice(Math.max(0, bI - 120), bI + 1).map((y) => y.v)) || 1;
@@ -843,6 +845,53 @@ export function reboundOf(x, now = Date.now()) {
 }
 export const RB_KO = { deadcat: '① 기술적 반등(데드캣) 쪽', dump: '② 털기 중 반등(물량 넘기기) 쪽', second: '③ 2차 작전(재매집 뒤 상승) 쪽', unclear: '판단 보류 (근거가 비슷하거나 부족)' };
 
+// ───── 🔁 털기 후 상승 가능성 (규칙 · 반등 전이어도 계산) ─────
+//  대상: 털기·엑시트 후 단계, 또는 고점에서 33%↑ 빠진 종목. 바닥 유지·물량 소진·새 판 깔기·매집 흔적 vs 남은 물량·계속되는 매도 공시·위험
+export function postExitOf(x, now = Date.now()) {
+  const f = x.f || {}, pst = f.post, ev = x.events || [];
+  if (!pst || f.halted || x.stage === '거래정지') return null;
+  if (!['털기', '엑시트 후', '매집', '판 깔기'].includes(x.stage) && !f.cyc) return null;
+  const U = [], Dn = [];
+  const add = (arr, w, t) => arr.push({ w, t });
+  const lowMs = Date.parse(pst.lowD + 'T15:30:00+09:00'), topMs = Date.parse(pst.topD + 'T15:30:00+09:00');
+  // 올라갈 쪽
+  if (f.cyc?.base2) add(U, 3, `바닥 ${f.cyc.base2.lowD} ${fmtW(f.cyc.base2.low)}원을 ${f.cyc.base2.held}거래일째 안 깨고 박스(폭 ${f.cyc.base2.box}%)를 만드는 중`);
+  else if (pst.held >= 40) add(U, 2, `바닥(${pst.lowD} ${fmtW(pst.low)}원)에서 ${pst.held}거래일째 저점을 안 깸`);
+  else if (pst.held >= 20) add(U, 1, `바닥(${pst.lowD})에서 ${pst.held}거래일째 저점 유지`);
+  const ov = overhangOf(x, now);
+  if (ov?.bought) add(U, 2, `CB 만기 전 취득(되사기) 공시 ${ov.bought}건 — 잠재 매도 물량 감소`);
+  else if (ov && ov.shares != null && (ov.days ?? 99) < 2) add(U, 2, '남은 전환 물량이 거의 없음 (하루 거래량의 2일치 미만)');
+  const newSet = ev.filter((e) => ['cb', 'rights3', 'mna', 'fund5', 'purpose'].includes(e.kind) && e.ms > topMs);
+  if (newSet.length) add(U, 3, `고점 뒤 새 '${EV[newSet[0].kind].ko}' 공시 (${ymdOf(newSet[0].ms)}) — 새 판을 까는 신호`);
+  const mk = (f.marks || []).filter((m) => m.ok && ['acc', 'absorb', 'wick'].includes(m.k) && m.d > pst.lowD);
+  if (mk.length) add(U, 2, `바닥 뒤 매집 흔적 ${mk.length}개 (${mk.slice(-2).map((m) => `${m.d} ${MARK_KO[m.k]}`).join(', ')})`);
+  const dry = (f.marks || []).find((m) => m.k === 'dry' && m.ok);
+  if (dry) add(U, 1, '바닥권에서 거래량이 마름 — 팔 물량이 줄어드는 모습');
+  const insP = (x.px || []).filter((p) => p.kind === 'insider' && p.ins && p.date > pst.lowD);
+  const iB = insP.reduce((a, p) => a + (p.ins.bq || 0), 0), iS = insP.reduce((a, p) => a + (p.ins.sq || 0), 0);
+  if (iB > iS && iB > 0) add(U, 1, `바닥 뒤 내부자 장내 매수 ${fmtW(iB)}주`);
+  const rk = x.rbk || reboundOf(x, now);
+  if (rk?.type === 'second') add(U, 2, "지금 반등이 '2차 작전' 쪽");
+  if (f.rb?.udv != null && f.rb.udv >= 1.5) add(U, 1, `반등 중 오른 날 거래량이 내린 날의 ${f.rb.udv >= 5 ? '5배 이상' : f.rb.udv + '배'}`);
+  // 못 올라갈 쪽
+  if (ov?.shares && ov.days != null && ov.days >= 5) add(Dn, ov.days >= 20 ? 3 : 2, `아직 전환 안 된 물량 약 ${fmtW(ov.shares)}주 (하루 거래량의 ${ov.days}일치) — 오를 때마다 나올 수 있음`);
+  const exitE = ev.filter((e) => ['conv', 'majsell', 'pledge'].includes(e.kind) && e.ms >= lowMs - 10 * DAY);
+  if (exitE.length) add(Dn, 2, `바닥 뒤에도 '${EV[exitE[0].kind].ko}' 공시 ${exitE.length}건 — 물량 정리가 계속됨`);
+  if (rk?.type === 'dump') add(Dn, 2, "지금 반등이 '털기 중 반등' 쪽");
+  else if (rk?.type === 'deadcat') add(Dn, 1, "지금 반등이 '기술적 반등' 쪽 (사는 힘이 약함)");
+  if (iS > iB && iS > 0) add(Dn, 2, `바닥 뒤 내부자 장내 매도 ${fmtW(iS)}주`);
+  if (pst.newLow5) add(Dn, 1, `최근 5거래일 안에 새 저점(${fmtW(pst.low)}원) — 아직 바닥 확인 전`);
+  const pn = penaltyOf(x, now);
+  const riskE = ev.find((e) => e.kind === 'risk' && /감사의견|자본잠식|계속기업|상장적격성|관리종목|상장폐지/.test(e.title) && (now - e.ms) < 365 * DAY);
+  if ((pn?.cum ?? 0) >= 10 || riskE) add(Dn, 2, riskE ? `${ymdOf(riskE.ms)} ${riskE.title} — 상장 유지 위험` : `불성실공시 벌점 누계 ${pn.cum}점 — 상장 유지 위험`);
+  if ((x.ck?.mkt20 ?? 0) <= -5) add(Dn, 1, `${x.mkt === 'P' ? '코스피' : '코스닥'} 최근 20거래일 ${x.ck.mkt20}% — 약세장`);
+  const fails = ev.filter((e) => e.kind === 'fail' && (now - e.ms) < 365 * DAY);
+  if (fails.length) add(Dn, 2, `${ymdOf(fails[0].ms)} '${fails[0].title}' — 자금 문제 신호`);
+  const su = U.reduce((a, r) => a + r.w, 0), sd = Dn.reduce((a, r) => a + r.w, 0), net = su - sd;
+  const lv = su >= 5 && net >= 3 ? '높음' : net >= 0 && su >= 2 ? '중간' : '낮음';
+  return { lv, su, sd, net, up: U, down: Dn, post: pst };
+}
+
 // ───── ✅ 성공 가능성 체크리스트 (규칙 계산 · AI 아님) ─────
 //  ok: true 충족 · false 미충족 · null 자료 없음(계산에서 뺌)
 //  x.ck: 바깥 자료(manipck.mjs enrich) — 최대주주 지분·감사의견·자본잠식·신용잔고·거래원·뉴스/종토방·업종 강세·시장 흐름·같은 세력 다른 종목
@@ -948,25 +997,30 @@ async function aiReview(x) {
 - 단계는 규칙으로 '${x.stage}'(으)로 판정됨. 단계를 바꾸지 말고 설명만 할 것.
 - 규칙 판단 결과(방향: ${D.dir === 'up' ? '상승 가능성 쪽' : D.dir === 'down' ? '하락 위험 쪽' : '뚜렷하지 않음'})는 바꾸지 말고, 그 이유와 반대 근거를 설명할 것.
 출력은 JSON 하나만:
-{"stage":"판 깔기|매집|띄우기|털기|엑시트 후|관찰","level":"높음|중간|낮음","summary":"2문장 요약, 각 문장 끝에 [F번호]","upWhy":["상승 쪽 근거 문장 [F번호]"],"downWhy":["하락 쪽 근거 문장 [F번호]"],"counter":["정상적인 회사 활동일 가능성 [F번호]"],"acc":{"period":"매집 추정 기간(사실 목록의 날짜만 사용)","refs":["F번호"]},"cost":{"refs":["평단 근거 F번호들"]},"watch":["앞으로 확인할 신호(숫자 없이)"]}
+{"stage":"판 깔기|매집|띄우기|털기|엑시트 후|관찰","level":"높음|중간|낮음","summary":"3~4문장 요약, 각 문장 끝에 [F번호]","upWhy":["상승 쪽 근거 문장 3~5개 [F번호]"],"downWhy":["하락 쪽 근거 문장 3~5개 [F번호]"],"counter":["정상적인 회사 활동일 가능성 2~3개 [F번호]"],"acc":{"period":"매집 추정 기간(사실 목록의 날짜만 사용)","refs":["F번호"]},"cost":{"refs":["평단 근거 F번호들"]},"watch":["앞으로 확인할 신호 3~4개(숫자 없이)"]}
 종목: ${x.name}(${x.code}) ${x.mkt === 'P' ? '코스피' : '코스닥'}
 사실 목록:
 ${F.map((f) => `${f.id}. ${f.t} (출처: ${f.src})`).join('\n')}`;
-  const j = parseJSON(await askAI(prompt, { maxTokens: 2200, timeout: 60000, tag: '작전 의심 레이더' }));
-  const vlist = (a, n) => (Array.isArray(a) ? a : []).map((t) => verifyLine(t, F)).filter(Boolean).slice(0, n);
-  const sum = vlist(String(j.summary || '').split(/(?<=[.다요음함]\s?\[F\d{1,2}\])\s*/).filter(Boolean), 3);
+  const j = parseJSON(await askAI(prompt, { maxTokens: 3200, timeout: 70000, tag: '작전 의심 레이더' }));
+  const unv = []; // 근거 확인이 안 된 문장도 버리지 않고 '참고용'으로 따로 보관 (화면에 ⚠ 표시)
+  const whyBad = (t) => (![...String(t).matchAll(/\[?F(\d{1,2})\]?/g)].length ? '근거 번호 없음' : '사실 목록에 없는 숫자');
+  const vlist = (a, n, k) => (Array.isArray(a) ? a : []).map((t) => { const v = verifyLine(t, F); if (!v && k && String(t).trim()) unv.push({ k, t: String(t).replace(/\s*\[?F\d{1,2}\]?/g, '').trim().slice(0, 220), why: whyBad(t) }); return v; }).filter(Boolean).slice(0, n);
+  const sum = vlist(String(j.summary || '').split(/(?<=[.다요음함]\s?\[F\d{1,2}\])\s*/).filter(Boolean), 4, 'summary');
   // 평단: AI가 고른 근거 번호의 '가격'만으로 범위를 계산 (AI가 숫자를 지어낼 수 없게)
   const cps = (Array.isArray(j.cost?.refs) ? j.cost.refs : []).map((r) => F.find((f) => f.id === String(r).replace(/[^\dF]/g, '').replace(/^(\d)/, 'F$1'))?.price).filter((v) => v > 0);
   const cr = cps.length ? { low: Math.min(...cps), high: Math.max(...cps) } : D.cost;
   const accRefs = (Array.isArray(j.acc?.refs) ? j.acc.refs : []).map((r) => 'F' + String(r).replace(/\D/g, ''));
   const accOk = j.acc?.period && numsIn(j.acc.period).every((n) => accRefs.some((id) => F.find((f) => f.id === id)?.t.replace(/[-,]/g, '').includes(n.replace(/-/g, ''))) || F.some((f) => f.t.includes(n)));
-  const dropped = ['upWhy', 'downWhy', 'counter'].reduce((a, k) => a + Math.max(0, (Array.isArray(j[k]) ? j[k].length : 0) - vlist(j[k], 9).length), 0);
+  const upWhy = vlist(j.upWhy, 8, 'upWhy'), downWhy = vlist(j.downWhy, 8, 'downWhy'), counter = vlist(j.counter, 4, 'counter');
+  const watchAll = (Array.isArray(j.watch) ? j.watch : []).map((t) => String(t).slice(0, 100));
+  for (const t of watchAll) if (numsIn(t).length) unv.push({ k: 'watch', t, why: '앞으로 볼 신호에 숫자가 들어감' });
+  const dropped = unv.length;
   return {
     stage: ['판 깔기', '매집', '띄우기', '털기', '엑시트 후', '관찰'].includes(j.stage) ? j.stage : x.stage,
     level: ['높음', '중간', '낮음'].includes(j.level) ? j.level : '중간',
-    summary: sum.map((s) => s.t).join(' ').slice(0, 260), sumRefs: [...new Set(sum.flatMap((s) => s.refs))],
-    upWhy: vlist(j.upWhy, 6), downWhy: vlist(j.downWhy, 6), counter: vlist(j.counter, 3),
-    watch: (Array.isArray(j.watch) ? j.watch : []).map((t) => String(t).slice(0, 80)).filter((t) => !numsIn(t).length).slice(0, 3), // 앞으로 볼 신호엔 숫자 금지
+    summary: sum.map((s) => s.t).join(' ').slice(0, 420), sumRefs: [...new Set(sum.flatMap((s) => s.refs))],
+    upWhy, downWhy, counter, unv: unv.slice(0, 14),
+    watch: watchAll.filter((t) => !numsIn(t).length).slice(0, 4), // 앞으로 볼 신호엔 숫자 금지
     cost: cr ? { low: Math.round(cr.low), high: Math.round(cr.high), basis: cps.length ? `공시·거래 사실 ${(j.cost.refs || []).join(', ')}의 가격 범위` : '공시 원문 가격·매집 구간 평균가 범위 (자동 계산)' } : null,
     acc: accOk ? { period: String(j.acc.period).slice(0, 60), basis: `근거 ${accRefs.join(', ')}` } : x.f?.accStart ? { period: `${x.f.accStart} ~ ${x.f.accEnd}`, basis: '거래 흐름 자동 계산 (OBV 최저점 ~ 첫 거래량 폭증 전)' } : null,
     facts: F.map((f) => ({ id: f.id, t: f.t, src: f.src, ref: f.id2 || null })),
@@ -1197,7 +1251,7 @@ function rankRow(x) {
   const cm = (x.f?.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k)).length || null;
   const cl = x.cl || null;
   const rbk = x.rbk || null;
-  return { ht: x.f?.halted ? x.f.halted.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  return { pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: x.f?.halted ? x.f.halted.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
@@ -1235,6 +1289,8 @@ async function saveProfiles(list, reason, opt = {}) {
     }
     x.cl = checklistOf(x);
     x.rbk = reboundOf(x);
+    x.pex = postExitOf(x);
+    if (prev.at && !halted && x.pex?.lv === '높음' && prev.pex?.lv !== '높음') alerts.push(`• 🔁 ${x.name} 털기 후 상승 가능성 '높음'으로 바뀜 — ${x.pex.up.slice(0, 2).map((r) => r.t).join(' / ').slice(0, 160)}`);
     if (prev.at && !halted && x.rbk?.type === 'second' && prev.rbk?.type !== 'second') alerts.push(`• 🔄 ${x.name} 반등 성격이 '2차 작전(재매집 뒤 상승)' 쪽으로 바뀜 — ${x.rbk.why.c.slice(0, 2).map((r) => r.t).join(' / ').slice(0, 160)}`);
     const log = prev.log || [];
     const changed = !prev.at || prev.score !== x.score || prev.stage !== x.stage || (prev.ai?.level || null) !== (x.ai?.level || null);
@@ -1263,6 +1319,7 @@ export async function manipRank(kind = 'all') {
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
+  else if (kind === 'pex') list = list.filter((r) => r.pex).sort((a, b) => (b.pex.net - a.pex.net) || (b.pex.su - a.pex.su));
   else if (kind === 'ck') list = list.filter((r) => r.ckg && r.d !== 'down').sort((a, b) => ((b.cnp || 0) - 2 * (b.cnr || 0)) - ((a.cnp || 0) - 2 * (a.cnr || 0)) || (b.us || 0) - (a.us || 0));
   else if (kind === 'rr') list = list.filter((r) => r.rr && r.rr.v > 0 && r.d !== 'down' && !['띄우기', '털기', '엑시트 후'].includes(r.st)).sort((a, b) => b.rr.v - a.rr.v || (b.us || 0) - (a.us || 0));
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
@@ -1308,6 +1365,8 @@ export function narrativeOf(x, now = Date.now()) {
   if (pn?.cum) P.push(`불성실공시 벌점은 최근 1년 누계 ${pn.cum}점입니다 (15점이 넘으면 ${x.mkt === 'P' ? '관리종목' : '상장적격성 실질심사'} 기준).`);
   // 반등·매집봉·경보
   if (rk) P.push(`최근 반등(${rk.rb.lowD} 바닥 대비 +${rk.rb.up}%)은 ${RB_KO[rk.type]}으로 봅니다${rk.type !== 'unclear' ? ` — ${({ deadcat: rk.why.a, dump: rk.why.b, second: rk.why.c }[rk.type][0] || {}).t || ''}` : ''}.`);
+  const pex = x.pex || postExitOf(x, now);
+  if (pex) P.push(`털기 후 다시 오를 가능성은 '${pex.lv}'으로 봅니다 (올라갈 근거 ${pex.su}점 · 못 올라갈 근거 ${pex.sd}점)${pex.up[0] ? `. 근거: ${pex.up[0].t}` : ''}${pex.down[0] ? `. 걸림돌: ${pex.down[0].t}` : ''}.`);
   const marks = (f.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k));
   if (marks.length) P.push(`일봉에서 인정된 매집 흔적이 ${marks.length}개 있습니다 (${marks.slice(-3).map((m) => `${m.d} ${MARK_KO[m.k]}`).join(', ')}).`);
   if (f.wf?.min && f.wf.min.pct <= 15) P.push(f.wf.min.pct <= 0 ? `이미 투자경고 지정예고 요건(${f.wf.min.lbl}) 수준이라 경고·매매정지로 띄우기가 막힐 수 있습니다.` : `내일 종가가 +${f.wf.min.pct}% 더 오르면 투자경고 지정예고 요건(${f.wf.min.lbl})에 닿습니다 (근사 계산).`);
@@ -1328,9 +1387,11 @@ function staleAi(ai, F) {
   if (!ai || ai.error) return ai;
   const pool = F.map((f) => f.t).join(' ').replace(/,/g, '');
   const ok = (t) => numsIn(t).every((n) => pool.includes(n));
-  const fix = (arr) => (Array.isArray(arr) ? arr.filter((r) => ok(typeof r === 'string' ? r : r.t)) : arr);
-  const out = { ...ai, upWhy: fix(ai.upWhy), downWhy: fix(ai.downWhy), counter: fix(ai.counter), evidence: fix(ai.evidence) };
-  if (ai.summary && !ok(ai.summary)) { out.summary = null; out.stale = true; }
+  const moved = [];
+  const fix = (arr, k) => (Array.isArray(arr) ? arr.filter((r) => { const t = typeof r === 'string' ? r : r.t; if (ok(t)) return true; moved.push({ k, t, why: '지금 계산과 숫자가 다름 (예전 분석)' }); return false; }) : arr);
+  const out = { ...ai, upWhy: fix(ai.upWhy, 'upWhy'), downWhy: fix(ai.downWhy, 'downWhy'), counter: fix(ai.counter, 'counter'), evidence: fix(ai.evidence, 'evidence') };
+  if (ai.summary && !ok(ai.summary)) { out.oldSummary = ai.summary; out.summary = null; out.stale = true; } // 숨기지 않고 '예전 요약'으로 따로 보여줌
+  if (moved.length) { out.unv = [...moved, ...(ai.unv || [])].slice(0, 14); out.stale = true; }
   if (ai.acc?.period && !ok(ai.acc.period)) out.acc = null;
   if (ai.cost && F.every((f) => !f.price || ![ai.cost.low, ai.cost.high].includes(f.price))) out.cost = null;
   return out;
@@ -1351,6 +1412,15 @@ export async function migrateProf(code, reason = '새 계산 방식으로 자동
 }
 export async function manipProfile(code) {
   let p = await getJSON(`mp/prof/${code}`);
+  // 예전에 숨겨 버린 AI 문장 복원: 날짜별 기록(mp/day)에 남은 원래 AI 해석을 찾아 '참고용'으로 다시 붙임
+  if (p?.ai?.stale && !p.ai.fromDay) {
+    try {
+      const idx = ((await getJSON('mp/idx')) || []).slice(0, 25);
+      for (const d of idx) { const doc = await getJSON(`mp/day/${d}`); const y = doc?.list?.find((z) => z.code === code && z.ai && !z.ai.error); if (y) { p.ai = staleAi(y.ai, factsOf(p)); break; } }
+      p.ai.fromDay = true;
+      await setJSON(`mp/prof/${code}`, { ...p, hist: undefined, migrated: undefined }).catch(() => {});
+    } catch {}
+  }
   let migrated = false;
   if (p && isOldProf(p) && Date.now() - (p.migTry || 0) > 6 * 3600e3) {
     try { if (await migrateProf(code, '열어 볼 때 새 계산 방식으로 자동 갱신')) { p = await getJSON(`mp/prof/${code}`); migrated = true; } else { p.migTry = Date.now(); await setJSON(`mp/prof/${code}`, { ...p, hist: undefined }).catch(() => {}); } } catch {} // 실패하면 6시간 동안 다시 시도 안 함 (열 때마다 느려지지 않게)
@@ -1364,6 +1434,7 @@ export async function manipProfile(code) {
       p.dir = { ...d2, dir: p.dir?.dir ?? d2.dir, sticky: p.dir?.sticky };
       if (!p.cl) { p.cl = checklistOf(p); p.clOld = true; }
       if (!p.rbk) p.rbk = reboundOf(p);
+      p.pex = postExitOf(p);
       p.story = narrativeOf(p);
     } catch (e) { console.warn('manipProfile', e.message); }
   }
