@@ -3218,6 +3218,13 @@
   }
   S.admTab = load('gk_admtab', 'stats'); S.rpTab = load('gk_rptab', 'price');
   S.mpTab = load('gk_mptab', 'rank'); S.rkKind = load('gk_rkkind', 'all');
+  // 작전 레이더 요청: 응답이 늦으면 멈춘 것처럼 보이지 않게 시간 제한
+  async function mpGet(q, ms = 40000) {
+    const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms);
+    try { return await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&${q}`, { cache: 'no-store', signal: ac.signal }); }
+    catch (e) { if (e.name === 'AbortError') throw new Error(`서버 응답이 ${Math.round(ms / 1000)}초 넘게 없어요 (분석 작업이 몰려 있을 수 있어요)`); throw e; }
+    finally { clearTimeout(t); }
+  }
   // ───── 🕵️ 작전 레이더 (더보기 메뉴 · 관리자 키가 있는 기기에서만 보임 · 데이터도 관리자 키로만 받음) ─────
   function renderRadar() {
     const box = $('#radarBody'); if (!box) return;
@@ -3246,8 +3253,8 @@
     let j;
     const k = encodeURIComponent(S.admin);
     try {
-      if (!opt.look && !opt.refresh) { j = await getJSON(`/api/admin?key=${k}&mp=prof&code=${code}`, { cache: 'no-store' }); if (!j?.prof) j = null; }
-      if (!j) j = await getJSON(`/api/admin?key=${k}&mp=look&code=${code}&name=${encodeURIComponent(opt.name || '')}${opt.refresh ? '&refresh=1' : ''}`, { cache: 'no-store' });
+      if (!opt.look && !opt.refresh) { j = await mpGet(`mp=prof&code=${code}`, 60000); if (!j?.prof) j = null; }
+      if (!j) j = await mpGet(`mp=look&code=${code}&name=${encodeURIComponent(opt.name || '')}${opt.refresh ? '&refresh=1' : ''}`, 180000);
     } catch (e) { j = { ok: false, error: e.message }; }
     if (my !== S.rpSeq || S.view !== 'radar' || S.radarCode !== code) return;
     S.radarOpt = {};
@@ -3314,7 +3321,7 @@
     const seq = (S.mpSeq = (S.mpSeq || 0) + 1);
     if (run) box.innerHTML = '<div class="loading"><span class="spin"></span>분석을 시작했어요. 단계별로 진행돼 끝까지 약 1시간 걸려요 (중간 결과도 바로 보여요)…</div>';
     let j;
-    try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=${run ? 'run' : 'view'}${date ? '&date=' + date : ''}`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    try { j = await mpGet(`mp=${run ? 'run' : 'view'}${date ? '&date=' + date : ''}`); } catch (e) { j = { ok: false, error: e.message }; }
     if (!$('#mpBody') || seq !== S.mpSeq || (S.mpTab || 'rank') !== 'day') return; // 늦게 온 응답이 다른 탭 화면을 덮어쓰지 않게
     if (!j.ok) { $('#mpBody').innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
     S.mp = j;
@@ -3355,21 +3362,24 @@
     if (!box.querySelector('.mp-kinds')) box.innerHTML = rkKindsHTML() + '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
     else { box.querySelectorAll('[data-rk-kind]').forEach((b) => b.classList.toggle('on', b.dataset.rkKind === kind)); box.classList.add('mp-loading'); }
     let j;
-    try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=rank&kind=${kind}`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    const t0 = Date.now();
+    try { j = await mpGet(`mp=rank&kind=${kind}`, 30000); } catch (e) { j = { ok: false, error: e.message }; }
+    S.rkMs = Date.now() - t0;
     if (seq !== S.rkSeq) return;
     box.classList.remove('mp-loading');
     if (!$('#mpBody') || (S.mpTab || 'rank') !== 'rank') return;
     if (!j.ok) {
-      if (retry < 1) { setTimeout(() => { if (seq === S.rkSeq) loadRank(retry + 1); }, 1500); return; } // 잠깐 실패면 한 번 더
+      if (retry < 1 && !/초 넘게/.test(j.error || '')) { setTimeout(() => { if (seq === S.rkSeq) loadRank(retry + 1); }, 1500); return; } // 잠깐 실패면 한 번 더 (시간 초과는 바로 알림)
       $('#mpBody').innerHTML = rkKindsHTML() + `<p class="err">불러오지 못했어요: ${esc(j.error || '')} <button class="btn sm" data-mp-rank-refresh>다시 시도</button></p>`; return;
     }
+    try {
     S.mpRank = j.list || [];
     const st = j.state || {};
     const PH = { snap: '전 종목 시세 받는 중', events: '공시 패턴 찾는 중', bars: `일봉 분석 중 (${st.bars || ''})`, docs: '공시 원문에서 가격 확인 중', extra: '체크리스트 자료 수집 중', recheck: '랭킹 종목 일봉 재확인 중', ai: 'AI 분석 중' };
     const status = st.phase && st.phase !== 'done' ? `<span class="mp-run"><span class="spin"></span>${esc(st.date || '')} 정기 분석: ${esc(PH[st.phase] || st.phase)}</span>` : `<span class="muted sm">다음 정기 분석: 거래일 15:50 · 장중 새 공시 자동 반영${st.incrQ ? ` (대기 ${st.incrQ}종목)` : ''}</span>`;
     const won = (v) => (v == null ? '—' : `${fmtInt(v)}원`);
     const DIRB = { up: '<span class="mp-dirb up">📈 상승 가능성</span>', down: '<span class="mp-dirb down">📉 하락 위험</span>' };
-    const rows = S.mpRank.map((r, i) => {
+    const rows = S.mpRank.map((r, i) => { try {
       const mid = r.cl || r.ch ? ((r.cl || r.ch) + (r.ch || r.cl)) / 2 : r.va;
       const g = mid && r.c ? Math.round((r.c / mid - 1) * 100) : null;
       const why = (S.rkKind === 'down' ? r.dr : S.rkKind === 'up' ? r.ur : r.d === 'down' ? r.dr : r.ur) || [];
@@ -3392,6 +3402,7 @@
           <span><em>다음 물량 해제</em><b>${r.nd ? esc(r.nd.split(' ')[0]) : '—'}</b>${r.nd ? `<small>${esc(r.nd.split(' ').slice(1).join(' '))}</small>` : ''}</span>
         </div>
         ${why.length ? `<p class="rk-why ${r.d || ''}">${esc(why[0])}</p>` : ''}</li>`;
+    } catch (er) { console.error('랭킹 줄 오류', r?.code, er); return `<li class="mp-row"><p class="err sm">${esc(r?.n || r?.code || '')} 줄을 그리지 못했어요: ${esc(er.message)}</p></li>`; }
     }).join('');
     const kinds = rkKindsHTML();
     const legend = `<details class="mp-legend"><summary>용어 설명 (단계·의심 수준·점수·상승/하락)</summary><ul>
@@ -3420,12 +3431,16 @@
       ${rows ? `<ol class="mp-list">${rows}</ol>` : `<p class="muted">${S.rkKind === 'pex' ? '털기 후 상승 가능성을 계산한 종목이 아직 없어요 (장 마감 뒤 정기 분석·재확인부터 채워져요).' : S.rkKind === 'ck' ? '체크리스트가 계산된 종목이 아직 없어요 (장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'rr' ? '손익비를 계산할 수 있는 종목이 아직 없어요 (위쪽 목표와 아래쪽 원가·지지 가격이 모두 있어야 해요. 장 마감 뒤 정기 분석부터 채워져요).' : S.rkKind === 'up' ? '지금은 상승 가능성 쪽으로 분류된 종목이 없어요.' : S.rkKind === 'down' ? '지금은 하락 위험 쪽으로 분류된 종목이 없어요.' : '아직 랭킹이 없어요. 첫 정기 분석이 시작되면 약 10분 뒤 채워져요.'}</p>`}
       <p class="note">⚠ '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐 불공정거래의 증거가 아닙니다. 외부에 종목명을 '작전주'로 공개하지 마세요.</p>`;
     if (S.reopen) { const c = S.reopen; S.reopen = null; const r2 = document.querySelector(`.mp-rk[data-mp-code="${c}"]`); if (r2) openRankRow(r2); }
+    } catch (er) { // 한 줄이라도 그리다 오류가 나면 '불러오는 중'에 멈추지 않고 이유를 보여줌
+      console.error('작전 레이더 랭킹 그리기 오류', er);
+      $('#mpBody').innerHTML = rkKindsHTML() + `<p class="err">랭킹을 그리다 오류가 났어요: ${esc(er.message)} <button class="btn sm" data-mp-rank-refresh>다시 시도</button></p><p class="muted sm">이 화면을 캡처해 보내 주세요 (${esc(String(er.stack || '').split('\n')[1] || '').slice(0, 120)})</p>`;
+    }
   }
   async function loadPerf() {
     const box = $('#mpBody'); if (!box) return;
     box.innerHTML = '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
     const seq = (S.mpSeq = (S.mpSeq || 0) + 1);
-    let j; try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=perf`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    let j; try { j = await mpGet(`mp=perf`); } catch (e) { j = { ok: false, error: e.message }; }
     if (!$('#mpBody') || S.mpTab !== 'perf' || seq !== S.mpSeq) return;
     if (!j.ok) { $('#mpBody').innerHTML = `<p class="err">${esc(j.error || '')}</p>`; return; }
     const order = ['전체', '체크리스트:A등급', '체크리스트:B등급', '체크리스트:C등급', '손익비:3 이상', '손익비:2~3', '손익비:2 미만', '분류:상승 가능성', '분류:하락 위험', '분류:분류 없음', '단계:판 깔기', '단계:매집', '단계:띄우기', '단계:털기', '단계:관찰', 'AI 의심:높음', 'AI 의심:중간', 'AI 의심:낮음'];
@@ -3463,8 +3478,8 @@
     const seq = (S.mpSeq = (S.mpSeq || 0) + 1);
     let j, lv = null;
     try {
-      j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=${op || 'my'}${params ? '&' + new URLSearchParams(params) : ''}`, { cache: 'no-store' });
-      lv = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=live`, { cache: 'no-store' }).catch(() => null);
+      j = await mpGet(`mp=${op || 'my'}${params ? '&' + new URLSearchParams(params) : ''}`);
+      lv = await mpGet(`mp=live`).catch(() => null);
     } catch (e) { j = { ok: false, error: e.message }; }
     if (!$('#mpBody') || S.mpTab !== 'my' || seq !== S.mpSeq) return;
     if (!j.ok) { box.innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
@@ -3487,7 +3502,7 @@
     const o = e.target.closest('[data-mp-myopen]');
     if (o) { const w = o.closest('[data-mp-myform]'); w.innerHTML = `<div class="mp-myf"><b>⭐ ${esc(w.dataset.nm)}</b> <label>진입가<input type="number" data-k="entry" value="${esc(w.dataset.e)}"></label><label>손절<input type="number" data-k="stop" value="${esc(w.dataset.s)}"></label><label>목표<input type="number" data-k="target" value="${esc(w.dataset.t)}"></label><label>수량<input type="number" data-k="qty"></label><label class="w">메모<input type="text" data-k="memo" maxlength="200"></label><button class="btn sm primary" data-mp-mysave>저장</button></div>`; return; }
     const sv = e.target.closest('[data-mp-mysave]');
-    if (sv) { const w = sv.closest('[data-mp-myform]'); const p = { code: w.dataset.mpMyform, name: w.dataset.nm }; w.querySelectorAll('[data-k]').forEach((i) => { if (i.value) p[i.dataset.k] = i.value; }); sv.disabled = true; getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=myadd&${new URLSearchParams(p)}`, { cache: 'no-store' }).then((j) => { w.innerHTML = j.ok ? '<p class="note">⭐ 내 세력주에 추가했어요 (작전 레이더 → ⭐ 내 세력주 탭)</p>' : `<p class="err">${esc(j.error || '저장 실패')}</p>`; }).catch((er) => { w.innerHTML = `<p class="err">${esc(er.message)}</p>`; }); return; }
+    if (sv) { const w = sv.closest('[data-mp-myform]'); const p = { code: w.dataset.mpMyform, name: w.dataset.nm }; w.querySelectorAll('[data-k]').forEach((i) => { if (i.value) p[i.dataset.k] = i.value; }); sv.disabled = true; mpGet(`mp=myadd&${new URLSearchParams(p)}`).then((j) => { w.innerHTML = j.ok ? '<p class="note">⭐ 내 세력주에 추가했어요 (작전 레이더 → ⭐ 내 세력주 탭)</p>' : `<p class="err">${esc(j.error || '저장 실패')}</p>`; }).catch((er) => { w.innerHTML = `<p class="err">${esc(er.message)}</p>`; }); return; }
     const dl = e.target.closest('[data-my-del]'); if (dl) { loadMy('mydel', { id: dl.dataset.myDel }); return; }
     const cs = e.target.closest('[data-my-close]'); if (cs) { const inp = document.querySelector(`[data-my-exit="${cs.dataset.myClose}"]`); loadMy('myclose', { id: cs.dataset.myClose, exit: inp?.value || '' }); return; }
     const lk = e.target.closest('[data-my-look]'); if (lk) { goRadarStock(lk.dataset.myLook); }
@@ -3497,7 +3512,7 @@
     const box = $('#mpBody'); if (!box) return;
     const seq = (S.mpSeq = (S.mpSeq || 0) + 1);
     box.innerHTML = '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
-    let j; try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=alerts`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    let j; try { j = await mpGet(`mp=alerts`); } catch (e) { j = { ok: false, error: e.message }; }
     if (!$('#mpBody') || S.mpTab !== 'alerts' || seq !== S.mpSeq) return;
     if (!j.ok) { box.innerHTML = `<p class="err">${esc(j.error || '')}</p>`; return; }
     const groups = [];
