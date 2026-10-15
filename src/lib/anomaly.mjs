@@ -31,7 +31,7 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
       if (!L.length && ['kr', 'us'].includes(k)) add('warn', '인기 종목', `${lab} 목록이 비어 있음`);
       const zero = L.filter((x) => x.price === 0 || (x.price != null && x.price < 0));
       if (zero.length) add('warn', '인기 종목', `${lab} 가격 0 ${zero.length}개`, zero.map((x) => x.name || x.ticker));
-      if (k.startsWith('kr')) { const over = L.filter((x) => Math.abs(x.pct ?? 0) > 30.5); if (over.length) add('warn', '인기 종목', `${lab}에 하루 ±30% 넘는 국장 종목 ${over.length}개 (상장 첫날이 아니면 오류)`, over.map((x) => `${x.name} ${x.pct}%`)); }
+      if (k.startsWith('kr')) { const over = L.filter((x) => Math.abs(x.pct ?? 0) > 30.5); if (over.length) add('info', '인기 종목', `${lab}에 하루 ±30% 넘는 국장 종목 ${over.length}개 (신규 상장·재상장·병합 뒤 첫날이면 정상)`, over.map((x) => `${x.name} ${x.pct}%`)); }
     }
   });
 
@@ -91,12 +91,11 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
     chk((r) => r.c == null || r.c <= 0, 'warn', '현재가가 없는 랭킹 종목');
     chk((r) => r.cr != null && r.cr <= 0, 'warn', '추정 평단이 0 이하인 종목');
     chk((r) => r.gap != null && (r.gap > 500 || r.gap < -95), 'warn', '현재가와 평단 차이가 +500%↑ 또는 −95%↓ (평단 계산 오류 의심)', (r) => `${r.n} ${r.gap}%`);
-    chk((r) => r.rr && r.rr.v >= 20, 'warn', '손익비 1:20 이상 (목표·손절 계산 확인)', (r) => `${r.n} 1:${r.rr.v}`);
+    chk((r) => r.rr && r.rr.v > 20, 'info', '예전 방식으로 저장된 손익비 1:20 초과 줄 (화면엔 1:20+로 표시, 다음 분석 때 갱신)', (r) => `${r.n} 1:${r.rr.v}`);
     chk((r) => r.rr && r.rr.s && r.c && r.rr.s >= r.c, 'err', '손절가가 현재가보다 높음', (r) => `${r.n} 손절 ${r.rr.s} / 현재 ${r.c}`);
     chk((r) => r.rr && r.rr.t && r.c && r.rr.t <= r.c, 'err', '1차 목표가 현재가보다 낮음', (r) => `${r.n} 목표 ${r.rr.t} / 현재 ${r.c}`);
-    chk((r) => r.ht || r.st === '거래정지', 'warn', '거래정지로 표시됐는데 랭킹 자료에 남은 종목(화면에선 빠짐)');
     chk((r) => r.d === 'up' && ['띄우기', '털기', '엑시트 후'].includes(r.st), 'warn', "띄우기·털기 단계인데 '상승 가능성'으로 분류", (r) => `${r.n} ${r.st}`);
-    chk((r) => r.d === 'up' && r.ckg === 'D', 'warn', "'상승 가능성'인데 체크리스트 D등급(폭탄 신호)", (r) => r.n);
+    chk((r) => r.d === 'up' && r.ckg === 'D', 'info', "'상승 가능성'인데 D등급인 예전 줄 (이제 폭탄 신호면 상승 분류를 보류 — 열거나 다음 분석 때 갱신)", (r) => r.n);
     // 같은 이름 다른 코드 (종목명 오류)
     const byName = new Map(); for (const r of rows) if (r.n) byName.set(r.n, [...(byName.get(r.n) || []), r.code]);
     const dupN = [...byName].filter(([, c]) => c.length > 1);
@@ -132,7 +131,7 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
   // 새 문제(지난번에 없던 내용)가 있으면 관리자 텔레그램 (6시간에 한 번까지, 같은 내용 반복 안 함)
   const key = (i) => `${i.area}|${i.msg.replace(/\d+/g, '#')}`;
   const prevKeys = new Set((last?.sentKeys || []));
-  const fresh = items.filter((i) => !prevKeys.has(key(i)));
+  const fresh = items.filter((i) => i.lv !== 'info' && !prevKeys.has(key(i))); // 참고(info)는 화면에만
   out.sentKeys = last?.sentKeys || [];
   if (fresh.length && (force || now - (last?.sentAt || 0) > 6 * H) && process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
     try {

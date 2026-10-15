@@ -229,8 +229,25 @@ export function barFeatures(B, opt = {}) {
         vwapPump: Math.round(vwap(B.slice(pumpI, topI + 1)) || 0) || null, vwapDump: vTop ? Math.round(vwap(after)) : null };
     }
   }
+  // 1차 띄우기(작은 사이클): 최근 200거래일 안에 45거래일 이내로 +50%↑ 급등한 구간 — '엑시트 후' 기준(+80%·−45%)엔 못 미쳐도
+  //  급등 구간을 매집으로 잘못 보지 않게, 매집 구간은 급등 시작 전까지만 · 고점 뒤 −25%↓면 '털기' 쪽으로 (stageOf)
+  let pump1 = null, p1I = -1;
+  if (!cyc && n >= 60) {
+    let tI = -1; for (let i = Math.max(0, n - 200); i <= n - 4; i++) if (tI < 0 || B[i].h > B[tI].h) tI = i;
+    if (tI > 5) {
+      let lI = Math.max(0, tI - 45); for (let i = lI; i <= tI; i++) if (B[i].l < B[lI].l) lI = i;
+      const rise = B[tI].h / B[lI].l, drop = last.c / B[tI].h - 1;
+      if (rise >= 1.5 && tI - lI >= 2) {
+        const medPre = median(B.slice(Math.max(0, lI - 60), lI + 1).map((x) => x.v)) || med120;
+        p1I = lI; for (let i = lI; i <= tI; i++) if (B[i].v >= medPre * 3) { p1I = i; break; }
+        if (p1I > lI + 1 && B[p1I].c > B[lI].l * 1.3) p1I = lI; // 거래량 폭증이 한참 오른 뒤면 저점을 시작으로
+        pump1 = { low: B[lI].l, lowD: B[lI].d, pumpD: B[p1I].d, top: B[tI].h, topD: B[tI].d, rise: Math.round((rise - 1) * 100), drop: Math.round(drop * 100), since: n - 1 - tI, days: tI - lI,
+          vwapPump: Math.round(vwap(B.slice(p1I, tI + 1)) || 0) || null };
+      }
+    }
+  }
   let spike = -1;
-  if (!cyc) for (let i = Math.max(0, n - 60); i < n; i++) if (B[i].v >= med120 * 5) { spike = i; break; }
+  if (!cyc && !pump1) for (let i = Math.max(0, n - 60); i < n; i++) if (B[i].v >= med120 * 5) { spike = i; break; }
   // 사이클이 있으면 매집 구간은 '급등 시작 전'으로 (급등·급락 기간 거래가 평단에 섞이지 않게)
   //  단, 고점에서 120거래일 넘게 지났으면 '2차 매집' 가능성을 보려고 고점 뒤 구간(고점+20일 ~ 오늘)을 매집 후보로
   // 2차 매집 후보: 고점 뒤 바닥을 찍고 40거래일 넘게 그 바닥을 안 깼고, 최근 40일 박스 폭이 좁음 (또는 고점에서 120거래일 경과)
@@ -243,7 +260,7 @@ export function barFeatures(B, opt = {}) {
     cyc.base2 = base2;
   }
   const acc2 = !!cyc && (cyc.since >= 120 || !!base2);
-  const accEnd = acc2 ? n : cyc ? pumpI : spike > 0 ? spike : n;
+  const accEnd = acc2 ? n : cyc ? pumpI : pump1 && p1I > 0 ? p1I : spike > 0 ? spike : n;
   let accFloor = 0;
   if (acc2) { let bI = topI; for (let i = topI; i < n; i++) if (B[i].l < B[bI].l) bI = i; accFloor = base2 ? bI : topI + 20; } // 2차 매집은 고점 뒤 바닥부터
   // 매집 시작 추정: 폭증(또는 오늘) 이전 150일 중 OBV(오른 날 거래량 +, 내린 날 −를 누적)가 가장 낮았던 날
@@ -271,7 +288,7 @@ export function barFeatures(B, opt = {}) {
     volX5: base60 ? r1(v5 / base60) : null, volX20: base60 ? r1(v20 / base60) : null, maxVolX10: base60 ? r1(maxV10 / base60) : null,
     box60: r1((bmax / bmin - 1) * 100), box40: r1(box40 * 100),
     volL20: longBase ? r1(v20 / longBase) : null, // 20일 평균 거래량 ÷ 매집 전(90~170일 전) 거래량
-    spikeDate: cyc ? cyc.pumpD : spike > 0 ? B[spike].d : null, cyc, acc2, accBeyond: cyc && !acc2 ? accEnd < 10 : false,
+    spikeDate: cyc ? cyc.pumpD : pump1 ? pump1.pumpD : spike > 0 ? B[spike].d : null, cyc, pump1, acc2, accBeyond: cyc && !acc2 ? accEnd < 10 : false,
     accStart: accRows.length ? B[accStartI]?.d || null : null, accEnd: accRows.length ? B[Math.max(0, accEnd - 1)]?.d || null : null, accDays: accRows.length,
     accObv: vsum ? r1((obv2 / vsum) * 100) : null, // 매집 구간 순매수 강도(%)
     accLow: accRows.length ? Math.min(...accRows.map((x) => x.l)) : null, accHigh: accRows.length ? Math.max(...accRows.map((x) => x.h)) : null,
@@ -294,6 +311,7 @@ export function barFeatures(B, opt = {}) {
   else if ((f.fromLow60 ?? 0) >= 50) { s += 2; sig.push(`60일 저점 대비 +${Math.round(f.fromLow60)}%`); }
   if ((f.fromLow60 ?? 0) >= 50 && (f.offHigh20 ?? 0) <= -25) { s += 2; sig.push(`고점 대비 ${Math.round(f.offHigh20)}% (급등 후 이탈)`); }
   if (cyc) sig.push(`지난 급등·급락: ${cyc.pumpD} 급등 시작 → ${cyc.topD} 고점(+${cyc.rise}%) → 지금 고점 대비 ${cyc.drop}%`);
+  else if (pump1) { sig.push(`1차 띄우기: ${pump1.pumpD} 급등 시작 → ${pump1.topD} 고점(저점 대비 +${pump1.rise}%, ${pump1.days}거래일) → 지금 고점 대비 ${pump1.drop}%`); if (pump1.drop <= -25) s += 1; }
   f.score = s; f.sig = sig;
   f.marks = candleCands(B); // 매집봉 후보 (뉴스·시장 거르기는 applyMarks에서)
   // 거래정지 판단: 최근 거래량 0인 날이 3일 이상 이어짐 (정지 중엔 시세가 그대로 멈춰 있어 모든 신호가 엉터리가 됨)
@@ -607,10 +625,25 @@ export function stageOf(by, f, evs = []) {
     if ((f.cyc.since >= 120 || f.cyc.base2) && (stageOf(by, { ...f, cyc: null }, []) === '매집' || (f.nAccMark ?? 0) >= 1)) return '매집';
     return '엑시트 후';
   }
+  // 1차 띄우기가 있었던 종목: 고점 뒤 새 판 깔기 공시 → 판 깔기 · 고점 대비 −25%↓ → 털기(오래 바닥을 다지면 다시 매집 판단) · 고점 근처면 띄우기
+  if (f?.pump1) {
+    const p = f.pump1, topMs = Date.parse(p.topD + 'T15:30:00+09:00');
+    const newSetup = (evs || []).some((e) => ['mna', 'rights3', 'cb', 'fund5', 'refix'].includes(e.kind) && e.ms > topMs);
+    const exitAfter = (evs || []).some((e) => ['conv', 'majsell', 'pledge'].includes(e.kind) && e.ms > topMs - 10 * DAY);
+    if (p.drop <= -25) {
+      if (newSetup && p.since >= 20) return '판 깔기';
+      if (p.since >= 100 && stageOf(by, { ...f, pump1: null }, []) === '매집') return '매집'; // 고점 뒤 오래 지나 다시 매집 모양
+      return '털기';
+    }
+    if (p.since <= 40 && p.drop > -15) return '띄우기';
+    if (exitAfter && p.drop <= -15) return '털기';
+  }
   if (f && (f.fromLow60 ?? 0) >= 50 && ((f.offHigh20 ?? 0) <= -20 || exit >= 3)) return '털기';
   if (f && ((f.fromLow60 ?? 0) >= 50 || ((f.maxVolX10 ?? 0) >= 10 && (f.ret20 ?? 0) >= 20))) return '띄우기';
   // 매집: 아직 크게 안 올랐고(60일 저점 대비 +40% 미만), 박스권에서 거래가 늘거나 순매수 흐름이 이어짐
-  if (f && (f.fromLow60 ?? 99) < 40) {
+  // 매집 구간 최저가를 3% 넘게 깨고 내려왔으면 '매집'으로 보지 않음 (바닥이 무너진 상태)
+  const brokeAcc = f && f.accLow && f.close && f.close < f.accLow * 0.97;
+  if (f && (f.fromLow60 ?? 99) < 40 && !brokeAcc) {
     const box = (f.box40 ?? f.box60 ?? 99);
     if (box < 35 && ((f.volX20 ?? 0) >= 1.3 || (f.volL20 ?? 0) >= 1.5)) return '매집';
     if ((f.accObv ?? 0) >= 15 && (f.accDays ?? 0) >= 30 && box < 45) return '매집';
@@ -695,7 +728,8 @@ export function penaltyOf(x, now = Date.now()) {
 //  ※ 실제 주가 예측이 아니라 '패턴상 어느 쪽에 가까운지'
 const CR_KO = { cb: 'CB 전환가', refix: 'CB 조정 전환가', rights3: '3자배정 발행가', rights: '증자 발행가', fund5: '5% 신고자 매수가', mna: '인수 단가' };
 export function costRange(x) {
-  const it = [...(x.px || []).filter((p) => p.p > 0 && !['pledge', 'majsell', 'risk', 'insider'].includes(p.kind)).map((p) => ({ p: p.p, s: CR_KO[p.kind] || p.label || '공시 가격' })), ...(x.f?.vwapAcc > 0 ? [{ p: x.f.vwapAcc, s: '매집 구간 평균가' }] : [])];
+  const c0 = x.close || null, sane = (v) => !c0 || (v <= c0 * 8 && v >= c0 / 8); // 현재가의 8배·8분의 1을 넘는 원가는 금액을 가격으로 잘못 읽었거나 병합·분할 전 가격 → 제외
+  const it = [...(x.px || []).filter((p) => p.p > 0 && sane(p.p) && !['pledge', 'majsell', 'risk', 'insider'].includes(p.kind)).map((p) => ({ p: p.p, s: CR_KO[p.kind] || p.label || '공시 가격' })), ...(x.f?.vwapAcc > 0 ? [{ p: x.f.vwapAcc, s: '매집 구간 평균가' }] : [])];
   if (!it.length) return null;
   const ps = it.map((y) => y.p).sort((a, b) => a - b);
   // 대표값 = 가운데 값(중앙값) — 가격이 몇 개 튀어도 덜 흔들림, 그 값에 가장 가까운 근거 이름을 같이 보여줌
@@ -706,7 +740,7 @@ export function costRange(x) {
 //  ※ 세력의 실제 목표가는 어떤 공시에도 나오지 않음 → 공시에 적힌 가격과 실제 거래 가격만으로 '가격 사다리'를 만듦 (배수 계산 없음)
 export function priceLevels(x) {
   const f = x.f || {}, close = x.close || null, L = [];
-  const add = (p, kind, s, t, src, ref) => { if (p > 0) L.push({ p: Math.round(p), kind, s, t, src, ref: ref || null }); };
+  const add = (p, kind, s, t, src, ref) => { if (p > 0 && (!close || (p <= close * 8 && p >= close / 8))) L.push({ p: Math.round(p), kind, s, t, src, ref: ref || null }); }; // 현재가 8배·8분의 1 밖 가격은 단위·병합 오류로 보고 뺌
   for (const p of x.px || []) {
     if (p.p) {
       if (p.kind === 'cb' || p.kind === 'refix') add(p.p, 'cost', `CB ${p.label || '전환가'}`, `${p.date} 공시의 ${p.label || '전환가'} — CB 투자자의 원가. 주가가 이 위로 가야 전환해서 팔면 이익`, '공시 원문', p.ref);
@@ -973,6 +1007,13 @@ export function learnCk(map) {
   }
   return Object.keys(w).length ? { w, n } : null;
 }
+// 폭탄 신호(철회·납입 연기, 감사의견·자본잠식, 벌점, 담보 반대매매, 내부자 매도)가 있으면 '상승 가능성' 분류를 보류
+const BOMB_KO = { fail: '철회·납입 연기', health: '감사의견·자본잠식', penalty: '불성실공시 벌점', pledge: '담보 반대매매', insell: '내부자 매도 우위' };
+export function bombGate(x) {
+  const b = x?.cl?.bombs || [];
+  if (b.length && x.dir?.dir === 'up') x.dir = { ...x.dir, dir: 'none', bombHold: b, notes: [...(x.dir.notes || []), `폭탄 신호(${b.map((k) => BOMB_KO[k] || k).join('·')}) 때문에 '상승 가능성' 분류를 보류 — 이 신호가 풀리면 다시 판단해요`] };
+  return x;
+}
 export function checklistOf(x, now = Date.now()) {
   const f = x.f || {}, ev = x.events || [], px = x.px || [], ck = x.ck || {};
   const d = x.dir || direction(x, now);
@@ -990,7 +1031,7 @@ export function checklistOf(x, now = Date.now()) {
     else add(P, 'money', false, `${ymdOf(SET[0].ms)} '${EV[SET[0].kind].ko}' 발표는 있지만 납입·발행 완료 공시는 아직 못 찾음 (발표만으로는 약함)`, SET[0].id);
   }
   // 원가 근처
-  const exitedNow = !!f.cyc && !['판 깔기', '매집'].includes(x.stage); // 이미 털고 나간 종목: 지난 사이클 평단·매집은 지금 근거가 아님
+  const exitedNow = (!!f.cyc || (f.pump1 && f.pump1.drop <= -25)) && !['판 깔기', '매집'].includes(x.stage); // 이미 털고 나간 종목: 지난 사이클 평단·매집은 지금 근거가 아님
   if (exitedNow) add(P, 'cost', false, `이미 한 번 띄우고 빠진 종목 — 추정 평단(${d.cost ? fmtW(d.cost.low) + '원대' : '-'})은 지난 급등 전 가격이라 지금 세력이 남아 있다는 근거가 아님`);
   else if (d.gap == null) add(P, 'cost', null, '세력 원가를 계산할 근거 없음');
   else add(P, 'cost', d.gap <= 20 && d.gap >= -30, `현재가가 추정 세력 평단 대비 ${d.gap >= 0 ? '+' : ''}${d.gap}% ${d.gap <= 20 && d.gap >= -30 ? '— 세력도 아직 수익 구간이 아님(올려야 이익)' : d.gap > 20 ? '— 세력은 이미 이익 구간' : '— 평단보다 많이 아래(손실 중)'}`);
@@ -1251,7 +1292,7 @@ export async function manipWatch({ force = false } = {}) {
         }
       }
       st.dpos += part.length;
-      if (doc) for (const x of doc.list) { x.dir = direction(x, now); x.cl = checklistOf(x, now); } // 원문 가격 반영 후 다시
+      if (doc) for (const x of doc.list) { x.dir = direction(x, now); x.cl = checklistOf(x, now); bombGate(x); } // 원문 가격 반영 후 다시
       if (doc) doc.list.sort((a, b) => b.score - a.score);
       if (doc) await setJSON(`mp/day/${date}`, doc);
       if (st.dpos >= (st.docq || []).length) { st.phase = 'extra'; st.epos = 0; log('원문 가격 확인 완료 → 체크리스트 자료(지분·감사의견·신용·거래원·뉴스) 수집'); }
@@ -1260,7 +1301,7 @@ export async function manipWatch({ force = false } = {}) {
       const L = (doc?.list || []).slice(0, 40), part = L.slice(st.epos || 0, (st.epos || 0) + 4);
       const { enrich } = await import('./manipck.mjs');
       const ixD = await indexDaily().catch(() => ({}));
-      for (const x of part) { try { const more = await eventsOf(x.code, now); const ids = new Set((x.events || []).map((e) => e.id)); x.events = keepEv([...(x.events || []), ...more.filter((e) => !ids.has(e.id))].sort((a, b) => b.ms - a.ms)); } catch {} try { await enrich(x, { ix: ixD }); } catch (e) { x.ck = { err: { all: String(e.message).slice(0, 60) } }; } x.dir = direction(x, now); x.cl = checklistOf(x, now); }
+      for (const x of part) { try { const more = await eventsOf(x.code, now); const ids = new Set((x.events || []).map((e) => e.id)); x.events = keepEv([...(x.events || []), ...more.filter((e) => !ids.has(e.id))].sort((a, b) => b.ms - a.ms)); } catch {} try { await enrich(x, { ix: ixD }); } catch (e) { x.ck = { err: { all: String(e.message).slice(0, 60) } }; } x.dir = direction(x, now); x.cl = checklistOf(x, now); bombGate(x); }
       st.epos = (st.epos || 0) + part.length;
       if (doc) await setJSON(`mp/day/${date}`, doc);
       if (st.epos >= L.length) { st.phase = 'recheck'; log(`체크리스트 자료 ${L.length}종목 → 랭킹 종목 일봉 재확인 ${(st.rq || []).length}개`); }
@@ -1406,7 +1447,7 @@ async function saveProfiles(list, reason, opt = {}) {
       const newConv = (x.events || []).filter((e) => e.kind === 'conv' && !(prev.events || []).some((y) => y.id === e.id));
       if (newConv.length) alerts.push(`• ${x.name} 전환청구 공시 — 1~2주 뒤 추가 상장 물량 주의`);
     }
-    x.cl = checklistOf(x);
+    x.cl = checklistOf(x); bombGate(x);
     x.rbk = reboundOf(x);
     x.pex = postExitOf(x);
     if (prev.at && !halted && x.pex?.lv === '높음' && prev.pex?.lv !== '높음') alerts.push(`• 🔁 ${x.name} 털기 후 상승 가능성 '높음'으로 바뀜 — ${x.pex.up.slice(0, 2).map((r) => r.t).join(' / ').slice(0, 160)}`);
@@ -1486,6 +1527,7 @@ export async function manipRank(kind = 'all') {
     const sn = d0 ? await getJSON(`mp/snap/${d0}`) : null;
     if (sn?.rows && !sn.partial && Object.keys(sn.rows).length > 1500) list = list.filter((r) => sn.rows[r.code]);
   } catch {}
+  for (const r of list) if (r.rr?.v > 20) r.rr = { ...r.rr, v: 20, big: true }; // 예전 줄의 비현실적 손익비는 1:20+로
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
@@ -1533,6 +1575,7 @@ export function narrativeOf(x, now = Date.now()) {
     else if (x.stage === '엑시트 후') t += ' 한 번 띄우고 물량을 정리한 흔적으로 보며, 아직 새로 사 모으는 흔적은 뚜렷하지 않습니다.';
     P.push(t);
   }
+  if (!f.cyc && f.pump1) P.push(`${f.pump1.pumpD}부터 ${f.pump1.days}거래일 만에 ${won(f.pump1.top)}(${f.pump1.topD}, 저점 대비 +${f.pump1.rise}%)까지 1차로 띄웠고, 지금은 그 고점 대비 ${f.pump1.drop}%입니다${f.pump1.drop <= -25 ? ' — 고점에서 물량을 넘기고 빠지는 흐름(털기)으로 봅니다' : ''}.`);
   if (f.accStart) P.push(`${f.cyc ? (f.acc2 ? '고점 뒤 다시 사 모으는 구간(2차 매집 후보)은' : '급등 전에 사 모은 구간(매집 추정)은') : '거래 흐름상 매집 추정 구간은'} ${f.accStart} ~ ${f.accEnd}(${f.accDays}거래일)이며, 이 구간 가격은 ${won(f.accLow)}~${won(f.accHigh)}입니다${f.accObv != null ? ` (오른 날 거래가 내린 날보다 많은 정도 ${f.accObv}%)` : ''}.`);
   else if (f.accBeyond) P.push('급등 시작이 일봉 자료(약 1년 2개월) 맨 앞이라, 그 전 매집 구간과 평단은 계산할 수 없습니다.');
   // 평단·가격
@@ -1574,7 +1617,7 @@ export function narrativeOf(x, now = Date.now()) {
 }
 
 // 예전 방식으로 저장된 카드인지 (매집봉·지난 사이클·시장경보 계산이 없음)
-export const isOldProf = (p) => !p?.f || !Array.isArray(p.f.marks) || !('cyc' in p.f) || !('wf' in p.f);
+export const isOldProf = (p) => !p?.f || !Array.isArray(p.f.marks) || !('cyc' in p.f) || !('wf' in p.f) || !('pump1' in p.f); // pump1: v197 1차 띄우기 판단
 // 예전 AI 문장 중 새 사실 목록에 없는 숫자를 말하는 문장은 숨김 (예: 틀린 평단 84,099원)
 function staleAi(ai, F) {
   if (!ai || ai.error) return ai;
@@ -1645,7 +1688,7 @@ export async function manipProfile(code) {
     try {
       const d2 = direction(p);
       p.dir = { ...d2, dir: p.dir?.dir ?? d2.dir, sticky: p.dir?.sticky };
-      const hadCl = !!p.cl; p.cl = checklistOf(p); if (!hadCl) p.clOld = true; // 등급 기준이 바뀌어도 열 때마다 지금 기준으로
+      const hadCl = !!p.cl; p.cl = checklistOf(p); bombGate(p); if (!hadCl) p.clOld = true; // 등급 기준이 바뀌어도 열 때마다 지금 기준으로
       if (!p.rbk) p.rbk = reboundOf(p);
       p.pex = postExitOf(p);
       p.story = narrativeOf(p);
@@ -1714,7 +1757,7 @@ async function analyzeOne(job, { snap = {}, ctx = null, now = Date.now(), aiOk =
   }
   x.evSig = sig;
   x.dir = direction(x, now);
-  x.cl = checklistOf(x, now);
+  x.cl = checklistOf(x, now); bombGate(x);
   return x;
 }
 

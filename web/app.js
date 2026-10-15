@@ -3560,7 +3560,7 @@
     if (!j.ok) { b.innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
     if (!j.at) { b.innerHTML = '<p class="muted sm">아직 점검 기록이 없어요. "지금 점검"을 누르거나 3시간 안에 자동으로 돌아요.</p>'; return; }
     const L = j.items || [];
-    b.innerHTML = `<p class="muted sm">${esc(fmtDT(new Date(j.at)).full)} 점검 · ${L.length ? `문제 ${L.length}건 (심각 ${j.nErr || 0})` : '✅ 이상한 값 없음'}</p>${L.length ? `<ul class="anom-l">${L.map((i) => `<li class="${i.lv}"><b>${i.lv === 'err' ? '🔴' : '🟡'} ${esc(i.area)}</b> ${esc(i.msg)}${i.ex?.length ? `<small>${i.ex.map((x) => esc(x)).join(' · ')}</small>` : ''}</li>`).join('')}</ul>` : ''}`;
+    b.innerHTML = `<p class="muted sm">${esc(fmtDT(new Date(j.at)).full)} 점검 · ${L.length ? `문제 ${L.filter((i) => i.lv !== 'info').length}건 (심각 ${j.nErr || 0})${L.some((i) => i.lv === 'info') ? ` · 참고 ${L.filter((i) => i.lv === 'info').length}건` : ''}` : '✅ 이상한 값 없음'}</p>${L.length ? `<ul class="anom-l">${L.map((i) => `<li class="${i.lv}"><b>${i.lv === 'err' ? '🔴' : i.lv === 'info' ? '⚪' : '🟡'} ${esc(i.area)}</b> ${esc(i.msg)}${i.ex?.length ? `<small>${i.ex.map((x) => esc(x)).join(' · ')}</small>` : ''}</li>`).join('')}</ul>` : ''}`;
   }
   document.addEventListener('click', (e) => { if (e.target.closest('[data-anom-run]')) loadAnom(true); });
   async function loadMy(op, params) {
