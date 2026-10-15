@@ -3271,14 +3271,14 @@
     const nd = (d.dates || []).find((z) => !z.past);
     const tile = (label, val, sub, cls = '') => `<div class="rp-tile ${cls}"><em>${label}</em><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
     const tiles = [
-      tile('추정 세력 평단', d.cost ? `${fmtInt(d.cost.low)}${d.cost.high !== d.cost.low ? '~' + fmtInt(d.cost.high) : ''}원` : '—', d.gap != null ? `현재가는 평단 대비 <span class="${d.gap >= 0 ? 'up' : 'down'}">${d.gap >= 0 ? '+' : ''}${d.gap}%</span>` : ''),
-      tile('손익비', d.rr ? `1 : ${d.rr.v}${d.rr.big ? '+' : ''}` : '—', d.rr ? `목표 ${fmtInt(d.rr.t)} · 손절 ${fmtInt(d.rr.s)}` : '계산 안 됨', d.rr && (d.dir === 'down' || ['띄우기', '털기', '엑시트 후'].includes(x.stage)) ? 'warn' : ''),
+      tile('추정 세력 평단', d.cost ? (d.cost.rep && d.cost.high !== d.cost.low ? `약 ${fmtInt(d.cost.rep)}원` : `${fmtInt(d.cost.low)}${d.cost.high !== d.cost.low ? '~' + fmtInt(d.cost.high) : ''}원`) : '—', [d.gap != null ? `현재가는 평단 대비 <span class="${d.gap >= 0 ? 'up' : 'down'}">${d.gap >= 0 ? '+' : ''}${d.gap}%</span>` : '', d.cost?.rep && d.cost.high !== d.cost.low ? `범위 ${fmtInt(d.cost.low)}~${fmtInt(d.cost.high)}원 · ${esc(d.cost.repS || '')}` : ''].filter(Boolean).join('<br>')),
+      tile('손익비', d.rr ? `1 : ${d.rr.v}${d.rr.big ? '+' : ''}` : '—', d.rr ? `목표 ${fmtInt(d.rr.t)} · 손절 ${fmtInt(d.rr.s)} (${d.rr.dn}%)${d.rr.far ? `<br>단타 손절 −7%면 1 : ${d.rr.far}` : ''}` : '계산 안 됨', d.rr && (d.dir === 'down' || ['띄우기', '털기', '엑시트 후'].includes(x.stage)) ? 'warn' : ''),
       tile('1차 목표', d.tgt?.length && typeof d.tgt[0] !== 'number' ? `${fmtInt(d.tgt[0].p)}원` : '—', d.tgt?.[0]?.s ? esc(d.tgt[0].s) : '위쪽 근거 가격 없음'),
       tile('매집 추정 구간', f.accStart ? `${esc(f.accStart.slice(2))}~${esc((f.accEnd || '').slice(2))}` : '—', f.accDays ? `${f.accDays}거래일${f.cyc ? (f.acc2 ? ' · 2차 매집 후보' : ' · 급등 전 박스') : ''}` : ''),
       tile('다음 물량 해제', nd ? esc(nd.d) : '—', nd ? (nd.real ? '공시 원문 기준' : '추정') : '예정 없음'),
       tile('성공 체크리스트', cl ? `${esc(cl.grade)}등급` : '—', cl ? `조건 ${cl.np}/${cl.nk} · 위험 ${cl.nr}개` : '', cl ? 'g' + cl.grade : ''),
       x.pex ? tile('털기 후 상승 가능성', esc(x.pex.lv), `근거 ${x.pex.su} vs ${x.pex.sd}${rk ? ' · ' + RBS[rk.type] : ''}`, 'pex-' + ({ 높음: 'h', 중간: 'm', 낮음: 'l' }[x.pex.lv])) : tile('반등 성격', rk ? RBS[rk.type] : '—', rk ? `바닥 대비 +${rk.rb.up}%` : '하락 뒤 반등 아님', rk ? 'rb-' + rk.type : ''),
-      tile('투자경고 요건까지', f.wf?.min ? (f.wf.min.pct <= 0 ? '이미 도달' : `+${f.wf.min.pct}%`) : '—', f.wf?.min ? esc(f.wf.min.lbl) + ' (근사)' : ''),
+      tile('투자경고 요건까지', f.wf?.min ? (f.wf.min.pct <= 0 ? '이미 도달' : f.wf.min.pct > 30 ? '아직 멂' : `+${f.wf.min.pct}%`) : '—', f.wf?.min ? `${f.wf.min.pct > 30 ? `내일 +${f.wf.min.pct}% 더 올라야 ` : ''}${esc(f.wf.min.lbl)} 요건 (근사)` : '', f.wf?.min && f.wf.min.pct <= 15 ? 'warn' : ''),
     ].join('');
     const TABS = [['price', '💰 가격·목표'], ['check', '✅ 체크리스트'], ['why', '📈📉 근거'], ['chart', '🕯 차트 신호'], ['docs', '📄 공시'], ['ai', '🤖 AI·기록']];
     const tab = TABS.some(([t]) => t === S.rpTab) ? S.rpTab : 'price';
@@ -3294,6 +3294,7 @@
       <div class="rp-actions"><button class="btn sm" data-rp-refresh>지금 다시 분석</button>${P.myBtn}${j.aiLeft != null ? `<small class="muted">검색 AI 남은 횟수 ${j.aiLeft}회</small>` : ''}</div>
       ${j.aiErr ? `<p class="muted sm">AI: ${esc(j.aiErr)}</p>` : ''}
       <div class="rp-tiles">${tiles}</div>
+      ${(() => { const cf = (x.story || []).find((t) => t.startsWith('ℹ️')); return cf ? `<p class="rp-conf">${esc(cf)}</p>` : ''; })()}
       ${(x.story || []).length ? `<div class="rp-story"><h4>📝 한눈에 보는 정리 <small class="muted">계산된 숫자로만 쓴 요약 (AI 아님)</small></h4>${x.story.map((t, i) => `<p class="${i === x.story.length - 1 ? 'muted sm' : ''}">${esc(t)}</p>`).join('')}</div>` : ''}
       <div class="seg rp-tabs">${TABS.map(([t, l]) => `<button data-rp-tab="${t}" class="${t === tab ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="rp-body">${body}</div>
@@ -3382,7 +3383,7 @@
     const won = (v) => (v == null ? '—' : `${fmtInt(v)}원`);
     const DIRB = { up: '<span class="mp-dirb up">📈 상승 가능성</span>', down: '<span class="mp-dirb down">📉 하락 위험</span>' };
     const rows = S.mpRank.map((r, i) => { try {
-      const mid = r.cl || r.ch ? ((r.cl || r.ch) + (r.ch || r.cl)) / 2 : r.va;
+      const mid = r.cr || (r.cl || r.ch ? ((r.cl || r.ch) + (r.ch || r.cl)) / 2 : r.va);
       const g = mid && r.c ? Math.round((r.c / mid - 1) * 100) : null;
       const why = (S.rkKind === 'down' ? r.dr : S.rkKind === 'up' ? r.ur : r.d === 'down' ? r.dr : r.ur) || [];
       return `<li class="mp-row mp-rk" data-mp-code="${esc(r.code)}">
@@ -3399,7 +3400,7 @@
         </div>
         <div class="mp-chips rk-chips">${mpChips(r.by, r.sig, r.wn, r.pn?.c, r.cbn, r.cbd)}</div>
         <div class="rk-kv">
-          <span><em>추정 평단</em><b>${r.cl || r.ch ? `${fmtInt(r.cl || r.ch)}${r.ch && r.cl && r.ch !== r.cl ? '~' + fmtInt(r.ch) : ''}원` : r.va ? fmtInt(r.va) + '원' : '—'}</b>${g != null ? `<small class="${g >= 0 ? 'up' : 'down'}">현재 ${g >= 0 ? '+' : ''}${g}%</small>` : ''}</span>
+          <span><em>추정 평단</em><b>${r.cr && r.ch && r.cl && r.ch !== r.cl ? `약 ${fmtInt(r.cr)}원` : r.cl || r.ch ? `${fmtInt(r.cl || r.ch)}${r.ch && r.cl && r.ch !== r.cl ? '~' + fmtInt(r.ch) : ''}원` : r.va ? fmtInt(r.va) + '원' : '—'}</b>${g != null ? `<small class="${g >= 0 ? 'up' : 'down'}">현재 ${g >= 0 ? '+' : ''}${g}%${r.cr && r.ch !== r.cl ? ` · 범위 ${fmtInt(r.cl)}~${fmtInt(r.ch)}` : ''}</small>` : ''}</span>
           <span><em>손익비</em><b>${r.rr ? '1 : ' + r.rr.v + (r.rr.big ? '+' : '') : '—'}</b>${r.rr ? `<small>목표 ${fmtInt(r.rr.t)} · 손절 ${fmtInt(r.rr.s)}</small>` : ''}</span>
           <span><em>1차 목표</em><b>${r.tg?.length ? fmtInt(typeof r.tg[0] === 'number' ? r.tg[0] : r.tg[0].p) + '원' : '—'}</b>${r.tg?.length && typeof r.tg[0] !== 'number' ? `<small>${esc(r.tg[0].s)}</small>` : ''}</span>
           <span><em>다음 물량 해제</em><b>${r.nd ? esc(r.nd.split(' ')[0]) : '—'}</b>${r.nd ? `<small>${esc(r.nd.split(' ').slice(1).join(' '))}</small>` : ''}</span>
@@ -3598,7 +3599,7 @@
     const lvs = d.levels || [];
     const cur = x.close != null ? `<li class="lv-now"><span class="mp-lvp">${fmtInt(x.close)}원</span><span class="mp-lvg">현재가</span><span class="mp-lvt">◀ 지금</span></li>` : '';
     const ladder = lvs.length ? `<ul class="mp-ladder">${lvs.filter((l) => x.close == null || l.p > x.close).map(lvRow).join('')}${cur}${lvs.filter((l) => x.close != null && l.p <= x.close).map(lvRow).join('')}</ul>` : '';
-    const rrLine = d.rr ? `<div class="mp-rrbox">⚖️ <b>손익비 1 : ${d.rr.v}${d.rr.big ? '+ (20 넘음 — 목표가 너무 멀어 참고만)' : ''}</b> — 1차 목표 ${fmtInt(d.rr.t)}원(${esc(d.rr.ts)}, +${d.rr.up}%)까지 vs 손절 기준 ${fmtInt(d.rr.s)}원(${esc(d.rr.ss)}, ${d.rr.dn}%)까지${d.rr.min3 ? ' · 아래 폭이 3% 미만이라 3%로 계산' : ''}${d.rr.t2 ? `<br><small class="muted">2차 목표 ${fmtInt(d.rr.t2)}원(${esc(d.rr.t2s)})까지 보면 손익비 1 : ${Math.round(((d.rr.t2 - x.close) / Math.max(x.close - d.rr.s, x.close * 0.03)) * 10) / 10}</small>` : ''}</div>` : '';
+    const rrLine = d.rr ? `<div class="mp-rrbox">⚖️ <b>손익비 1 : ${d.rr.v}${d.rr.big ? '+ (20 넘음 — 목표가 너무 멀어 참고만)' : ''}</b> — 1차 목표 ${fmtInt(d.rr.t)}원(${esc(d.rr.ts)}, +${d.rr.up}%)까지 vs 손절 기준 ${fmtInt(d.rr.s)}원(${esc(d.rr.ss)}, ${d.rr.dn}%)까지${d.rr.min3 ? ' · 아래 폭이 3% 미만이라 3%로 계산' : ''}${d.rr.far ? `<br><small>손절 기준까지 ${d.rr.dn}%로 멀어요 — 단타 손절 −7%로 잡으면 손익비 1 : ${d.rr.far}</small>` : ''}${d.rr.t2 ? `<br><small class="muted">2차 목표 ${fmtInt(d.rr.t2)}원(${esc(d.rr.t2s)})까지 보면 손익비 1 : ${Math.round(((d.rr.t2 - x.close) / Math.max(x.close - d.rr.s, x.close * 0.03)) * 10) / 10}</small>` : ''}</div>` : '';
     const tgtLine = d.tgt?.length ? `<div class="mp-tg">${d.tgt.map((t, k) => (typeof t === 'number' ? `<span>${k + 1}차 <b>${fmtInt(t)}원</b> <small class="muted">이전 방식(평단 배수)</small></span>` : `<span>${k + 1}차 <b>${fmtInt(t.p)}원</b> ${t.s ? esc(t.s) : t.m ? `<small class="muted">평단 ${t.m}배(이전 방식)</small>` : ''}${t.gap != null ? ` (+${t.gap}%)` : ''}</span>`)).join('')}</div>` : lvs.length ? '<p class="muted sm">현재가 위쪽에 근거 있는 가격이 없음 (이미 공시 원가·과거 고점을 모두 넘음)</p>' : '';
     const tgtBox = lvs.length || d.tgt?.length || d.dates?.length ? `<div class="mp-tgt"><div><h5>🎯 참고 목표 가격 <small>공시에 적힌 원가 · 과거 고점(매물대)으로 만든 가격 사다리 · 세력의 실제 목표가는 어떤 공시에도 안 나옴</small></h5>${rrLine}${tgtLine}${ladder || (Array.isArray(d.tgt) && d.tgt[0]?.m ? '<p class="muted sm">이전 방식(배수) 결과 — 다음 분석 때 공시 기준으로 바뀜</p>' : '<p class="muted sm">근거 가격 없음</p>')}</div>
       <div><h5>🗓 물량이 풀릴 수 있는 날 <small>CB는 원문의 전환청구기간을 읽고, 못 읽으면 발행 1년 뒤로 추정</small></h5>${d.dates?.length ? `<ul>${d.dates.map((z) => `<li class="${z.past ? 'muted' : ''}"><b>${esc(z.d)}</b> ${esc(z.t)}${z.real ? ' <span class="mp-chip vol">원문 확인</span>' : ''}${z.past ? ' (지남)' : ''} <a class="mp-src" href="/p/${esc(z.ref)}" target="_blank">공시</a></li>`).join('')}</ul>` : '<p class="muted sm">관련 공시(CB·3자배정·전환청구) 없음</p>'}</div></div>` : '';

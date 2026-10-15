@@ -274,6 +274,8 @@ export function barFeatures(B, opt = {}) {
   const lagDays = ((opt.now || Date.now()) - Date.parse(last.d + 'T15:30:00+09:00')) / DAY;
   if (!f.halted && lagDays > 10) f.halted = { since: last.d, days: Math.round(lagDays * 5 / 7), stale: true };
   f.avgV20 = Math.round(v20);
+  // 최근 20거래일 저점 (오늘 제외) — 손절 기준 후보
+  { let li = -1; for (let i = Math.max(0, n - 21); i < n - 1; i++) if (B[i].l > 0 && (li < 0 || B[i].l < B[li].l)) li = i; f.low20 = li >= 0 ? { p: B[li].l, d: B[li].d } : null; }
   // 시장경보 예측(근사): 투자경고 지정예고 요건 — 3일 +100% · 5일 +60% · 15일 +100% (내일 종가 기준 얼마나 더 올라야 하는지)
   const W = [[3, 2, '3일 +100%'], [5, 1.6, '5일 +60%'], [15, 2, '15일 +100%']].map(([k, m, lbl]) => {
     const base = B[n - k]; if (!base) return null;
@@ -653,10 +655,15 @@ export function penaltyOf(x, now = Date.now()) {
 //  상승 가능성 = 작전 흐름상 '판 깔기·매집' 단계로, 아직 띄우기 전이고 주가가 추정 평단 근처
 //  하락 위험   = '띄우기 뒤·털기' 단계로, 주가가 평단보다 크게 높거나 물량이 풀리는 신호
 //  ※ 실제 주가 예측이 아니라 '패턴상 어느 쪽에 가까운지'
+const CR_KO = { cb: 'CB 전환가', refix: 'CB 조정 전환가', rights3: '3자배정 발행가', rights: '증자 발행가', fund5: '5% 신고자 매수가', mna: '인수 단가' };
 export function costRange(x) {
-  const ps = [...(x.px || []).filter((p) => !['pledge', 'majsell', 'risk', 'insider'].includes(p.kind)).map((p) => p.p), x.f?.vwapAcc].filter((v) => v > 0);
-  if (!ps.length) return null;
-  return { low: Math.min(...ps), high: Math.max(...ps), mid: ps.reduce((a, b) => a + b, 0) / ps.length };
+  const it = [...(x.px || []).filter((p) => p.p > 0 && !['pledge', 'majsell', 'risk', 'insider'].includes(p.kind)).map((p) => ({ p: p.p, s: CR_KO[p.kind] || p.label || '공시 가격' })), ...(x.f?.vwapAcc > 0 ? [{ p: x.f.vwapAcc, s: '매집 구간 평균가' }] : [])];
+  if (!it.length) return null;
+  const ps = it.map((y) => y.p).sort((a, b) => a - b);
+  // 대표값 = 가운데 값(중앙값) — 가격이 몇 개 튀어도 덜 흔들림, 그 값에 가장 가까운 근거 이름을 같이 보여줌
+  const med = ps.length % 2 ? ps[(ps.length - 1) / 2] : (ps[ps.length / 2 - 1] + ps[ps.length / 2]) / 2;
+  const near = it.reduce((a, b) => (Math.abs(b.p - med) < Math.abs(a.p - med) ? b : a));
+  return { low: ps[0], high: ps[ps.length - 1], mid: med, rep: Math.round(med), repS: ps.length > 2 ? `근거 ${ps.length}개의 가운데 값` : ps.length === 2 ? `근거 2개(${it.map((y) => y.s).join('·')})의 가운데` : near.s, n: ps.length };
 }
 //  ※ 세력의 실제 목표가는 어떤 공시에도 나오지 않음 → 공시에 적힌 가격과 실제 거래 가격만으로 '가격 사다리'를 만듦 (배수 계산 없음)
 export function priceLevels(x) {
@@ -675,6 +682,9 @@ export function priceLevels(x) {
   }
   if (f.vwapAcc) add(f.vwapAcc, 'cost', '매집 구간 평균가', `${f.accStart} ~ ${f.accEnd} 매집 추정 구간의 거래량 가중 평균가`, '일봉 계산');
   if (f.accLow) add(f.accLow, 'floor', '매집 구간 최저가', `매집 추정 구간(${f.accStart} ~ ${f.accEnd})의 가장 낮은 가격`, '일봉 계산');
+  if (f.low20?.p && close && f.low20.p < close) add(f.low20.p, 'floor', '최근 20일 저점', `${f.low20.d} 저점 — 최근 20거래일 중 가장 낮은 가격 (깨지면 바닥이 무너진 신호)`, '일봉 계산');
+  for (const m of (f.marks || []).filter((m) => m.ok && m.h !== 'broke' && ['acc', 'absorb'].includes(m.k) && m.lvl && (!close || m.lvl < close)).slice(-2)) add(m.lvl, 'floor', `매집봉 저점 (${m.d})`, `${m.d} ${m.k === 'acc' ? '매집봉' : '물량 받아먹는 음봉'}의 저점 — 세력이 지키는 가격일 수 있음`, '일봉 계산');
+  if (f.post?.low && close && f.post.low < close) add(f.post.low, 'floor', '털기 뒤 바닥', `${f.post.lowD} 바닥 — 고점 ${f.post.topD} 대비 ${f.post.fall}% 빠진 뒤 가장 낮은 가격`, '일봉 계산');
   if (f.cyc?.vwapPump) add(f.cyc.vwapPump, 'res', '급등 때 평균 체결가', `${f.cyc.pumpD} ~ ${f.cyc.topD} 급등 구간의 거래량 가중 평균가 — 그때 산 사람들이 물려 있는 가격`, '일봉 계산');
   if (f.hiPre) add(f.hiPre, 'res', '매집 전 고점', `${f.hiPreD} 고점 — 매집 시작 전 가장 높았던 가격. 그때 산 사람들의 매물이 쌓인 자리`, '일봉 계산');
   if (f.hiAll && (!f.hiPre || Math.abs(f.hiAll / f.hiPre - 1) > 0.03)) add(f.hiAll, 'res', '최근 고점', `${f.hiAllD} 고점 — 최근 약 300거래일(1년 2개월) 중 가장 높은 가격`, '일봉 계산');
@@ -695,7 +705,7 @@ export function priceLevels(x) {
 }
 export function direction(x, now = Date.now()) {
   const hv = x.f?.halted || evHalt(x.events);
-  if (hv || x.stage === '거래정지') return { dir: 'none', upS: 0, downS: 0, upRaw: 0, downRaw: 0, net: 0, notes: [hv?.ev ? `${hv.since} '${hv.why}' 공시 뒤 거래 재개 공시가 없음 (거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤` : `${hv?.since || ''} 무렵부터 거래가 없음(거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤`], tgt: null, rr: null, levels: [], dates: [], up: [], down: [], cost: costRange(x) ? { low: Math.round(costRange(x).low), high: Math.round(costRange(x).high) } : null, gap: null };
+  if (hv || x.stage === '거래정지') return { dir: 'none', upS: 0, downS: 0, upRaw: 0, downRaw: 0, net: 0, notes: [hv?.ev ? `${hv.since} '${hv.why}' 공시 뒤 거래 재개 공시가 없음 (거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤` : `${hv?.since || ''} 무렵부터 거래가 없음(거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤`], tgt: null, rr: null, levels: [], dates: [], up: [], down: [], cost: costRange(x) ? { low: Math.round(costRange(x).low), high: Math.round(costRange(x).high), rep: costRange(x).rep, repS: costRange(x).repS } : null, gap: null };
   const f = x.f || {}, ev = x.events || [], up = [], down = [];
   const age = (e) => (now - e.ms) / DAY;
   const SETUP = ['mna', 'rights3', 'cb', 'fund5', 'purpose', 'refix', 'rights']; // rightsR(구조조정 증자)은 제외
@@ -770,10 +780,10 @@ export function direction(x, now = Date.now()) {
   //  손절 기준 = 현재가보다 2% 이상 아래에 있는 '원가(세력 평단 근거)'·'지지' 가격 중 가장 높은 것. 아래 폭이 3% 미만이면 3%로 계산(비율 과장 방지)
   let rr = null;
   if (x.close && lv.above.length) {
-    const sup = lv.all.filter((l) => ['cost', 'floor'].includes(l.kind) && l.p <= x.close * 0.98).sort((a, b) => b.p - a.p)[0];
+    const sup = lv.all.filter((l) => ['cost', 'floor'].includes(l.kind) && l.p <= x.close * 0.97).sort((a, b) => b.p - a.p)[0];
     if (sup) {
       const t1 = lv.above[0], risk = Math.max(x.close - sup.p, x.close * 0.03);
-      rr = { v: Math.min(20, Math.round(((t1.p - x.close) / risk) * 10) / 10), big: (t1.p - x.close) / risk > 20, t: t1.p, ts: t1.s, s: sup.p, ss: sup.s, up: Math.round((t1.p / x.close - 1) * 1000) / 10, dn: Math.round((sup.p / x.close - 1) * 1000) / 10, t2: lv.above[1]?.p || null, t2s: lv.above[1]?.s || null, min3: x.close - sup.p < x.close * 0.03 };
+      rr = { v: Math.min(20, Math.round(((t1.p - x.close) / risk) * 10) / 10), big: (t1.p - x.close) / risk > 20, t: t1.p, ts: t1.s, s: sup.p, ss: sup.s, up: Math.round((t1.p / x.close - 1) * 1000) / 10, dn: Math.round((sup.p / x.close - 1) * 1000) / 10, t2: lv.above[1]?.p || null, t2s: lv.above[1]?.s || null, min3: x.close - sup.p < x.close * 0.03, far: x.close - sup.p > x.close * 0.1 ? Math.round(((t1.p - x.close) / (x.close * 0.07)) * 10) / 10 : null };
     }
   }
   // 목표 일정(참고): 물량이 풀릴 수 있는 날 — 일반 규정(사모 CB 전환 제한·사모 신주 전매 제한 1년) 기준 추정
@@ -797,7 +807,7 @@ export function direction(x, now = Date.now()) {
   for (const n of x.xnotes || []) notes.push(n);
   const restr = ev.find((e) => e.kind === 'rightsR');
   if (restr) notes.push(`${ymdOf(restr.ms)} 증자는 채권단·출자전환 등 구조조정 목적으로 보여 작전 신호에서 제외`);
-  return { dir, upS, downS, upRaw, downRaw, net: upRaw - downRaw, notes, tgt, rr, levels: lv.all, dates, up: up.sort((a, b) => b.w - a.w), down: down.sort((a, b) => b.w - a.w), cost: c ? { low: Math.round(c.low), high: Math.round(c.high) } : null, gap: gap == null ? null : Math.round(gap) };
+  return { dir, upS, downS, upRaw, downRaw, net: upRaw - downRaw, notes, tgt, rr, levels: lv.all, dates, up: up.sort((a, b) => b.w - a.w), down: down.sort((a, b) => b.w - a.w), cost: c ? { low: Math.round(c.low), high: Math.round(c.high), rep: c.rep, repS: c.repS, n: c.n } : null, gap: gap == null ? null : Math.round(gap) };
 }
 
 // ───── 🔄 반등 성격: ① 기술적 반등(데드캣) ② 털기 중 반등(물량 넘기기) ③ 2차 작전(재매집 뒤 상승) ─────
@@ -1275,7 +1285,7 @@ function rankRow(x) {
   const cl = x.cl || null;
   const rbk = x.rbk || null;
   const hv = x.f?.halted || evHalt(x.events);
-  return { ...chipsOf(x), pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  return { ...chipsOf(x), pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
@@ -1356,6 +1366,15 @@ export async function manipRank(kind = 'all') {
   return list.slice(0, 150);
 }
 // ───── 📝 서술형 정리 (규칙으로 문장 조립 · AI 아님 → 계산된 숫자만 씀) ─────
+// 상승 근거 점수와 '털기 후 상승 가능성'이 서로 반대일 때 이유 설명
+export function conflictOf(x, d, pex) {
+  if (!pex || !d) return null;
+  const a = d.dir === 'up' && pex.lv === '낮음', b = d.dir === 'down' && pex.lv === '높음';
+  if (!a && !b) return null;
+  const k = (pex[a ? 'down' : 'up'] || []).slice(0, 2).map((r) => r.t.split(' — ')[0]).join(', ');
+  return a ? `ℹ️ 상승 근거는 높은데 '털기 후 상승 가능성'은 낮은 이유: 상승 근거 점수는 새 판 깔기 공시·매집 흔적처럼 '세력이 준비 중인지'를 보고, 털기 후 상승 가능성은 '이미 크게 빠진 뒤 바닥이 단단한지'만 따로 봅니다. 이 종목은 판은 다시 깔리고 있지만 바닥은 아직 확인되지 않았다는 뜻입니다${k ? ` (걸림돌: ${k})` : ''}. 들어간다면 바닥 확인 뒤가 안전합니다.`
+    : `ℹ️ 하락 위험으로 분류됐지만 '털기 후 상승 가능성'은 높은 이유: 하락 위험은 '지금 단계·물량 부담'을, 털기 후 상승 가능성은 '크게 빠진 뒤 바닥이 단단한지'를 봅니다. 바닥 신호는 좋지만 물량 부담이 남아 있다는 뜻입니다${k ? ` (좋은 점: ${k})` : ''}.`;
+}
 export function narrativeOf(x, now = Date.now()) {
   const f = x.f || {}, d = x.dir || direction(x, now), cl = x.cl, rk = x.rbk || reboundOf(x, now), P = [];
   const mk = x.mkt === 'P' ? '코스피' : x.mkt === 'Q' ? '코스닥' : '';
@@ -1376,10 +1395,10 @@ export function narrativeOf(x, now = Date.now()) {
   // 평단·가격
   if (d.cost && x.close) {
     const exited = f.cyc && !['판 깔기', '매집'].includes(x.stage);
-    let t = `공시 원문 가격과 매집 구간 평균가로 추정한 세력 평단은 ${d.cost.low === d.cost.high ? won(d.cost.low) : `${won(d.cost.low)}~${won(d.cost.high)}`}이고, 현재가 ${won(x.close)}은 평단 대비 ${pc(d.gap)}입니다${exited ? ' (이미 털고 나간 종목이라 이 평단은 지난 사이클 기준입니다)' : d.gap > 20 ? ' — 세력은 이미 이익 구간입니다' : d.gap >= -30 ? ' — 세력도 아직 크게 남는 구간이 아닙니다' : ''}.`;
+    let t = `공시 원문 가격과 매집 구간 평균가로 추정한 세력 평단은 ${d.cost.rep ? `약 ${won(d.cost.rep)}(${d.cost.repS}${d.cost.low !== d.cost.high ? `, 범위 ${won(d.cost.low)}~${won(d.cost.high)}` : ''})` : d.cost.low === d.cost.high ? won(d.cost.low) : `${won(d.cost.low)}~${won(d.cost.high)}`}이고, 현재가 ${won(x.close)}은 평단 대비 ${pc(d.gap)}입니다${exited ? ' (이미 털고 나간 종목이라 이 평단은 지난 사이클 기준입니다)' : d.gap > 20 ? ' — 세력은 이미 이익 구간입니다' : d.gap >= -30 ? ' — 세력도 아직 크게 남는 구간이 아닙니다' : ''}.`;
     P.push(t);
   }
-  if (d.rr) P.push(`위쪽 가장 가까운 근거 가격은 ${won(d.rr.t)}(${d.rr.ts}, ${pc(d.rr.up)}), 아래 손절 기준은 ${won(d.rr.s)}(${d.rr.ss}, ${d.rr.dn}%)로 손익비는 1 : ${d.rr.v}입니다${d.dir === 'down' || ['띄우기', '털기', '엑시트 후'].includes(x.stage) ? ' — 다만 지금 단계에서는 목표까지 갈 근거가 약합니다' : ''}.`);
+  if (d.rr) P.push(`위쪽 가장 가까운 근거 가격은 ${won(d.rr.t)}(${d.rr.ts}, ${pc(d.rr.up)}), 아래 손절 기준은 ${won(d.rr.s)}(${d.rr.ss}, ${d.rr.dn}%)로 손익비는 1 : ${d.rr.v}입니다${d.rr.far ? ` (손절 폭이 10%가 넘어 단타엔 부담 — 단타 손절 −7%로 잡으면 1 : ${d.rr.far})` : ''}${d.dir === 'down' || ['띄우기', '털기', '엑시트 후'].includes(x.stage) ? ' — 다만 지금 단계에서는 목표까지 갈 근거가 약합니다' : ''}.`);
   else if ((d.tgt || []).length === 0 && d.levels?.length) P.push('현재가 위쪽에는 공시 원가나 과거 고점 같은 근거 가격이 없습니다.');
   // 공시·물량
   const ev = x.events || [], age = (e) => (now - e.ms) / DAY;
@@ -1397,6 +1416,7 @@ export function narrativeOf(x, now = Date.now()) {
   if (rk) P.push(`최근 반등(${rk.rb.lowD} 바닥 대비 +${rk.rb.up}%)은 ${RB_KO[rk.type]}으로 봅니다${rk.type !== 'unclear' ? ` — ${({ deadcat: rk.why.a, dump: rk.why.b, second: rk.why.c }[rk.type][0] || {}).t || ''}` : ''}.`);
   const pex = x.pex || postExitOf(x, now);
   if (pex) P.push(`털기 후 다시 오를 가능성은 '${pex.lv}'으로 봅니다 (올라갈 근거 ${pex.su}점 · 못 올라갈 근거 ${pex.sd}점)${pex.up[0] ? `. 근거: ${pex.up[0].t}` : ''}${pex.down[0] ? `. 걸림돌: ${pex.down[0].t}` : ''}.`);
+  const cf = conflictOf(x, d, pex); if (cf) P.push(cf);
   const marks = (f.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k));
   if (marks.length) P.push(`일봉에서 인정된 매집 흔적이 ${marks.length}개 있습니다 (${marks.slice(-3).map((m) => `${m.d} ${MARK_KO[m.k]}`).join(', ')}).`);
   if (f.wf?.min && f.wf.min.pct <= 15) P.push(f.wf.min.pct <= 0 ? `이미 투자경고 지정예고 요건(${f.wf.min.lbl}) 수준이라 경고·매매정지로 띄우기가 막힐 수 있습니다.` : `내일 종가가 +${f.wf.min.pct}% 더 오르면 투자경고 지정예고 요건(${f.wf.min.lbl})에 닿습니다 (근사 계산).`);
@@ -1469,6 +1489,16 @@ export async function manipProfile(code) {
       if (!p.rbk) p.rbk = reboundOf(p);
       p.pex = postExitOf(p);
       p.story = narrativeOf(p);
+      // 랭킹 줄도 지금 계산과 맞춤 (체크 등급·분류·손익비가 페이지와 다르게 보이던 문제)
+      try {
+        const rk = await getJSONStrict('mp/rank');
+        const old = rk?.[code];
+        if (old) {
+          const nw = rankRow(p); nw.up = old.up;
+          const sig = (r) => JSON.stringify([r.ckg, r.cnp, r.cnr, r.d, r.us, r.ds, r.rr?.v, r.rr?.s, r.pex?.lv, r.cr, r.cl, r.ch, r.st, r.ht, r.c]);
+          if (sig(old) !== sig(nw) || !('by' in old)) { rk[code] = { ...old, ...nw }; await setJSON('mp/rank', rk); }
+        }
+      } catch (e) { console.warn('rank 줄 맞춤 실패', e.message); }
     } catch (e) { console.warn('manipProfile', e.message); }
   }
   return p;

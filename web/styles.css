@@ -2185,3 +2185,4 @@ button.br-mv:hover { border-color: var(--accent); }
 .ai-dir { margin-top: .5rem; } .ai-dir li { margin-bottom: .3rem; }
 .mp-dcol.up li::marker { color: #ff6b7a; } .mp-dcol.down li::marker { color: #5aa8ff; }
 .mp-unvl li.ai-u { border-left: 3px solid rgba(255,90,106,.6); padding-left: .4rem; } .mp-unvl li.ai-d { border-left: 3px solid rgba(76,157,255,.6); padding-left: .4rem; }
+.rp-conf { margin: .6rem 0 0; padding: .55rem .75rem; border-radius: 10px; background: rgba(255,196,0,.08); border: 1px solid rgba(255,196,0,.25); font-size: .86rem; line-height: 1.55; }
