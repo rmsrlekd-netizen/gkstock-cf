@@ -128,9 +128,9 @@ async function snapshot() {
   return rows; // code → [이름, 시장(P코스피/Q코스닥), 종가, 등락률, 거래량, 거래대금, 시총]
 }
 
-// ───── ③ 일봉 (170거래일) ─────
+// ───── ③ 일봉 (300거래일 ≈ 1년 2개월 · 지난 급등 사이클과 그 전 매집 구간까지 보려고) ─────
 async function bars(code) {
-  const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${code}&timeframe=day&count=170&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 9000);
+  const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${code}&timeframe=day&count=300&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 9000);
   if (!r.ok) throw new Error('일봉 HTTP ' + r.status);
   const xml = await r.text();
   return [...xml.matchAll(/data="(\d{8})\|([\d.]+)\|([\d.]+)\|([\d.]+)\|([\d.]+)\|(\d+)"/g)].map((m) => ({ d: `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6)}`, o: +m[2], h: +m[3], l: +m[4], c: +m[5], v: +m[6] })).filter((x) => x.c > 0);
@@ -149,7 +149,7 @@ export function barFeatures(B) {
   const v20 = B.slice(-20).reduce((s, x) => s + x.v, 0) / 20;
   const maxV10 = Math.max(...B.slice(-10).map((x) => x.v));
   // 매집이 길게 이어지면 최근 60일 기준선도 같이 올라가서 '거래 증가'가 안 보임 → 매집 전(90~170일 전) 거래량을 따로 기준으로
-  const old = B.slice(0, Math.max(0, n - 90)), longBase = old.length >= 30 ? median(old.map((x) => x.v)) : 0;
+  const old = B.slice(Math.max(0, n - 170), Math.max(0, n - 90)), longBase = old.length >= 30 ? median(old.map((x) => x.v)) : 0;
   const L40 = B.slice(-40), box40 = Math.max(...L40.map((x) => x.h)) / Math.min(...L40.map((x) => x.l)) - 1;
   const lo60 = Math.min(...B.slice(-60).map((x) => x.l)), hi60 = Math.max(...B.slice(-60).map((x) => x.h));
   const hi20 = Math.max(...B.slice(-20).map((x) => x.h));
@@ -157,24 +157,42 @@ export function barFeatures(B) {
   const ret = (k) => (B[n - 1 - k] ? ((last.c / B[n - 1 - k].c) - 1) * 100 : null);
   // 첫 거래량 폭증일(중앙값의 5배 이상)을 찾아, 그 전 구간을 '매집 구간'으로 봄
   const med120 = median(B.slice(-120).map((x) => x.v));
+  // 지난 급등→급락 사이클(이미 한 번 띄우고 털고 나간 흔적): 약 300거래일 최고가가 그 전 저점의 1.8배 이상이고, 지금은 최고가 대비 −45% 이하
+  let topI = 0; for (let i = 1; i < n; i++) if (B[i].h > B[topI].h) topI = i;
+  let cyc = null, pumpI = -1;
+  if (topI >= 5 && n - 1 - topI >= 10) {
+    let lowI = Math.max(0, topI - 120); for (let i = lowI; i <= topI; i++) if (B[i].l < B[lowI].l) lowI = i;
+    const rise = B[topI].h / B[lowI].l, drop = last.c / B[topI].h - 1;
+    if (rise >= 1.8 && drop <= -0.45) {
+      const medPre = median(B.slice(Math.max(0, lowI - 60), lowI + 1).map((x) => x.v)) || med120;
+      pumpI = lowI; for (let i = lowI; i <= topI; i++) if (B[i].v >= medPre * 4) { pumpI = i; break; } // 급등 시작 = 저점 뒤 첫 거래량 폭증일
+      const after = B.slice(topI); const vTop = after.reduce((a, x) => a + x.v, 0);
+      cyc = { low: B[lowI].l, lowD: B[lowI].d, pumpD: B[pumpI].d, top: B[topI].h, topD: B[topI].d, rise: Math.round((rise - 1) * 100), drop: Math.round(drop * 100), since: n - 1 - topI,
+        vwapPump: Math.round(vwap(B.slice(pumpI, topI + 1)) || 0) || null, vwapDump: vTop ? Math.round(vwap(after)) : null };
+    }
+  }
   let spike = -1;
-  for (let i = Math.max(0, n - 60); i < n; i++) if (B[i].v >= med120 * 5) { spike = i; break; }
-  const accEnd = spike > 0 ? spike : n;
+  if (!cyc) for (let i = Math.max(0, n - 60); i < n; i++) if (B[i].v >= med120 * 5) { spike = i; break; }
+  // 사이클이 있으면 매집 구간은 '급등 시작 전'으로 (급등·급락 기간 거래가 평단에 섞이지 않게)
+  //  단, 고점에서 120거래일 넘게 지났으면 '2차 매집' 가능성을 보려고 고점 뒤 구간(고점+20일 ~ 오늘)을 매집 후보로
+  const acc2 = !!cyc && cyc.since >= 120;
+  const accEnd = acc2 ? n : cyc ? pumpI : spike > 0 ? spike : n;
+  const accFloor = acc2 ? topI + 20 : 0;
   // 매집 시작 추정: 폭증(또는 오늘) 이전 150일 중 OBV(오른 날 거래량 +, 내린 날 −를 누적)가 가장 낮았던 날
   //  → 그날 이후 '오를 때 거래가 많고 내릴 때 적은' 흐름이 시작됐다고 봄. 너무 가까우면(20일 미만) 최소 20일 구간
-  let obv = 0, minObv = Infinity, accStartI = Math.max(0, accEnd - 60);
-  const from = Math.max(1, accEnd - 150);
+  let obv = 0, minObv = Infinity, accStartI = Math.max(accFloor, accEnd - 60);
+  const from = Math.max(1, accFloor, accEnd - 150);
   for (let i = from; i < accEnd; i++) {
     obv += B[i].c > B[i - 1].c ? B[i].v : B[i].c < B[i - 1].c ? -B[i].v : 0;
     if (obv < minObv) { minObv = obv; accStartI = i; }
   }
-  if (accEnd - accStartI < 20) accStartI = Math.max(0, accEnd - 20);
-  const accRows = B.slice(accStartI, accEnd);
+  if (accEnd - accStartI < 20) accStartI = Math.max(accFloor, accEnd - 20);
+  const accRows = accEnd >= 10 ? B.slice(accStartI, accEnd) : []; // 급등이 차트 맨 앞이면 매집 구간은 차트 범위 밖
   // 매집 구간 동안 OBV가 얼마나 늘었는지 (구간 거래량 대비) — 클수록 '조용히 사 모은' 흔적
   let obv2 = 0, vsum = 0;
   for (let i = Math.max(1, accStartI); i < accEnd; i++) { obv2 += B[i].c > B[i - 1].c ? B[i].v : B[i].c < B[i - 1].c ? -B[i].v : 0; vsum += B[i].v; }
   const heavy = B.slice(-120).filter((x) => x.v >= med120 * 2);
-  // 과거 고점(매물대): 매집 시작 전 최고가 · 전체(약 170거래일) 최고가 — 위쪽 저항 가격 후보
+  // 과거 고점(매물대): 매집 시작 전 최고가 · 전체(약 300거래일) 최고가 — 위쪽 저항 가격 후보
   const hiOf = (rows) => rows.reduce((m, x) => (!m || x.h > m.h ? x : m), null);
   const preTop = accStartI >= 10 ? hiOf(B.slice(0, accStartI)) : null, allTop = hiOf(B);
   const f = {
@@ -184,8 +202,8 @@ export function barFeatures(B) {
     volX5: base60 ? r1(v5 / base60) : null, volX20: base60 ? r1(v20 / base60) : null, maxVolX10: base60 ? r1(maxV10 / base60) : null,
     box60: r1((bmax / bmin - 1) * 100), box40: r1(box40 * 100),
     volL20: longBase ? r1(v20 / longBase) : null, // 20일 평균 거래량 ÷ 매집 전(90~170일 전) 거래량
-    spikeDate: spike > 0 ? B[spike].d : null,
-    accStart: B[accStartI]?.d || null, accEnd: B[Math.max(0, accEnd - 1)]?.d || null, accDays: accRows.length,
+    spikeDate: cyc ? cyc.pumpD : spike > 0 ? B[spike].d : null, cyc, acc2, accBeyond: cyc && !acc2 ? accEnd < 10 : false,
+    accStart: accRows.length ? B[accStartI]?.d || null : null, accEnd: accRows.length ? B[Math.max(0, accEnd - 1)]?.d || null : null, accDays: accRows.length,
     accObv: vsum ? r1((obv2 / vsum) * 100) : null, // 매집 구간 순매수 강도(%)
     accLow: accRows.length ? Math.min(...accRows.map((x) => x.l)) : null, accHigh: accRows.length ? Math.max(...accRows.map((x) => x.h)) : null,
     vwapAcc: accRows.length >= 10 ? Math.round(vwap(accRows)) : null, // 매집 구간(추정 시작일~폭증 전) 평균 체결가(거래량 가중)
@@ -206,6 +224,7 @@ export function barFeatures(B) {
   if ((f.fromLow60 ?? 0) >= 100) { s += 3; sig.push(`60일 저점 대비 +${Math.round(f.fromLow60)}%`); }
   else if ((f.fromLow60 ?? 0) >= 50) { s += 2; sig.push(`60일 저점 대비 +${Math.round(f.fromLow60)}%`); }
   if ((f.fromLow60 ?? 0) >= 50 && (f.offHigh20 ?? 0) <= -25) { s += 2; sig.push(`고점 대비 ${Math.round(f.offHigh20)}% (급등 후 이탈)`); }
+  if (cyc) sig.push(`지난 급등·급락: ${cyc.pumpD} 급등 시작 → ${cyc.topD} 고점(+${cyc.rise}%) → 지금 고점 대비 ${cyc.drop}%`);
   f.score = s; f.sig = sig;
   return f;
 }
@@ -305,9 +324,18 @@ export function extras(code, evs, by, ctx = {}) {
 }
 
 // ───── 단계 판정 (AI 전 기본값) ─────
-function stageOf(by, f) {
+function stageOf(by, f, evs = []) {
   const exit = (by.conv || 0) + (by.majsell || 0) + (by.pledge || 0);
   const setup = (by.mna || 0) + (by.rights3 || 0) + (by.cb || 0) + (by.fund5 || 0) + (by.purpose || 0) + (by.refix || 0);
+  // 이미 한 번 띄우고 빠진 종목: 고점 뒤 새 '판 깔기' 공시가 있으면 2차 판 깔기, 없으면 '엑시트 후'
+  if (f?.cyc) {
+    const topMs = Date.parse(f.cyc.topD + 'T15:30:00+09:00');
+    const newSetup = (evs || []).some((e) => ['mna', 'rights3', 'cb', 'fund5', 'refix'].includes(e.kind) && e.ms > topMs);
+    if (newSetup) return '판 깔기';
+    // 고점에서 6개월(120거래일) 넘게 지났고 최근 흐름이 다시 매집 모양이면 '매집'(2차)
+    if (f.cyc.since >= 120 && stageOf(by, { ...f, cyc: null }, []) === '매집') return '매집';
+    return '엑시트 후';
+  }
   if (f && (f.fromLow60 ?? 0) >= 50 && ((f.offHigh20 ?? 0) <= -20 || exit >= 3)) return '털기';
   if (f && ((f.fromLow60 ?? 0) >= 50 || ((f.maxVolX10 ?? 0) >= 10 && (f.ret20 ?? 0) >= 20))) return '띄우기';
   // 매집: 아직 크게 안 올랐고(60일 저점 대비 +40% 미만), 박스권에서 거래가 늘거나 순매수 흐름이 이어짐
@@ -330,9 +358,11 @@ export function factsOf(x) {
   for (const e of (x.events || []).slice(0, 15)) add(`${ymdOf(e.ms)} ${EV[e.kind]?.ko || e.kind} 공시: ${e.title}${e.sum ? ' — ' + e.sum : ''}${e.party ? ` (제출인 ${e.party})` : ''}`, '공시', { id2: e.id, kind: e.kind, ms: e.ms });
   for (const p of x.px || []) add(`${p.date} 공시 원문 가격: ${p.label} ${fmtW(p.p)}원${p.buys?.length ? ` (장내 취득 ${p.buys.length}건: ${p.buys.slice(0, 6).map((b) => `${b.d} ${b.q ? fmtW(b.q) + '주 ' : ''}${fmtW(b.p)}원`).join(', ')})` : ''}`, '공시 원문', { price: p.p, kind: p.kind });
   if (f.accStart) add(`거래 흐름상 매집 추정 구간 ${f.accStart} ~ ${f.accEnd} (${f.accDays}거래일, 순매수 강도 ${f.accObv}%, 가격 ${fmtW(f.accLow)}~${fmtW(f.accHigh)}원)`, '일봉 계산');
+  if (f.cyc) add(`지난 급등·급락 사이클: ${f.cyc.lowD} 저점 ${fmtW(f.cyc.low)}원 → ${f.cyc.pumpD} 급등 시작 → ${f.cyc.topD} 고점 ${fmtW(f.cyc.top)}원(저점 대비 +${f.cyc.rise}%) → 현재 고점 대비 ${f.cyc.drop}% (고점 뒤 ${f.cyc.since}거래일)${f.cyc.vwapPump ? `, 급등 구간 평균 체결가 ${fmtW(f.cyc.vwapPump)}원` : ''}${f.cyc.vwapDump ? `, 고점 이후 평균 체결가 ${fmtW(f.cyc.vwapDump)}원` : ''}`, '일봉 계산');
+  if (f.accBeyond) add('급등 시작이 일봉 자료(약 300거래일, 1년 2개월) 맨 앞쪽이라 그 전 매집 구간과 매집 평단은 계산할 수 없음', '일봉 계산');
   if (f.vwapAcc) add(`매집 추정 구간 거래량 가중 평균가 ${fmtW(f.vwapAcc)}원`, '일봉 계산', { price: f.vwapAcc });
   if (f.vwapHeavy) add(`최근 120일 중 거래량이 평소 2배 넘은 날들의 평균가 ${fmtW(f.vwapHeavy)}원`, '일봉 계산', { price: f.vwapHeavy });
-  if (f.hiPre) add(`매집 추정 시작 전 최고가 ${fmtW(f.hiPre)}원 (${f.hiPreD})${f.hiAll ? `, 최근 약 170거래일 최고가 ${fmtW(f.hiAll)}원 (${f.hiAllD})` : ''}`, '일봉 계산');
+  if (f.hiPre) add(`매집 추정 시작 전 최고가 ${fmtW(f.hiPre)}원 (${f.hiPreD})${f.hiAll ? `, 최근 약 300거래일 최고가 ${fmtW(f.hiAll)}원 (${f.hiAllD})` : ''}`, '일봉 계산');
   if (f.fromLow60 != null) add(`60일 저점 대비 ${f.fromLow60 > 0 ? '+' : ''}${f.fromLow60}%, 20일 고점 대비 ${f.offHigh20}%`, '일봉 계산');
   if (f.volX5 != null) add(`거래량(평소 대비): 최근 5일 ${f.volX5}배, 20일 ${f.volX20}배, 10일 중 최대 ${f.maxVolX10}배${f.spikeDate ? `, 첫 폭증일 ${f.spikeDate}` : ''}`, '일봉 계산');
   if (f.box60 != null) add(`폭증 전 60일 박스권 폭 ${f.box60}%${f.ret20 != null ? `, 20일 수익률 ${f.ret20}%` : ''}${f.ret60 != null ? `, 60일 수익률 ${f.ret60}%` : ''}`, '일봉 계산');
@@ -397,8 +427,9 @@ export function priceLevels(x) {
   }
   if (f.vwapAcc) add(f.vwapAcc, 'cost', '매집 구간 평균가', `${f.accStart} ~ ${f.accEnd} 매집 추정 구간의 거래량 가중 평균가`, '일봉 계산');
   if (f.accLow) add(f.accLow, 'floor', '매집 구간 최저가', `매집 추정 구간(${f.accStart} ~ ${f.accEnd})의 가장 낮은 가격`, '일봉 계산');
+  if (f.cyc?.vwapPump) add(f.cyc.vwapPump, 'res', '급등 때 평균 체결가', `${f.cyc.pumpD} ~ ${f.cyc.topD} 급등 구간의 거래량 가중 평균가 — 그때 산 사람들이 물려 있는 가격`, '일봉 계산');
   if (f.hiPre) add(f.hiPre, 'res', '매집 전 고점', `${f.hiPreD} 고점 — 매집 시작 전 가장 높았던 가격. 그때 산 사람들의 매물이 쌓인 자리`, '일봉 계산');
-  if (f.hiAll && (!f.hiPre || Math.abs(f.hiAll / f.hiPre - 1) > 0.03)) add(f.hiAll, 'res', '최근 고점', `${f.hiAllD} 고점 — 최근 약 170거래일 중 가장 높은 가격`, '일봉 계산');
+  if (f.hiAll && (!f.hiPre || Math.abs(f.hiAll / f.hiPre - 1) > 0.03)) add(f.hiAll, 'res', '최근 고점', `${f.hiAllD} 고점 — 최근 약 300거래일(1년 2개월) 중 가장 높은 가격`, '일봉 계산');
   if (f.vwapHeavy) add(f.vwapHeavy, close && f.vwapHeavy > close ? 'res' : 'cost', '거래 몰린 가격대', '최근 120일 중 거래량이 평소 2배 넘은 날들의 평균가 — 손바뀜이 많았던 가격', '일봉 계산');
   // 같은 가격(3% 이내)은 하나로 (공시 원문이 우선)
   const rankK = { cost: 0, floor: 1, risk: 2, res: 3 };
@@ -429,7 +460,8 @@ export function direction(x, now = Date.now()) {
   if (setupKinds.size >= 2) R(up, 1, `최근 5개월 판 깔기 성격 공시 ${setupKinds.size}종류 (${[...setupKinds].map((k) => EV[k].ko).join(', ')})`, '공시');
   if ((f.box60 ?? 99) < 40 && (f.volX20 ?? 0) >= 1.5 && (f.fromLow60 ?? 0) < 40) R(up, 2, `주가는 박스권(폭 ${f.box60}%)인데 20일 거래량이 평소의 ${f.volX20}배 — 조용한 매집 흐름`, '일봉');
   if ((f.accObv ?? 0) >= 15 && (f.fromLow60 ?? 0) < 40) R(up, 1, `${f.accStart} 이후 오를 때 거래가 많고 내릴 때 적은 순매수 흐름(강도 ${f.accObv}%)`, '일봉');
-  if (gap != null && gap <= 20 && gap >= -30) R(up, 2, `현재가 ${fmtW(x.close)}원이 추정 평단 ${fmtW(c.low)}~${fmtW(c.high)}원 근처 (${gap >= 0 ? '+' : ''}${Math.round(gap)}%) — 세력이 아직 수익 구간이 아님`, '계산');
+  const exited = !!f.cyc && !['판 깔기', '매집'].includes(x.stage); // 이미 털고 나간 종목은 '평단 근처'를 상승 근거로 안 씀
+  if (!exited && gap != null && gap <= 20 && gap >= -30) R(up, 2, `현재가 ${fmtW(x.close)}원이 추정 평단 ${fmtW(c.low)}~${fmtW(c.high)}원 근처 (${gap >= 0 ? '+' : ''}${Math.round(gap)}%) — 세력이 아직 수익 구간이 아님`, '계산');
   if ((f.fromLow60 ?? 99) < 25 && lastSetup) R(up, 1, `60일 저점 대비 ${f.fromLow60 > 0 ? '+' : ''}${f.fromLow60}%로 아직 크게 오르지 않음`, '일봉');
   const fund = ev.find((e) => e.kind === 'fund5' && age(e) <= 120);
   if (fund) R(up, 1, `${ymdOf(fund.ms)} 투자조합 등 5% 지분 신고${fund.party ? ` (${fund.party})` : ''}`, fund.id);
@@ -454,6 +486,13 @@ export function direction(x, now = Date.now()) {
   else if (pen?.pend) R(down, 1, '불성실공시법인 지정 예고 상태 — 벌점이 더해질 수 있음', '공시');
   const risk = ev.find((e) => e.kind === 'risk' && age(e) <= 180 && !/불성실공시/.test(e.title));
   if (risk) R(down, 2, `${ymdOf(risk.ms)} 위험 공시: ${risk.title}`, risk.id);
+  if (f.cyc) {
+    const topMs = Date.parse(f.cyc.topD + 'T15:30:00+09:00');
+    const exitAfterTop = ev.filter((e) => EXIT.includes(e.kind) && e.ms >= topMs - 30 * DAY);
+    R(down, 2, `이미 한 번 급등(${f.cyc.topD} 고점 ${fmtW(f.cyc.top)}원, 저점 대비 +${f.cyc.rise}%) 뒤 고점 대비 ${f.cyc.drop}% — 세력이 차익을 내고 빠졌을 가능성`, '일봉');
+    if (exitAfterTop.length) R(down, 1, `고점 전후 '${EV[exitAfterTop[0].kind].ko}' 공시 (${ymdOf(exitAfterTop[0].ms)}) — 물량 정리 흔적`, exitAfterTop[0].id);
+    if (f.cyc.vwapPump) R(down, 1, `급등 구간에 산 사람들의 평균가 약 ${fmtW(f.cyc.vwapPump)}원이 현재가 위에 물려 있음 — 반등 때 매물`, '일봉');
+  }
   // 참고 가격 사다리: 공시 원문 가격(원가)·과거 고점(매물대)·담보 반대매매선 — 위쪽은 목표 후보, 아래쪽은 지지 후보
   const lv = priceLevels(x);
   const tgt = lv.above.length ? lv.above.slice(0, 3) : null;
@@ -470,9 +509,10 @@ export function direction(x, now = Date.now()) {
   const upRaw = up.reduce((a, b) => a + b.w, 0), downRaw = down.reduce((a, b) => a + b.w, 0);
   const upS = Math.min(10, upRaw), downS = Math.min(10, downRaw);
   // 이미 크게 오른 종목(60일 저점 대비 +50% 이상)이나 띄우기·털기 단계는 '상승 가능성'으로 분류하지 않음
-  const surged = (f.fromLow60 ?? 0) >= 50 || ['띄우기', '털기'].includes(x.stage);
+  const surged = (f.fromLow60 ?? 0) >= 50 || ['띄우기', '털기', '엑시트 후'].includes(x.stage);
   const dir = !surged && upRaw >= 3 && upRaw >= downRaw + 2 ? 'up' : downRaw >= 3 && (downRaw >= upRaw || surged) ? 'down' : 'none';
   const notes = [];
+  if (f.cyc) notes.push(x.stage === '판 깔기' ? `지난 급등(${f.cyc.topD} 고점) 뒤 새 판 깔기 공시가 나와 '2차 판 깔기'로 봄 — 지난 사이클의 평단·고점은 참고만` : x.stage === '매집' ? `지난 급등(${f.cyc.topD} 고점)에서 ${f.cyc.since}거래일 지났고 최근 다시 매집 모양 — '2차 매집'으로 봄 (지난 사이클의 평단은 참고만)` : `이미 ${f.cyc.pumpD}~${f.cyc.topD}에 한 번 띄우고 고점 대비 ${f.cyc.drop}% 빠진 종목 — 매집 평단은 급등 시작 전 구간으로만 계산 (급등·급락 때 거래는 평단에서 제외)${f.accBeyond ? ' — 단, 급등 시작이 자료 맨 앞이라 그 전 매집 평단은 계산 불가' : ''}`);
   if (surged && upS >= 3) notes.push('상승 근거도 있지만 이미 크게 오른 뒤(또는 띄우기·털기 단계)라 상승 가능성 분류에서 제외');
   for (const n of x.xnotes || []) notes.push(n);
   const restr = ev.find((e) => e.kind === 'rightsR');
@@ -504,7 +544,7 @@ async function aiReview(x) {
 - 단계는 규칙으로 '${x.stage}'(으)로 판정됨. 단계를 바꾸지 말고 설명만 할 것.
 - 규칙 판단 결과(방향: ${D.dir === 'up' ? '상승 가능성 쪽' : D.dir === 'down' ? '하락 위험 쪽' : '뚜렷하지 않음'})는 바꾸지 말고, 그 이유와 반대 근거를 설명할 것.
 출력은 JSON 하나만:
-{"stage":"판 깔기|매집|띄우기|털기|관찰","level":"높음|중간|낮음","summary":"2문장 요약, 각 문장 끝에 [F번호]","upWhy":["상승 쪽 근거 문장 [F번호]"],"downWhy":["하락 쪽 근거 문장 [F번호]"],"counter":["정상적인 회사 활동일 가능성 [F번호]"],"acc":{"period":"매집 추정 기간(사실 목록의 날짜만 사용)","refs":["F번호"]},"cost":{"refs":["평단 근거 F번호들"]},"watch":["앞으로 확인할 신호(숫자 없이)"]}
+{"stage":"판 깔기|매집|띄우기|털기|엑시트 후|관찰","level":"높음|중간|낮음","summary":"2문장 요약, 각 문장 끝에 [F번호]","upWhy":["상승 쪽 근거 문장 [F번호]"],"downWhy":["하락 쪽 근거 문장 [F번호]"],"counter":["정상적인 회사 활동일 가능성 [F번호]"],"acc":{"period":"매집 추정 기간(사실 목록의 날짜만 사용)","refs":["F번호"]},"cost":{"refs":["평단 근거 F번호들"]},"watch":["앞으로 확인할 신호(숫자 없이)"]}
 종목: ${x.name}(${x.code}) ${x.mkt === 'P' ? '코스피' : '코스닥'}
 사실 목록:
 ${F.map((f) => `${f.id}. ${f.t} (출처: ${f.src})`).join('\n')}`;
@@ -518,7 +558,7 @@ ${F.map((f) => `${f.id}. ${f.t} (출처: ${f.src})`).join('\n')}`;
   const accOk = j.acc?.period && numsIn(j.acc.period).every((n) => accRefs.some((id) => F.find((f) => f.id === id)?.t.replace(/[-,]/g, '').includes(n.replace(/-/g, ''))) || F.some((f) => f.t.includes(n)));
   const dropped = ['upWhy', 'downWhy', 'counter'].reduce((a, k) => a + Math.max(0, (Array.isArray(j[k]) ? j[k].length : 0) - vlist(j[k], 9).length), 0);
   return {
-    stage: ['판 깔기', '매집', '띄우기', '털기', '관찰'].includes(j.stage) ? j.stage : x.stage,
+    stage: ['판 깔기', '매집', '띄우기', '털기', '엑시트 후', '관찰'].includes(j.stage) ? j.stage : x.stage,
     level: ['높음', '중간', '낮음'].includes(j.level) ? j.level : '중간',
     summary: sum.map((s) => s.t).join(' ').slice(0, 260), sumRefs: [...new Set(sum.flatMap((s) => s.refs))],
     upWhy: vlist(j.upWhy, 6), downWhy: vlist(j.downWhy, 6), counter: vlist(j.counter, 3),
@@ -600,7 +640,7 @@ export async function manipWatch({ force = false } = {}) {
           const ex = extras(code, evs, s.by, ctx);
           const total = Math.round((s.score + (f?.score || 0) + ex.add) * ex.mult * 10) / 10;
           const p = prevMap.get(code);
-          return { code, name: r[0] || p?.name || NAMES.get(code) || code, mkt: r[1] || p?.mkt || null, close: r[2] ?? f?.close ?? null, pct: r[3] ?? null, mcap: r[6] ?? null, score: total, es: s.score, vs: f?.score || 0, xs: ex.add, by: s.by, sig: [...(f?.sig || []), ...ex.sig], xnotes: ex.notes, links: ex.links, warn: ex.warn, ind: ex.ind, capPct: ex.capPct, mult: ex.mult, f, stage: stageOf(s.by, f), events: evs.slice(0, 15), streak: (p?.streak || 0) + 1, ai: null, px: [] };
+          return { code, name: r[0] || p?.name || NAMES.get(code) || code, mkt: r[1] || p?.mkt || null, close: r[2] ?? f?.close ?? null, pct: r[3] ?? null, mcap: r[6] ?? null, score: total, es: s.score, vs: f?.score || 0, xs: ex.add, by: s.by, sig: [...(f?.sig || []), ...ex.sig], xnotes: ex.notes, links: ex.links, warn: ex.warn, ind: ex.ind, capPct: ex.capPct, mult: ex.mult, f, stage: stageOf(s.by, f, evs), events: evs.slice(0, 15), streak: (p?.streak || 0) + 1, ai: null, px: [] };
         }).filter((x) => x.score >= 4).sort((a, b) => b.score - a.score).slice(0, 80);
         for (const x of list) x.dir = direction(x, now);
         // 이전 날 AI 결과는 그대로 이어 보여 주지 않음 (그날 다시 분석)
@@ -625,7 +665,7 @@ export async function manipWatch({ force = false } = {}) {
         // 제목만으론 몰랐던 '제3자배정' 증자 → 원문 확인 후 점수 다시 계산
         if ((p.third && q.e.kind === 'rights') || (p.restr && ['rights', 'rights3', 'rightsfix'].includes(q.e.kind))) {
           const ev = x.events.find((y) => y.id === q.e.id); if (ev) ev.kind = p.restr ? 'rightsR' : 'rights3';
-          const s2 = eventScore(x.events, now); x.score = Math.round((s2.score + (x.vs || 0) + (x.xs || 0)) * (x.mult || 1) * 10) / 10; x.es = s2.score; x.by = s2.by; x.stage = stageOf(s2.by, x.f);
+          const s2 = eventScore(x.events, now); x.score = Math.round((s2.score + (x.vs || 0) + (x.xs || 0)) * (x.mult || 1) * 10) / 10; x.es = s2.score; x.by = s2.by; x.stage = stageOf(s2.by, x.f, x.events);
         }
       }
       st.dpos += part.length;
@@ -705,7 +745,7 @@ async function saveProfiles(list, reason, opt = {}) {
     x.dir = x.dir || direction(x);
     const pd0 = prev.dir?.dir;
     if (pd0 && pd0 !== x.dir.dir) {
-      const surged = (x.f?.fromLow60 ?? 0) >= 50 || ['띄우기', '털기'].includes(x.stage);
+      const surged = (x.f?.fromLow60 ?? 0) >= 50 || ['띄우기', '털기', '엑시트 후'].includes(x.stage);
       const keepUp = pd0 === 'up' && !surged && x.dir.upS >= 2 && x.dir.upS >= x.dir.downS + 1;
       const keepDown = pd0 === 'down' && x.dir.downS >= 2 && x.dir.downS >= x.dir.upS;
       if (keepUp || keepDown) x.dir = { ...x.dir, dir: pd0, sticky: true };
@@ -733,7 +773,7 @@ export async function manipRank(kind = 'all') {
   let list = Object.entries(rank).map(([code, r]) => ({ code, ...r }))
     .filter((r) => Date.now() - (r.up || 0) < 45 * DAY); // 45일 넘게 신호가 없던 종목은 랭킹에서만 내림 (카드·기록은 남김)
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
-  for (const r of list) if (r.d === 'up' && (['띄우기', '털기'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
+  for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
@@ -774,7 +814,7 @@ async function analyzeOne(job, { snap = {}, ctx = null, now = Date.now(), aiOk =
   const ex = extras(code, evs, s.by, ctx || {});
   const score = Math.round((s.score + (f?.score || 0) + ex.add) * ex.mult * 10) / 10;
   if (score < 4 && !prev && !keepLow) return null; // 원래 레이더에 없던 종목이고 점수도 낮으면 넘김
-  const x = { code, name: r[0] || (prev?.name && prev.name !== code ? prev.name : null) || job.name || code, mkt: r[1] || prev?.mkt || job.mkt || null, close: f?.close ?? r[2] ?? null, pct: r[3] ?? prev?.pct ?? null, mcap: r[6] ?? prev?.mcap ?? null, score, es: s.score, vs: f?.score || 0, xs: ex.add, mult: ex.mult, by: s.by, sig: [...(f?.sig || []), ...ex.sig], xnotes: ex.notes, links: ex.links, warn: ex.warn, ind: ex.ind, capPct: ex.capPct, f, stage: stageOf(s.by, f), events: evs.slice(0, 15), streak: prev?.streak || 1, px: [], ai: prev?.ai || null };
+  const x = { code, name: r[0] || (prev?.name && prev.name !== code ? prev.name : null) || job.name || code, mkt: r[1] || prev?.mkt || job.mkt || null, close: f?.close ?? r[2] ?? null, pct: r[3] ?? prev?.pct ?? null, mcap: r[6] ?? prev?.mcap ?? null, score, es: s.score, vs: f?.score || 0, xs: ex.add, mult: ex.mult, by: s.by, sig: [...(f?.sig || []), ...ex.sig], xnotes: ex.notes, links: ex.links, warn: ex.warn, ind: ex.ind, capPct: ex.capPct, f, stage: stageOf(s.by, f, evs), events: evs.slice(0, 15), streak: prev?.streak || 1, px: [], ai: prev?.ai || null };
   // 공시 원문 가격 (새 공시 포함)
   for (const e of evs.filter((e) => ['cb', 'refix', 'rights3', 'rights', 'mna', 'fund5', 'pledge', 'majsell'].includes(e.kind) || (e.kind === 'risk' && /불성실공시/.test(e.title))).slice(0, 8)) {
     const p = await docPrice(e).catch(() => null);
@@ -782,7 +822,7 @@ async function analyzeOne(job, { snap = {}, ctx = null, now = Date.now(), aiOk =
     if (p?.restr && ['rights', 'rights3', 'rightsfix'].includes(e.kind)) e.kind = 'rightsR';
     else if (p?.third && e.kind === 'rights') e.kind = 'rights3';
   }
-  const s2 = eventScore(x.events.concat(evs.slice(15)), now); x.es = s2.score; x.by = s2.by; x.score = Math.round((s2.score + x.vs + (x.xs || 0)) * (x.mult || 1) * 10) / 10; x.stage = stageOf(s2.by, f);
+  const s2 = eventScore(x.events.concat(evs.slice(15)), now); x.es = s2.score; x.by = s2.by; x.score = Math.round((s2.score + x.vs + (x.xs || 0)) * (x.mult || 1) * 10) / 10; x.stage = stageOf(s2.by, f, x.events);
   x.dir = direction(x, now);
   // 공시가 바뀌었고 점수가 의미 있으면 AI 다시 (검색은 항상)
   const sig = evs.slice(0, 25).map((e) => e.id).join(',');

@@ -3236,7 +3236,7 @@
     if (t) { S.mpTab = t.dataset.mpTab; $$('#mpTabs button').forEach((x) => x.classList.toggle('on', x === t)); if (S.mpTab === 'rank') loadRank(); else if (S.mpTab === 'perf') loadPerf(); else loadManip(); }
   });
   // ───── 작전 의심 레이더 ─────
-  const MP_ST = { '판 깔기': 'setup', 매집: 'acc', 띄우기: 'pump', 털기: 'exit', 관찰: 'watch' };
+  const MP_ST = { '판 깔기': 'setup', 매집: 'acc', 띄우기: 'pump', 털기: 'exit', '엑시트 후': 'done', 관찰: 'watch' };
   const MP_EV = { mna: '최대주주·경영권', rights3: '3자배정 증자', rightsfix: '증자 정정', rights: '유상증자', rightsR: '구조조정 증자(제외)', cb: 'CB·BW', refix: '리픽싱', fund5: '투자조합 지분', purpose: '사업목적 변경', bonus: '무상증자', capred: '감자', contract: '공급계약', invest: 'MOU·투자판단', inquiry: '조회공시', conv: '전환청구', majsell: '최대주주 지분변동', pledge: '담보·질권', risk: '불성실·횡령 등' };
   async function loadManip(date, run) {
     const box = $('#mpBody'); if (!box) return;
@@ -3317,6 +3317,7 @@
       <li><b>판 깔기</b>: 최대주주 변경·투자조합 3자배정 증자·CB 발행·사업목적 추가처럼 '준비' 공시가 나왔지만 주가는 아직 크게 안 움직인 상태</li>
       <li><b>매집</b>: 주가는 박스권인데 거래량이 늘고, 오를 때 거래가 많고 내릴 때 적은 흐름 (조용히 사 모으는 모습)</li>
       <li><b>띄우기</b>: 거래량 폭증과 함께 급등 (테마·공급계약·MOU 공시가 같이 나오는 경우가 많음)</li>
+      <li><b>엑시트 후</b>: 최근 약 300거래일(1년 2개월) 안에 저점 대비 +80% 이상 급등했다가 지금은 고점 대비 −45% 이하로 빠진 종목 (이미 한 번 해먹고 나간 흔적). 고점 뒤 새 CB·3자배정·최대주주 변경 공시가 나오면 '판 깔기'(2차)로 바뀜. 매집 평단은 급등 시작 전 구간으로만 계산</li>
       <li><b>털기</b>: 급등 뒤 CB 전환청구·추가 상장·최대주주 지분 변동·고점 이탈 등 '물량을 파는' 신호</li>
       <li><b>의심 높음/중간/낮음</b>: AI가 여러 근거가 위 흐름과 얼마나 잘 맞는다고 봤는지 (불법이라는 뜻 아님)</li>
       <li><b>종합 점수</b>: 공시 점수 + 거래 점수. 정해진 만점은 없음(신호를 더해 가는 방식, 이론상 최대 약 77점). <b>4점 이상만 레이더에 올라오고, 10점 이상이면 신호가 많은 편, 20점 이상이면 매우 많은 편</b>. 높을수록 작전 흐름과 '닮은 신호가 많다'는 뜻 — 오른다/내린다는 뜻이 아님</li>
@@ -3422,6 +3423,7 @@
     const a = x.ai && !x.ai.error ? x.ai : null, f = x.f || {};
     const li = (arr) => arr.map((t) => `<li>${esc(t)}</li>`).join('');
     const pxs = (x.px || []).map((p) => `<li>${esc(p.date || '')} ${esc(p.label || '')}${p.p ? ` <b>${fmtInt(p.p)}원</b>` : ''} <small class="muted">(${esc(MP_EV[p.kind] || p.kind)})</small>${p.cbx ? `<div class="mp-buys">${p.cbx.start ? `<span>전환청구 ${esc(p.cbx.start)}${p.cbx.end ? '~' + esc(p.cbx.end) : ''}</span>` : ''}${p.cbx.floor ? `<span>리픽싱 하한 ${fmtInt(p.cbx.floor)}원</span>` : ''}${p.cbx.call ? `<span>콜옵션${p.cbx.callPct ? ' ' + p.cbx.callPct + '%' : ''}</span>` : ''}</div>` : ''}${p.pledge ? `<div class="mp-buys"><span>담보 ${fmtInt(p.pledge.sh)}주 · 대출 ${fmtInt(p.pledge.loan)}원 → 1주당 ${fmtInt(p.pledge.perShare)}원 · 반대매매 추정 ${fmtInt(p.pledge.perShare * 1.4)}원</span></div>` : ''}${p.buys?.length ? `<div class="mp-buys">${p.buys.slice(0, 12).map((b) => `<span>${esc(b.d.slice(5))} ${b.q ? fmtInt(b.q) + '주 ' : ''}@${fmtInt(b.p)}</span>`).join('')}</div>` : ''}</li>`).join('');
+    const cycLine = f.cyc ? `<div class="mp-cyc"><b>🔁 지난 급등·급락</b> ${esc(f.cyc.lowD)} 저점 <b>${fmtInt(f.cyc.low)}원</b> → ${esc(f.cyc.pumpD)} 급등 시작 → ${esc(f.cyc.topD)} 고점 <b>${fmtInt(f.cyc.top)}원</b> (+${f.cyc.rise}%) → 지금 고점 대비 <b class="down">${f.cyc.drop}%</b>${f.cyc.vwapPump ? ` · 급등 구간 평균 체결가 ${fmtInt(f.cyc.vwapPump)}원` : ''}<br><small class="muted">${f.acc2 ? '고점에서 120거래일 넘게 지나, 아래 매집 시기·평단은 고점 뒤 구간(2차 매집 후보)으로 계산했어요' : `매집 평단은 급등 시작 전 거래로만 계산해요${f.accBeyond ? ' — 급등 시작이 차트 자료(약 1년 2개월) 맨 앞이라 그 전 매집 구간은 계산할 수 없음' : ''}`}</small></div>` : '';
     const accLine = `<div class="mp-accbox"><b>🧲 매집 추정 시기</b> ${a?.acc?.period ? esc(a.acc.period) : f.accStart ? `${esc(f.accStart)} ~ ${esc(f.accEnd || '')}` : '—'}${f.accStart ? ` <small class="muted">(거래 흐름 기준 ${esc(f.accStart)}~${esc(f.accEnd || '')} · ${f.accDays || 0}거래일${f.accObv != null ? ` · 순매수 강도 ${f.accObv}%` : ''}${f.accLow ? ` · 그 구간 가격 ${fmtInt(f.accLow)}~${fmtInt(f.accHigh)}원` : ''})</small>` : ''}${a?.acc?.basis ? `<br><small class="muted">근거: ${esc(a.acc.basis)}</small>` : ''}
       <br><b>💰 추정 세력 평단</b> ${a?.cost ? `${fmtInt(a.cost.low)}${a.cost.high && a.cost.high !== a.cost.low ? ' ~ ' + fmtInt(a.cost.high) : ''}원` : f.vwapAcc ? `${fmtInt(f.vwapAcc)}원 (매집 구간 평균)` : '—'}${a?.cost?.basis ? `<br><small class="muted">근거: ${esc(a.cost.basis)}</small>` : ''}</div>`;
     const d = x.dir || {};
@@ -3445,7 +3447,7 @@
       ${a.upWhy?.length ? `<h5>상승 쪽 해석</h5><ul>${a.upWhy.map(aiLine).join('')}</ul>` : ''}${a.downWhy?.length ? `<h5>하락 쪽 해석</h5><ul>${a.downWhy.map(aiLine).join('')}</ul>` : ''}
       ${a.evidence?.length ? `<h5>의심 근거 <small class="muted">(이전 방식 분석 · 근거 검증 전 — 다음 분석 때 새 방식으로 바뀜)</small></h5><ul>${li(a.evidence)}</ul>` : ''}${a.counter?.length ? `<h5>반대 근거 (정상일 가능성)</h5><ul>${a.counter.map((c) => (typeof c === 'string' ? `<li>${esc(c)}</li>` : aiLine(c))).join('')}</ul>` : ''}${a.watch?.length ? `<h5>앞으로 볼 신호</h5><ul>${li(a.watch)}</ul>` : ''}
       ${a.facts?.length ? `<details class="mp-facts"><summary>AI에게 준 사실 목록 (${a.facts.length}개)</summary><ol>${a.facts.map((f) => `<li><b>${esc(f.id)}</b> ${esc(f.t)} <small class="muted">· ${esc(f.src)}</small></li>`).join('')}</ol></details>` : ''}</div>` : '';
-    return `${accLine}${dirBox}${tgtBox}${aiBox}
+    return `${cycLine}${accLine}${dirBox}${tgtBox}${aiBox}
       <div class="mp-grid"><div><h5>공시에서 찾은 가격</h5>${pxs ? `<ul>${pxs}</ul>` : '<p class="muted sm">없음</p>'}<h5>거래 패턴</h5><ul class="mp-f"><li>매집 구간 평균가 <b>${f.vwapAcc ? fmtInt(f.vwapAcc) + '원' : '—'}</b>${f.accStart ? ` <small class="muted">(${esc(f.accStart)}~)</small>` : ''}</li><li>고거래량일 평균가 <b>${f.vwapHeavy ? fmtInt(f.vwapHeavy) + '원' : '—'}</b></li><li>120일 평균가 <b>${f.vwap120 ? fmtInt(f.vwap120) + '원' : '—'}</b></li><li>60일 저점 대비 <b>${f.fromLow60 ?? '—'}%</b> · 20일 고점 대비 <b>${f.offHigh20 ?? '—'}%</b></li><li>거래량(평소 대비) 5일 <b>${f.volX5 ?? '—'}배</b> · 20일 <b>${f.volX20 ?? '—'}배</b> · 10일 최대 <b>${f.maxVolX10 ?? '—'}배</b></li><li>폭증 전 60일 박스 폭 <b>${f.box60 ?? '—'}%</b>${f.spikeDate ? ` · 첫 폭증일 ${esc(f.spikeDate)}` : ''}</li></ul>
         ${x.log?.length ? `<h5>자동 수정 기록</h5><ul class="mp-logl">${x.log.slice(0, 8).map((l) => `<li><span>${esc(fmtDT(new Date(l.at)).md)} ${esc(fmtDT(new Date(l.at)).hm)}</span> ${esc(l.msg)}</li>`).join('')}</ul>` : ''}
         ${x.hist?.length > 1 ? `<h5>레이더 등장 기록</h5><p class="muted sm">${x.hist.map((h) => `${esc(md(h.d))} ${esc(h.st)}(${h.s})`).join(' · ')}</p>` : ''}</div>

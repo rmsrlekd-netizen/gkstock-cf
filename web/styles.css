@@ -2109,3 +2109,6 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-qlist button:hover { background: rgba(255,255,255,.07); }
 .mp-lookcard { margin: .5rem 0 .8rem; padding: .2rem; border: 1px solid rgba(124,140,255,.45); border-radius: 12px; background: rgba(124,140,255,.06); }
 .mp-lookcard > .loading, .mp-lookcard > p { padding: .6rem; }
+
+.mp-stage.done { background: rgba(150,150,170,.18); color: #c9c9d6; }
+.mp-cyc { margin: 0 0 .6rem; padding: .6rem .75rem; border-radius: 10px; background: rgba(255,90,106,.08); border: 1px solid rgba(255,90,106,.3); font-size: .85rem; line-height: 1.6; }
