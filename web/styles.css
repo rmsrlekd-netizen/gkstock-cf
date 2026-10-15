@@ -2101,3 +2101,11 @@ button.br-mv:hover { border-color: var(--accent); }
 @media (max-width: 520px) { .mp-ladder li { grid-template-columns: 4.9rem 2.9rem 1fr; gap: .3rem; padding: .35rem .3rem; font-size: .76rem; } }
 
 .mp-score b em { font-style: normal; font-size: .6em; opacity: .6; margin-left: 1px; }
+
+.mp-search { position: relative; margin: .6rem 0 .3rem; }
+.mp-search input { width: 100%; box-sizing: border-box; padding: .6rem .8rem; border-radius: 10px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); color: inherit; font-size: .9rem; }
+.mp-qlist { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; margin-top: 4px; background: #1d2033; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: .3rem; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.mp-qlist button { display: flex; align-items: center; gap: .45rem; width: 100%; text-align: left; padding: .45rem .5rem; border: 0; background: none; color: inherit; border-radius: 7px; cursor: pointer; font-size: .88rem; }
+.mp-qlist button:hover { background: rgba(255,255,255,.07); }
+.mp-lookcard { margin: .5rem 0 .8rem; padding: .2rem; border: 1px solid rgba(124,140,255,.45); border-radius: 12px; background: rgba(124,140,255,.06); }
+.mp-lookcard > .loading, .mp-lookcard > p { padding: .6rem; }

@@ -3136,7 +3136,10 @@
     if (tab === 'radar') {
       box.innerHTML = `${admHead()}<div class="card adm-mp"><h3>🕵️ 작전 레이더 <small class="muted">국장 전 종목 · 매일 장 마감 뒤 자동 분석 + 장중 새 공시가 나오면 그 종목 자동 재판단 · 모든 기록 보관 · 관리자만 보임</small></h3>
         <div class="seg mp-tabs" id="mpTabs"><button data-mp-tab="rank" class="${(S.mpTab || 'rank') === 'rank' ? 'on' : ''}">작전 가능성 랭킹</button><button data-mp-tab="day" class="${S.mpTab === 'day' ? 'on' : ''}">날짜별 기록</button><button data-mp-tab="perf" class="${S.mpTab === 'perf' ? 'on' : ''}">📊 성적표</button></div>
+        <div class="mp-search"><input id="mpQ" type="search" placeholder="🔍 종목 검색 (이름·코드) — 랭킹에 없어도 지금 바로 같은 방식으로 분석" autocomplete="off"><div id="mpQList" class="mp-qlist" hidden></div></div>
+        <div id="mpLook"></div>
         <div id="mpBody"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>`;
+      bindMpSearch();
       if ((S.mpTab || 'rank') === 'rank') loadRank(); else if (S.mpTab === 'perf') loadPerf(); else loadManip();
       return;
     }
@@ -3343,6 +3346,45 @@
       ${g.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분</th><th>5거래일 뒤</th><th>20거래일 뒤</th><th>60거래일 뒤</th></tr>${g.map((r) => `<tr><td class="t"><b>${esc(r.g.replace(/^[^:]+:/, ''))}</b><small>${esc(r.g.includes(':') ? r.g.split(':')[0] : '레이더 전체')}</small></td>${cell(r, 5)}${cell(r, 20)}${cell(r, 60)}</tr>`).join('')}</table></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
       <p class="note">수집 상태 · 거래소 시장경보: ${j.warn ? `${j.warn.n}종목${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''} · ${esc(rel(j.warn.at))}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
   }
+  // 종목 검색 → 그 종목을 정기 분석과 똑같이 바로 분석 (랭킹에 없어도)
+  function bindMpSearch() {
+    const input = $('#mpQ'), list = $('#mpQList'); if (!input) return;
+    let timer = null, seq = 0;
+    input.addEventListener('input', () => {
+      const q = input.value.trim(); clearTimeout(timer);
+      if (!q) { list.hidden = true; return; }
+      const my = ++seq;
+      timer = setTimeout(async () => {
+        let items = [];
+        try { items = ((await getJSON(`/api/search?v=2&q=${encodeURIComponent(q)}`, {})).items || []).filter((x) => x.market === 'KR' && /^\d{6}$/.test(x.ticker)); } catch {}
+        if (my !== seq) return;
+        if (/^\d{6}$/.test(q) && !items.some((x) => x.ticker === q)) items.unshift({ ticker: q, name: q });
+        list.innerHTML = items.length ? items.slice(0, 8).map((x) => `<button data-mp-look="${esc(x.ticker)}" data-mp-nm="${esc(x.name)}">${logoHTML('KR', x.ticker, x.name, 'sm')}<b>${esc(x.name)}</b> <small class="muted">${esc(x.ticker)}</small></button>`).join('') : '<p class="muted sm">국내 종목을 찾지 못했어요</p>';
+        list.hidden = false;
+      }, 250);
+    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const b = list.querySelector('[data-mp-look]'); if (b) b.click(); } else if (e.key === 'Escape') list.hidden = true; });
+  }
+  async function lookStock(code, name, refresh = false) {
+    const box = $('#mpLook'); if (!box) return;
+    const my = (S.mpLookSeq = (S.mpLookSeq || 0) + 1);
+    box.innerHTML = `<div class="mp-lookcard"><div class="loading"><span class="spin"></span>${esc(name || code)} 분석 중… 공시 180일 · 일봉 · 공시 원문 가격 · AI까지 정기 분석과 같은 순서로 확인해요 (최대 1~2분)</div></div>`;
+    let j; try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=look&code=${code}&name=${encodeURIComponent(name || '')}${refresh ? '&refresh=1' : ''}`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    if (my !== S.mpLookSeq || !$('#mpLook')) return;
+    if (!j.ok || !j.prof) { box.innerHTML = `<div class="mp-lookcard"><p class="err">분석하지 못했어요: ${esc(j.error || '결과 없음')}</p><button class="btn sm" data-mp-look-close>닫기</button></div>`; return; }
+    const x = j.prof, d = x.dir || {}, a = x.ai && !x.ai.error ? x.ai : null;
+    const DB = { up: '<span class="mp-dirb up">📈 상승 가능성</span>', down: '<span class="mp-dirb down">📉 하락 위험</span>' };
+    const lowNote = x.score < 4 && !j.inRank ? '<p class="note">종합 점수가 4점 미만이라 작전 패턴 신호가 적은 종목이에요 (랭킹에는 안 올리고 종목 카드만 저장).</p>' : '';
+    box.innerHTML = `<div class="mp-lookcard"><div class="mp-row open">
+      <div class="mp-top"><span class="f-rk">🔍</span><button class="ca-co" data-open-co="KR|${esc(x.code)}|${esc(x.name)}">${logoHTML('KR', x.code, x.name, 'sm')}<span><b>${esc(x.name)}</b><small>${esc(x.code)}${x.mkt === 'P' ? ' · 코스피' : x.mkt === 'Q' ? ' · 코스닥' : ''} · ${esc(rel(x.at))} 분석${j.cached && !j.keptOld ? ' (3시간 안에 분석한 결과 · 다시 분석 가능)' : ''}${j.inRank ? ' · 랭킹 포함' : ''}</small></span></button>
+        <span class="mp-px">${x.close != null ? fmtInt(x.close) + '원' : '—'}<small class="${dirCls(x.pct)}">${x.pct != null ? fmtPct(x.pct) : ''}</small></span>
+        <span class="mp-stage ${MP_ST[x.stage] || 'watch'}">${esc(x.stage || '')}${a?.level ? `<small>의심 ${esc(a.level)}</small>` : ''}</span>
+        <span class="mp-score"><b>${x.score}</b><small>종합 점수</small></span></div>
+      <div class="mp-dirl">${DB[d.dir] || '<span class="mp-dirb">분류 없음</span>'} <small class="muted">상승 근거 ${d.upS || 0}/10점 · 하락 근거 ${d.downS || 0}/10점</small></div>
+      ${a?.summary ? `<p class="mp-sum">🤖 ${esc(a.summary)}</p>` : x.ai?.error ? `<p class="muted sm">AI 분석 실패: ${esc(x.ai.error)}</p>` : ''}
+      ${j.noBars && !j.keptOld ? '<p class="err sm">일봉(거래량·가격) 데이터를 받지 못해 공시만으로 판단했어요. 잠시 뒤 다시 분석해 보세요.</p>' : ''}${j.aiErr ? `<p class="muted sm">AI: ${esc(j.aiErr)}</p>` : ''}${lowNote}<div class="chips" style="margin:.4rem 0"><button class="btn sm" data-mp-look="${esc(x.code)}" data-mp-nm="${esc(x.name)}" data-mp-refresh="1">지금 다시 분석</button><button class="btn sm" data-mp-look-close>닫기</button>${j.aiLeft != null ? `<small class="muted">오늘 검색 AI 분석 남은 횟수 ${j.aiLeft}회</small>` : ''}</div>
+      <div class="mp-more">${mpDetail(x)}</div></div></div>`;
+  }
   async function openRankRow(row) {
     const m = row.querySelector('.mp-more'); if (!m) return;
     if (!m.hidden) { m.hidden = true; row.classList.remove('open'); return; }
@@ -3351,6 +3393,9 @@
     m.innerHTML = j?.prof ? mpDetail(j.prof) : `<p class="muted sm">${esc(j?.error || '상세 기록이 없어요')}</p>`;
   }
   document.addEventListener('click', (e) => {
+    const lb = e.target.closest('[data-mp-look]'); if (lb) { const l = $('#mpQList'); if (l) l.hidden = true; lookStock(lb.dataset.mpLook, lb.dataset.mpNm, lb.dataset.mpRefresh === '1'); return; }
+    if (e.target.closest('[data-mp-look-close]')) { const b = $('#mpLook'); if (b) b.innerHTML = ''; return; }
+    if (!e.target.closest('.mp-search')) { const l = $('#mpQList'); if (l) l.hidden = true; }
     if (e.target.closest('[data-mp-rank-refresh]')) { loadRank(); return; }
     const kb = e.target.closest('[data-rk-kind]'); if (kb) { S.rkKind = kb.dataset.rkKind; loadRank(); return; }
     const row = e.target.closest('.mp-rk');
