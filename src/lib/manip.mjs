@@ -945,6 +945,25 @@ export function postExitOf(x, now = Date.now()) {
 // ───── ✅ 성공 가능성 체크리스트 (규칙 계산 · AI 아님) ─────
 //  ok: true 충족 · false 미충족 · null 자료 없음(계산에서 뺌)
 //  x.ck: 바깥 자료(manipck.mjs enrich) — 최대주주 지분·감사의견·자본잠식·신용잔고·거래원·뉴스/종토방·업종 강세·시장 흐름·같은 세력 다른 종목
+// 체크리스트 항목별 중요도 (기본값) — 성적표가 쌓이면 실제로 잘 맞은 항목 쪽으로 자동 조정(CK_LEARN)
+export const CK_W = { money: 3, cost: 2, acc: 2, unlock: 1.5, rr: 1.5, small: 1, float: 1, story: 0.5, theme: 0.5, insider: 0.5, broker: 0.5, buzz: 0.5 };
+export const CK_BOMB = ['fail', 'health', 'penalty', 'pledge', 'insell']; // 하나라도 걸리면 D등급
+const CK_RW = { drain: 1, party: 1, exited: 1, credit: 0.5, warn: 0.5 };
+export const CK_KO = { money: '세력 자금 실제 투입', cost: '평단 근처', acc: '매집 흔적', unlock: '물량 해제 2~3개월 전', rr: '손익비 2↑', small: '소형주', float: '최대주주 지분 40%↑', story: '사업목적 추가', theme: '업종·테마 강세', insider: '내부자 매수', broker: '창구 쏠림', buzz: '기사·종토방 증가' };
+let CK_LEARN = null; // { w: {항목: 배율}, n: 표본 수 }
+export function setCkLearn(v) { CK_LEARN = v && v.w && Object.keys(v.w).length ? v : null; }
+// 성적표(20거래일 결과)로 항목별 배율 계산: 충족 종목 승률 − 미충족 종목 승률(%p) → 1 + 차이/20 (0.3~2배), 양쪽 다 30건 이상일 때만
+export function learnCk(map) {
+  if (!map) return null;
+  const w = {}; let n = 0;
+  for (const k of Object.keys(CK_W)) {
+    const g1 = map[`ck:${k}:1`], g0 = map[`ck:${k}:0`];
+    if (!(g1?.n20 >= 30 && g0?.n20 >= 30)) continue;
+    w[k] = Math.round(Math.max(0.3, Math.min(2, 1 + (g1.win20 - g0.win20) / 20)) * 100) / 100;
+    n = Math.max(n, g1.n20 + g0.n20);
+  }
+  return Object.keys(w).length ? { w, n } : null;
+}
 export function checklistOf(x, now = Date.now()) {
   const f = x.f || {}, ev = x.events || [], px = x.px || [], ck = x.ck || {};
   const d = x.dir || direction(x, now);
@@ -1022,10 +1041,22 @@ export function checklistOf(x, now = Date.now()) {
   const mkt = R.find((i) => i.k === 'market'); if (mkt) mkt.common = true;
   const known = P.filter((i) => i.ok != null), np = known.filter((i) => i.ok).length, nr = R.filter((i) => i.ok === true && !i.common).length;
   const ratio = known.length ? np / known.length : 0;
+  // ── 중요도(가중치) 점수 ──
+  for (const i of P) { const base = CK_W[i.k] ?? 0.5, m = CK_LEARN?.w?.[i.k]; i.w = Math.round(base * (m ?? 1) * 100) / 100; if (m != null) i.wl = m; }
+  for (const i of R) { i.bomb = CK_BOMB.includes(i.k); i.w = i.bomb ? null : CK_RW[i.k] ?? 0.5; }
+  const kw = known.reduce((a, i) => a + i.w, 0), okw = known.filter((i) => i.ok).reduce((a, i) => a + i.w, 0);
+  const ws = kw ? Math.round((okw / kw) * 100) : 0;
+  const bombs = R.filter((i) => i.ok === true && i.bomb);
+  const minor = R.filter((i) => i.ok === true && !i.bomb && !i.common).reduce((a, i) => a + i.w, 0);
+  const okK = (k) => P.find((i) => i.k === k)?.ok === true;
+  // 등급(가중치): D = 폭탄 신호 1개↑ 또는 작은 위험 합 2.5↑ · A = 점수 65↑ + 자금 투입·평단 근처 둘 다 ✓ + 작은 위험 0
+  //  B = 점수 45↑ + (자금 투입 또는 매집 흔적 ✓) + 작은 위험 1 이하 · C = 그 밖 · 확인된 자료의 중요도 합이 4 미만이면 C(자료 부족)
+  const gradeW = bombs.length || minor >= 2.5 ? 'D' : kw < 4 ? 'C' : ws >= 65 && okK('money') && okK('cost') && minor === 0 ? 'A' : ws >= 45 && (okK('money') || okK('acc')) && minor <= 1 ? 'B' : 'C';
+  const missing = P.filter((i) => i.ok == null).map((i) => i.k).concat(R.filter((i) => i.ok == null).map((i) => i.k));
   // 등급: 자료가 있는 조건 중 충족 비율 + 종목 위험 신호 개수 (조건 수가 아니라 비율이라, 자료가 덜 모인 종목도 공정하게)
   //  A 충족 60%↑(4개↑)·위험 0 · B 충족 40%↑(3개↑)·위험 1개 이하 · C 그 밖 · D 위험 3개↑ · 자료가 3개 미만이면 C(자료 부족)
-  const grade = nr >= 3 ? 'D' : known.length < 3 ? 'C' : ratio >= 0.6 && np >= 4 && nr === 0 ? 'A' : ratio >= 0.4 && np >= 3 && nr <= 1 ? 'B' : 'C';
-  return { pos: P, red: R, np, nk: known.length, nr, grade, ratio: Math.round(ratio * 100), thin: known.length < 3, mktWeak: !!mkt?.ok };
+  const grade = gradeW;
+  return { pos: P, red: R, np, nk: known.length, nr, grade, ratio: Math.round(ratio * 100), ws, kw: Math.round(kw * 10) / 10, bombs: bombs.map((i) => i.k), minor, thin: kw < 4, mktWeak: !!mkt?.ok, learned: CK_LEARN ? { n: CK_LEARN.n, k: Object.keys(CK_LEARN.w).length } : null, nMiss: missing.length, v: 2 };
 }
 
 // ───── AI 분석 (사실 번호 인용 강제 + 자동 검증: 확인 안 되는 문장·숫자는 버림) ─────
@@ -1097,6 +1128,7 @@ const AI_TOP = 15;
 /** 크론(3분마다) — 한 번에 한 단계씩 */
 export async function manipWatch({ force = false } = {}) {
   const now = Date.now(), z = kst(now);
+  try { await perfSum(); } catch {}
   let st;
   try { st = (await getJSONStrict('mp/state')) || {}; } catch (e) { return { err: '상태 읽기 실패: ' + e.message }; } // 읽기 오류를 '처음 실행'으로 착각하지 않게
   if ((st.busyUntil || 0) > now) return { busy: true }; // 이전 실행이 아직 도는 중 (겹쳐 돌면 같은 일을 두 번 함)
@@ -1427,6 +1459,7 @@ async function perfSum() {
   if (!c || Date.now() - c.at > 6 * 3600e3) {
     try { const { perfSummary } = await import('./manipx.mjs'); const s = await perfSummary(); c = { at: Date.now(), map: Object.fromEntries(s.groups.map((g) => [g.g, g])) }; await setJSON('mp/perfsum', c).catch(() => {}); } catch { c = c || null; }
   }
+  setCkLearn(learnCk(c?.map));
   return c;
 }
 export async function manipRank(kind = 'all') {
@@ -1563,6 +1596,7 @@ export async function migrateProf(code, reason = '새 계산 방식으로 자동
   return x;
 }
 export async function manipProfile(code) {
+  try { await perfSum(); } catch {} // 성적표로 조정된 체크리스트 중요도 불러오기
   let p = await getJSON(`mp/prof/${code}`);
   // 예전에 숨겨 버린 AI 문장 복원: 날짜별 기록(mp/day)에 남은 원래 AI 해석을 찾아 '참고용'으로 다시 붙임
   if (p?.ai?.stale && !p.ai.fromDay) {
@@ -1582,6 +1616,18 @@ export async function manipProfile(code) {
   if (p && migrated) p.migrated = true;
   if (p) {
     p.hist = ((await getJSON(`mp/hist/${code}`)) || []).slice(0, 30);
+    // 체크리스트 '?'(자료 없음)가 많으면 지금 바로 바깥 자료(지분·감사의견·신용·뉴스·거래원·테마)를 받아 채움 (종목당 6시간에 한 번)
+    try {
+      const ck = p.ck || {};
+      const gaps = [ck.major?.pct == null, !ck.audit && ck.cap?.imp == null, ck.credit?.rate == null, !ck.theme, !ck.broker?.n, ck.mkt20 == null].filter(Boolean).length;
+      if (gaps >= 2 && Date.now() - (p.ckTry || 0) > 6 * 3600e3) {
+        const { enrich } = await import('./manipck.mjs');
+        await Promise.race([enrich(p, { broker: true }), new Promise((r) => setTimeout(r, 25000))]);
+        p.ckTry = Date.now();
+        p.ckFilled = true;
+        await setJSON(`mp/prof/${code}`, { ...p, hist: undefined, migrated: undefined, ckFilled: undefined }).catch(() => {});
+      }
+    } catch (e) { console.warn('체크리스트 자료 채우기 실패', e.message); }
     // 그래도 예전 카드면(일봉 못 받음) 저장된 자료로 손익비·사다리·체크리스트만 다시 계산 (상승/하락 분류는 저장된 값 유지)
     try {
       const d2 = direction(p);
@@ -1684,6 +1730,7 @@ export async function manipLookup(code, { name = null, refresh = false } = {}) {
 }
 const AI_INCR_DAY = 30;
 export async function manipIncr() {
+  try { await perfSum(); } catch {}
   const now = Date.now(), z = kst(now);
   if (z.m < 7 * 60 || z.m > 23 * 60) return null;
   let st, iq;

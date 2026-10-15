@@ -2206,3 +2206,5 @@ button.br-mv:hover { border-color: var(--accent); }
 .pk-sep { list-style: none; margin: 1rem 0 .4rem; font-size: .82rem; color: var(--muted); font-weight: 700; border-top: 1px dashed var(--line2); padding-top: .6rem; }
 .mp-rk.pk-near { opacity: .85; }
 .pk-none { margin: .6rem 0; padding: .6rem .8rem; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line2); font-size: .88rem; }
+.ck-w { display: inline-block; font-size: .64rem; font-weight: 800; padding: .02rem .32rem; border-radius: 5px; margin-right: .15rem; background: rgba(255,255,255,.07); color: var(--muted); vertical-align: 1px; }
+.ck-w.hi { background: rgba(255,90,106,.16); color: #ff8a96; } .ck-w.md { background: rgba(255,196,0,.13); color: #fcd34d; } .ck-w.bomb { background: rgba(248,113,113,.2); color: #fca5a5; }

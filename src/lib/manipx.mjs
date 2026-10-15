@@ -39,7 +39,7 @@ export async function perfWatch(max = 20) {
       if (!row) {
         row = { st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null };
         // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
-        try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; } catch {}
+        try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
       }
       if (H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
       // 아직 다음 기간(5·20·60거래일)이 안 지났으면 받지 않음 (같은 종목만 계속 받느라 다른 종목·날짜가 밀리던 문제)
@@ -88,6 +88,7 @@ export async function perfSummary() {
       if (row.pk != null) add('매매 후보 조건:' + (row.pk ? '충족' : '미충족'), row);
       if (row.pexl) add('털기 후 상승:' + row.pexl, row);
       if (row.cm != null) add('매집봉:' + (row.cm > 0 ? '있음' : '없음'), row);
+      for (const [k, v] of Object.entries(row.ckv || {})) add(`ck:${k}:${v}`, row); // 체크리스트 항목별 (중요도 자동 조정용)
     }
   }
   const out = Object.entries(groups).map(([g, o]) => {

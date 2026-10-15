@@ -227,7 +227,7 @@ export async function watchCodes(max = 80) {
 }
 
 // ───── 종목 하나 바깥 자료 붙이기 ─────
-export async function enrich(x, { fresh = false, ix = null } = {}) {
+export async function enrich(x, { fresh = false, ix = null, broker = false } = {}) {
   const code = x.code, now = Date.now();
   const ck = { at: now, err: {} };
   // DART (5일 보관)
@@ -254,7 +254,7 @@ export async function enrich(x, { fresh = false, ix = null } = {}) {
   else if (bz) ck.err.buzz = [bz.newsErr, bz.boardErr].filter(Boolean).join(' / ').slice(0, 80) || '자료 없음';
   // 거래원 기록 요약 (검색 때 기록이 없으면 지금 한 번 받아 봄)
   let bh = (await getJSON(`mp/br/${code}`)) || [];
-  if (!bh.length && fresh) {
+  if (!bh.length && (fresh || broker)) {
     try { const b = await brokerOf(code); bh = [{ d: kst().date, ...b }]; await setJSON(`mp/br/${code}`, bh); } catch (e) { ck.err.broker = String(e.message).slice(0, 60); }
   }
   ck.broker = brokerSum(bh);
