@@ -3249,7 +3249,7 @@
     if (!j.ok) { $('#mpBody').innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
     S.mp = j;
     const doc = j.doc, st = j.state || {};
-    const PH = { snap: '전 종목 시세 받는 중', events: '공시 패턴 찾는 중', bars: `일봉 분석 중 (${st.bars || ''})`, docs: '공시 원문에서 가격 확인 중', extra: '체크리스트 자료 수집 중', ai: 'AI 분석 중', done: '완료' };
+    const PH = { snap: '전 종목 시세 받는 중', events: '공시 패턴 찾는 중', bars: `일봉 분석 중 (${st.bars || ''})`, docs: '공시 원문에서 가격 확인 중', extra: '체크리스트 자료 수집 중', recheck: '랭킹 종목 일봉 재확인 중', ai: 'AI 분석 중', done: '완료' };
     const status = st.phase && st.phase !== 'done' && st.date ? `<span class="mp-run"><span class="spin"></span>${esc(st.date)} ${esc(PH[st.phase] || st.phase)}</span>` : '';
     const dates = `<div class="chips vn-tabs">${(j.idx || []).slice(0, 20).map((x) => `<button class="${x === j.date ? 'on' : ''}" data-mp-date="${esc(x)}">${esc(md(x))}</button>`).join('')}${(j.idx || []).length > 20 ? `<select id="mpOld"><option value="">이전 날짜…</option>${j.idx.slice(20).map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select>` : ''}</div>`;
     const btns = `<div class="chips" style="margin:.5rem 0"><button class="btn sm" data-mp-run>오늘 분석 지금 시작</button><button class="btn sm" data-mp-date="${esc(j.date || '')}">새로고침</button>${status}</div>`;
@@ -3295,7 +3295,7 @@
     }
     S.mpRank = j.list || [];
     const st = j.state || {};
-    const PH = { snap: '전 종목 시세 받는 중', events: '공시 패턴 찾는 중', bars: `일봉 분석 중 (${st.bars || ''})`, docs: '공시 원문에서 가격 확인 중', extra: '체크리스트 자료 수집 중', ai: 'AI 분석 중' };
+    const PH = { snap: '전 종목 시세 받는 중', events: '공시 패턴 찾는 중', bars: `일봉 분석 중 (${st.bars || ''})`, docs: '공시 원문에서 가격 확인 중', extra: '체크리스트 자료 수집 중', recheck: '랭킹 종목 일봉 재확인 중', ai: 'AI 분석 중' };
     const status = st.phase && st.phase !== 'done' ? `<span class="mp-run"><span class="spin"></span>${esc(st.date || '')} 정기 분석: ${esc(PH[st.phase] || st.phase)}</span>` : `<span class="muted sm">다음 정기 분석: 거래일 15:50 · 장중 새 공시 자동 반영${st.incrQ ? ` (대기 ${st.incrQ}종목)` : ''}</span>`;
     const won = (v) => (v == null ? '—' : `${fmtInt(v)}원`);
     const DIRB = { up: '<span class="mp-dirb up">📈 상승 가능성</span>', down: '<span class="mp-dirb down">📉 하락 위험</span>' };
@@ -3322,7 +3322,7 @@
       <li><b>판 깔기</b>: 최대주주 변경·투자조합 3자배정 증자·CB 발행·사업목적 추가처럼 '준비' 공시가 나왔지만 주가는 아직 크게 안 움직인 상태</li>
       <li><b>매집</b>: 주가는 박스권인데 거래량이 늘고, 오를 때 거래가 많고 내릴 때 적은 흐름 (조용히 사 모으는 모습)</li>
       <li><b>띄우기</b>: 거래량 폭증과 함께 급등 (테마·공급계약·MOU 공시가 같이 나오는 경우가 많음)</li>
-      <li><b>엑시트 후</b>: 최근 약 300거래일(1년 2개월) 안에 저점 대비 +80% 이상 급등했다가 지금은 고점 대비 −45% 이하로 빠진 종목 (이미 한 번 해먹고 나간 흔적). 고점 뒤 새 CB·3자배정·최대주주 변경 공시가 나오면 '판 깔기'(2차)로 바뀜. 매집 평단은 급등 시작 전 구간으로만 계산</li>
+      <li><b>엑시트 후</b>: 최근 약 300거래일(1년 2개월) 안에 저점 대비 +80% 이상 급등했다가 지금은 고점 대비 −45% 이하로 빠진 종목 (이미 한 번 해먹고 나간 흔적). 고점 뒤 새 CB·3자배정·최대주주 변경 공시가 나오면 '판 깔기'(2차), 고점 뒤 바닥을 40거래일 넘게 안 깨고 박스(폭 35% 미만)에서 매집 모양이 나오면 '매집'(2차)으로 바뀜 — 랭킹 종목은 공시가 없어도 매일 일봉으로 다시 확인, 바뀌면 관리자 텔레그램 '🔁 재매집 의심' 알림. 매집 평단은 급등 시작 전 구간으로만 계산</li>
       <li><b>🕯 매집봉 흔적</b>: 박스권에서 거래량이 평소 4배 넘게 실린 +6%↑ 양봉(매집봉), 거래량 실린 긴 윗꼬리, 거래량 실렸는데 안 빠진 음봉, 그 뒤 거래량 마름, 종가 관리 의심. 그날·전날 공시가 있거나 시장 전체가 ±2.5% 움직인 날은 빼고, 그 뒤 20거래일 안에 봉의 저점을 깨면 무효. 최대 +4점</li>
       <li><b>털기</b>: 급등 뒤 CB 전환청구·추가 상장·최대주주 지분 변동·고점 이탈 등 '물량을 파는' 신호</li>
       <li><b>의심 높음/중간/낮음</b>: AI가 여러 근거가 위 흐름과 얼마나 잘 맞는다고 봤는지 (불법이라는 뜻 아님)</li>
@@ -3477,7 +3477,7 @@
       ${x.ck?.broker?.last ? `<details class="mp-facts"><summary>최근 거래원 (${esc(x.ck.broker.last.d || '')} · 기록 ${x.ck.broker.n}일)</summary><p class="sm">매수 상위: ${(x.ck.broker.last.buy || []).map((b) => `${esc(b.nm)} ${fmtInt(b.v)}`).join(' · ')}<br>매도 상위: ${(x.ck.broker.last.sell || []).map((b) => `${esc(b.nm)} ${fmtInt(b.v)}`).join(' · ')}</p>${x.ck.broker.list?.length ? `<p class="muted sm">최근 매수 상위 등장 일수: ${x.ck.broker.list.map((b) => `${esc(b.nm)} ${b.days}일`).join(' · ')}</p>` : ''}</details>` : ''}</div>` : '<div class="mp-ck"><h5>✅ 성공 가능성 체크리스트</h5><p class="muted sm">이전 방식으로 분석된 기록이에요 — 다음 분석(또는 지금 다시 분석) 때 채워져요</p></div>';
     const wf = f.wf ? `<div class="mp-wf"><b>🚨 시장경보(투자경고 지정예고) 근사 계산</b> ${f.wf.items.map((w) => `<span>${esc(w.lbl)}: 오늘까지 ${w.now != null ? (w.now > 0 ? '+' : '') + w.now + '%' : '-'} · 내일 종가 ${fmtInt(w.need)}원(${w.pct > 0 ? '+' : ''}${w.pct}%)↑이면 요건</span>`).join('')}<br><small class="muted">거래소 기준(3일 +100% · 5일 +60% · 15일 +100%, 최근 15일 최고가 등)으로 근사 계산 — 정확한 지정 여부는 거래소 공시로 확인${f.wf.hi15 ? ' · 오늘 종가가 최근 15일 최고' : ''}</small></div>` : '';
     const myBtn = `<div class="mp-myadd" data-mp-myform="${esc(x.code)}" data-nm="${esc(x.name)}" data-e="${x.close || ''}" data-s="${x.dir?.rr?.s || ''}" data-t="${x.dir?.rr?.t || ''}"><button class="btn sm" data-mp-myopen>⭐ 내 세력주에 추가 (매매 기록)</button></div>`;
-    const cycLine = f.cyc ? `<div class="mp-cyc"><b>🔁 지난 급등·급락</b> ${esc(f.cyc.lowD)} 저점 <b>${fmtInt(f.cyc.low)}원</b> → ${esc(f.cyc.pumpD)} 급등 시작 → ${esc(f.cyc.topD)} 고점 <b>${fmtInt(f.cyc.top)}원</b> (+${f.cyc.rise}%) → 지금 고점 대비 <b class="down">${f.cyc.drop}%</b>${f.cyc.vwapPump ? ` · 급등 구간 평균 체결가 ${fmtInt(f.cyc.vwapPump)}원` : ''}<br><small class="muted">${f.acc2 ? '고점에서 120거래일 넘게 지나, 아래 매집 시기·평단은 고점 뒤 구간(2차 매집 후보)으로 계산했어요' : `매집 평단은 급등 시작 전 거래로만 계산해요${f.accBeyond ? ' — 급등 시작이 차트 자료(약 1년 2개월) 맨 앞이라 그 전 매집 구간은 계산할 수 없음' : ''}`}</small></div>` : '';
+    const cycLine = f.cyc ? `<div class="mp-cyc"><b>🔁 지난 급등·급락</b> ${esc(f.cyc.lowD)} 저점 <b>${fmtInt(f.cyc.low)}원</b> → ${esc(f.cyc.pumpD)} 급등 시작 → ${esc(f.cyc.topD)} 고점 <b>${fmtInt(f.cyc.top)}원</b> (+${f.cyc.rise}%) → 지금 고점 대비 <b class="down">${f.cyc.drop}%</b>${f.cyc.vwapPump ? ` · 급등 구간 평균 체결가 ${fmtInt(f.cyc.vwapPump)}원` : ''}${f.cyc.base2 ? `<br><b>🔁 고점 뒤 바닥</b> ${esc(f.cyc.base2.lowD)} <b>${fmtInt(f.cyc.base2.low)}원</b> — ${f.cyc.base2.held}거래일째 안 깨짐 · 최근 40일 박스 폭 ${f.cyc.base2.box}% (2차 매집 후보 조건)` : ''}<br><small class="muted">${f.acc2 ? '고점에서 120거래일 넘게 지나, 아래 매집 시기·평단은 고점 뒤 구간(2차 매집 후보)으로 계산했어요' : `매집 평단은 급등 시작 전 거래로만 계산해요${f.accBeyond ? ' — 급등 시작이 차트 자료(약 1년 2개월) 맨 앞이라 그 전 매집 구간은 계산할 수 없음' : ''}`}</small></div>` : '';
     const MK = { acc: '매집봉', wick: '윗꼬리 매물 테스트', absorb: '물량 받아먹는 음봉', dry: '거래량 마름', close: '종가 관리 의심', up30: '상한가', dn30: '하한가' };
     const MKD = { acc: '평소 4배↑ 거래량으로 +6%↑ 오른 양봉 (박스권에서)', wick: '거래량 실린 긴 윗꼬리 — 위쪽 매물을 시험', absorb: '거래량 실린 음봉인데 주가는 거의 안 빠짐 — 파는 물량을 받아먹음', dry: '물량을 모은 뒤 거래가 마르는 모습', close: '종가가 일정하게 맞춰지는 모습', up30: '참고용 (점수 없음)', dn30: '참고용 (점수 없음)' };
     const marks = (f.marks || []).slice().reverse();
