@@ -160,8 +160,91 @@ async function kindWarn(menu) {
   }
   return out;
 }
-/** 크론(하루 2번): code → { lv, name, date } (최근 30일 지정) */
+// 거래소 KIND가 서버 접속을 막아(HTTP 403) → 한국투자증권(KIS) 현재가 조회의 종목 상태로 대신 확인
+//  · 시장경고(투자주의·경고·위험) · 관리종목 · 투자유의 · 거래정지 · 업종명
+//  · 랭킹·내 세력주 종목을 거래일 아침(8시 이후) 한 번, 3분에 20종목씩 확인 · 업종이 비어 있는 종목도 조금씩 채움
+const KIS_LV = { '01': [1, '투자주의'], '02': [2, '투자경고'], '03': [3, '투자위험'] };
+export function kisStatus(o = {}) {
+  const st = String(o.iscd_stat_cls_code || '');
+  const warn = KIS_LV[String(o.mrkt_warn_cls_code || '').padStart(2, '0')] || (st === '52' ? [3, '투자위험'] : st === '53' ? [2, '투자경고'] : st === '54' ? [1, '투자주의'] : null);
+  const mg = o.mang_issu_cls_code === 'Y' || st === '51';
+  const halt = o.temp_stop_yn === 'Y' || st === '58' || o.sltr_yn === 'Y';
+  const caution = o.invt_caful_yn === 'Y';
+  const lv = warn ? warn[1] : mg ? '관리종목' : caution ? '투자유의' : null;
+  const m = warn ? warn[0] : mg ? 2 : caution ? 1 : 0;
+  return { lv, m, mg, halt, caution, sector: o.bstp_kor_isnm || null };
+}
+export async function kisWarnWatch(per = 20) {
+  const { hasKis, kisGet } = await import('./kis.mjs');
+  if (!hasKis()) return null;
+  const now = Date.now(), k = new Date(now + 9 * 3600e3), today = kstDate(now), hm = k.getUTCHours() * 60 + k.getUTCMinutes();
+  const st = (await getJSON('mp/warn')) || {};
+  const sc = st.scan || {};
+  const done = sc.date === today && sc.pos >= (sc.q || []).length;
+  // 새 거래일 아침 8시 이후(또는 아직 한 번도 안 했으면) 확인 목록을 새로 만듦
+  if (sc.date !== today && (hm >= 8 * 60 || !sc.date)) {
+    const { isTradingDay } = await import('./schedule.mjs').catch(() => ({}));
+    if (!isTradingDay || isTradingDay('KR', today) || !sc.date) {
+      const rank = (await getJSON('mp/rank')) || {};
+      const my = ((await getJSON('mp/my'))?.items || []).filter((i) => !i.closed).map((i) => i.code);
+      const q = [...new Set([...my, ...Object.entries(rank).filter(([, r]) => now - (r.up || 0) < 45 * DAY).sort((a, b) => (b[1].s || 0) - (a[1].s || 0)).map(([c]) => c)])].slice(0, 300);
+      st.scan = { date: today, q, pos: 0, map: {}, err: 0, at: now };
+      await setJSON('mp/warn', st);
+      return { start: q.length };
+    }
+  }
+  if (sc.date === today && !done) {
+    const part = sc.q.slice(sc.pos, sc.pos + per);
+    const secFill = {};
+    for (const code of part) {
+      try {
+        const o = (await kisGet('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code })).output || {};
+        const x = kisStatus(o);
+        if (x.lv || x.halt) sc.map[code] = { m: x.m, lv: x.lv || '거래정지', date: today, mg: x.mg || undefined, halt: x.halt || undefined, src: 'KIS' };
+        if (x.sector) secFill[code] = x.sector;
+      } catch { sc.err = (sc.err || 0) + 1; }
+    }
+    sc.pos += part.length;
+    if (Object.keys(secFill).length) await fillSectors(secFill);
+    if (sc.pos >= sc.q.length) {
+      // 다 확인했으면 이번 결과로 교체 (확인 실패가 너무 많으면 이전 결과 유지)
+      const ok = sc.err < sc.q.length * 0.5;
+      st.map = ok ? sc.map : st.map || {};
+      st.at = now; st.n = Object.keys(st.map).length; st.src = 'KIS';
+      st.err = ok ? (sc.err ? `KIS 조회 실패 ${sc.err}종목` : null) : `KIS 조회 실패 ${sc.err}/${sc.q.length} — 이전 결과 유지`;
+    }
+    st.scan = sc;
+    await setJSON('mp/warn', st);
+    return { pos: sc.pos, of: sc.q.length, flagged: Object.keys(sc.map).length };
+  }
+  // 오늘 확인을 끝냈으면 업종이 비어 있는 종목을 조금씩 채움 (전 종목 시세 목록 기준)
+  return fillMissingSectors(kisGet, per);
+}
+async function fillSectors(add) {
+  const cur = (await getJSON('sectors/krfill')) || {};
+  let n = 0; for (const [c, v] of Object.entries(add)) if (v && cur[c] !== v) { cur[c] = v; n++; }
+  if (n) await setJSON('sectors/krfill', cur).catch(() => {});
+}
+async function fillMissingSectors(kisGet, per) {
+  const fs = (await getJSON('mp/secfill')) || {};
+  if (Date.now() - (fs.at || 0) < 6 * 60e3) return null; // 6분에 한 번만
+  const idx = (await getJSON('mp/idx')) || [];
+  const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows || {} : {};
+  const { getSectors } = await import('./sectors.mjs');
+  const sec = (await getSectors({ allowFetch: false }))?.kr || {};
+  const miss = Object.keys(snap).filter((c) => !sec[c] && !(fs.bad || []).includes(c)).slice(0, per);
+  if (!miss.length) { await setJSON('mp/secfill', { ...fs, at: Date.now(), left: 0 }).catch(() => {}); return null; }
+  const add = {}, bad = [...(fs.bad || [])];
+  for (const code of miss) {
+    try { const o = (await kisGet('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code })).output || {}; if (o.bstp_kor_isnm) add[code] = o.bstp_kor_isnm; else bad.push(code); } catch { bad.push(code); }
+  }
+  await fillSectors(add);
+  await setJSON('mp/secfill', { at: Date.now(), bad: bad.slice(-500), left: Object.keys(snap).filter((c) => !sec[c]).length - Object.keys(add).length }).catch(() => {});
+  return { sectors: Object.keys(add).length };
+}
+/** 크론(하루 2번): code → { lv, name, date } (최근 30일 지정) — KIND (서버 접속이 막히면 KIS 쪽 kisWarnWatch가 대신함) */
 export async function warnWatch(nameToCode = {}) {
+  if (((await getJSON('mp/warn'))?.src) === 'KIS') return null; // KIS로 확인 중이면 막힌 KIND는 다시 부르지 않음
   const st = (await getJSON('mp/warn')) || {};
   if (Date.now() - (st.at || 0) < 6 * 3600e3) return null;
   const map = {};

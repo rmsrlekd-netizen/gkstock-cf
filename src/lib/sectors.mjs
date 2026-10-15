@@ -72,7 +72,21 @@ async function krSectors() {
 
 let mem = null;
 /** { us: {TICKER: '기술 · 반도체'}, kr: {'005930': '통신·방송 장비|휴대폰, 반도체…'} } */
-export async function getSectors({ allowFetch = true } = {}) {
+// KIND 목록에 없는 종목은 KIS에서 받은 업종명(sectors/krfill)으로 채움
+async function withFill(m) {
+  try { const f = (await getJSON('sectors/krfill')) || {}; if (Object.keys(f).length) m = { ...m, kr: { ...f, ...(m.kr || {}) } }; } catch {}
+  return m;
+}
+export async function getSectors(opt = {}) {
+  if (mem && Date.now() - mem.at < 6 * 3600e3 && mem.filled) return mem;
+  const m = await getSectorsRaw(opt);
+  if (!m) return m;
+  const out = await withFill(m);
+  out.filled = true;
+  if (mem === m) mem = out;
+  return out;
+}
+async function getSectorsRaw({ allowFetch = true } = {}) {
   if (mem && Date.now() - mem.at < 6 * 3600e3) return mem;
   const saved = await getJSON('sectors/map');
   if (saved && Date.now() - saved.at < 7 * 86400e3) { mem = saved; return saved; }

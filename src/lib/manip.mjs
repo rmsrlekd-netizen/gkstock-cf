@@ -1434,6 +1434,11 @@ export async function manipRank(kind = 'all') {
   let list = Object.entries(rank).map(([code, r]) => ({ code, ...r }))
     .filter((r) => Date.now() - (r.up || 0) < 45 * DAY); // 45일 넘게 신호가 없던 종목은 랭킹에서만 내림 (카드·기록은 남김)
   list = list.filter((r) => !r.ht && r.st !== '거래정지'); // 거래정지 종목은 랭킹에서 뺌 (카드는 남김)
+  try { // 한국투자증권으로 확인한 지금 상태(시장경보·관리종목·거래정지)를 줄에 바로 반영
+    const wd = (await getJSON('mp/warn')) || {}, wm = wd.map || {};
+    list = list.filter((r) => !wm[r.code]?.halt);
+    if (wd.src === 'KIS') for (const r of list) r.wn = wm[r.code]?.lv || null; // KIS 확인 결과가 기준 (해제된 경보는 지움)
+  } catch {}
   try { // 가장 최근 전 종목 시세 목록(거래정지·ETF 제외)에 없는 종목도 정지·상폐로 보고 뺌
     const d0 = ((await getJSON('mp/idx')) || [])[0];
     const sn = d0 ? await getJSON(`mp/snap/${d0}`) : null;
@@ -1725,7 +1730,8 @@ export async function manipAux() {
   const iq0 = await getJSON('mp/iq').catch(() => null); if ((iq0?.busyUntil || 0) > Date.now()) return null;
   await setJSON('mp/auxlock', { busyUntil: Date.now() + 170e3 }).catch(() => {});
   try {
-    const { warnWatch, perfWatch } = await import('./manipx.mjs');
+    const { warnWatch, perfWatch, kisWarnWatch } = await import('./manipx.mjs');
+    try { const kw = await kisWarnWatch(20); if (kw) out.kisWarn = kw; } catch (e) { out.kisWarnErr = String(e.message || e).slice(0, 80); }
     // 날짜 목록(mp/idx)이 예전 오류로 줄어든 경우 실제 저장된 날짜 기록(mp/day/*)으로 복구 (6시간에 한 번)
     try {
       const ck = (await getJSON('mp/idxck').catch(() => null)) || {};

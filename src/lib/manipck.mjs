@@ -219,8 +219,9 @@ export async function brokerWatch() {
 /** 관심 대상: 매집·판 깔기·상승 가능성·손익비 상위 + 내 관심 목록 */
 export async function watchCodes(max = 80) {
   const rank = (await getJSON('mp/rank')) || {};
+  const wm = (await getJSON('mp/warn'))?.map || {};
   const my = ((await getJSON('mp/my'))?.items || []).filter((i) => !i.closed).map((i) => i.code);
-  const rows = Object.entries(rank).filter(([, r]) => Date.now() - (r.up || 0) < 30 * DAY && (!r.ht && r.st !== '거래정지' && (['매집', '판 깔기'].includes(r.st) || r.d === 'up' || (r.rr?.v ?? 0) >= 2)))
+  const rows = Object.entries(rank).filter(([c, r]) => !wm[c]?.halt && Date.now() - (r.up || 0) < 30 * DAY && (!r.ht && r.st !== '거래정지' && (['매집', '판 깔기'].includes(r.st) || r.d === 'up' || (r.rr?.v ?? 0) >= 2)))
     .sort((a, b) => (b[1].us || 0) - (a[1].us || 0)).map(([c]) => c);
   return [...new Set([...my, ...rows])].slice(0, max);
 }

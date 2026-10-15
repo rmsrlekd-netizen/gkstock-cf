@@ -3494,7 +3494,7 @@
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · +20%↑ ${r['big' + h]}% · −20%↓ ${r['loss' + h]}% · ${r['n' + h]}건</small></td>` : '<td class="muted">아직</td>');
     $('#mpBody').innerHTML = `<p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
       ${g.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분</th><th>5거래일 뒤</th><th>20거래일 뒤</th><th>60거래일 뒤</th></tr>${g.map((r) => `<tr><td class="t"><b>${esc(r.g.replace(/^[^:]+:/, ''))}</b><small>${esc(r.g.includes(':') ? r.g.split(':')[0] : '레이더 전체')}</small></td>${cell(r, 5)}${cell(r, 20)}${cell(r, 60)}</tr>`).join('')}</table></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
-      <p class="note">수집 상태 · 거래소 시장경보: ${j.warn ? `${j.warn.n}종목${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''} · ${esc(rel(j.warn.at))}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
+      <p class="note">수집 상태 · 거래소 시장경보·관리종목·거래정지: ${j.warn ? `${j.warn.at ? `${j.warn.n || 0}종목 · ${esc(rel(j.warn.at))}` : '첫 확인 중'}${j.warn.src === 'KIS' ? ' (한국투자증권 기준)' : ''}${j.warn.scan && j.warn.scan.pos < j.warn.scan.of ? ` · 오늘 확인 ${j.warn.scan.pos}/${j.warn.scan.of}` : ''}${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
   }
   // 종목 검색 → 그 종목을 정기 분석과 똑같이 바로 분석 (랭킹에 없어도)
   function bindMpSearch() {
