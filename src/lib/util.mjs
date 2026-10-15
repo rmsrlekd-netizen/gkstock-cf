@@ -25,11 +25,14 @@ const relayList = (env) => [env.KR_RELAY_URL, env.KR_RELAY_URL2].filter(Boolean)
 const RELAY_BLOCKED = (r) => r && (r.status === 402 || r.status === 429 || r.status === 503 || (r.status >= 500 && r.headers.get('x-vercel-error')));
 async function rawFetch(u, opts, h, ms) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
+  let t = setTimeout(() => ctrl.abort(), ms);
   try {
     const { relay, ...rest } = opts;
-    return await fetch(u, { ...rest, headers: h, signal: ctrl.signal });
-  } finally { clearTimeout(t); }
+    const r = await fetch(u, { ...rest, headers: h, signal: ctrl.signal });
+    // 헤더만 오고 본문이 끝없이 늦게 오는 경우(중계 서버 등)에도 멈추지 않게: 본문은 헤더 도착 뒤 같은 시간 안에 받아야 함
+    clearTimeout(t); t = setTimeout(() => ctrl.abort(), ms);
+    return r;
+  } catch (e) { clearTimeout(t); throw e; }
 }
 export async function fetchWithTimeout(url, opts = {}, ms = 9000) {
   const u = String(url);

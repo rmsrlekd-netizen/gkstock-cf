@@ -84,7 +84,7 @@ async function kr(t, corp) {
         const j = await kisGet('/uapi/domestic-stock/v1/quotations/inquire-investor', 'FHKST01010900', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: t });
         out.investors = (j.output || []).slice(0, 20).map((x) => ({
           date: x.stck_bsop_date, close: num(x.stck_clpr), person: num(x.prsn_ntby_qty), foreign: num(x.frgn_ntby_qty), inst: num(x.orgn_ntby_qty),
-        })).filter((x) => x.date);
+        })).filter((x) => x.date && !(x.person == null && x.foreign == null && x.inst == null)); // 장 시작 전 '오늘' 빈 줄 제외
       } catch (e) { out.errors.investors = e.message; }
       try {
         const j = await kisGet('/uapi/domestic-stock/v1/quotations/daily-short-sale', 'FHPST04830000', { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: t, FID_INPUT_DATE_1: kstYmd(-40), FID_INPUT_DATE_2: kstYmd(0) });

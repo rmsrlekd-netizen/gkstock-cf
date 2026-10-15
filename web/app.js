@@ -15,13 +15,14 @@
   function load(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
   async function getJSON(url, opt) {
-    // 서버가 멈춰도 '불러오는 중'에 영원히 머물지 않게 기본 25초 제한 (따로 정한 제한이 있으면 그걸 씀)
+    // 서버가 멈춰도 '불러오는 중'에 영원히 머물지 않게 기본 45초 제한 (AI 분석 등은 120초, 따로 정한 제한이 있으면 그걸 씀)
     const o = { ...(opt || { cache: 'no-store' }) };
     let tm = null;
-    if (!o.signal && typeof AbortController !== 'undefined') { const ac = new AbortController(); tm = setTimeout(() => ac.abort(), 25000); o.signal = ac.signal; }
+    const lim = /\/api\/(analyze|translate|doc|company|stock|admin)/.test(url) ? 120000 : 45000; // AI 분석·원문 번역은 오래 걸릴 수 있음
+    if (!o.signal && typeof AbortController !== 'undefined') { const ac = new AbortController(); tm = setTimeout(() => ac.abort(), lim); o.signal = ac.signal; }
     let r;
     try { r = await fetch(url, o); }
-    catch (e) { if (e.name === 'AbortError' && tm) throw new Error('서버 응답이 25초 넘게 없어요 — 잠시 뒤 다시 시도해 주세요'); throw e; }
+    catch (e) { if (e.name === 'AbortError' && tm) throw new Error(`서버 응답이 ${lim / 1000}초 넘게 없어요 — 잠시 뒤 다시 시도해 주세요`); throw e; }
     finally { if (tm) clearTimeout(tm); }
     let j = null;
     try { j = await r.json(); } catch {}
@@ -1217,7 +1218,7 @@
       <div class="ib-slots">${slots}${pastSel}</div>
       <div class="ib-grid">${cards}</div>
       ${!full && n > 3 ? `<button class="btn block ib-more" data-iss-open="${esc(ed.id)}">나머지 ${n - 3}개 이슈 모두 보기 →</button>` : ''}
-      ${th ? `<div class="ib-ths"><b>오늘 강세 테마</b>${th}</div>` : ''}
+      ${th ? `<div class="ib-ths"><b>${(ed.themes || []).filter((x) => x.pct != null).slice(0, 6).every((x) => x.pct <= 0) ? '오늘 덜 빠진 테마' : '오늘 강세 테마'}</b>${th}</div>` : ''}
       <div class="ib-foot"><span>${made ? made + ' AI 생성 · ' : ''}뉴스·공시·시세 기반 · 투자 참고용</span><div class="ib-act"><button class="btn sm" data-iss-share="${esc(ed.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>링크 복사</button>${full ? '' : `<button class="btn sm primary" data-iss-open="${esc(ed.id)}">크게 보기</button>`}</div></div>
     </div>`;
   }
@@ -1235,7 +1236,7 @@
       <div class="ibc-top"><span class="ib-slot">${esc(issSlotTxt(ed))}</span><span class="ibc-date">${esc(issDate(ed.date))}${made ? ' · ' + made : ''}</span>${ed.headline ? `<p class="ibc-head">${esc(ed.headline)}</p>` : ''}
         <div class="ibc-act"><button class="btn sm" data-iss-share="${esc(ed.id)}" title="링크 복사"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span>링크 복사</span></button><button class="btn sm primary" data-iss-open="${esc(ed.id)}">크게 보기 →</button></div></div>
       <ol class="ibc-list">${rows}</ol>
-      ${th ? `<div class="ibc-ths"><b>오늘 강세 테마</b><div class="ibc-thl">${th}</div></div>` : ''}
+      ${th ? `<div class="ibc-ths"><b>${(ed.themes || []).filter((x) => x.pct != null).slice(0, 6).every((x) => x.pct <= 0) ? '오늘 덜 빠진 테마' : '오늘 강세 테마'}</b><div class="ibc-thl">${th}</div></div>` : ''}
       <button class="btn block ibc-more" data-iss-open="${esc(ed.id)}">${Math.min(6, ed.issues.length)}개 이슈 자세히 보기 →</button>
     </div>`;
   }
@@ -1619,7 +1620,7 @@
     const right = mk === 'KR'
       ? (x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>오늘 등락</small>` : '') + (x.price ? `<small class="ht-vp">발동가 ${fmtInt(x.price)}원${x.gap != null ? ` <span class="${dirCls(x.gap)}">(${fmtPct(x.gap)})</span>` : ''}</small>` : '')
       : (x.nowPct != null ? `<b class="${dirCls(x.nowPct)}">${fmtPct(x.nowPct)}</b><small>정규장 등락</small>` : '') + (x.price ? `<small class="ht-vp">정지 기준가 $${esc(fmtPx(x.price))}</small>` : x.now != null ? `<small class="ht-vp">$${esc(fmtPx(x.now))}</small>` : '');
-    return `<li class="${x.active ? 'is-on' : ''}" data-open-co="${esc(mk)}|${esc(code)}|${esc(nm)}">${time}<div class="ht-n"><b>${esc(nm)}${x.times > 1 ? ` <em class="ht-times">${x.times}회</em>` : ''}</b><small>${mk === 'KR' ? esc(x.code) : esc(x.ko || x.name || '')}</small>${what}</div><div class="ht-r">${right}</div></li>`;
+    return `<li class="${x.active ? 'is-on' : ''}" data-open-co="${esc(mk)}|${esc(code)}|${esc(nm)}">${time}<div class="ht-n"><b>${esc(nm)}</b><small>${mk === 'KR' ? esc(x.code) : esc(x.ko || x.name || '')}${x.times > 1 ? ` <em class="ht-times">오늘 ${x.times}회</em>` : ''}</small>${what}</div><div class="ht-r">${right}</div></li>`;
   }
   function renderHalts() {
     const mk = S.htMk, d = S.ht[mk];
@@ -2358,7 +2359,10 @@
     const w = d?.wall;
     if (!w || w.none) return '';
     const parts = [];
-    if (w.rec) {
+    // 오래된 자료는 지금 의견처럼 보이지 않게 뺌 (투자의견 9개월·실적 2년 넘은 것)
+    const recOld = w.rec?.period && Date.now() - Date.parse(String(w.rec.period).slice(0, 7) + '-01') > 270 * 864e5;
+    const earnNew = (w.earn || []).filter((x) => !x.y || x.y >= new Date().getFullYear() - 1);
+    if (w.rec && !recOld) {
       const r = w.rec, tot = r.sb + r.b + r.h + r.s + r.ss || 1;
       const buyP = Math.round(((r.sb + r.b) / tot) * 100);
       const pv = r.prev && r.prev.period !== r.period ? r.prev : null;
@@ -2370,9 +2374,9 @@
         <div class="wl-leg">${seg.map(([k, v, l]) => `<span><i class="${k}"></i>${l} ${v}</span>`).join('')}</div>
         <p class="wl-sum">매수 의견 <b class="${buyP >= 60 ? 'up' : buyP < 40 ? 'down' : ''}">${buyP}%</b>${pvP != null ? ` <span class="muted">(${esc(pv.period)} ${pvP}% → ${buyP >= pvP ? (buyP > pvP ? '상향' : '유지') : '하향'})</span>` : ''}</p></div>`);
     }
-    if (w.earn?.length) {
+    if (earnNew.length) {
       const f = (v) => (v == null ? '—' : '$' + Number(v).toFixed(2));
-      parts.push(`<div class="wl-earn"><div class="wl-t"><b>실적 서프라이즈</b><span>주당순이익(EPS) 예상 vs 실제</span></div><table class="tbl"><tr><th>분기</th><th>예상</th><th>실제</th><th>결과</th></tr>${w.earn.map((x) => {
+      parts.push(`<div class="wl-earn"><div class="wl-t"><b>실적 서프라이즈</b><span>주당순이익(EPS) 예상 vs 실제</span></div><table class="tbl"><tr><th>분기</th><th>예상</th><th>실제</th><th>결과</th></tr>${earnNew.map((x) => {
         const beat = x.pct == null || x.act == null ? '' : x.pct > 0.5 ? `<b class="up">상회 ${fmtPct(x.pct)}</b>` : x.pct < -0.5 ? `<b class="down">하회 ${fmtPct(x.pct)}</b>` : '<b>부합</b>';
         return `<tr><td>${x.y ? `${x.y} ${x.q}Q` : esc(x.period)}</td><td class="mono">${f(x.est)}</td><td class="mono">${f(x.act)}</td><td>${beat}</td></tr>`;
       }).join('')}</table></div>`);
@@ -2387,7 +2391,14 @@
     if (!parts.length) return '';
     return `<div class="box wall"><h4>월가 시각 <small>Finnhub · 참고용</small></h4><div class="wl-grid">${parts.join('')}</div></div>`;
   }
-  function metricsHTML(d) {
+  function metricsHTML(d0, n) {
+    // 기업 정보는 서버에 최대 1~2시간 저장돼 가격이 옛날 값일 수 있음 → 지금 시세로 현재가·시가총액·PER·PBR을 다시 맞춤
+    let d = d0;
+    const lq = n?.ticker ? quoteOf(n.market, n.ticker)?.price : null;
+    if (lq && d0.price && Math.abs(lq / d0.price - 1) > 0.001) {
+      const k = lq / d0.price, r0 = d0.ratios || {};
+      d = { ...d0, price: lq, marketCap: d0.marketCap ? d0.marketCap * k : d0.marketCap, ratios: { ...r0, per: r0.per != null ? r0.per * k : r0.per, pbr: r0.pbr != null ? r0.pbr * k : r0.pbr } };
+    }
     const f = d.fin || {}, r = d.ratios || {}, cur = d.currency;
     const yoy = (a, b) => (a !== null && a !== undefined && b ? ((a - b) / Math.abs(b)) * 100 : null);
     const y = (a, b) => { const v = yoy(a, b); return v === null ? '<em>&nbsp;</em>' : `<em class="${dirCls(v)}">전년비 ${fmtPct(v)}</em>`; };
@@ -2427,7 +2438,7 @@
     return `<div class="box"><h4>${esc(d.name || n.name || n.ticker)} <small>${esc(d.products ? '주요 제품: ' + d.products : '')}</small></h4>
       <p class="ov" data-co="${esc(coUrl(n.market, n.ticker, n.corpCode, n.exchange) || '')}">${ov ? esc(ov.length > 600 ? ov.slice(0, 598) + '…' : ov) : '사업 개요 정보를 찾지 못했습니다.'}${!d.overviewKo && d.overviewRaw && d.src === 'US' ? ' <small class="muted">(영문 원문 · 잠시 뒤 한국어로 바뀝니다)</small>' : ''}</p>
       <div class="co-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join('')}${d.homepage ? `<a class="link" href="${esc(d.homepage)}" target="_blank" rel="noopener">홈페이지 ↗</a>` : ''}</div></div>
-      ${metrics ? `<div class="box"><h4>핵심 재무·투자지표</h4>${metricsHTML(d)}</div>${wallHTML(d)}` : ''}
+      ${metrics ? `<div class="box"><h4>핵심 재무·투자지표</h4>${metricsHTML(d, n)}</div>${wallHTML(d)}` : ''}
       ${chart ? `<div class="box"><h4>차트 <small>${n.market === 'KR' ? '네이버 증권 일봉' : 'TradingView'}</small></h4>${chartHTML(n.market, n.ticker, n.exchange)}</div>` : ''}`;
   }
   // 공매도·수급
@@ -2519,7 +2530,7 @@
       const d = coOf(n);
       if (!d) return '<div class="loading"><span class="spin"></span>핵심 재무제표 불러오는 중…</div>';
       if (d.error) return `<p class="err">재무 정보를 불러오지 못했습니다: ${esc(d.error)}</p>`;
-      return metricsHTML(d) + wallHTML(d);
+      return metricsHTML(d, n) + wallHTML(d);
     }
     const d = S.stock.get(stockUrl(n.market, n.ticker, n.corpCode));
     if (!d) return '<div class="loading"><span class="spin"></span>데이터 불러오는 중…</div>';

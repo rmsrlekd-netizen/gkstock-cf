@@ -84,7 +84,9 @@ function fallback(title, sub, lines) {
 const inflight = new Map();
 export function analyzeId(id) {
   if (inflight.has(id)) return inflight.get(id);
-  const p = handle(id).finally(() => setTimeout(() => inflight.delete(id), 1000));
+  // 전체 110초 제한 — 어딘가에서 응답이 멈춰도 같은 공시를 여는 모든 사람이 끝없이 기다리지 않게
+  const guard = new Promise((res) => setTimeout(() => res({ body: { ok: false, error: 'AI 분석이 너무 오래 걸려 멈췄어요 — 잠시 뒤 다시 시도해 주세요' }, opt: { status: 504, cdnSeconds: 10 } }), 110e3));
+  const p = Promise.race([handle(id), guard]).finally(() => setTimeout(() => inflight.delete(id), 1000));
   inflight.set(id, p);
   return p;
 }

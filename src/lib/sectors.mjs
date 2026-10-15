@@ -52,9 +52,12 @@ async function krSectors() {
   const html = decodeText(await r.arrayBuffer(), /utf-?8/i.test(r.headers.get('content-type') || '') ? 'utf-8' : 'euc-kr');
   const rows = html.match(/<tr[\s\S]*?<\/tr>/gi) || [];
   const cells = (tr) => (tr.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/gi) || []).map((c) => decodeEntities(c.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim());
-  const head = cells(rows[0] || '');
+  // 머리글 줄을 첫 줄로 가정하지 않고 '종목코드'가 있는 줄을 찾음 (앞에 다른 줄이 붙는 형식 변경 대비)
+  let hi = rows.findIndex((tr) => /종목코드/.test(tr));
+  const head = cells(rows[hi] || '');
   const iCode = head.findIndex((h) => /종목코드/.test(h)), iInd = head.findIndex((h) => /업종/.test(h)), iProd = head.findIndex((h) => /주요제품/.test(h));
-  if (iCode < 0 || iInd < 0) throw new Error('KIND 목록 형식 변경');
+  if (iCode < 0 || iInd < 0) throw new Error(`KIND 목록 형식 변경 (HTTP ${r.status}, 줄 ${rows.length}개, 앞부분: ${html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60)})`);
+  rows.splice(0, hi);
   const out = {};
   for (const tr of rows.slice(1)) {
     const c = cells(tr);
