@@ -40,10 +40,12 @@ export const EV = {
   fail:      { w: 0, cap: 0, stage: 'risk', ko: '증자·사채·양수도 철회·해제·납입 연기' },
   insider:   { w: 0, cap: 0, stage: 'none', ko: '임원·주요주주 지분 변동' },
   cbbuy:     { w: 0, cap: 0, stage: 'none', ko: '사채 만기 전 취득(CB 되사기)' },
+  resume:    { w: 0, cap: 0, stage: 'none', ko: '매매거래 재개' },
 };
 export function evKind(text, party = '') {
   const t = String(text || '').replace(/\s+/g, '');
-  if (/불성실공시|상장적격성|횡령|배임|관리종목|감사의견|회생절차|상장폐지|자본잠식|계속기업/.test(t)) return 'risk';
+  if (/(매매)?거래재개|거래정지해제/.test(t)) return 'resume';
+  if (/불성실공시|상장적격성|횡령|배임|관리종목|감사의견|회생절차|상장폐지|자본잠식|계속기업|매매거래정지|거래정지|의견거절/.test(t)) return 'risk';
   if (/(유상증자|사채|양수도|경영권|최대주주변경).*(철회|해제|해지|취소)|(철회|해제|해지|취소).*(유상증자|사채|양수도|경영권)|납입일?의?(변경|연기)/.test(t)) return 'fail';
   if (/증권발행결과|발행결과|납입완료|주금납입/.test(t) || (/추가상장/.test(t) && /유상증자|제3자배정/.test(t))) return 'paid';
   if (/만기전사채취득|사채(의)?취득|사채만기전취득/.test(t)) return 'cbbuy';
@@ -66,7 +68,7 @@ export function evKind(text, party = '') {
   if (/투자판단관련/.test(t)) return 'invest';
   return null;
 }
-const KEYS = ['전환사채', '신주인수권', '교환사채', '유상증자', '최대주주', '경영권', '양수도', '정관', '공급계약', '무상증자', '감자', '청구권', '전환가액', '행사가액', '대량보유', '소유주식변동', '조회공시', '투자판단', '담보', '상장적격성', '불성실', '횡령', '추가상장', '관리종목', '사채취득', '만기전', '철회', '자본잠식', '계속기업', '감사의견']; // 내부자 보고·납입·해제처럼 아주 흔한 단어는 전체 검색에서 빼고, 상위 종목만 종목별로 따로 읽음 (DB 부담 줄이기)
+const KEYS = ['전환사채', '신주인수권', '교환사채', '유상증자', '최대주주', '경영권', '양수도', '정관', '공급계약', '무상증자', '감자', '청구권', '전환가액', '행사가액', '대량보유', '소유주식변동', '조회공시', '투자판단', '담보', '상장적격성', '불성실', '횡령', '추가상장', '관리종목', '사채취득', '만기전', '철회', '자본잠식', '계속기업', '감사의견', '거래정지', '거래재개', '의견거절']; // 내부자 보고·납입·해제처럼 아주 흔한 단어는 전체 검색에서 빼고, 상위 종목만 종목별로 따로 읽음 (DB 부담 줄이기)
 
 const NAMES = new Map(); // 공시에 적힌 회사 이름 (시세 목록에 없을 때 대신)
 /** 최근 180일 DART 공시 → { 종목코드: [{ms, kind, title, sum, id}] } (보관소에서 SQL 한 번) */
@@ -545,8 +547,15 @@ export function extras(code, evs, by, ctx = {}) {
 }
 
 // ───── 단계 판정 (AI 전 기본값) ─────
+// 거래정지 공시로 판단 (감사의견 거절·매매거래정지·상장폐지 사유 등 — 그 뒤 '거래 재개' 공시가 없으면 정지 중으로 봄)
+export function evHalt(evs = [], now = Date.now()) {
+  const resume = (evs || []).filter((e) => e.kind === 'resume').sort((a, b) => b.ms - a.ms)[0];
+  const h = (evs || []).filter((e) => /매매거래\s*정지|거래정지|의견거절|부적정\s*의견|상장폐지|실질심사\s*대상/.test(e.title) && !/해제|재개/.test(e.title) && now - e.ms < 365 * DAY).sort((a, b) => b.ms - a.ms)[0];
+  if (!h || (resume && resume.ms > h.ms)) return null;
+  return { since: new Date(h.ms + 9 * 3600e3).toISOString().slice(0, 10), why: h.title, ref: h.id, ev: true };
+}
 export function stageOf(by, f, evs = []) {
-  if (f?.halted) return '거래정지';
+  if (f?.halted || evHalt(evs)) return '거래정지';
   const exit = (by.conv || 0) + (by.majsell || 0) + (by.pledge || 0);
   const setup = (by.mna || 0) + (by.rights3 || 0) + (by.cb || 0) + (by.fund5 || 0) + (by.purpose || 0) + (by.refix || 0);
   // 이미 한 번 띄우고 빠진 종목: 고점 뒤 새 '판 깔기' 공시가 있으면 2차 판 깔기, 없으면 '엑시트 후'
@@ -685,7 +694,8 @@ export function priceLevels(x) {
   return { all, above };
 }
 export function direction(x, now = Date.now()) {
-  if (x.f?.halted || x.stage === '거래정지') return { dir: 'none', upS: 0, downS: 0, upRaw: 0, downRaw: 0, net: 0, notes: [`${x.f?.halted?.since || ''} 무렵부터 거래가 없음(거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤`], tgt: null, rr: null, levels: [], dates: [], up: [], down: [], cost: costRange(x) ? { low: Math.round(costRange(x).low), high: Math.round(costRange(x).high) } : null, gap: null };
+  const hv = x.f?.halted || evHalt(x.events);
+  if (hv || x.stage === '거래정지') return { dir: 'none', upS: 0, downS: 0, upRaw: 0, downRaw: 0, net: 0, notes: [hv?.ev ? `${hv.since} '${hv.why}' 공시 뒤 거래 재개 공시가 없음 (거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤` : `${hv?.since || ''} 무렵부터 거래가 없음(거래정지로 보임) — 거래가 다시 열릴 때까지 판단을 멈춤`], tgt: null, rr: null, levels: [], dates: [], up: [], down: [], cost: costRange(x) ? { low: Math.round(costRange(x).low), high: Math.round(costRange(x).high) } : null, gap: null };
   const f = x.f || {}, ev = x.events || [], up = [], down = [];
   const age = (e) => (now - e.ms) / DAY;
   const SETUP = ['mna', 'rights3', 'cb', 'fund5', 'purpose', 'refix', 'rights']; // rightsR(구조조정 증자)은 제외
@@ -763,7 +773,7 @@ export function direction(x, now = Date.now()) {
     const sup = lv.all.filter((l) => ['cost', 'floor'].includes(l.kind) && l.p <= x.close * 0.98).sort((a, b) => b.p - a.p)[0];
     if (sup) {
       const t1 = lv.above[0], risk = Math.max(x.close - sup.p, x.close * 0.03);
-      rr = { v: Math.round(((t1.p - x.close) / risk) * 10) / 10, t: t1.p, ts: t1.s, s: sup.p, ss: sup.s, up: Math.round((t1.p / x.close - 1) * 1000) / 10, dn: Math.round((sup.p / x.close - 1) * 1000) / 10, t2: lv.above[1]?.p || null, t2s: lv.above[1]?.s || null, min3: x.close - sup.p < x.close * 0.03 };
+      rr = { v: Math.min(20, Math.round(((t1.p - x.close) / risk) * 10) / 10), big: (t1.p - x.close) / risk > 20, t: t1.p, ts: t1.s, s: sup.p, ss: sup.s, up: Math.round((t1.p / x.close - 1) * 1000) / 10, dn: Math.round((sup.p / x.close - 1) * 1000) / 10, t2: lv.above[1]?.p || null, t2s: lv.above[1]?.s || null, min3: x.close - sup.p < x.close * 0.03 };
     }
   }
   // 목표 일정(참고): 물량이 풀릴 수 있는 날 — 일반 규정(사모 CB 전환 제한·사모 신주 전매 제한 1년) 기준 추정
@@ -807,7 +817,7 @@ export function overhangOf(x, now = Date.now()) {
 }
 export function reboundOf(x, now = Date.now()) {
   const f = x.f || {}, rb = f.rb, ev = x.events || [];
-  if (!rb || f.halted || x.stage === '거래정지') return null;
+  if (!rb || f.halted || x.stage === '거래정지' || evHalt(ev)) return null;
   const A = [], Bw = [], C = [];
   const add = (arr, w, t) => arr.push({ w, t });
   const ov = overhangOf(x, now);
@@ -850,7 +860,7 @@ export const RB_KO = { deadcat: '① 기술적 반등(데드캣) 쪽', dump: '�
 //  대상: 털기·엑시트 후 단계, 또는 고점에서 33%↑ 빠진 종목. 바닥 유지·물량 소진·새 판 깔기·매집 흔적 vs 남은 물량·계속되는 매도 공시·위험
 export function postExitOf(x, now = Date.now()) {
   const f = x.f || {}, pst = f.post, ev = x.events || [];
-  if (!pst || f.halted || x.stage === '거래정지') return null;
+  if (!pst || f.halted || x.stage === '거래정지' || evHalt(ev)) return null;
   if (!['털기', '엑시트 후', '매집', '판 깔기'].includes(x.stage) && !f.cyc) return null;
   const U = [], Dn = [];
   const add = (arr, w, t) => arr.push({ w, t });
@@ -1248,6 +1258,13 @@ export async function manipStart() {
 //  mp/prof/{코드}: 그 종목의 최신 종합 판단 (새 공시가 나오면 자동으로 다시 계산·수정) + 변경 기록
 //  mp/rank: 전 종목 요약 (랭킹 화면)
 const LV = { 높음: 3, 중간: 2, 낮음: 1 };
+// 랭킹 줄에 보여줄 공시 종류·거래 신호 칩 (CB·BW, 투자조합 지분, 거래량 n배, 거래소 경보 등)
+function chipsOf(x) {
+  const by = Object.entries(x.by || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, 8);
+  const sig = (x.sig || []).filter((t) => t && !/Infinity|NaN/.test(t)).slice(0, 6);
+  const cb = (x.events || []).filter((e) => e.kind === 'cb').sort((a, b) => b.ms - a.ms);
+  return { by, sig, cbn: cb.length || null, cbd: cb[0] ? new Date(cb[0].ms + 9 * 3600e3).toISOString().slice(0, 10) : null };
+}
 function rankRow(x) {
   const a = x.ai && !x.ai.error ? x.ai : null;
   const d = x.dir || direction(x);
@@ -1257,7 +1274,8 @@ function rankRow(x) {
   const cm = (x.f?.marks || []).filter((m) => m.ok && !['up30', 'dn30'].includes(m.k)).length || null;
   const cl = x.cl || null;
   const rbk = x.rbk || null;
-  return { pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: x.f?.halted ? x.f.halted.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  const hv = x.f?.halted || evHalt(x.events);
+  return { ...chipsOf(x), pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, va: x.f?.vwapAcc ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
@@ -1283,7 +1301,7 @@ async function saveProfiles(list, reason, opt = {}) {
       const keepDown = pd0 === 'down' && x.dir.downS >= 2 && x.dir.downS >= x.dir.upS;
       if (keepUp || keepDown) x.dir = { ...x.dir, dir: pd0, sticky: true };
     }
-    const halted = !!x.f?.halted || x.stage === '거래정지';
+    const halted = !!x.f?.halted || x.stage === '거래정지' || !!evHalt(x.events);
     if (prev.at && halted && prev.stage !== '거래정지') alerts.push(`• ⛔ ${x.name} 거래정지로 보임 (${x.f?.halted?.since || ''}부터 거래 없음) — 이 종목 알림은 거래가 다시 열릴 때까지 멈춤`);
     if (prev.at && !halted) { // 처음 들어온 종목·거래정지 종목은 알림 안 함
       const nd = x.dir.dir, pd = prev.dir?.dir;
@@ -1322,6 +1340,11 @@ export async function manipRank(kind = 'all') {
   let list = Object.entries(rank).map(([code, r]) => ({ code, ...r }))
     .filter((r) => Date.now() - (r.up || 0) < 45 * DAY); // 45일 넘게 신호가 없던 종목은 랭킹에서만 내림 (카드·기록은 남김)
   list = list.filter((r) => !r.ht && r.st !== '거래정지'); // 거래정지 종목은 랭킹에서 뺌 (카드는 남김)
+  try { // 가장 최근 전 종목 시세 목록(거래정지·ETF 제외)에 없는 종목도 정지·상폐로 보고 뺌
+    const d0 = ((await getJSON('mp/idx')) || [])[0];
+    const sn = d0 ? await getJSON(`mp/snap/${d0}`) : null;
+    if (sn?.rows && !sn.partial && Object.keys(sn.rows).length > 1500) list = list.filter((r) => sn.rows[r.code]);
+  } catch {}
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
@@ -1338,7 +1361,8 @@ export function narrativeOf(x, now = Date.now()) {
   const mk = x.mkt === 'P' ? '코스피' : x.mkt === 'Q' ? '코스닥' : '';
   const won = (v) => `${fmtW(v)}원`, pc = (v) => `${v > 0 ? '+' : ''}${v}%`;
   const DIR = { up: '상승 가능성 쪽', down: '하락 위험 쪽' };
-  if (f.halted || x.stage === '거래정지') return [`${x.name}${mk ? `(${mk})` : ''}은(는) ${f.halted?.since || ''} 무렵부터 거래가 없어 거래정지 중으로 보입니다. 정지 중에는 시세가 멈춰 있어 단계·평단·반등 판단을 하지 않고, 이 종목 알림도 멈췄습니다. 거래가 다시 열리면 자동으로 다시 분석합니다.`, '※ 공시와 거래 데이터로 자동 계산한 패턴 판단이며, 실제 세력의 존재나 불공정거래를 뜻하지 않습니다.'];
+  const hv = f.halted || evHalt(x.events);
+  if (hv || x.stage === '거래정지') return [`${x.name}${mk ? `(${mk})` : ''}은(는) ${hv?.ev ? `${hv.since} '${hv.why}' 공시 뒤 거래 재개 공시가 없어` : `${hv?.since || ''} 무렵부터 거래가 없어`} 거래정지 중으로 보입니다. 정지 중에는 시세가 멈춰 있어 단계·평단·반등 판단을 하지 않고, 이 종목 알림도 멈췄습니다. 거래가 다시 열리면 자동으로 다시 분석합니다.`, '※ 공시와 거래 데이터로 자동 계산한 패턴 판단이며, 실제 세력의 존재나 불공정거래를 뜻하지 않습니다.'];
   P.push(`${x.name}${mk ? `(${mk})` : ''}은(는) 지금 '${x.stage || '관찰'}' 단계로 보입니다.${DIR[d.dir] ? ` 공시·거래 근거를 종합하면 ${DIR[d.dir]}으로 분류됩니다` : ' 상승·하락 어느 쪽도 뚜렷하지 않습니다'} (상승 근거 ${d.upS || 0}/10점 · 하락 근거 ${d.downS || 0}/10점, 작전 패턴 종합 점수 ${x.score ?? '-'}점).`);
   // 세력 흐름
   if (f.cyc) {
@@ -1429,6 +1453,8 @@ export async function manipProfile(code) {
     } catch {}
   }
   let migrated = false;
+  // 저장된 카드라도 지금 보니 거래정지(공시·일봉)면 바로 '거래정지'로 바꿔 저장 (랭킹에서도 빠짐)
+  if (p && p.stage !== '거래정지' && (p.f?.halted || evHalt(p.events))) { try { p.stage = '거래정지'; p.dir = direction(p); await saveProfiles([{ ...p, hist: undefined }], '거래정지 확인', { keepAi: true, touch: false }); p = await getJSON(`mp/prof/${code}`); } catch {} }
   if (p && isOldProf(p) && Date.now() - (p.migTry || 0) > 6 * 3600e3) {
     try { if (await migrateProf(code, '열어 볼 때 새 계산 방식으로 자동 갱신')) { p = await getJSON(`mp/prof/${code}`); migrated = true; } else { p.migTry = Date.now(); await setJSON(`mp/prof/${code}`, { ...p, hist: undefined }).catch(() => {}); } } catch {} // 실패하면 6시간 동안 다시 시도 안 함 (열 때마다 느려지지 않게)
   }
@@ -1586,6 +1612,16 @@ export async function manipAux() {
     let mg = 0; for (const [c] of old) { tried[c] = Date.now(); try { if (await migrateProf(c)) mg++; } catch {} }
     if (old.length) await setJSON('mp/migtry', Object.fromEntries(Object.entries(tried).filter(([, t]) => Date.now() - t < 7 * DAY))).catch(() => {});
     if (old.length) out.migrate = { done: mg, left: Object.values(rank).filter((r) => !('av' in r)).length - mg };
+    // 칩(공시 종류·거래 신호)이 없는 예전 랭킹 줄 채우기 — 카드만 읽음, 한 번에 15종목
+    const noChip = Object.keys(rank).filter((c) => !('by' in rank[c])).slice(0, 15);
+    if (noChip.length) {
+      const add = {};
+      for (const c of noChip) { const pf = await getJSON(`mp/prof/${c}`).catch(() => null); if (pf) add[c] = chipsOf(pf); }
+      try {
+        const r2 = await getJSONStrict('mp/rank');
+        if (r2) { let k = 0; for (const [c, v] of Object.entries(add)) if (r2[c] && !('by' in r2[c])) { Object.assign(r2[c], v); k++; } if (k) { await setJSON('mp/rank', r2); out.chips = k; } }
+      } catch {}
+    }
   } catch (e) { out.err = String(e.message || e).slice(0, 120); }
   await setJSON('mp/auxlock', { busyUntil: 0 }).catch(() => {});
   return Object.keys(out).length ? out : null;

@@ -2178,3 +2178,10 @@ button.br-mv:hover { border-color: var(--accent); }
 .pex-chip { display: inline-block; padding: .1rem .5rem; border-radius: 6px; font-size: .75rem; font-weight: 800; background: rgba(255,255,255,.07); }
 .rp-tile.pex-h b { color: #5ff0a8; } .rp-tile.pex-m b { color: #ffd66b; }
 .mp-ckg.gD { background: rgba(255,90,106,.2); color: #ff8a96; } .rp-tile.gD b { color: #ff8a96; } .rp-tile.gC b { color: var(--text2); }
+/* v171: 랭킹·종목 페이지 공시/신호 칩, AI 상승·하락 해석 색 */
+.rk-chips { margin: .35rem 0 0; } .rk-chips:empty, .rp-evchips:empty { display: none; }
+.rp-evchips { grid-column: 1 / -1; margin-top: .45rem; }
+.mp-dcol.up h5 { color: #ff6b7a; } .mp-dcol.down h5 { color: #5aa8ff; }
+.ai-dir { margin-top: .5rem; } .ai-dir li { margin-bottom: .3rem; }
+.mp-dcol.up li::marker { color: #ff6b7a; } .mp-dcol.down li::marker { color: #5aa8ff; }
+.mp-unvl li.ai-u { border-left: 3px solid rgba(255,90,106,.6); padding-left: .4rem; } .mp-unvl li.ai-d { border-left: 3px solid rgba(76,157,255,.6); padding-left: .4rem; }
