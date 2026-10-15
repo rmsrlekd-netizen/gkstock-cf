@@ -352,16 +352,19 @@ export async function manipWatch({ force = false } = {}) {
         // 이전 날 AI 결과는 그대로 이어 보여 주지 않음 (그날 다시 분석)
         st.list = list.map((x) => x.code);
         await saveDay(date, list, { building: true });
+        await saveProfiles(list, `${date} 정기 분석 (1차: 공시·거래량)`); // 랭킹에 바로 보이게 (원문 가격·AI는 이어서 채움)
         st.docq = []; for (const x of list.slice(0, 30)) for (const e of x.events.filter((e) => ['cb', 'refix', 'rights3', 'rights', 'mna', 'fund5'].includes(e.kind)).slice(0, 5)) st.docq.push({ code: x.code, e });
         st.dpos = 0;
         log(`일봉 분석 완료 → 의심 종목 ${list.length}개 (원문 가격 확인 ${st.docq.length}건)`);
         st.phase = 'docs';
       } else out.bars = `${st.pos}/${st.queue.length}`;
     } else if (st.phase === 'docs') {
-      const part = (st.docq || []).slice(st.dpos, st.dpos + 8);
+      const part = (st.docq || []).slice(st.dpos, st.dpos + 20);
       const doc = await getJSON(`mp/day/${date}`);
-      for (const q of part) {
-        const p = await docPrice(q.e);
+      const got = [];
+      for (let i = 0; i < part.length; i += 5) got.push(...(await Promise.all(part.slice(i, i + 5).map((q) => docPrice(q.e).catch(() => null)))));
+      for (let gi = 0; gi < part.length; gi++) {
+        const q = part[gi], p = got[gi];
         const x = doc?.list.find((y) => y.code === q.code);
         if (!x || !p) continue;
         if (p.p) x.px.push({ p: p.p, label: p.label, kind: p.kind, date: new Date(q.e.ms + 9 * 3600e3).toISOString().slice(0, 10), buys: p.buys || undefined });
@@ -377,11 +380,12 @@ export async function manipWatch({ force = false } = {}) {
       if (st.dpos >= (st.docq || []).length) { st.phase = 'ai'; st.apos = 0; log('원문 가격 확인 완료 → AI 분석 시작'); }
     } else if (st.phase === 'ai') {
       const doc = await getJSON(`mp/day/${date}`);
-      const todo = (doc?.list || []).slice(0, AI_TOP).filter((x) => !x.ai).slice(0, 2);
+      const todo = (doc?.list || []).slice(0, AI_TOP).filter((x) => !x.ai).slice(0, 3);
       for (const x of todo) {
         try { x.ai = await aiReview(x); if (x.ai.stage) x.stage = x.ai.stage; } catch (e) { x.ai = { error: String(e.message || e).slice(0, 120) }; }
       }
       if (doc) await setJSON(`mp/day/${date}`, doc);
+      if (todo.length) await saveProfiles(todo, `${date} 정기 분석 · AI 판단`);
       if (!todo.length) {
         if (doc) { delete doc.building; doc.done = Date.now(); await setJSON(`mp/day/${date}`, doc); }
         st.phase = 'done'; st.force = false; log(`완료 · AI 분석 ${Math.min(AI_TOP, doc?.list?.length || 0)}개`);
