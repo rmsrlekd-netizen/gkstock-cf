@@ -42,6 +42,8 @@
 - 대차잔고: `src/lib/loan.mjs` (KIS HHPST074500C0, 하루 2번), 수급 탭 '국내 대차잔고'.
 - 영상 소재 노트(관리자): `src/lib/vnote.mjs` · 주간 정리 카드(토 8:30): `src/lib/weekcard.mjs`, `/og/week/YYYYMMDD.png`.
 - 더보기 메뉴는 항상 '서비스 소개'가 맨 끝.
+- 작전 의심 레이더(관리자): `src/lib/manip.mjs` — 장 마감 뒤 단계별(시세→공시→일봉→원문 가격→AI), 결과 `mp/day/날짜` **영구 보관(삭제 금지)**, 전 종목(ETF·ETN·거래정지만 제외). 외부 공개 금지.
+- 텔레그램: 같은 글 6시간 중복 금지(`claim`), 회사당 6시간 1건, 10분 4건, 다시 켜면 이전 공시는 안 올림(`tgch/resume`).
 
 ## 앞으로 할 일 (메모)
 - 플레이스토어 앱: PWABuilder(TWA), 패키지 `com.gkstock.radar`, Cloudflare 변수 `ANDROID_CERT_SHA256`. 개발자 계정은 GK가 나중에 개인/조직 결정.

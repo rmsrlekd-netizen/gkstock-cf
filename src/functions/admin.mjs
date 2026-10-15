@@ -30,6 +30,15 @@ export default async (req) => {
       return J({ ok: true, ...(await vn.noteView(mk === 'US' ? 'US' : mk === 'KR' ? 'KR' : null, /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : null)) });
     } catch (e) { return J({ ok: false, error: e.message }); }
   }
+  // 작전 의심 레이더: &mp=view(&date=2026-10-15) | run (지금 분석 시작)
+  const mp = u.searchParams.get('mp');
+  if (mp) {
+    try {
+      const m = await import('../lib/manip.mjs');
+      if (mp === 'run') await m.manipStart();
+      return J({ ok: true, ...(await m.manipView(u.searchParams.get('date'))) });
+    } catch (e) { return J({ ok: false, error: e.message }); }
+  }
   // 주간 정리 카드: &week=make (새로 만들기·미리보기) | send (채널로 보내기)
   const wk = u.searchParams.get('week');
   if (wk) {

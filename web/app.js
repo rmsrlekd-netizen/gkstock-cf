@@ -3137,6 +3137,7 @@
       <div class="card adm-vn" style="margin-bottom:.8rem"><h3>🎬 영상 소재 노트 <small class="muted">장 마감 뒤 자동 (국장 16:45 · 미장 뉴욕 16:40 = 한국 새벽~아침) · 관리자만 보임</small></h3><div id="vnBody"><div class="loading"><span class="spin"></span>불러오는 중…</div></div>
         <div class="chips" style="margin-top:.6rem"><button class="btn sm" data-admin-act="vnKR">국장 노트 지금 만들기</button><button class="btn sm" data-admin-act="vnUS">미장 노트 지금 만들기</button><button class="btn sm" data-admin-act="wkMake">주간 정리 카드 미리 만들기</button>${d.channel?.id ? '<button class="btn sm" data-admin-act="wkSend">주간 카드 채널로 보내기</button>' : ''}</div>
         <p class="note" id="vnMsg">주간 정리 카드: 매주 토요일 아침 8:30 이후 텔레그램 채널에 자동 게시 ${d.week?.sent ? `· 이번 주 보냄 ✓ <a href="/og/week/${esc(String(d.week.fri).replace(/-/g, ''))}.png" target="_blank">이미지 보기</a>` : ''}</p><div id="wkPrev"></div></div>
+      <div class="card adm-mp" style="margin-bottom:.8rem"><h3>🕵️ 작전 의심 레이더 <small class="muted">국장 전 종목 · 장 마감 뒤 자동 분석 (15:50~ 약 1시간) · 날짜별로 계속 보관 · 관리자만 보임</small></h3><div id="mpBody"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="adm-kpis">
         ${[['오늘', d.today], ['최근 7일', d.week], ['최근 30일', d.month]].map(([l, x]) => `<div class="card"><span>${l}</span><div><b>${fmtInt(x?.uv || 0)}</b><small>방문자</small></div><div><b>${fmtInt(x?.pv || 0)}</b><small>페이지뷰</small></div><div><b>${fmtInt(x?.iv || 0)}</b><small>게시물 조회</small></div></div>`).join('')}
       </div>
@@ -3209,7 +3210,63 @@
           <p class="note">${c.last ? `마지막 게시: ${fmtDT(new Date(c.last.at)).full} · ${esc(c.last.title || '')}` : '아직 게시한 글이 없어요.'}${c.err ? `<br><b class="err">⚠ ${esc(c.err)}</b> — 봇이 채널 관리자인지, 채널 주소가 맞는지 확인하세요.` : ''}${c.lastErr && !c.err ? `<br><span class="muted">최근 오류(${fmtDT(new Date(c.lastErr.at)).hm}): ${esc(c.lastErr.msg)}</span>` : ''}</p></div>`;
       })()}`;
     loadVnote();
+    loadManip();
   }
+  // ───── 작전 의심 레이더 ─────
+  const MP_ST = { '판 깔기': 'setup', 매집: 'acc', 띄우기: 'pump', 털기: 'exit', 관찰: 'watch' };
+  const MP_EV = { mna: '최대주주·경영권', rights3: '3자배정 증자', rightsfix: '증자 정정', rights: '유상증자', cb: 'CB·BW', refix: '리픽싱', fund5: '투자조합 지분', purpose: '사업목적 변경', bonus: '무상증자', capred: '감자', contract: '공급계약', invest: 'MOU·투자판단', inquiry: '조회공시', conv: '전환청구', majsell: '최대주주 지분변동', pledge: '담보·질권', risk: '불성실·횡령 등' };
+  async function loadManip(date, run) {
+    const box = $('#mpBody'); if (!box) return;
+    if (run) box.innerHTML = '<div class="loading"><span class="spin"></span>분석을 시작했어요. 단계별로 진행돼 끝까지 약 1시간 걸려요 (중간 결과도 바로 보여요)…</div>';
+    let j;
+    try { j = await getJSON(`/api/admin?key=${encodeURIComponent(S.admin)}&mp=${run ? 'run' : 'view'}${date ? '&date=' + date : ''}`, { cache: 'no-store' }); } catch (e) { j = { ok: false, error: e.message }; }
+    if (!$('#mpBody')) return;
+    if (!j.ok) { $('#mpBody').innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
+    S.mp = j;
+    const doc = j.doc, st = j.state || {};
+    const PH = { snap: '전 종목 시세 받는 중', events: '공시 패턴 찾는 중', bars: `일봉 분석 중 (${st.bars || ''})`, docs: '공시 원문에서 가격 확인 중', ai: 'AI 분석 중', done: '완료' };
+    const status = st.phase && st.phase !== 'done' && st.date ? `<span class="mp-run"><span class="spin"></span>${esc(st.date)} ${esc(PH[st.phase] || st.phase)}</span>` : '';
+    const dates = `<div class="chips vn-tabs">${(j.idx || []).slice(0, 20).map((x) => `<button class="${x === j.date ? 'on' : ''}" data-mp-date="${esc(x)}">${esc(md(x))}</button>`).join('')}${(j.idx || []).length > 20 ? `<select id="mpOld"><option value="">이전 날짜…</option>${j.idx.slice(20).map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select>` : ''}</div>`;
+    const btns = `<div class="chips" style="margin:.5rem 0"><button class="btn sm" data-mp-run>오늘 분석 지금 시작</button><button class="btn sm" data-mp-date="${esc(j.date || '')}">새로고침</button>${status}</div>`;
+    if (!doc) { $('#mpBody').innerHTML = dates + btns + `<p class="muted">아직 분석 기록이 없어요. 거래일 15:50 이후 자동으로 시작되고, 위 버튼으로 바로 시작할 수도 있어요.</p>${st.log?.length ? `<pre class="mp-log">${esc(st.log.join('\n'))}</pre>` : ''}`; return; }
+    const won = (v) => (v == null ? '—' : `${fmtInt(v)}원`);
+    const gap = (c, p) => (c && p ? `${c >= p ? '+' : ''}${(((c / p) - 1) * 100).toFixed(0)}%` : '');
+    const rows = doc.list.map((x, i) => {
+      const a = x.ai && !x.ai.error ? x.ai : null;
+      const evc = Object.entries(x.by || {}).filter(([, v]) => v > 0).map(([k]) => `<span class="mp-chip ev-${esc(k)}">${esc(MP_EV[k] || k)}</span>`).join('');
+      const vc = (x.sig || []).map((t) => `<span class="mp-chip vol">${esc(t)}</span>`).join('');
+      const cost = a?.cost ? `${won(a.cost.low)}${a.cost.high && a.cost.high !== a.cost.low ? ' ~ ' + won(a.cost.high) : ''}` : x.f?.vwapAcc ? `${won(x.f.vwapAcc)} <small>(매집 구간 평균)</small>` : '—';
+      const mid = a?.cost ? ((a.cost.low || a.cost.high) + (a.cost.high || a.cost.low)) / 2 : x.f?.vwapAcc;
+      return `<li class="mp-row" data-mp-i="${i}">
+        <div class="mp-top"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="KR|${esc(x.code)}|${esc(x.name)}">${logoHTML('KR', x.code, x.name, 'sm')}<span><b>${esc(x.name)}</b><small>${esc(x.code)} · ${x.mkt === 'P' ? '코스피' : x.mkt === 'Q' ? '코스닥' : ''}${x.streak > 1 ? ` · ${x.streak}일 연속` : ''}</small></span></button>
+          <span class="mp-px">${won(x.close)}<small class="${dirCls(x.pct)}">${x.pct != null ? fmtPct(x.pct) : ''}</small></span>
+          <span class="mp-stage ${MP_ST[x.stage] || 'watch'}">${esc(x.stage)}${a?.level ? `<small>의심 ${esc(a.level)}</small>` : ''}</span>
+          <span class="mp-score"><b>${x.score}</b><small>공시 ${x.es} · 거래 ${x.vs}</small></span></div>
+        <div class="mp-chips">${evc}${vc}</div>
+        <div class="mp-cost">추정 세력 평단 <b>${cost}</b>${mid && x.close ? ` · 현재가는 평단 대비 <b class="${x.close >= mid ? 'up' : 'down'}">${gap(x.close, mid)}</b>` : ''}</div>
+        ${a?.summary ? `<p class="mp-sum">🤖 ${esc(a.summary)}</p>` : x.ai?.error ? `<p class="muted sm">AI 분석 실패: ${esc(x.ai.error)}</p>` : i < 15 && doc.building ? '<p class="muted sm">AI 분석 대기 중…</p>' : ''}
+        <div class="mp-more" hidden></div></li>`;
+    }).join('');
+    $('#mpBody').innerHTML = dates + btns + `<p class="note">${esc(doc.date)} 기준 · 의심 종목 ${doc.list.length}개${doc.building ? ' (분석 진행 중 — 잠시 뒤 새로고침)' : ''} · 줄을 누르면 근거 공시·AI 상세가 열려요.</p><ol class="mp-list">${rows}</ol>
+      <p class="note">⚠ 공시·거래 패턴이 '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐, 불공정거래의 증거가 아닙니다. 평단가는 전환가·발행가·거래량 가중 평균으로 추정한 값입니다. 종목명을 공개적으로 '작전주'라고 지칭하면 법적 문제가 생길 수 있어요.</p>`;
+  }
+  function mpDetail(x) {
+    const a = x.ai && !x.ai.error ? x.ai : null, f = x.f || {};
+    const li = (arr) => arr.map((t) => `<li>${esc(t)}</li>`).join('');
+    const pxs = (x.px || []).map((p) => `<li>${esc(p.date || '')} ${esc(p.label || '')} <b>${fmtInt(p.p)}원</b> <small class="muted">(${esc(MP_EV[p.kind] || p.kind)})</small></li>`).join('');
+    return `${a ? `<div class="mp-ai"><b>AI 분석</b>${a.gap ? `<p>${esc(a.gap)}</p>` : ''}${a.evidence?.length ? `<h5>의심 근거</h5><ul>${li(a.evidence)}</ul>` : ''}${a.counter?.length ? `<h5>반대 근거 (정상일 가능성)</h5><ul>${li(a.counter)}</ul>` : ''}${a.watch?.length ? `<h5>앞으로 볼 신호</h5><ul>${li(a.watch)}</ul>` : ''}${a.cost?.basis ? `<p class="muted sm">평단 근거: ${esc(a.cost.basis)}</p>` : ''}</div>` : ''}
+      <div class="mp-grid"><div><h5>공시에서 찾은 가격</h5>${pxs ? `<ul>${pxs}</ul>` : '<p class="muted sm">없음</p>'}<h5>거래 패턴</h5><ul class="mp-f"><li>매집 구간 평균가 <b>${f.vwapAcc ? fmtInt(f.vwapAcc) + '원' : '—'}</b></li><li>고거래량일 평균가 <b>${f.vwapHeavy ? fmtInt(f.vwapHeavy) + '원' : '—'}</b></li><li>120일 평균가 <b>${f.vwap120 ? fmtInt(f.vwap120) + '원' : '—'}</b></li><li>60일 저점 대비 <b>${f.fromLow60 ?? '—'}%</b> · 20일 고점 대비 <b>${f.offHigh20 ?? '—'}%</b></li><li>거래량(평소 대비) 5일 <b>${f.volX5 ?? '—'}배</b> · 20일 <b>${f.volX20 ?? '—'}배</b> · 10일 최대 <b>${f.maxVolX10 ?? '—'}배</b></li><li>폭증 전 60일 박스 폭 <b>${f.box60 ?? '—'}%</b>${f.spikeDate ? ` · 첫 폭증일 ${esc(f.spikeDate)}` : ''}</li></ul>
+        ${x.hist?.length > 1 ? `<h5>레이더 등장 기록</h5><p class="muted sm">${x.hist.map((h) => `${esc(md(h.d))} ${esc(h.st)}(${h.s})`).join(' · ')}</p>` : ''}</div>
+      <div><h5>근거 공시 (최근 180일)</h5><ul class="mp-ev">${(x.events || []).map((e) => `<li><span>${esc(new Date(e.ms + 9 * 3600e3).toISOString().slice(2, 10))}</span><em>${esc(MP_EV[e.kind] || e.kind)}</em><a href="/p/${esc(e.id)}" target="_blank">${esc(e.title)}</a>${e.sum ? `<small>${esc(e.sum)}</small>` : ''}</li>`).join('') || '<li class="muted">없음 (거래 패턴만)</li>'}</ul></div></div>`;
+  }
+  document.addEventListener('click', (e) => {
+    let b;
+    if ((b = e.target.closest('[data-mp-date]'))) { loadManip(b.dataset.mpDate || null); return; }
+    if (e.target.closest('[data-mp-run]')) { if (confirm('오늘 작전 의심 레이더 분석을 지금 시작할까요? (전 종목 · 약 1시간 · AI 15회 사용)')) loadManip(null, true); return; }
+    const row = e.target.closest('.mp-row');
+    if (row && !e.target.closest('a, button')) { const m = row.querySelector('.mp-more'); const x = S.mp?.doc?.list?.[Number(row.dataset.mpI)]; if (m && x) { if (m.hidden) m.innerHTML = mpDetail(x); m.hidden = !m.hidden; row.classList.toggle('open', !m.hidden); } }
+  });
+  document.addEventListener('change', (e) => { if (e.target.id === 'mpOld' && e.target.value) loadManip(e.target.value); });
   // 영상 소재 노트
   async function loadVnote(mk, date, make) {
     const box = $('#vnBody'); if (!box) return;
