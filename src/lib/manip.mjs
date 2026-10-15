@@ -1059,7 +1059,7 @@ async function saveProfiles(list, reason, opt = {}) {
     const log = prev.log || [];
     const changed = !prev.at || prev.score !== x.score || prev.stage !== x.stage || (prev.ai?.level || null) !== (x.ai?.level || null);
     if (changed) log.unshift({ at: Date.now(), msg: `${reason} · 점수 ${prev.score ?? '-'}→${x.score} · ${prev.stage || '-'}→${x.stage}${x.ai?.level ? ` · 의심 ${x.ai.level}` : ''}` });
-    const ai = x.ai && !x.ai.error ? x.ai : prev.ai || null; // 이번에 AI를 못 돌렸으면 이전 분석 유지
+    const ai = opt.keepAi ? x.ai || null : x.ai && !x.ai.error ? x.ai : prev.ai || null; // 이번에 AI를 못 돌렸으면 이전 분석 유지
     const prof = { ...x, ai, hist: undefined, first: prev.first || Date.now(), at: Date.now(), log: log.slice(0, 60) };
     await setJSON(k, prof);
     if (opt.rank !== false && rank) rank[x.code] = rankRow(prof);
@@ -1086,11 +1086,40 @@ export async function manipRank(kind = 'all') {
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
   return list.slice(0, 150);
 }
+// 예전 방식으로 저장된 카드인지 (매집봉·지난 사이클·시장경보 계산이 없음)
+export const isOldProf = (p) => !p?.f || !Array.isArray(p.f.marks) || !('cyc' in p.f) || !('wf' in p.f);
+// 예전 AI 문장 중 새 사실 목록에 없는 숫자를 말하는 문장은 숨김 (예: 틀린 평단 84,099원)
+function staleAi(ai, F) {
+  if (!ai || ai.error) return ai;
+  const pool = F.map((f) => f.t).join(' ').replace(/,/g, '');
+  const ok = (t) => numsIn(t).every((n) => pool.includes(n));
+  const fix = (arr) => (Array.isArray(arr) ? arr.filter((r) => ok(typeof r === 'string' ? r : r.t)) : arr);
+  const out = { ...ai, upWhy: fix(ai.upWhy), downWhy: fix(ai.downWhy), counter: fix(ai.counter), evidence: fix(ai.evidence) };
+  if (ai.summary && !ok(ai.summary)) { out.summary = null; out.stale = true; }
+  if (ai.acc?.period && !ok(ai.acc.period)) out.acc = null;
+  if (ai.cost && F.every((f) => !f.price || ![ai.cost.low, ai.cost.high].includes(f.price))) out.cost = null;
+  return out;
+}
+/** 예전 방식 카드 → 지금 방식으로 다시 계산해서 저장 (AI는 새로 부르지 않음, 맞지 않는 예전 AI 문장은 숨김) */
+export async function migrateProf(code, reason = '새 계산 방식으로 자동 갱신') {
+  const prev = await getJSON(`mp/prof/${code}`);
+  const idx = (await getJSON('mp/idx')) || [];
+  const snap = (await getJSON(`mp/snap/${idx[0] || kst().date}`))?.rows || {};
+  const ctx = await ctxLoad(snap);
+  const x = await analyzeOne({ c: code, name: prev?.name || null, mkt: prev?.mkt || null }, { snap, ctx, keepLow: true, aiOk: () => false });
+  if (!x || !x.f) return null; // 일봉을 못 받으면 그대로 둠
+  if (!x.events.length && (prev?.events || []).length) return null; // 공시를 못 읽어 왔으면(보관소 오류 등) 망가뜨리지 않고 그대로 둠
+  if (x.ai) x.ai = staleAi(x.ai, factsOf(x));
+  const inRank = !!(await getJSON('mp/rank'))?.[code] || x.score >= 4;
+  await saveProfiles([x], reason, { rank: inRank, keepAi: true });
+  return x;
+}
 export async function manipProfile(code) {
-  const p = await getJSON(`mp/prof/${code}`);
+  let p = await getJSON(`mp/prof/${code}`);
+  if (p && isOldProf(p)) { try { if (await migrateProf(code, '열어 볼 때 새 계산 방식으로 자동 갱신')) p = await getJSON(`mp/prof/${code}`); } catch {} }
   if (p) {
     p.hist = ((await getJSON(`mp/hist/${code}`)) || []).slice(0, 30);
-    // 예전 방식으로 저장된 카드도 손익비·가격 사다리·체크리스트를 지금 규칙으로 다시 계산해서 보여줌 (상승/하락 분류는 저장된 값 유지)
+    // 그래도 예전 카드면(일봉 못 받음) 저장된 자료로 손익비·사다리·체크리스트만 다시 계산 (상승/하락 분류는 저장된 값 유지)
     try {
       const d2 = direction(p);
       p.dir = { ...d2, dir: p.dir?.dir ?? d2.dir, sticky: p.dir?.sticky };
@@ -1226,6 +1255,13 @@ export async function manipAux() {
     const n2c = {}; for (const [c, r] of Object.entries(snap)) if (r[0]) n2c[r[0]] = c;
     const w = await warnWatch(n2c); if (w) out.warn = w;
     const p = await perfWatch(15); if (p) out.perf = p;
+    // 예전 방식 랭킹 줄을 조금씩 새 방식으로 (한 번에 3종목)
+    const rank = (await getJSON('mp/rank')) || {};
+    const tried = (await getJSON('mp/migtry')) || {};
+    const old = Object.entries(rank).filter(([c, r]) => (!('av' in r) || (Array.isArray(r.tg) && typeof r.tg[0] === 'number')) && Date.now() - (tried[c] || 0) > 6 * 3600e3).sort((a, b) => (b[1].s || 0) - (a[1].s || 0)).slice(0, 3);
+    let mg = 0; for (const [c] of old) { tried[c] = Date.now(); try { if (await migrateProf(c)) mg++; } catch {} }
+    if (old.length) await setJSON('mp/migtry', Object.fromEntries(Object.entries(tried).filter(([, t]) => Date.now() - t < 7 * DAY))).catch(() => {});
+    if (old.length) out.migrate = { done: mg, left: Object.values(rank).filter((r) => !('av' in r)).length - mg };
   } catch (e) { out.err = String(e.message || e).slice(0, 120); }
   return Object.keys(out).length ? out : null;
 }
