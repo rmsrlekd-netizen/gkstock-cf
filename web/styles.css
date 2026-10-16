@@ -2242,3 +2242,4 @@ button.br-mv:hover { border-color: var(--accent); }
 
 .mp-big{display:inline-block;font-size:12px;padding:3px 8px;border-radius:999px;background:rgba(148,163,184,.16);color:#cbd5e1;border:1px solid rgba(148,163,184,.35);white-space:nowrap}
 .mp-w2{margin:8px 0;padding:10px 12px;border-radius:10px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3)}.mp-w2 ul{margin:0 0 6px;padding-left:18px}.mp-w2 p{margin:0;color:#fbbf24;font-weight:600}.rb-wave2{color:#fbbf24}.mp-rbchip.rb-wave2{background:rgba(251,191,36,.14);color:#fbbf24}
+.mp-chip.ev-tsell { background: rgba(255,90,154,.14); color: #ff9ac8; }

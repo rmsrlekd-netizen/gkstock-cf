@@ -8,7 +8,7 @@
 import { getJSON, setJSON, sqlDB, getJSONStrict, delKeys, listKeys } from './store.mjs';
 import { fetchWithTimeout, BROWSER_UA } from './util.mjs';
 import { isTradingDay } from './schedule.mjs';
-import { buildPartyIndex, linksOf, radarAlert, BIG as NOT_PARTY } from './manipx.mjs';
+import { buildPartyIndex, linksOf, radarAlert, BIG as NOT_PARTY, partyKey } from './manipx.mjs';
 
 const n0 = (v) => { if (v == null || v === '') return null; const x = Number(String(v).replace(/[,\s]/g, '')); return Number.isFinite(x) ? x : null; };
 const kst = (ms = Date.now()) => { const d = new Date(ms + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), m: d.getUTCHours() * 60 + d.getUTCMinutes(), wd: d.getUTCDay() }; };
@@ -41,6 +41,11 @@ export const EV = {
   insider:   { w: 0, cap: 0, stage: 'none', ko: '임원·주요주주 지분 변동' },
   cbbuy:     { w: 0, cap: 0, stage: 'none', ko: '사채 만기 전 취득(CB 되사기)' },
   resume:    { w: 0, cap: 0, stage: 'none', ko: '매매거래 재개' },
+  // v208
+  tsell:     { w: 1, cap: 2, stage: 'exit', ko: '자사주 처분' },
+  rename:    { w: 1, cap: 1, stage: 'setup', ko: '상호 변경' },
+  ceo:       { w: 1, cap: 2, stage: 'setup', ko: '대표이사 변경' },
+  agm:       { w: 0, cap: 0, stage: 'none', ko: '주주총회 소집(안건 확인)' },
 };
 export function evKind(text, party = '') {
   const t = String(text || '').replace(/\s+/g, '');
@@ -56,6 +61,10 @@ export function evKind(text, party = '') {
   if (/유상증자/.test(t) && /정정/.test(t)) return 'rightsfix';
   if (/유상증자/.test(t) && /제3자|3자배정/.test(t)) return 'rights3';
   if (/유상증자결정/.test(t)) return 'rights';
+  if (/자기주식처분/.test(t)) return 'tsell';
+  if (/상호변경/.test(t)) return 'rename';
+  if (/대표이사변경/.test(t)) return 'ceo';
+  if (/임시주주총회|주주총회소집결의/.test(t)) return 'agm';
   if (/최대주주등소유주식변동|소유주식변동신고/.test(t)) return 'majsell';
   if (/담보|질권/.test(t) && !/양수도|양도계약|인수/.test(t)) return 'pledge'; // '최대주주변경을수반하는주식담보제공계약'은 경영권 거래가 아니라 담보(반대매매 위험)
   if (/최대주주변경|경영권|주식등?양수도|최대주주인수/.test(t)) return 'mna';
@@ -133,7 +142,7 @@ export function keepEv(evs) {
   return [...a, ...b].sort((x, y) => y.ms - x.ms);
 }
 // 원문을 읽을 공시: 세력 원가·조건이 나오는 공시 먼저, 그다음 청구·내부자
-const DOC_KINDS = ['cb', 'refix', 'rights3', 'rights', 'rightsfix', 'mna', 'fund5', 'pledge', 'majsell', 'insider', 'conv'];
+const DOC_KINDS = ['cb', 'refix', 'rights3', 'rights', 'rightsfix', 'mna', 'fund5', 'pledge', 'majsell', 'insider', 'conv', 'agm', 'tsell'];
 export function docPick(evs, n = 10) {
   const L = (evs || []).filter((e) => DOC_KINDS.includes(e.kind) || (e.kind === 'risk' && /불성실공시/.test(e.title)));
   return L.sort((a, b) => (weighted(b) - weighted(a)) || b.ms - a.ms).slice(0, n);
@@ -465,7 +474,7 @@ export function applyMarks(f, evs = [], ix = {}, mkt = 'Q') {
 }
 
 // ───── ④ 공시 원문에서 가격 (세력 평단 근거: 전환가·발행가·양수도 단가) ─────
-const PXV = 3;
+const PXV = 4; // v208: 인수 자금 출처·계약금/잔금·조합 설립일/조합원·보호예수·발행 대상자·주총 안건·자사주 처분
 async function docPrice(e, opt = {}) {
   const ck = `mp/px/${e.id}`;
   const c = await getJSON(ck);
@@ -515,7 +524,7 @@ async function docPrice(e, opt = {}) {
     // 정정 공시: 납입일 변경·연기
     if (e.kind === 'rightsfix' || /정정/.test(e.title)) {
       const txt = L.slice(0, 200).join(' ');
-      if (/납입일/.test(txt) && /(변경|연기)/.test(txt) && /정정\s*사유|정정사항|정정\s*전/.test(txt)) e.delay = true;
+      if (/납입일|잔금\s*(지급)?\s*(일|예정일)/.test(txt) && /(변경|연기)/.test(txt) && /정정\s*사유|정정사항|정정\s*전/.test(txt)) e.delay = true;
     }
     // CB·BW·EB 상세: 전환청구기간, 최저 조정가(리픽싱 하한), 콜옵션(매도청구권)
     // 회차(제N회) — CB 발행 공시와 전환청구 공시를 짝지으려고
@@ -558,16 +567,68 @@ async function docPrice(e, opt = {}) {
       const i = L.findIndex((x) => /조정\s*후\s*(전환|행사|교환)가액|1주당\s*(양수도|매매|취득)?\s*가[액격]|주당\s*양수도\s*가액/.test(x));
       if (i >= 0) for (let k = i; k < i + 4 && k < L.length; k++) { const v = n0((L[k].match(/[\d,]{3,}/) || [])[0]); if (v && v >= 50 && v < 5e6) { p = v; label = /조정/.test(L[i]) ? '조정 전환가' : '양수도 단가'; break; } }
     }
+    // ───── v208 전문가 점검 항목 ─────
+    const dOf = (t) => { const m2 = String(t).match(/(20\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/); return m2 ? `${m2[1]}-${m2[2].padStart(2, '0')}-${m2[3].padStart(2, '0')}` : null; };
+    const amtAt = (re, from = 0, to = L.length) => { const i = L.slice(from, to).findIndex((x) => re.test(x)); if (i < 0) return null; const j = from + i; for (let k = j; k < j + 4 && k < L.length; k++) { const v = n0((String(L[k]).replace(re, '').match(/[\d,]{4,}/) || [])[0]); if (v) return v; } return null; };
+    const STOPW = /^(성명|명칭|성명\(명칭\)|대상자|대상자명|관계|회사\s*또는|최대주주와의\s*관계|비고|해당|해당사항|해당사항\s*없음|합계|총계|계|소계|-|주식수|주식\s*수|금액|원|주|%|발행|권면|총액|구분|선정\s*경위|거래내역|배정\s*주식수|사채\s*권면|없음|기타|법인|개인|국적|주소|조합원|출자|출자금|출자비율|지분율|업무집행조합원|대표|생년월일|직업|설립일|소재지)$/;
+    const namesAfter = (re, span = 30, max = 8) => { const i = L.findIndex((x) => re.test(x)); if (i < 0) return []; const out = []; for (let k = i + 1; k < Math.min(L.length, i + span) && out.length < max; k++) { const t = String(L[k]).replace(/\s+/g, ' ').trim(); if (t.length < 2 || t.length > 40 || STOPW.test(t) || /\d{3,}|^[\d,.%\-\s]+$|년|월|일$|원$|주$|\?|:|본\s*공시|참고|기재/.test(t) || !/[가-힣A-Za-z]/.test(t) || /(제한|예수|경위|사유|목적|내역|현황|방법|사항|조건|계획|결정|공시|보고|기간|일정|변경|선정|여부|금액|총액|합계)$|\s등\s|^\d+\.|^[가-하]\./.test(t)) continue; if (!out.includes(t)) out.push(t); } return out; };
+    // 1·7 최대주주 변경: 인수 자금 출처(자기자금 vs 차입·주식담보) · 계약금/잔금
+    if (e.kind === 'mna' || /최대주주변경|양수도/.test(String(e.title).replace(/\s/g, ''))) {
+      const fi = L.findIndex((x) => /인수\s*자금|자금\s*(의\s*)?(조달|원천|출처)|조달\s*방법|취득\s*자금/.test(x));
+      const seg = fi >= 0 ? [fi, Math.min(L.length, fi + 45)] : [0, 0];
+      const own = fi >= 0 ? amtAt(/자기\s*자금|자기\s*자본|자기\s*부담/, ...seg) : null;
+      const borrow = fi >= 0 ? amtAt(/차입\s*금?|대출|차용/, ...seg) : null;
+      const segTxt = fi >= 0 ? L.slice(...seg).join(' ') : '';
+      const pledgeFund = /주식\s*담보|담보\s*대출|인수\s*(대상\s*)?주식.{0,20}담보|질권/.test(segTxt);
+      const total = amtAt(/양수도\s*(대금|금액|가액)|매매\s*(대금|금액)|총\s*(양수도|매매)\s*(대금|금액)/);
+      const dep = amtAt(/계약\s*금/), bal = amtAt(/잔\s*금/);
+      const bi = L.findIndex((x) => /잔\s*금/.test(x)); let balD = null; if (bi >= 0) for (let k = bi; k < bi + 8 && k < L.length && !balD; k++) balD = dOf(L[k]);
+      const den = (own || 0) + (borrow || 0);
+      const mna = { own, borrow, pledgeFund, borrowPct: den ? Math.round(((borrow || 0) / den) * 100) : null, total, dep, depPct: total && dep && dep <= total ? Math.round((dep / total) * 100) : null, balD };
+      mna.nocap = pledgeFund || (mna.borrowPct != null && mna.borrowPct >= 50);
+      if (fi >= 0 || total || dep) e.mna = mna;
+    }
+    // 2 투자조합: 설립일 · 업무집행조합원 · 조합원
+    if (e.kind === 'fund5' || /대량보유/.test(e.title)) {
+      const ei = L.findIndex((x) => /설립\s*(일|일자|년월일)|결성\s*일/.test(x)); let estD = null; if (ei >= 0) for (let k = ei; k < ei + 4 && k < L.length && !estD; k++) estD = dOf(L[k]);
+      const gp = namesAfter(/업무\s*집행\s*(조합원|사원)|대표\s*조합원|무한\s*책임\s*(조합원|사원)/, 6, 1)[0] || null;
+      const mem = namesAfter(/조합원\s*(현황|명단|구성|내역)|출자자\s*(현황|명단|구성)/, 45, 12);
+      const ageD = estD ? Math.round((e.ms - Date.parse(estD + 'T00:00:00+09:00')) / DAY) : null;
+      if (estD || gp || mem.length) e.f5 = { estD, gp, mem, ageD, young: ageD != null && ageD >= 0 && ageD <= 120 };
+    }
+    // 3 보호예수·전매 제한 (실제 기간)
+    if (['rights3', 'rights', 'rightsfix'].includes(e.kind) || /제3자배정/.test(e.title)) {
+      const li = L.findIndex((x) => /보호\s*예수|의무\s*보유|전매\s*제한|예탁\s*(기간|하기로)/.test(x));
+      if (li >= 0) {
+        const near = L.slice(li, li + 8).join(' ');
+        const dd = L.slice(li, li + 8).map(dOf).filter((d) => d && d > ymdOf(e.ms)).sort().pop();
+        const mm = near.match(/(\d{1,2})\s*(년|개월)\s*(간|동안)?/);
+        const months = mm ? (mm[2] === '년' ? +mm[1] * 12 : +mm[1]) : null;
+        const until = dd || (months && months >= 1 && months <= 36 ? ymdOf(e.ms + months * 30.44 * DAY) : null);
+        if (until) e.lock = { until, months, src: dd ? '원문 날짜' : `원문 ${mm[0].trim()}` };
+      }
+    }
+    // 5 CB·증자 발행 대상자(누가 받았나) → 같은 세력 연결
+    if (['cb', 'rights3'].includes(e.kind) || /사채권발행결정|제3자배정/.test(e.title)) {
+      const to = namesAfter(/대상자별|발행\s*대상자|배정\s*대상자|제3자\s*배정\s*대상자|인수\s*대상자|사채\s*발행\s*대상/, 30, 8);
+      if (to.length) e.to = to;
+      // 6 자사주를 교환 대상으로 한 교환사채
+      if (/교환사채/.test(e.title) && L.slice(0, 200).some((x) => /자기\s*주식/.test(x))) cbx.tsEB = true;
+    }
+    // 6 자사주 처분: 방식·수량
+    if (e.kind === 'tsell') { const txt = L.slice(0, 150).join(' '); e.ts = { how: /교환\s*사채|교환대상/.test(txt) ? '교환사채' : /시간\s*외|장\s*외|블록/.test(txt) ? '장외·시간외' : /장\s*내/.test(txt) ? '장내' : null, sh: amtAt(/처분\s*(예정\s*)?주식\s*\(?(수|보통주)/) }; }
+    // 8 주주총회 안건: 이사 선임·상호 변경·사업목적
+    if (e.kind === 'agm') { const txt = L.slice(0, 300).join(' '); const a = { dir: /이사\s*선임|사내\s*이사|대표\s*이사/.test(txt), rename: /상호\s*변경/.test(txt), purpose: /사업\s*목적|목적\s*사업/.test(txt) }; if (a.dir || a.rename || a.purpose) e.agm = a; }
   } catch { failed = true; }
-  const out = { v: PXV, p, label, kind: e.kind, at: e.ms, third, restr, buys: e.buys || null, cbx: Object.keys(cbx).length ? cbx : null, pledge, pen, ins: e.ins || null, use: e.use || null, delay: e.delay || null, ovh: e.ovh || null };
+  const out = { v: PXV, p, label, kind: e.kind, at: e.ms, third, restr, buys: e.buys || null, cbx: Object.keys(cbx).length ? cbx : null, pledge, pen, ins: e.ins || null, use: e.use || null, delay: e.delay || null, ovh: e.ovh || null, mna: e.mna || null, f5: e.f5 || null, lock: e.lock || null, to: e.to || null, ts: e.ts || null, agm: e.agm || null };
   if (!failed) await setJSON(ck, out).catch(() => {}); // 원문을 못 받았으면 저장하지 않고 다음에 다시
   return out;
 }
 
 // 공시 원문 결과 → 종목의 px 목록 한 줄
 function pxRow(p, e) {
-  if (!(p.p || p.cbx || p.pledge || p.pen || p.ins || p.use || p.delay || p.ovh)) return null;
-  return { p: p.p || null, pen: p.pen || undefined, label: p.label || (p.pen ? '불성실공시 벌점' : p.pledge ? '주식 담보' : p.ins ? '내부자 지분 변동' : p.use ? '자금 사용 목적' : p.delay ? '납입일 변경' : p.ovh ? '미전환 잔액' : 'CB 조건'), kind: e.kind || p.kind, date: new Date(e.ms + 9 * 3600e3).toISOString().slice(0, 10), buys: p.buys || undefined, cbx: p.cbx || undefined, pledge: p.pledge || undefined, ins: p.ins || undefined, use: p.use || undefined, delay: p.delay || undefined, ovh: p.ovh || undefined, ref: e.id };
+  if (!(p.p || p.cbx || p.pledge || p.pen || p.ins || p.use || p.delay || p.ovh || p.mna || p.f5 || p.lock || p.to || p.ts || p.agm)) return null;
+  return { p: p.p || null, pen: p.pen || undefined, label: p.label || (p.pen ? '불성실공시 벌점' : p.pledge ? '주식 담보' : p.ins ? '내부자 지분 변동' : p.use ? '자금 사용 목적' : p.delay ? '납입일 변경' : p.ovh ? '미전환 잔액' : p.mna ? '인수 자금·계약 조건' : p.f5 ? '투자조합 정보' : p.lock ? '보호예수' : p.to ? '발행 대상자' : p.ts ? '자사주 처분' : p.agm ? '주총 안건' : 'CB 조건'), kind: e.kind || p.kind, date: new Date(e.ms + 9 * 3600e3).toISOString().slice(0, 10), buys: p.buys || undefined, cbx: p.cbx || undefined, pledge: p.pledge || undefined, ins: p.ins || undefined, use: p.use || undefined, delay: p.delay || undefined, ovh: p.ovh || undefined, mna: p.mna || undefined, f5: p.f5 || undefined, lock: p.lock || undefined, to: p.to || undefined, ts: p.ts || undefined, agm: p.agm || undefined, ref: e.id };
 }
 
 // ───── 보강 신호: 같은 세력 연결 · 시장경보 · 시총 · 일상적 수주 업종 ─────
@@ -719,9 +780,30 @@ export function penaltyOf(x, now = Date.now()) {
     cum: cum || null, n: fixed.length, last: last ? { p: last.pen.p, date: last.date } : null,
     pend: L.some((p) => p.pen.pre) || ev.some((e) => /예고/.test(e.title) && !/지정\s*\(|지정결정/.test(e.title)),
     unknown: !L.length, // 공시는 있는데 원문에서 점수를 못 읽음
-    rule: kospi ? '코스피: 1회 10점↑ 하루 매매정지 · 1년 누계 15점↑ 관리종목' : '코스닥: 1회 8점↑ 하루 매매정지 · 1년 누계 15점↑ 상장적격성 실질심사',
-    left: cum ? Math.max(0, 15 - cum) : null,
+    rule: kospi ? '코스피: 1회 10점↑ 하루 매매정지 · 1년 누계 15점↑ 관리종목' : '코스닥: 1회 8점↑ 하루 매매정지 · 1년 누계 10점↑ 상장적격성 실질심사 (2026-07-01부터, 이전 15점)',
+    lim: kospi ? 15 : 10, // 실질심사·관리종목 기준 누계 벌점
+    left: cum ? Math.max(0, (kospi ? 15 : 10) - cum) : null,
   };
+}
+
+// ───── v208 상장폐지·관리종목 요건 근처 (코스닥 중심, 2026 강화 기준 · 거래소 공식 기준은 바뀔 수 있음) ─────
+//  시총 200억 미만 30거래일 → 관리(2027-01부터 300억) · 주가 1,000원 미만 30거래일 → 관리(동전주, 2026-07부터)
+//  최근 사업연도 매출 30억 미만 → 관리 · 3년 중 2년 법차손이 자기자본 50% 초과(10억↑) → 관리 · 자기자본 10억 미만 → 관리
+export function delistRisk(x) {
+  if (x.mkt !== 'Q') return null;
+  const hits = [];
+  const mc = x.mcap ? (x.mcap > 1e7 ? x.mcap / 1e8 : x.mcap) : null; // 억원
+  if (mc != null && mc < 200) hits.push({ k: 'mcap', strong: true, t: `시가총액 약 ${Math.round(mc)}억 — 지금 기준 200억 미달 (30거래일 계속되면 관리종목)` });
+  else if (mc != null && mc < 300) hits.push({ k: 'mcap', t: `시가총액 약 ${Math.round(mc)}억 — 2027년 1월부터 기준 300억 미달` });
+  if (x.close && x.close < 1000) hits.push({ k: 'coin', t: `주가 ${fmtW(x.close)}원 — 1,000원 미만 동전주 (30거래일 계속되면 관리종목)` });
+  const fin = x.ck?.fin;
+  if (fin) {
+    if (fin.rev != null && fin.rev < 3e9) hits.push({ k: 'rev', strong: true, t: `${fin.y}년 매출 ${Math.round(fin.rev / 1e8)}억 — 30억 미만 (관리종목 요건)` });
+    const lossY = (fin.ptx || []).map((v, i) => v != null && v < 0 && fin.eq?.[i] > 0 && -v > fin.eq[i] * 0.5 && -v >= 1e9).filter(Boolean).length;
+    if (lossY >= 2 && fin.ptx?.[0] < 0) hits.push({ k: 'ptx', strong: true, t: `최근 3년 중 ${lossY}년 법차손(세전 손실)이 자기자본의 50% 초과 (관리종목 요건)` });
+    if (fin.eq?.[0] != null && fin.eq[0] < 1e9) hits.push({ k: 'eq', strong: true, t: `자기자본 ${Math.round(fin.eq[0] / 1e8)}억 — 10억 미만 (관리종목 요건)` });
+  }
+  return { hits, strong: hits.some((h) => h.strong) || hits.length >= 2 };
 }
 
 // ───── 방향 판단 (규칙 기반 · AI가 바꾸지 못함) ─────
@@ -845,6 +927,22 @@ export function direction(x, now = Date.now()) {
   for (const l of (x.links || []).slice(0, 2)) R(up, 2, `'${l.who}'이(가) 다른 종목(${l.others.map((o) => o.nm || o.c).slice(0, 3).join(', ')})에도 등장 — 같은 세력이 여러 종목을 다룰 가능성`, '공시');
   const callP = (x.px || []).find((p) => p.cbx?.call);
   if (callP) R(up, 1, `${callP.date} CB에 콜옵션(매도청구권${callP.cbx.callPct ? ' ' + callP.cbx.callPct + '%' : ''}) — 최대주주 쪽이 싸게 지분을 늘릴 수 있는 구조`, callP.ref || '공시');
+  // ── v208 전문가 점검 ──
+  const PX = x.px || [];
+  const mnaP = PX.filter((p) => p.mna).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+  if (mnaP?.mna.nocap) R(down, 2, `${mnaP.date} 최대주주 변경 — 무자본 M&A 의심 (${mnaP.mna.pledgeFund ? '인수 자금에 주식담보 대출' : ''}${mnaP.mna.pledgeFund && mnaP.mna.borrowPct != null ? ' · ' : ''}${mnaP.mna.borrowPct != null ? `차입 비중 ${mnaP.mna.borrowPct}%` : ''}) — 띄운 뒤 담보 물량과 함께 무너지기 쉬움`, mnaP.ref);
+  if (mnaP?.mna.depPct != null && mnaP.mna.depPct < 10 && (!mnaP.mna.balD || mnaP.mna.balD >= ymdOf(now))) R(down, 1, `${mnaP.date} 경영권 계약금이 전체의 ${mnaP.mna.depPct}%뿐${mnaP.mna.balD ? `, 잔금 ${mnaP.mna.balD}` : ''} — 잔금을 못 내면 계약이 깨질 수 있음`, mnaP.ref);
+  const f5P = PX.find((p) => p.f5?.young);
+  if (f5P) R(up, 1, `${f5P.date} 지분 신고한 투자조합이 설립 ${f5P.f5.ageD}일 만에 등장${f5P.f5.gp ? ` (업무집행조합원 ${f5P.f5.gp})` : ''} — 이번 거래를 위해 급조된 조합일 가능성`, f5P.ref);
+  const tsE = ev.find((e) => e.kind === 'tsell' && age(e) <= 180), tsEB = PX.find((p) => p.cbx?.tsEB);
+  if (tsE || tsEB) R(down, tsE && tsEB ? 2 : 1, tsE ? `${ymdOf(tsE.ms)} 자사주 처분 결정${PX.find((p) => p.ref === tsE.id)?.ts?.how ? ` (${PX.find((p) => p.ref === tsE.id).ts.how})` : ''} — 회사가 가진 주식이 시장에 나옴` : `${tsEB.date} 자사주를 교환 대상으로 한 교환사채 — 교환되면 자사주가 시장 물량이 됨`, tsE?.id || tsEB.ref);
+  const lastMna = ev.filter((e) => e.kind === 'mna' && age(e) <= 365).sort((a, b) => b.ms - a.ms)[0];
+  if (lastMna) {
+    const gov = [...ev.filter((e) => ['ceo', 'rename'].includes(e.kind) && e.ms >= lastMna.ms), ...PX.filter((p) => p.agm && (p.agm.dir || p.agm.rename) && p.date >= ymdOf(lastMna.ms)).map((p) => ({ title: `주총 안건(${[p.agm.dir ? '이사 선임' : '', p.agm.rename ? '상호 변경' : '', p.agm.purpose ? '사업목적' : ''].filter(Boolean).join('·')})`, ms: Date.parse(p.date), id: p.ref }))];
+    if (gov.length) R(up, 1, `최대주주 변경(${ymdOf(lastMna.ms)}) 뒤 ${gov.slice(0, 2).map((g) => `${ymdOf(g.ms)} ${g.title}`).join(', ')} — 새 세력이 경영진·회사 이름을 바꾸는 단계`, gov[0].id);
+  }
+  const dl = delistRisk(x);
+  if (dl?.hits.length) R(down, dl.strong ? 3 : 2, `상장폐지·관리종목 요건 근처 — ${dl.hits.map((h) => h.t).slice(0, 2).join(' / ')}`, '계산');
   // 하락 쪽
   const pl = (x.px || []).filter((p) => p.pledge).sort((a, b) => b.pledge.perShare - a.pledge.perShare)[0];
   if (pl && x.close) { const mc = pl.pledge.perShare * 1.4; if (x.close <= mc * 1.15) R(down, 3, `주식 담보 1주당 대출 ${fmtW(pl.pledge.perShare)}원 → 반대매매 추정가 약 ${fmtW(mc)}원(대출의 1.4배로 가정) 근처 — 급락 위험`, pl.ref || '공시'); }
@@ -858,8 +956,8 @@ export function direction(x, now = Date.now()) {
   const conv = (x.px || []).filter((p) => p.kind === 'cb' || p.kind === 'refix').map((p) => p.p).filter(Boolean);
   if (cbs.length && conv.length && x.close && x.close >= Math.min(...conv) * 1.3) R(down, 2, `현재가가 CB 전환가 ${fmtW(Math.min(...conv))}원보다 ${Math.round((x.close / Math.min(...conv) - 1) * 100)}% 높아 전환 후 매도 유인`, '계산');
   const pen = penaltyOf(x, now);
-  if (pen?.cum >= 15) R(down, 3, `불성실공시 벌점 최근 1년 누계 ${pen.cum}점 — 15점 이상 (${x.mkt === 'P' ? '관리종목 지정 기준' : '상장적격성 실질심사 기준'})`, '공시');
-  else if (pen?.cum >= 10) R(down, 2, `불성실공시 벌점 최근 1년 누계 ${pen.cum}점 — 15점까지 ${pen.left}점 남음`, '공시');
+  if (pen && pen.cum >= pen.lim) R(down, 3, `불성실공시 벌점 최근 1년 누계 ${pen.cum}점 — ${pen.lim}점 이상 (${x.mkt === 'P' ? '관리종목 지정 기준' : '상장적격성 실질심사 기준'})`, '공시');
+  else if (pen && pen.cum >= pen.lim - 5) R(down, 2, `불성실공시 벌점 최근 1년 누계 ${pen.cum}점 — ${pen.lim}점까지 ${pen.left}점 남음`, '공시');
   else if (pen?.pend) R(down, 1, '불성실공시법인 지정 예고 상태 — 벌점이 더해질 수 있음', '공시');
   const risk = ev.find((e) => e.kind === 'risk' && age(e) <= 180 && !/불성실공시/.test(e.title));
   if (risk) R(down, 2, `${ymdOf(risk.ms)} 위험 공시: ${risk.title}`, risk.id);
@@ -896,8 +994,9 @@ export function direction(x, now = Date.now()) {
   const dates = [];
   for (const e of ev.filter((e) => ['cb', 'rights3'].includes(e.kind)).slice(0, 4)) {
     const real = e.kind === 'cb' ? (x.px || []).find((p) => p.ref === e.id && p.cbx?.start)?.cbx : null;
-    const d = real?.start || ymdOf(e.ms + 365 * DAY);
-    dates.push({ d, t: `${ymdOf(e.ms)} ${e.kind === 'cb' ? (real ? `CB 발행 → 전환청구 가능 시작 (원문 기준${real.end ? `, ~${real.end}` : ''})` : 'CB 발행 → 전환청구 가능 시작(발행 1년 뒤로 추정)') : '3자배정 신주 → 전매 제한 해제(1년 뒤로 추정)'}`, ref: e.id, past: d < ymdOf(now), real: !!real });
+    const lk = e.kind === 'rights3' ? (x.px || []).find((p) => p.ref === e.id && p.lock?.until)?.lock : null; // v208: 원문의 실제 보호예수 기간
+    const d = real?.start || lk?.until || ymdOf(e.ms + 365 * DAY);
+    dates.push({ d, t: `${ymdOf(e.ms)} ${e.kind === 'cb' ? (real ? `CB 발행 → 전환청구 가능 시작 (원문 기준${real.end ? `, ~${real.end}` : ''})` : 'CB 발행 → 전환청구 가능 시작(발행 1년 뒤로 추정)') : lk ? `3자배정 신주 → 보호예수 해제 (${lk.src})` : '3자배정 신주 → 전매 제한 해제(1년 뒤로 추정)'}`, ref: e.id, past: d < ymdOf(now), real: !!(real || lk) });
   }
   for (const e of ev.filter((e) => e.kind === 'conv' && age(e) <= 30).slice(0, 2)) dates.push({ d: ymdOf(e.ms + 14 * DAY), t: `${ymdOf(e.ms)} 전환청구 → 추가 상장(보통 1~2주 뒤, 정확한 날은 원문 확인)`, ref: e.id, past: ymdOf(e.ms + 14 * DAY) < ymdOf(now) });
   dates.sort((a, b) => (a.d < b.d ? -1 : 1));
@@ -1036,8 +1135,8 @@ export function postExitOf(x, now = Date.now()) {
 //  x.ck: 바깥 자료(manipck.mjs enrich) — 최대주주 지분·감사의견·자본잠식·신용잔고·거래원·뉴스/종토방·업종 강세·시장 흐름·같은 세력 다른 종목
 // 체크리스트 항목별 중요도 (기본값) — 성적표가 쌓이면 실제로 잘 맞은 항목 쪽으로 자동 조정(CK_LEARN)
 export const CK_W = { money: 3, cost: 2, acc: 2, unlock: 1.5, rr: 1.5, small: 1, float: 1, story: 0.5, theme: 0.5, insider: 0.5, broker: 0.5, buzz: 0.5 };
-export const CK_BOMB = ['fail', 'health', 'penalty', 'pledge', 'insell']; // 하나라도 걸리면 D등급
-const CK_RW = { drain: 1, party: 1, exited: 1, unlock30: 1, credit: 0.5, warn: 0.5 };
+export const CK_BOMB = ['fail', 'health', 'penalty', 'pledge', 'insell', 'delistx']; // delistx: 상장폐지·관리종목 요건에 이미 걸렸거나 2개 이상 근처 // 하나라도 걸리면 D등급
+const CK_RW = { drain: 1, party: 1, exited: 1, unlock30: 1, nocap: 1.5, delist: 1.5, tsell: 0.5, credit: 0.5, warn: 0.5 };
 export const CK_KO = { money: '세력 자금 실제 투입', cost: '평단 근처', acc: '매집 흔적', unlock: '물량 해제 2~3개월 전', rr: '손익비 2↑', small: '소형주', float: '최대주주 지분 40%↑', story: '사업목적 추가', theme: '업종·테마 강세', insider: '내부자 매수', broker: '창구 쏠림', buzz: '기사·종토방 증가' };
 let CK_LEARN = null; // { w: {항목: 배율}, n: 표본 수 }
 export function setCkLearn(v) { CK_LEARN = v && v.w && Object.keys(v.w).length ? v : null; }
@@ -1054,7 +1153,7 @@ export function learnCk(map) {
   return Object.keys(w).length ? { w, n } : null;
 }
 // 폭탄 신호(철회·납입 연기, 감사의견·자본잠식, 벌점, 담보 반대매매, 내부자 매도)가 있으면 '상승 가능성' 분류를 보류
-const BOMB_KO = { fail: '철회·납입 연기', health: '감사의견·자본잠식', penalty: '불성실공시 벌점', pledge: '담보 반대매매', insell: '내부자 매도 우위' };
+const BOMB_KO = { fail: '철회·납입 연기', health: '감사의견·자본잠식', penalty: '불성실공시 벌점', pledge: '담보 반대매매', insell: '내부자 매도 우위', delistx: '상장폐지·관리종목 요건' };
 export function bombGate(x) {
   const b = x?.cl?.bombs || [];
   if (b.length && x.dir?.dir === 'up') x.dir = { ...x.dir, dir: 'none', bombHold: b, notes: [...(x.dir.notes || []), `폭탄 신호(${b.map((k) => BOMB_KO[k] || k).join('·')}) 때문에 '상승 가능성' 분류를 보류 — 이 신호가 풀리면 다시 판단해요`] };
@@ -1114,7 +1213,7 @@ export function checklistOf(x, now = Date.now()) {
   const delays = px.filter((p) => p.delay);
   add(R, 'fail', fails.length + delays.length > 0, fails.length || delays.length ? `자금 문제 신호: ${[...fails.slice(0, 2).map((e) => `${ymdOf(e.ms)} ${e.title}`), ...delays.slice(0, 2).map((p) => `${p.date} 정정 공시에서 납입일 변경`)].filter((t, i, A) => A.indexOf(t) === i).join(' · ')}` : '증자·사채·양수도 철회·해제·납입 연기 없음', fails[0]?.id || delays[0]?.ref);
   const pn = penaltyOf(x, now);
-  add(R, 'penalty', !!(pn && (pn.cum >= 10 || pn.pend)), pn ? `불성실공시 벌점 최근 1년 ${pn.cum ?? '?'}점${pn.pend ? ' · 지정 예고' : ''}` : '불성실공시 벌점 없음');
+  add(R, 'penalty', !!(pn && (pn.cum >= (pn.lim === 10 ? 7 : 10) || pn.pend)), pn ? `불성실공시 벌점 최근 1년 ${pn.cum ?? '?'}점${pn.pend ? ' · 지정 예고' : ''}` : '불성실공시 벌점 없음');
   const auditBad = ck.audit && !/적정/.test(ck.audit.op || '') ? ck.audit : null, capBad = ck.cap?.imp >= 50;
   const riskEv = ev.find((e) => e.kind === 'risk' && /감사의견|자본잠식|계속기업|상장적격성|관리종목|상장폐지/.test(e.title) && age(e) <= 365);
   if (!ck.audit && ck.cap?.imp == null && !riskEv) add(R, 'health', null, `감사의견·자본잠식 자료 없음${ck.err?.fin ? ` (${ck.err.fin})` : ''}`);
@@ -1130,6 +1229,14 @@ export function checklistOf(x, now = Date.now()) {
   add(R, 'party', badLinks.length > 0, (x.links || []).length ? (badLinks.length ? `같은 이름이 나온 다른 종목 중 ${badLinks.map((l) => `${l.nm || l.c}(${[['엑시트 후', '털기'].includes(l.st) ? l.st : '', l.risk ? '벌점·하락 위험 신호' : ''].filter(Boolean).join(' · ') || l.st || '위험'})`).slice(0, 3).join(', ')} — 같은 세력이 다른 종목에서 이미 털고 나갔거나 위험 신호가 있음` : '같은 세력 연결 종목 중 털린 이력은 못 찾음') : '같은 세력 연결 없음');
   { const nd2 = (d.dates || []).find((z) => !z.past); const dd2 = nd2 ? Math.round((Date.parse(nd2.d) - now) / DAY) : null;
     add(R, 'unlock30', dd2 != null && dd2 <= 30, dd2 != null && dd2 <= 30 ? `물량 해제일 ${nd2.d}이 ${dd2}일 앞 — 전환·매도 물량이 곧 나올 수 있음` : '30일 안 물량 해제일 없음', nd2?.ref); }
+  { const PX2 = x.px || []; const mn = PX2.filter((p) => p.mna).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    if (!mn && !ev.some((e) => e.kind === 'mna' && age(e) <= 365)) add(R, 'nocap', false, '최근 1년 최대주주 변경 없음');
+    else if (!mn) add(R, 'nocap', null, '최대주주 변경 원문의 인수 자금 출처 미확인');
+    else add(R, 'nocap', !!mn.mna.nocap || (mn.mna.depPct != null && mn.mna.depPct < 10), mn.mna.nocap ? `무자본 M&A 의심 — 인수 자금 ${mn.mna.pledgeFund ? '주식담보 대출' : `차입 ${mn.mna.borrowPct}%`}` : mn.mna.depPct != null && mn.mna.depPct < 10 ? `경영권 계약금 ${mn.mna.depPct}%뿐 — 잔금 미지급 위험` : `인수 자금 ${mn.mna.borrowPct != null ? `차입 ${mn.mna.borrowPct}%` : '출처 일부 확인'}`, mn.ref);
+    const dl = delistRisk(x);
+    if (dl) add(R, dl.strong ? 'delistx' : 'delist', dl.hits.length > 0, dl.hits.length ? dl.hits.map((h) => h.t).join(' / ') : '코스닥 관리종목 요건(시총·동전주·매출·법차손·자기자본) 근처 아님' + (x.ck?.fin ? '' : ' (재무 자료 일부 없음)'));
+    const tsE = ev.find((e) => e.kind === 'tsell' && age(e) <= 180), tsEB = PX2.find((p) => p.cbx?.tsEB);
+    add(R, 'tsell', !!(tsE || tsEB), tsE ? `${ymdOf(tsE.ms)} 자사주 처분 결정 — 시장 물량` : tsEB ? `${tsEB.date} 자사주 교환사채 — 교환 시 시장 물량` : '최근 6개월 자사주 처분·자사주 교환사채 없음', tsE?.id || tsEB?.ref); }
   add(R, 'exited', x.stage === '엑시트 후', x.stage === '엑시트 후' ? '이미 한 번 띄우고 털고 나간 종목(엑시트 후)' : '엑시트 후 아님');
   if (ck.mkt20 == null) add(R, 'market', null, '시장 지수 흐름 자료 없음');
   else add(R, 'market', ck.mkt20 <= -5, `${x.mkt === 'P' ? '코스피' : '코스닥'} 최근 20거래일 ${ck.mkt20 > 0 ? '+' : ''}${ck.mkt20}%${ck.mkt20 <= -5 ? ' — 약세장이라 띄우기 성공률이 떨어짐' : ''}`);
@@ -1464,13 +1571,25 @@ export function rankRow(x) {
   return { ...chipsOf(x), cf, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 // 판단 규칙 버전 — 규칙을 바꾸면 +1. 이전 규칙으로 저장된 카드는 다음 저장 1번만 '단계·분류 변화' 알림을 안 보냄 (규칙 변경 때문에 생긴 변화라 알림 폭주 방지)
-export const RULE_V = 203;
+export const RULE_V = 208;
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
   try { rank = (await getJSONStrict('mp/rank')) || {}; } catch (e) { console.warn('mp/rank 읽기 실패 — 랭킹은 이번에 안 고침', e.message); }
   const alerts = [];
   const DK = { up: '📈 상승 가능성', down: '📉 하락 위험' };
+  // v208: 공시 원문에서 읽은 CB·증자 발행 대상자, 투자조합 업무집행조합원·조합원 이름 → 같은 세력 연결 (이름 → 종목 목록)
+  let pn = null; try { pn = (await getJSON('mp/pnames')) || {}; } catch {}
+  const pxNames = (x) => { const out = new Map(); for (const p of x.px || []) for (const nm of [...(p.to || []), p.f5?.gp, ...(p.f5?.mem || [])]) { if (!nm || NOT_PARTY.test(nm) || nm.length < 2) continue; const k = partyKey(nm); if (k && k.length >= 3 && !out.has(k)) out.set(k, { nm, d: p.date, src: (p.to || []).includes(nm) ? '발행 대상자' : '투자조합' }); } return out; };
   for (const x of list) {
+    if (pn) {
+      const names = pxNames(x);
+      for (const [k, v] of names) {
+        const ent = (pn[k] ||= { n: v.nm, list: [] });
+        const others = ent.list.filter((o) => o.c !== x.code);
+        if (others.length && !(x.links || []).some((l) => partyKey(l.who) === k)) { x.links = [...(x.links || []), { who: `${v.nm}(${v.src})`, others: others.slice(0, 6) }].slice(0, 6); x.dir = null; }
+        if (!ent.list.some((o) => o.c === x.code)) ent.list = [{ c: x.code, nm: x.name || null, d: v.d }, ...ent.list].slice(0, 20);
+      }
+    }
     const k = `mp/prof/${x.code}`;
     const prev = (await getJSON(k)) || {};
     // 공시 원문 가격(CB 전환가·담보·잔액 등)은 이번에 다시 안 읽었으면 이전 것을 이어서 씀 (31~80위·원문 읽기 전 단계에서 지워지던 문제)
@@ -1516,6 +1635,7 @@ async function saveProfiles(list, reason, opt = {}) {
     await setJSON(k, prof);
     if (opt.rank !== false && rank) { const row = rankRow(prof); if (opt.touch === false && rank[x.code]?.up) row.up = rank[x.code].up; rank[x.code] = row; } // 재확인·자동 갱신은 '최근 신호' 시각을 바꾸지 않음 (오래된 줄이 계속 남던 문제)
   }
+  if (pn) { const ks = Object.keys(pn); if (ks.length > 4000) for (const k of ks.slice(0, ks.length - 4000)) delete pn[k]; await setJSON('mp/pnames', pn).catch(() => {}); }
   if (rank) {
     for (const [c, r] of Object.entries(rank)) if (Date.now() - (r.up || 0) > 120 * DAY) delete rank[c]; // 4개월 넘게 신호 없는 줄은 랭킹 목록에서만 정리 (종목 카드는 남김)
     await setJSON('mp/rank', rank);
@@ -1940,3 +2060,4 @@ export async function manipAux() {
   await setJSON('mp/auxlock', { busyUntil: 0 }).catch(() => {});
   return Object.keys(out).length ? out : null;
 }
+export { docPrice as _docPrice }; // 테스트용

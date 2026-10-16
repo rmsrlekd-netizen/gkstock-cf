@@ -69,6 +69,15 @@ async function dartFacts(code) {
     }
     if (done) break;
   }
+  // v208 상장폐지·관리종목 요건용: 최근 사업보고서의 매출액·법인세비용차감전손익(3년)·자본총계(3년)
+  for (const yr of [y - 1, y - 2]) {
+    const L = await dart('fnlttSinglAcnt', { corp_code: corp, bsns_year: String(yr), reprt_code: '11011' });
+    if (!L.length) continue;
+    const row = (names) => { for (const fs of ['CFS', 'OFS']) for (const n of names) { const r = L.find((x) => x.fs_div === fs && String(x.account_nm).replace(/\s/g, '') === n); if (r) return r; } return null; };
+    const three = (r) => (r ? [n0(r.thstrm_amount), n0(r.frmtrm_amount), n0(r.bfefrmtrm_amount)] : null);
+    const rv = row(['매출액', '수익(매출액)', '영업수익']), pt = row(['법인세차감전순이익', '법인세차감전순손익', '법인세비용차감전순이익', '법인세비용차감전순손익', '법인세비용차감전계속사업이익', '법인세비용차감전계속영업이익']), eqr = row(['자본총계']);
+    if (rv || pt || eqr) { out.fin = { y: yr, rev: rv ? n0(rv.thstrm_amount) : null, ptx: three(pt), eq: three(eqr) }; break; }
+  }
   if (!Object.keys(out).length && errs && !oks) throw new Error('DART 응답 오류'); // 오류를 '자료 없음'으로 5일 저장하지 않게
   return out;
 }
@@ -233,10 +242,10 @@ export async function enrich(x, { fresh = false, ix = null, broker = false } = {
   // DART (5일 보관)
   const dk = `mp/ckd/${code}`;
   let dd = fresh ? null : await getJSON(dk);
-  if (!dd || now - (dd.at || 0) > 5 * DAY) {
-    try { dd = { at: now, ...(await dartFacts(code)) }; await setJSON(dk, dd).catch(() => {}); } catch (e) { ck.err.major = ck.err.fin = String(e.message).slice(0, 60); dd = dd || null; }
+  if (!dd || now - (dd.at || 0) > 5 * DAY || !('fin' in dd)) { // fin: v208 추가 항목 (예전 저장분은 다시 받음)
+    try { dd = { at: now, fin: null, ...(await dartFacts(code)) }; await setJSON(dk, dd).catch(() => {}); } catch (e) { ck.err.major = ck.err.fin = String(e.message).slice(0, 60); dd = dd || null; }
   }
-  if (dd) { ck.major = dd.major || null; ck.audit = dd.audit || null; ck.cap = dd.cap || null; if (!dd.major) ck.err.major = ck.err.major || '최대주주 현황 없음'; }
+  if (dd) { ck.major = dd.major || null; ck.audit = dd.audit || null; ck.cap = dd.cap || null; ck.fin = dd.fin || null; if (!dd.major) ck.err.major = ck.err.major || '최대주주 현황 없음'; }
   // 신용잔고 (하루 보관)
   const ckk = `mp/ckc/${code}`;
   let cr = fresh ? null : await getJSON(ckk);

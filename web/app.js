@@ -3362,7 +3362,7 @@
     if (i === 5) c = 'hl-g' + m[0];
     return c ? `<span class="${c}">${m}</span>` : m;
   });
-  const MP_EV = { mna: '최대주주·경영권', rights3: '3자배정 증자', rightsfix: '증자 정정', rights: '유상증자', rightsR: '구조조정 증자(제외)', cb: 'CB·BW', refix: '리픽싱', fund5: '투자조합 지분', purpose: '사업목적 변경', bonus: '무상증자', capred: '감자', contract: '공급계약', invest: 'MOU·투자판단', inquiry: '조회공시', conv: '전환청구', majsell: '최대주주 지분변동', pledge: '담보·질권', risk: '불성실·횡령 등' };
+  const MP_EV = { tsell: '자사주 처분', rename: '상호 변경', ceo: '대표이사 변경', agm: '주총 소집', mna: '최대주주·경영권', rights3: '3자배정 증자', rightsfix: '증자 정정', rights: '유상증자', rightsR: '구조조정 증자(제외)', cb: 'CB·BW', refix: '리픽싱', fund5: '투자조합 지분', purpose: '사업목적 변경', bonus: '무상증자', capred: '감자', contract: '공급계약', invest: 'MOU·투자판단', inquiry: '조회공시', conv: '전환청구', majsell: '최대주주 지분변동', pledge: '담보·질권', risk: '불성실·횡령 등' };
   async function loadManip(date, run) {
     const box = $('#mpBody'); if (!box) return;
     const seq = (S.mpSeq = (S.mpSeq || 0) + 1);
