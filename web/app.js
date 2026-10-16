@@ -234,7 +234,8 @@
   // ───────────────────────── 테마·호재/악재 자동 분류 ─────────────────────────
   const THEME_LABEL = { earnings: '실적', bio: '임상·FDA', deal: '계약·M&A', offering: '증자·희석', insider: '내부자', inst: '기관·5%', other: '기타' };
   const RE = {
-    bio: /FDA|임상|Phase\s?[123I]|clinical|trial|허가|신약|치료제|BLA|NDA|IND\b|topline|바이오시밀러|Breakthrough/i,
+    // v214: 'industrial'(trial)·'Blackwell'(BLA)·'agenda/Honda'(NDA)·'behind/kind'(IND)·'breakthrough'가 임상·FDA로 잘못 잡히던 문제 → 단어 경계·대문자 약어만
+    bio: { test: (t) => /임상|품목허가|신약|치료제|바이오시밀러/.test(t) || /\b(FDA|BLA|NDA|IND|PDUFA)\b|\bPhase\s?(?:[123]|I{1,3})\b/.test(t) || /\bclinical\b|\btrials?\b|\btopline\b|breakthrough therapy|\bbiosimilar/i.test(t) },
     earnings: /실적|earnings|revenue|매출|영업이익|순이익|quarter(ly)? results|EPS|guidance|가이던스|financial results|분기|reports (first|second|third|fourth)/i,
     deal: /계약|contract|agreement|acquisi|acquire|merger|인수|합병|M&A|partnership|수주|공급|제휴|협약|MOU|collaborat|license|기술이전|tender offer|공개매수|양수|양도/i,
     offering: /유상증자|전환사채|신주인수권|교환사채|\bCB\b|\bBW\b|offering|dilut|warrant|private placement|at-the-market|shelf|증권신고서|감자|희석|사모 증권/i,
@@ -3469,7 +3470,7 @@
           <span class="mp-px" data-lq="${esc(r.code)}">${won(r.c)}<small class="${dirCls(r.pct)}">${r.pct != null ? fmtPct(r.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[r.st] || 'watch'}">${esc(r.st || '')}${r.lv ? `<small>의심 ${esc(r.lv)}</small>` : ''}</span>
           ${S.rkKind === 'pick' ? `<span class="mp-score"><b>${r.pat?.on ? r.pat.est + '<em>%</em>' : (r.ckg ? esc(r.ckg) + '<em>등급</em>' : '—')}</b><small>${r.pat?.on ? '비슷한 패턴 승률(추정)' : '체크 등급'}<br>손익비 ${r.rr ? '1:' + r.rr.v : '—'} · 종합 ${r.s ?? '-'}점</small></span>` : S.rkKind === 'pex' && r.pex ? `<span class="mp-score"><b>${esc(r.pex.lv)}</b><small>털기 후 상승<br>근거 차이 ${r.pex.net > 0 ? '+' : ''}${r.pex.net}</small></span>` : S.rkKind === 'rr' && r.rr ? `<span class="mp-score"><b>1:${r.rr.v}${r.rr.big ? '+' : ''}</b><small>손익비<br>종합 점수 ${r.s}</small></span>` : S.rkKind === 'up' || S.rkKind === 'down' ? `<span class="mp-score"><b>${S.rkKind === 'up' ? r.us || 0 : r.ds || 0}<em>/10</em></b><small>${S.rkKind === 'up' ? '상승' : '하락'} 근거 점수<br>종합 점수 ${r.s}</small></span>` : `<span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span>`}</div>
-        ${r.vd ? `<div class="vd vd-${esc(r.vd.c)}"><b>${{ g: '🟢 매수 검토', y: '🟡 지켜보기', r: '🔴 피하기' }[r.vd.c]}</b> <span>${esc(r.vd.t)}</span></div>` : ''}
+        ${r.vd && S.rkKind !== 'pick' ? `<div class="vd vd-${esc(r.vd.c)}"><b>${{ g: '🟢 매수 검토', y: '🟡 지켜보기', r: '🔴 피하기' }[r.vd.c]}</b> <span>${esc(r.vd.t)}</span></div>` : ''}
         <div class="rk-strip">
           ${DIRB[r.d] ? DIRB[r.d] : ''}
           ${r.ckg ? `<span class="mp-ckg g${esc(r.ckg)}">체크 ${esc(r.ckg)}</span>` : ''}

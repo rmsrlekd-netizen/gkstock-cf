@@ -38,7 +38,7 @@ export function typeOf(x) {
   if (/^(SC 13D|SCHEDULE 13D)/i.test(form)) return 'us_13d';
   if (/^(424B|S-1|F-1)/i.test(form)) return 'us_offer';
   const items = (x.items || []).map((i) => i.code);
-  if (/FDA|clinical|trial|topline|Phase\s?[123]|BLA|NDA\b|PDUFA|임상|승인|허가/i.test(t)) return 'us_bio';
+  if (/\b(FDA|BLA|NDA|PDUFA)\b|\bPhase\s?[123]\b/.test(t) || /\bclinical\b|\btrials?\b|\btopline\b|임상|품목허가/i.test(t)) return 'us_bio'; // v214: industrial·Blackwell 등 오분류 방지
   if (/offering|priced|underwritten|registered direct|private placement|at-the-market|유상증자|공모/i.test(t)) return 'us_offer';
   if (/reverse (stock )?split|주식 병합|액면병합/i.test(t)) return 'us_rsplit';
   if (/minimum bid|delist|Nasdaq notice|deficiency|상장 유지|상장폐지/i.test(t)) return 'us_delist';

@@ -1167,7 +1167,7 @@ export function checklistOf(x, now = Date.now()) {
   const add = (arr, k, ok, t, src) => arr.push({ k, ok, t, src: src || null });
   // ── 띄울 이유: 세력 자금 투입 ──
   const SET = ev.filter((e) => ['rights3', 'cb', 'mna', 'fund5'].includes(e.kind) && age(e) <= 365);
-  const paid = ev.filter((e) => e.kind === 'paid' && age(e) <= 400);
+  const paid = ev.filter((e) => e.kind === 'paid' && age(e) <= 400 && !/일반공모|소액공모|주주배정|공모증자/.test(e.title || '')); // v214: 일반 공모·주주배정 결과는 세력 자금 투입이 아님
   const fundBuy = px.find((p) => p.kind === 'fund5' && p.buys?.length);
   if (!SET.length) add(P, 'money', false, '세력 자금 투입 공시(3자배정·CB·최대주주 변경·투자조합 5%) 없음');
   else {
@@ -1774,7 +1774,7 @@ export function narrativeOf(x, now = Date.now()) {
   const DIR = { up: '상승 가능성 쪽', down: '하락 위험 쪽' };
   const hv = f.halted || evHalt(x.events, now, f);
   if (hv || x.stage === '거래정지') return [`${x.name}${mk ? `(${mk})` : ''}은(는) ${hv?.ev ? `${hv.since} '${hv.why}' 공시 뒤 거래 재개 공시가 없어` : `${hv?.since || ''} 무렵부터 거래가 없어`} 거래정지 중으로 보입니다. 정지 중에는 시세가 멈춰 있어 단계·평단·반등 판단을 하지 않고, 이 종목 알림도 멈췄습니다. 거래가 다시 열리면 자동으로 다시 분석합니다.`, '※ 공시와 거래 데이터로 자동 계산한 패턴 판단이며, 실제 세력의 존재나 불공정거래를 뜻하지 않습니다.'];
-  P.push(`${x.name}${mk ? `(${mk})` : ''}은(는) 지금 '${x.stage || '관찰'}' 단계로 보입니다.${DIR[d.dir] ? ` 공시·거래 근거를 종합하면 ${DIR[d.dir]}으로 분류됩니다` : ' 상승·하락 어느 쪽도 뚜렷하지 않습니다'} (상승 근거 ${d.upS || 0}/10점 · 하락 근거 ${d.downS || 0}/10점, 작전 패턴 종합 점수 ${x.score ?? '-'}점).`);
+  P.push(`${x.name}${mk ? `(${mk})` : ''}은(는) 지금 '${x.stage || '관찰'}' 단계로 보입니다.${DIR[d.dir] ? ` 공시·거래 근거를 종합하면 ${DIR[d.dir]}으로 분류됩니다` : d.bombHold?.length ? ` 상승 근거는 많지만 폭탄 신호(${d.bombHold.map((k) => BOMB_KO[k] || k).join('·')}) 때문에 '상승 가능성' 분류를 보류합니다` : (d.upS || 0) >= (d.downS || 0) + 3 && ['띄우기', '털기', '엑시트 후'].includes(x.stage) ? ` 상승 근거가 더 많지만 이미 '${x.stage}' 단계라 상승 가능성으로 분류하지 않습니다` : ' 상승·하락 어느 쪽도 뚜렷하지 않습니다'} (상승 근거 ${d.upS || 0}/10점 · 하락 근거 ${d.downS || 0}/10점, 작전 패턴 종합 점수 ${x.score ?? '-'}점).`);
   // 세력 흐름
   if (f.cyc) {
     let t = `${f.cyc.pumpD}부터 급등해 ${f.cyc.topD}에 ${won(f.cyc.top)}(급등 전 저점 대비 +${f.cyc.rise}%)까지 올랐다가, 지금은 그 고점 대비 ${f.cyc.drop}%입니다.`;
@@ -1783,7 +1783,7 @@ export function narrativeOf(x, now = Date.now()) {
     P.push(t);
   }
   if (!f.cyc && f.pump1) P.push(`${f.pump1.lowD} 저점부터 ${f.pump1.days}거래일 만에 ${won(f.pump1.top)}(${f.pump1.topD}, 저점 대비 +${f.pump1.rise}%)까지 1차로 띄웠고, 지금은 그 고점 대비 ${f.pump1.drop}%입니다${f.pump1.drop <= -25 ? ' — 고점에서 물량을 넘기고 빠지는 흐름(털기)으로 봅니다' : ''}.`);
-  if (f.accStart) P.push(`${f.cyc ? (f.acc2 ? '고점 뒤 다시 사 모으는 구간(2차 매집 후보)은' : '급등 전에 사 모은 구간(매집 추정)은') : '거래 흐름상 매집 추정 구간은'} ${f.accStart} ~ ${f.accEnd}(${f.accDays}거래일)이며, 이 구간 가격은 ${won(f.accLow)}~${won(f.accHigh)}입니다${f.accObv != null ? ` (오른 날 거래가 내린 날보다 많은 정도 ${f.accObv}%)` : ''}.`);
+  if (f.accStart) P.push(`${f.cyc ? (f.acc2 ? '고점 뒤 다시 사 모으는 구간(2차 매집 후보)은' : '급등 전에 사 모은 구간(매집 추정)은') : '거래 흐름상 매집 추정 구간은'} ${f.accStart} ~ ${f.accEnd}(${f.accDays}거래일)이며, 이 구간 가격은 ${won(f.accLow)}~${won(f.accHigh)}입니다${f.accObv != null ? (f.accObv >= 0 ? ` (오른 날 거래가 내린 날보다 많은 정도 ${f.accObv}%)` : ` — 다만 이 구간은 내린 날 거래가 더 많아(${f.accObv}%) 사 모은 흔적은 약함`) : ''}.`);
   else if (f.accBeyond) P.push('급등 시작이 일봉 자료(약 1년 2개월) 맨 앞이라, 그 전 매집 구간과 평단은 계산할 수 없습니다.');
   // 평단·가격
   if (d.cost && x.close) {

@@ -25,7 +25,7 @@ export async function buildNote(mk, date) {
   if (mk === 'US') { try { const codes = [...new Set((ed?.issues || []).flatMap((x) => (x.stocks || []).map((s) => s.code)).filter(Boolean))]; if (codes.length) ko = (await (await import('./usko.mjs')).usKoNames(codes)) || {}; } catch {} }
   const nm = (s) => (s.code && ko[s.code]) || s.name;
   const mat = {
-    지수: c.ix.map((x) => `${x.label} ${x.price ?? ''} ${x.pct != null ? (x.pct > 0 ? '+' : '') + Number(x.pct).toFixed(2) + '%' : ''}`),
+    지수: c.ix.map((x) => `${x.label} ${x.price == null ? '' : typeof x.price === 'number' ? (Math.abs(x.price) >= 100 ? x.price.toFixed(2) : x.price.toFixed(3)).replace(/\.?0+$/, '') : x.price} ${x.pct != null ? (x.pct > 0 ? '+' : '') + Number(x.pct).toFixed(2) + '%' : ''}`),
     주요이슈: (ed?.issues || []).map((x) => ({ 분류: x.tag, 제목: x.title, 요약: x.sub, 포인트: x.points, 성격: x.tone, 종목: (x.stocks || []).map((s) => `${nm(s)}${s.pct != null ? ' ' + (s.pct > 0 ? '+' : '') + s.pct + '%' : ''}`) })),
     급등: c.up.map((x) => `${x.name}${x.sub ? '(' + x.sub + ')' : ''} ${x.pct > 0 ? '+' : ''}${Number(x.pct).toFixed(1)}%${x.why ? ' — ' + x.why : ''}`),
     급락: c.down.map((x) => `${x.name}${x.sub ? '(' + x.sub + ')' : ''} ${Number(x.pct).toFixed(1)}%${x.why ? ' — ' + x.why : ''}`),
