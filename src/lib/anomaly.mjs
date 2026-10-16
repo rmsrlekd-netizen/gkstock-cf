@@ -126,6 +126,15 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
   });
 
   // ⑧ 기존 고장 감시에서 계속 실패 중인 항목
+  await tryRun('성적 이상치', async () => { // v222: 성적표·과거 재현·따라 샀다면에 말이 안 되는 숫자가 섞였는지 자동 확인 (감자 보정 오류·거래정지 진입 등)
+    const odd = [];
+    const chk = (src, c, n, d, u, dd, why) => { if ((u != null && u >= 150) || (dd != null && dd <= -60)) odd.push(`${src} ${n || c} ${d} 최고 ${u ?? '-'}% 최저 ${dd ?? '-'}%${why ? ' · ' + why : ''}`); };
+    const bt = await getJSON('mp/bt/rows');
+    for (const r of (bt?.rows || []).slice(-3000)) chk('과거재현', r.c, r.n, r.d, Math.max(r.u20 ?? -999, r.u60 ?? -999, r.u120 ?? -999) > -999 ? Math.max(r.u20 ?? -999, r.u60 ?? -999, r.u120 ?? -999) : null, Math.min(r.d20 ?? 999, r.d60 ?? 999, r.d120 ?? 999) < 999 ? Math.min(r.d20 ?? 999, r.d60 ?? 999, r.d120 ?? 999) : null, r.st === '거래정지' ? '거래정지 중 판정' : '');
+    const idx = ((await getJSON('mp/idx')) || []).slice(0, 40);
+    for (const d of idx) { const pf = await getJSON(`mp/perf/${d}`); for (const [c, r] of Object.entries(pf?.rows || {})) chk('성적표', c, r.n, d, r.u60 ?? r.u20 ?? r.u5 ?? null, r.d60 ?? r.d20 ?? r.d5 ?? null, r.st === '거래정지' ? '거래정지 중 판정' : ''); }
+    if (odd.length) add('warn', '성적 이상치', `성적 기록에 최고 +150%↑ 또는 최저 −60%↓ ${odd.length}건 — 진짜 급등락인지 감자·병합·거래정지 계산 오류인지 확인 필요`, odd);
+  });
   await tryRun('서버 부담', async () => { // v212: 정기 분석이 제때 끝나는지·얼마나 걸리는지
     const { isTradingDay } = await import('./schedule.mjs');
     const kd = new Date(now + 9 * H), today = kd.toISOString().slice(0, 10), hm = kd.getUTCHours() * 60 + kd.getUTCMinutes();
