@@ -3553,7 +3553,7 @@
     const box = $('#btBox'); if (!box) return;
     let j; try { j = await mpGet('mp=bt'); } catch (e) { box.innerHTML = `<p class="muted sm">과거 재현 결과를 못 불러옴: ${esc(e.message)}</p>`; return; }
     const b = $('#btBox'); if (!b) return;
-    if (j.none) { b.innerHTML = '<p class="note">🧪 <b>과거 재현(백테스트)</b> — 아직 시작 전 (3분마다 자동으로 조금씩 계산) <button class="btn sm" data-bt-run>지금 시작</button></p>'; return; }
+    if (j.none) { b.innerHTML = '<p class="note">🧪 <b>과거 재현(백테스트)</b> — 아직 시작 전 (밤 9시~아침 7시·주말에 3분마다 조금씩 자동 계산) <button class="btn sm" data-bt-run>지금 시작</button></p>'; return; }
     const ord = ['전체', '한 줄 결론:🟢 매수 검토', '한 줄 결론:🟡 지켜보기', '한 줄 결론:🔴 피하기', '매매 후보 조건:충족', '매매 후보 조건:미충족', '체크리스트:A등급', '체크리스트:B등급', '체크리스트:C등급', '체크리스트:D등급', '분류:상승 가능성', '분류:하락 위험', '분류:분류 없음', '단계:판 깔기', '단계:매집', '단계:띄우기', '단계:털기', '단계:엑시트 후', '단계:관찰', '손익비:3 이상', '손익비:2~3', '손익비:2 미만'];
     const rows = (j.groups || []).filter((r) => ord.includes(r.g)).sort((a, c) => ord.indexOf(a.g) - ord.indexOf(c.g));
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · ${r['n' + h]}건${r['n' + h] < 30 ? ' (적음)' : ''}</small></td>` : '<td class="muted">—</td>');
