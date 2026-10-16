@@ -101,7 +101,8 @@ export async function perfSummary() {
 
 // ───── ② 같은 세력 추적 ─────
 //  공시 제출인(5% 보고·최대주주 등)과 최대주주 변경의 새 최대주주 이름을 모아, 2개 이상 종목에 나오는 이름을 연결
-const BIG = /국민연금|자산운용|증권|은행|보험|캐피탈|공제회|투자신탁|우리사주|한국투자|미래에셋|삼성|신한|KB|NH|하나|IBK|산업은행|수출입은행|예금보험|한국거래소|BlackRock|Vanguard|Morgan|Goldman|JP ?Morgan|Citi|UBS|Norges|Templeton|Fidelity|Capital Group/i;
+// 세력이 아닌 기관(거래소 시장본부·감독기관·예탁원 등)은 '같은 세력 연결'에서 뺌 — 불성실공시 지정 등 공시 제출자가 '코스닥시장본부'로 잡혀 엉뚱한 종목끼리 연결되던 문제
+export const BIG = /시장본부|거래소|금융위원회|금융감독원|증권선물위원회|예탁결제원|증권금융|법원|국세청|공정거래위원회|코스닥협회|상장회사협의회|국민연금|자산운용|증권|은행|보험|캐피탈|공제회|투자신탁|우리사주|한국투자|미래에셋|삼성|신한|KB|NH|하나|IBK|산업은행|수출입은행|예금보험|한국거래소|BlackRock|Vanguard|Morgan|Goldman|JP ?Morgan|Citi|UBS|Norges|Templeton|Fidelity|Capital Group/i;
 export function partyKey(name) {
   const n = String(name || '').replace(/\(주\)|㈜|주식회사|유한회사|합자회사|\s|\.|,/g, '').replace(/[()（）]/g, '').trim();
   return n.length >= 2 ? n.toUpperCase() : null;

@@ -8,7 +8,7 @@
 import { getJSON, setJSON, sqlDB, getJSONStrict, delKeys, listKeys } from './store.mjs';
 import { fetchWithTimeout, BROWSER_UA } from './util.mjs';
 import { isTradingDay } from './schedule.mjs';
-import { buildPartyIndex, linksOf, radarAlert } from './manipx.mjs';
+import { buildPartyIndex, linksOf, radarAlert, BIG as NOT_PARTY } from './manipx.mjs';
 
 const n0 = (v) => { if (v == null || v === '') return null; const x = Number(String(v).replace(/[,\s]/g, '')); return Number.isFinite(x) ? x : null; };
 const kst = (ms = Date.now()) => { const d = new Date(ms + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), m: d.getUTCHours() * 60 + d.getUTCMinutes(), wd: d.getUTCDay() }; };
@@ -1127,7 +1127,7 @@ export function checklistOf(x, now = Date.now()) {
   add(R, 'pledge', !!plg, plg ? plg.t : '담보 반대매매선 근처 아님(또는 담보 없음)');
   add(R, 'insell', insS > insB && insS > 0, insS > insB ? `최근 4개월 내부자 장내 매도 ${fmtW(insS)}주가 매수보다 많음` : '내부자 매도 우위 아님');
   const badLinks = (ck.linkSt || []).filter((l) => ['엑시트 후', '털기'].includes(l.st) || l.risk);
-  add(R, 'party', badLinks.length > 0, (x.links || []).length ? (badLinks.length ? `같은 이름이 나온 다른 종목 중 ${badLinks.map((l) => `${l.nm || l.c}(${l.st || '위험 공시'})`).slice(0, 3).join(', ')} — 이미 털렸거나 위험` : '같은 세력 연결 종목 중 털린 이력은 못 찾음') : '같은 세력 연결 없음');
+  add(R, 'party', badLinks.length > 0, (x.links || []).length ? (badLinks.length ? `같은 이름이 나온 다른 종목 중 ${badLinks.map((l) => `${l.nm || l.c}(${[['엑시트 후', '털기'].includes(l.st) ? l.st : '', l.risk ? '벌점·하락 위험 신호' : ''].filter(Boolean).join(' · ') || l.st || '위험'})`).slice(0, 3).join(', ')} — 같은 세력이 다른 종목에서 이미 털고 나갔거나 위험 신호가 있음` : '같은 세력 연결 종목 중 털린 이력은 못 찾음') : '같은 세력 연결 없음');
   { const nd2 = (d.dates || []).find((z) => !z.past); const dd2 = nd2 ? Math.round((Date.parse(nd2.d) - now) / DAY) : null;
     add(R, 'unlock30', dd2 != null && dd2 <= 30, dd2 != null && dd2 <= 30 ? `물량 해제일 ${nd2.d}이 ${dd2}일 앞 — 전환·매도 물량이 곧 나올 수 있음` : '30일 안 물량 해제일 없음', nd2?.ref); }
   add(R, 'exited', x.stage === '엑시트 후', x.stage === '엑시트 후' ? '이미 한 번 띄우고 털고 나간 종목(엑시트 후)' : '엑시트 후 아님');
@@ -1709,6 +1709,14 @@ export async function migrateProf(code, reason = '새 계산 방식으로 자동
 export async function manipProfile(code) {
   try { await perfSum(); } catch {} // 성적표로 조정된 체크리스트 중요도 불러오기
   let p = await getJSON(`mp/prof/${code}`);
+  // v206: 예전에 저장된 '같은 세력 연결' 중 거래소·감독기관 이름은 지움 (세력 아님)
+  if (p?.links?.some((l) => NOT_PARTY.test(l.who || ''))) {
+    const bad = p.links.filter((l) => NOT_PARTY.test(l.who || ''));
+    p.links = p.links.filter((l) => !NOT_PARTY.test(l.who || ''));
+    p.sig = (p.sig || []).map((t) => (/^같은 세력 연결 의심/.test(t) ? (p.links.length ? `같은 세력 연결 의심: ${p.links.map((l) => `${l.who}→${l.others.map((o) => o.nm || o.c).slice(0, 3).join('·')}`).join(' / ')}` : null) : t)).filter(Boolean);
+    if (p.ck?.linkSt) { const keep = new Set(p.links.flatMap((l) => l.others.map((o) => o.c))); p.ck.linkSt = p.ck.linkSt.filter((l) => keep.has(l.c)); }
+    if (!p.links.length) p.xs = Math.max(0, (p.xs || 0) - Math.min(4, bad.length * 2));
+  }
   // 예전에 숨겨 버린 AI 문장 복원: 날짜별 기록(mp/day)에 남은 원래 AI 해석을 찾아 '참고용'으로 다시 붙임
   if (p?.ai?.stale && !p.ai.fromDay) {
     try {
@@ -1758,7 +1766,7 @@ export async function manipProfile(code) {
         const old = rk?.[code];
         if (old) {
           const nw = rankRow(p); nw.up = old.up;
-          const sig = (r) => JSON.stringify([r.ckg, r.cnp, r.cnr, r.d, r.us, r.ds, r.rr?.v, r.rr?.s, r.pex?.lv, r.cr, r.cl, r.ch, r.st, r.ht, r.c, r.rbt, r.oc, r.big]);
+          const sig = (r) => JSON.stringify([r.ckg, r.cnp, r.cnr, r.d, r.us, r.ds, r.rr?.v, r.rr?.s, r.pex?.lv, r.cr, r.cl, r.ch, r.st, r.ht, r.c, r.rbt, r.oc, r.big, r.lk]);
           if (sig(old) !== sig(nw) || !('by' in old)) { rk[code] = { ...old, ...nw }; await setJSON('mp/rank', rk); }
         }
       } catch (e) { console.warn('rank 줄 맞춤 실패', e.message); }
