@@ -324,3 +324,48 @@ export async function flushAlertQ() {
   await setJSON('mp/alert', st).catch(() => {});
   return sentAny;
 }
+
+// ───── 📊 월간 규칙 점검 (매달 1일, 관리자 텔레그램) ─────
+//  성적표(중복 제외 집계)로 그룹별 20거래일 승률을 정리하고, 결과가 거꾸로 나온 규칙에 ⚠ 표시
+//  표본 30건 미만은 '아직 판단 이름' (우연한 숫자에 휘둘리지 않게)
+export const RULE_MIN = 30;
+export async function ruleCheck({ force = false, now = Date.now() } = {}) {
+  const d = kstDate(now), month = d.slice(0, 7);
+  const st = (await getJSON('mp/rulechk')) || {};
+  if (!force) {
+    if (d.slice(8) !== '01' || st.month === month) return null; // 매달 1일 한 번
+    if (new Date(now + 9 * 3600e3).getUTCHours() < 9) return null; // 아침 9시 뒤
+  }
+  const sum = await perfSummary();
+  const G = Object.fromEntries(sum.groups.map((g) => [g.g, g]));
+  const ok = (g) => g && (g.n20 || 0) >= RULE_MIN;
+  const fmt = (name, g) => (g?.n20 ? `${name}: 20일 뒤 오른 비율 ${g.win20}% · 평균 ${g.avg20 > 0 ? '+' : ''}${g.avg20}% (${g.n20}건)${ok(g) ? '' : ' — 아직 판단 이름'}` : `${name}: 결과 없음`);
+  const base = G['전체'];
+  const lines = [], warns = [];
+  lines.push(`기록 ${sum.days}일치 · 집계 ${(sum.raw || 0) - (sum.dup || 0)}건 (같은 종목 반복 ${sum.dup || 0}건 제외)`);
+  lines.push(fmt('전체 평균', base));
+  for (const k of ['A', 'B', 'C', 'D']) if (G['체크리스트:' + k + '등급']) lines.push(fmt(`체크 ${k}등급`, G['체크리스트:' + k + '등급']));
+  for (const k of ['판 깔기', '매집', '띄우기', '털기', '엑시트 후']) if (G['단계:' + k]) lines.push(fmt(`단계 ${k}`, G['단계:' + k]));
+  for (const k of ['상승 가능성', '하락 위험']) if (G['분류:' + k]) lines.push(fmt(`분류 ${k}`, G['분류:' + k]));
+  if (G['매매 후보 조건:충족']) lines.push(fmt('🎯 매매 후보 조건 충족', G['매매 후보 조건:충족']));
+  for (const k of ['3 이상', '2~3', '2 미만']) if (G['손익비:' + k]) lines.push(fmt(`손익비 ${k}`, G['손익비:' + k]));
+  // ⚠ 거꾸로 나온 규칙
+  const wv = (g) => g.win20;
+  const order = ['A', 'B', 'C', 'D'].map((k) => [k, G['체크리스트:' + k + '등급']]).filter(([, g]) => ok(g));
+  for (let i = 0; i < order.length; i++) for (let j = i + 1; j < order.length; j++) if (wv(order[i][1]) < wv(order[j][1]) - 3) warns.push(`⚠ 체크 ${order[i][0]}등급(${wv(order[i][1])}%)이 ${order[j][0]}등급(${wv(order[j][1])}%)보다 낮음 — 등급 기준 점검 필요`);
+  const pk1 = G['매매 후보 조건:충족'], pk0 = G['매매 후보 조건:미충족'];
+  if (ok(pk1) && ok(pk0) && wv(pk1) < wv(pk0)) warns.push(`⚠ 🎯 매매 후보(${wv(pk1)}%)가 조건 미충족 종목(${wv(pk0)}%)보다 낮음 — 후보 조건 점검 필요`);
+  if (ok(base)) {
+    const up = G['분류:상승 가능성'], dn = G['분류:하락 위험'];
+    if (ok(up) && wv(up) < wv(base) - 5) warns.push(`⚠ '상승 가능성'(${wv(up)}%)이 전체 평균(${wv(base)}%)보다 낮음 — 상승 판단 규칙 점검 필요`);
+    if (ok(dn) && wv(dn) > wv(base) + 5) warns.push(`⚠ '하락 위험'(${wv(dn)}%)이 전체 평균(${wv(base)}%)보다 오히려 많이 오름 — 하락 판단 규칙 점검 필요`);
+    for (const k of ['판 깔기', '매집']) { const g = G['단계:' + k]; if (ok(g) && wv(g) < wv(base) - 10) warns.push(`⚠ 단계 '${k}'(${wv(g)}%)가 전체 평균(${wv(base)}%)보다 10%p 넘게 낮음 — 단계 판정 규칙 점검 필요`); }
+  }
+  const r3 = G['손익비:3 이상'], r1 = G['손익비:2 미만'];
+  if (ok(r3) && ok(r1) && (r3.avg20 ?? 0) < (r1.avg20 ?? 0)) warns.push(`⚠ 손익비 3 이상(평균 ${r3.avg20}%)이 2 미만(평균 ${r1.avg20}%)보다 수익이 낮음 — 목표·손절 계산 점검 필요`);
+  const judged = sum.groups.filter((g) => ok(g)).length;
+  const tail = warns.length ? ['──────', ...warns, '→ 이 메시지를 캡처해서 Claude에게 보내 주세요'] : [judged > 1 ? '✅ 거꾸로 나온 규칙 없음' : 'ℹ 아직 대부분 표본이 적어 판단 이름 — 그냥 두시면 돼요'];
+  st.month = month; st.at = now; st.warns = warns.length; await setJSON('mp/rulechk', st);
+  await radarAlert([...lines, ...tail].filter((t) => t !== undefined), [], { force: true, title: `📊 ${month} 월간 규칙 점검 (관리자 전용)` });
+  return { lines: lines.length, warns: warns.length };
+}

@@ -3388,7 +3388,7 @@
       const cost = rcst ? `${won(rcst.low)}${rcst.high && rcst.high !== rcst.low ? ' ~ ' + won(rcst.high) : ''}` : x.f?.vwapAcc && !x.dir?.old ? `${won(x.f.vwapAcc)} <small>(매집 구간 평균)</small>` : '—';
       const mid = rcst ? ((rcst.low || rcst.high) + (rcst.high || rcst.low)) / 2 : x.dir?.old ? null : x.f?.vwapAcc;
       return `<li class="mp-row" data-mp-i="${i}">
-        <div class="mp-top"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="KR|${esc(x.code)}|${esc(x.name)}">${logoHTML('KR', x.code, x.name, 'sm')}<span><b>${esc(x.name)}</b><small>${esc(x.code)} · ${x.mkt === 'P' ? '코스피' : x.mkt === 'Q' ? '코스닥' : ''}${x.streak > 1 ? ` · ${x.streak}일 연속` : ''}</small></span></button>
+        <div class="mp-top"><span class="f-rk">${i + 1}</span><span class="ca-co" data-mp-go="${esc(x.code)}" title="작전 레이더 종목 페이지 열기">${logoHTML('KR', x.code, x.name, 'sm')}<span><b>${esc(x.name)}</b><small>${esc(x.code)} · ${x.mkt === 'P' ? '코스피' : x.mkt === 'Q' ? '코스닥' : ''}${x.streak > 1 ? ` · ${x.streak}일 연속` : ''}</small></span></span>
           <span class="mp-px" data-lq="${esc(x.code)}">${won(x.close)}<small class="${dirCls(x.pct)}">${x.pct != null ? fmtPct(x.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[x.stage] || 'watch'}">${esc(x.stage)}${a?.level ? `<small>의심 ${esc(a.level)}</small>` : ''}</span>
           <span class="mp-score"><b>${x.score}</b><small>공시 ${x.es} · 거래 ${x.vs}</small></span></div>
@@ -3464,7 +3464,7 @@
       const pkBar = S.rkKind === 'pick' ? `<div class="pk-bar ${r.near ? 'near' : 'ok'}">${r.near ? `⚠ 조건 하나 부족: <b>${esc(r.pf?.[0] || '')}</b>` : '✅ 매매 후보 조건 모두 통과'}${r.pat ? ` · <span class="pk-pat${r.pat.on ? '' : ' off'}">📊 비슷한 패턴 20일 뒤 오른 비율 ${r.pat.on ? `<b>약 ${r.pat.est}%</b> (전체 ${r.pat.base}%)` : '데이터 모으는 중'}</span>` : ''}</div>` : '';
       const sep = S.rkKind === 'pick' && r.near && !S.mpRank[i - 1]?.near ? `<li class="pk-sep">조건 하나만 부족한 종목 (참고 · 그 조건이 풀리는지 지켜볼 후보)</li>` : '';
       return `${sep}<li class="mp-row mp-rk${r.near ? ' pk-near' : ''}" data-mp-code="${esc(r.code)}" data-g="${esc(r.ckg || '-')}" data-st="${esc(r.st || '관찰')}">${pkBar}
-        <div class="mp-top"><span class="f-rk">${i + 1}</span><button class="ca-co" data-open-co="KR|${esc(r.code)}|${esc(r.n)}">${logoHTML('KR', r.code, r.n, 'sm')}<span><b>${esc(r.n)}</b><small>${esc(r.code)} · ${r.m === 'P' ? '코스피' : r.m === 'Q' ? '코스닥' : ''} · ${esc(rel(r.up))} 갱신</small></span></button>
+        <div class="mp-top"><span class="f-rk">${i + 1}</span><span class="ca-co" title="작전 레이더 종목 페이지 열기">${logoHTML('KR', r.code, r.n, 'sm')}<span><b>${esc(r.n)}</b><small>${esc(r.code)} · ${r.m === 'P' ? '코스피' : r.m === 'Q' ? '코스닥' : ''} · ${esc(rel(r.up))} 갱신</small></span></span>
           <span class="mp-px" data-lq="${esc(r.code)}">${won(r.c)}<small class="${dirCls(r.pct)}">${r.pct != null ? fmtPct(r.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[r.st] || 'watch'}">${esc(r.st || '')}${r.lv ? `<small>의심 ${esc(r.lv)}</small>` : ''}</span>
           ${S.rkKind === 'pick' ? `<span class="mp-score"><b>${r.pat?.on ? r.pat.est + '<em>%</em>' : (r.ckg ? esc(r.ckg) + '<em>등급</em>' : '—')}</b><small>${r.pat?.on ? '비슷한 패턴 승률(추정)' : '체크 등급'}<br>손익비 ${r.rr ? '1:' + r.rr.v : '—'}</small></span>` : S.rkKind === 'pex' && r.pex ? `<span class="mp-score"><b>${esc(r.pex.lv)}</b><small>털기 후 상승<br>근거 차이 ${r.pex.net > 0 ? '+' : ''}${r.pex.net}</small></span>` : S.rkKind === 'rr' && r.rr ? `<span class="mp-score"><b>1:${r.rr.v}${r.rr.big ? '+' : ''}</b><small>손익비<br>종합 점수 ${r.s}</small></span>` : S.rkKind === 'up' || S.rkKind === 'down' ? `<span class="mp-score"><b>${S.rkKind === 'up' ? r.us || 0 : r.ds || 0}<em>/10</em></b><small>${S.rkKind === 'up' ? '상승' : '하락'} 근거 점수<br>종합 점수 ${r.s}</small></span>` : `<span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span>`}</div>
@@ -3540,8 +3540,15 @@
     $('#mpBody').innerHTML = `<p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
       ${ckRows ? `<h4 style="margin:.8rem 0 .3rem">✅ 체크리스트 항목별 20거래일 뒤 오른 비율 <small class="muted">충족(✓)한 종목 vs 아닌(✗) 종목 · 차이가 클수록 등급 계산에서 그 항목의 중요도가 자동으로 커져요</small></h4><div class="mp-perf"><table class="tbl"><tr><th>항목</th><th>✓ 충족</th><th>✗ 미충족</th><th>차이</th></tr>${ckRows}</table></div>` : ''}
       ${g.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분</th><th>5거래일 뒤</th><th>20거래일 뒤</th><th>60거래일 뒤</th></tr>${g.map((r) => `<tr><td class="t"><b>${esc(r.g.replace(/^[^:]+:/, ''))}</b><small>${esc(r.g.includes(':') ? r.g.split(':')[0] : '레이더 전체')}</small></td>${cell(r, 5)}${cell(r, 20)}${cell(r, 60)}</tr>`).join('')}</table></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
+      <p class="note">📊 <b>월간 규칙 점검</b> — 매달 1일 아침 관리자 텔레그램으로 그룹별 승률과 ⚠ 거꾸로 나온 규칙을 보내요 (표본 30건 미만은 '아직 판단 이름'). <button class="btn sm" data-mp-rulechk>지금 한 번 받기</button> <span class="muted sm" data-mp-rulechk-msg></span></p>
       <p class="note">수집 상태 · 거래소 시장경보·관리종목·거래정지: ${j.warn ? `${j.warn.at ? `${j.warn.n || 0}종목 · ${esc(rel(j.warn.at))}` : '첫 확인 중'}${j.warn.src === 'KIS' ? ' (한국투자증권 기준)' : ''}${j.warn.scan && j.warn.scan.pos < j.warn.scan.of ? ` · 오늘 확인 ${j.warn.scan.pos}/${j.warn.scan.of}` : ''}${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
   }
+  document.addEventListener('click', async (ev) => {
+    const b = ev.target.closest?.('[data-mp-rulechk]'); if (!b) return;
+    const m = document.querySelector('[data-mp-rulechk-msg]'); b.disabled = true; if (m) m.textContent = '보내는 중…';
+    try { const j = await mpGet('mp=rulechk'); if (m) m.textContent = j.ok ? `텔레그램으로 보냈어요${j.warns ? ` (⚠ ${j.warns}개)` : ''}` : '실패'; } catch (e) { if (m) m.textContent = '실패: ' + e.message; }
+    b.disabled = false;
+  });
   // 종목 검색 → 그 종목을 정기 분석과 똑같이 바로 분석 (랭킹에 없어도)
   function bindMpSearch() {
     const input = $('#mpQ'), list = $('#mpQList'); if (!input) return;
@@ -3597,7 +3604,7 @@
     const open = j.items.filter((i) => !i.closed), done = j.items.filter((i) => i.closed);
     const DIRB = { up: '📈 상승 가능성', down: '📉 하락 위험' };
     const pf = j.pf || null, cfg = pf?.cfg || {};
-    const row = (i) => `<li class="mp-row mp-my ${i.closed ? 'closed' : ''}"><div class="mp-top"><span class="f-rk">${i.closed ? '✔' : '⭐'}</span><button class="ca-co" data-open-co="KR|${esc(i.code)}|${esc(i.name)}">${logoHTML('KR', i.code, i.name, 'sm')}<span><b>${esc(i.name)}</b><small>${esc(i.code)} · ${esc(rel(i.at))} 추가${i.closed ? ` · ${esc(rel(i.exitAt))} 정리` : ''}</small></span></button>
+    const row = (i) => `<li class="mp-row mp-my ${i.closed ? 'closed' : ''}"><div class="mp-top"><span class="f-rk">${i.closed ? '✔' : '⭐'}</span><span class="ca-co" data-mp-go="${esc(i.code)}" title="작전 레이더 종목 페이지 열기">${logoHTML('KR', i.code, i.name, 'sm')}<span><b>${esc(i.name)}</b><small>${esc(i.code)} · ${esc(rel(i.at))} 추가${i.closed ? ` · ${esc(rel(i.exitAt))} 정리` : ''}</small></span></span>
         <span class="mp-px"${!i.closed ? ` data-lq="${esc(i.code)}" data-entry="${i.entry || ''}"` : ''}>${i.cur != null ? fmtInt(i.cur) + '원' : '—'}<small class="${dirCls(i.pl)}">${i.pl != null ? (i.pl > 0 ? '+' : '') + i.pl + '%' : ''}</small></span>
         <span class="mp-stage ${MP_ST[i.st] || 'watch'}">${esc(i.st || '-')}</span><span class="mp-score"><b class="${dirCls(i.pl)}">${i.pl != null ? (i.pl > 0 ? '+' : '') + i.pl + '%' : '—'}</b><small>${i.closed ? '확정 수익률' : '평가 수익률'}</small></span></div>
       <div class="mp-cost">진입 <b>${i.entry ? fmtInt(i.entry) + '원' : '—'}</b> · 손절 <b>${i.stop ? fmtInt(i.stop) + '원' : '—'}</b> · 목표 <b>${i.target ? fmtInt(i.target) + '원' : '—'}</b>${i.qty ? ` · ${fmtInt(i.qty)}주` : ''}${i.closed ? ` · 정리가 <b>${i.exit ? fmtInt(i.exit) + '원' : '—'}</b>` : ''}</div>
@@ -3651,6 +3658,7 @@
     const fgb = e.target.closest('[data-fg]'); if (fgb) { S.fg = fgb.dataset.fg; save('gk_fg', S.fg); applyRkFilter(); return; }
     const fsb = e.target.closest('[data-fs]'); if (fsb) { S.fs = fsb.dataset.fs; save('gk_fs', S.fs); applyRkFilter(); return; }
     const kb = e.target.closest('[data-rk-kind]'); if (kb) { S.rkKind = kb.dataset.rkKind; save('gk_rkkind', S.rkKind); loadRank(); return; }
+    const go = e.target.closest('[data-mp-go]'); if (go) { goRadarStock(go.dataset.mpGo); return; } // 레이더 목록에서 이름·로고 → 작전 레이더 종목 페이지 (기업 분석 화면 아님)
     const row = e.target.closest('.mp-rk');
     if (row && !e.target.closest('a, button')) openRankRow(row);
   });
