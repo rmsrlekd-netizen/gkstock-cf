@@ -296,6 +296,7 @@ export function barFeatures(B, opt = {}) {
     vwapAcc: accRows.length >= 10 ? Math.round(vwap(accRows)) : null, // 매집 구간(추정 시작일~폭증 전) 평균 체결가(거래량 가중)
     vwapHeavy: heavy.length >= 3 ? Math.round(vwap(heavy)) : null, // 거래량이 평소 2배 넘던 날들의 평균 체결가
     vwap120: Math.round(vwap(B.slice(-120))),
+    rng20: (() => { const R = []; for (let i = Math.max(1, n - 20); i < n; i++) if (B[i - 1].c > 0 && B[i].h > 0) R.push((Math.max(B[i].h, B[i - 1].c) - Math.min(B[i].l, B[i - 1].c)) / B[i - 1].c * 100); return R.length >= 10 ? r1(R.reduce((a, b) => a + b, 0) / R.length) : null; })(), // 최근 20일 평균 하루 흔들림 폭(%)
     hiPre: preTop?.h || null, hiPreD: preTop?.d || null, hiAll: allTop?.h || null, hiAllD: allTop?.d || null,
   };
   // 패턴 점수
@@ -876,10 +877,19 @@ export function direction(x, now = Date.now()) {
   //  손절 기준 = 현재가보다 2% 이상 아래에 있는 '원가(세력 평단 근거)'·'지지' 가격 중 가장 높은 것. 아래 폭이 3% 미만이면 3%로 계산(비율 과장 방지)
   let rr = null;
   if (x.close && lv.above.length) {
-    const sup = lv.all.filter((l) => ['cost', 'floor'].includes(l.kind) && l.p <= x.close * 0.97).sort((a, b) => b.p - a.p)[0];
+    // 손절 기준은 '평소 하루 흔들림 폭 × 1.5'(최소 5%, 최대 15%) 밖의 지지선 — 그 안쪽 지지는 세력이 한 번만 흔들어도 깨져서 손익비가 부풀려짐
+    const minD = Math.min(15, Math.max(5, (f.rng20 || 0) * 1.5));
+    const sups = lv.all.filter((l) => ['cost', 'floor'].includes(l.kind) && l.p < x.close).sort((a, b) => b.p - a.p);
+    const nearS = sups.find((l) => l.p <= x.close * 0.97) || null;
+    let sup = sups.find((l) => l.p <= x.close * (1 - minD / 100) && l.p >= x.close * 0.65) || null;
+    if (!sup && nearS) sup = { p: Math.round(x.close * (1 - minD / 100)), s: `평소 흔들림 폭 아래 (−${Math.round(minD)}%)` }; // 깊은 지지선이 없으면 흔들림 폭 기준
     if (sup) {
-      const t1 = lv.above[0], risk = Math.max(x.close - sup.p, x.close * 0.03);
-      rr = { v: Math.min(20, Math.round(((t1.p - x.close) / risk) * 10) / 10), big: (t1.p - x.close) / risk > 20, t: t1.p, ts: t1.s, s: sup.p, ss: sup.s, up: Math.round((t1.p / x.close - 1) * 1000) / 10, dn: Math.round((sup.p / x.close - 1) * 1000) / 10, t2: lv.above[1]?.p || null, t2s: lv.above[1]?.s || null, min3: x.close - sup.p < x.close * 0.03, far: x.close - sup.p > x.close * 0.1 ? Math.round(((t1.p - x.close) / (x.close * 0.07)) * 10) / 10 : null };
+      const t1 = lv.above[0], risk = x.close - sup.p, raw = (t1.p - x.close) / risk;
+      const be = ['cost', 'floor'].includes(t1.kind) && t1.p <= x.close * 1.1; // 바로 위 가격이 세력 원가 → '본전 회복' 자리 (진짜 목표 아님)
+      const nearRR = nearS && nearS.p > sup.p ? Math.round(((t1.p - x.close) / Math.max(x.close - nearS.p, x.close * 0.03)) * 10) / 10 : null;
+      rr = { v: Math.min(20, Math.round(raw * 10) / 10), big: raw > 20, t: t1.p, ts: be ? `세력 본전 회복 (${t1.s})` : t1.s, be, s: sup.p, ss: sup.s, up: Math.round((t1.p / x.close - 1) * 1000) / 10, dn: Math.round((sup.p / x.close - 1) * 1000) / 10, t2: lv.above[1]?.p || null, t2s: lv.above[1]?.s || null, minD: Math.round(minD * 10) / 10, rng: f.rng20 ?? null,
+        near: nearRR != null ? { v: Math.min(20, nearRR), s: nearS.p, ss: nearS.s, dn: Math.round((nearS.p / x.close - 1) * 1000) / 10 } : null,
+        far: x.close - sup.p > x.close * 0.1 ? Math.round(((t1.p - x.close) / (x.close * 0.07)) * 10) / 10 : null };
     }
   }
   // 목표 일정(참고): 물량이 풀릴 수 있는 날 — 일반 규정(사모 CB 전환 제한·사모 신주 전매 제한 1년) 기준 추정
@@ -1027,7 +1037,7 @@ export function postExitOf(x, now = Date.now()) {
 // 체크리스트 항목별 중요도 (기본값) — 성적표가 쌓이면 실제로 잘 맞은 항목 쪽으로 자동 조정(CK_LEARN)
 export const CK_W = { money: 3, cost: 2, acc: 2, unlock: 1.5, rr: 1.5, small: 1, float: 1, story: 0.5, theme: 0.5, insider: 0.5, broker: 0.5, buzz: 0.5 };
 export const CK_BOMB = ['fail', 'health', 'penalty', 'pledge', 'insell']; // 하나라도 걸리면 D등급
-const CK_RW = { drain: 1, party: 1, exited: 1, credit: 0.5, warn: 0.5 };
+const CK_RW = { drain: 1, party: 1, exited: 1, unlock30: 1, credit: 0.5, warn: 0.5 };
 export const CK_KO = { money: '세력 자금 실제 투입', cost: '평단 근처', acc: '매집 흔적', unlock: '물량 해제 2~3개월 전', rr: '손익비 2↑', small: '소형주', float: '최대주주 지분 40%↑', story: '사업목적 추가', theme: '업종·테마 강세', insider: '내부자 매수', broker: '창구 쏠림', buzz: '기사·종토방 증가' };
 let CK_LEARN = null; // { w: {항목: 배율}, n: 표본 수 }
 export function setCkLearn(v) { CK_LEARN = v && v.w && Object.keys(v.w).length ? v : null; }
@@ -1118,6 +1128,8 @@ export function checklistOf(x, now = Date.now()) {
   add(R, 'insell', insS > insB && insS > 0, insS > insB ? `최근 4개월 내부자 장내 매도 ${fmtW(insS)}주가 매수보다 많음` : '내부자 매도 우위 아님');
   const badLinks = (ck.linkSt || []).filter((l) => ['엑시트 후', '털기'].includes(l.st) || l.risk);
   add(R, 'party', badLinks.length > 0, (x.links || []).length ? (badLinks.length ? `같은 이름이 나온 다른 종목 중 ${badLinks.map((l) => `${l.nm || l.c}(${l.st || '위험 공시'})`).slice(0, 3).join(', ')} — 이미 털렸거나 위험` : '같은 세력 연결 종목 중 털린 이력은 못 찾음') : '같은 세력 연결 없음');
+  { const nd2 = (d.dates || []).find((z) => !z.past); const dd2 = nd2 ? Math.round((Date.parse(nd2.d) - now) / DAY) : null;
+    add(R, 'unlock30', dd2 != null && dd2 <= 30, dd2 != null && dd2 <= 30 ? `물량 해제일 ${nd2.d}이 ${dd2}일 앞 — 전환·매도 물량이 곧 나올 수 있음` : '30일 안 물량 해제일 없음', nd2?.ref); }
   add(R, 'exited', x.stage === '엑시트 후', x.stage === '엑시트 후' ? '이미 한 번 띄우고 털고 나간 종목(엑시트 후)' : '엑시트 후 아님');
   if (ck.mkt20 == null) add(R, 'market', null, '시장 지수 흐름 자료 없음');
   else add(R, 'market', ck.mkt20 <= -5, `${x.mkt === 'P' ? '코스피' : '코스닥'} 최근 20거래일 ${ck.mkt20 > 0 ? '+' : ''}${ck.mkt20}%${ck.mkt20 <= -5 ? ' — 약세장이라 띄우기 성공률이 떨어짐' : ''}`);
@@ -1451,6 +1463,8 @@ export function rankRow(x) {
   const cf = x.pex && ((d.dir === 'up' && x.pex.lv === '낮음') || (d.dir === 'down' && x.pex.lv === '높음')) ? 1 : 0;
   return { ...chipsOf(x), cf, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
+// 판단 규칙 버전 — 규칙을 바꾸면 +1. 이전 규칙으로 저장된 카드는 다음 저장 1번만 '단계·분류 변화' 알림을 안 보냄 (규칙 변경 때문에 생긴 변화라 알림 폭주 방지)
+export const RULE_V = 203;
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
   try { rank = (await getJSONStrict('mp/rank')) || {}; } catch (e) { console.warn('mp/rank 읽기 실패 — 랭킹은 이번에 안 고침', e.message); }
@@ -1477,24 +1491,28 @@ async function saveProfiles(list, reason, opt = {}) {
     }
     const halted = !!x.f?.halted || x.stage === '거래정지' || !!evHalt(x.events, Date.now(), x.f);
     if (prev.at && halted && prev.stage !== '거래정지') alerts.push(`• ⛔ ${x.name} 거래정지로 보임 (${x.f?.halted?.since || ''}부터 거래 없음) — 이 종목 알림은 거래가 다시 열릴 때까지 멈춤`);
-    if (prev.at && !halted) { // 처음 들어온 종목·거래정지 종목은 알림 안 함
+    const ruleNew = !!prev.at && prev.rv !== RULE_V; // 규칙이 바뀐 뒤 첫 저장
+    if (prev.at && !halted && !ruleNew) { // 처음 들어온 종목·거래정지 종목·규칙 변경 직후는 단계·분류 알림 안 함
       const nd = x.dir.dir, pd = prev.dir?.dir;
       if (prev.stage === '엑시트 후' && ['매집', '판 깔기'].includes(x.stage)) alerts.push(`• 🔁 ${x.name} 재매집 의심 — 엑시트 후 → ${x.stage}(2차)${x.f?.cyc?.base2 ? ` · ${x.f.cyc.base2.lowD} 바닥 ${fmtW(x.f.cyc.base2.low)}원 ${x.f.cyc.base2.held}거래일째 유지` : ''}`);
       else if (prev.stage && prev.stage !== x.stage && ['매집', '띄우기', '털기'].includes(x.stage)) alerts.push(`• ${x.name} 단계 ${prev.stage} → ${x.stage} (점수 ${prev.score}→${x.score})`);
-      if (nd !== pd && DK[nd]) alerts.push(`• ${x.name} ${DK[nd]}로 분류 변경`);
+      const bigCap = x.capPct != null && x.capPct >= 0.9; // 대형주는 작전 해석이 약해서 분류 변경 알림 안 보냄 (사이트 기록에는 남음)
+      if (nd !== pd && DK[nd] && !bigCap) { const why = (nd === 'up' ? x.dir.up : x.dir.down)[0]?.t; alerts.push(`• ${x.name} ${DK[nd]}로 분류 변경${x.stage ? ` (단계 ${x.stage})` : ''}${why ? ` — ${String(why).slice(0, 70)}` : ''}`); }
+    }
+    if (prev.at && !halted) { // 새 전환청구 공시는 실제 사건이라 규칙 변경과 상관없이 알림
       const newConv = (x.events || []).filter((e) => e.kind === 'conv' && !(prev.events || []).some((y) => y.id === e.id));
       if (newConv.length) alerts.push(`• ${x.name} 전환청구 공시 — 1~2주 뒤 추가 상장 물량 주의`);
     }
     x.cl = checklistOf(x); bombGate(x);
     x.rbk = reboundOf(x);
     x.pex = postExitOf(x);
-    if (prev.at && !halted && x.pex?.lv === '높음' && prev.pex?.lv !== '높음') alerts.push(`• 🔁 ${x.name} 털기 후 상승 가능성 '높음'으로 바뀜 — ${x.pex.up.slice(0, 2).map((r) => r.t).join(' / ').slice(0, 160)}`);
-    if (prev.at && !halted && x.rbk?.type === 'second' && prev.rbk?.type !== 'second') alerts.push(`• 🔄 ${x.name} 반등 성격이 '2차 작전(재매집 뒤 상승)' 쪽으로 바뀜 — ${x.rbk.why.c.slice(0, 2).map((r) => r.t).join(' / ').slice(0, 160)}`);
+    if (prev.at && !halted && !ruleNew && x.pex?.lv === '높음' && prev.pex?.lv !== '높음') alerts.push(`• 🔁 ${x.name} 털기 후 상승 가능성 '높음'으로 바뀜 — ${x.pex.up.slice(0, 2).map((r) => r.t).join(' / ').slice(0, 160)}`);
+    if (prev.at && !halted && !ruleNew && x.rbk?.type === 'second' && prev.rbk?.type !== 'second') alerts.push(`• 🔄 ${x.name} 반등 성격이 '2차 작전(재매집 뒤 상승)' 쪽으로 바뀜 — ${x.rbk.why.c.slice(0, 2).map((r) => r.t).join(' / ').slice(0, 160)}`);
     const log = prev.log || [];
     const changed = !prev.at || prev.score !== x.score || prev.stage !== x.stage || (prev.ai?.level || null) !== (x.ai?.level || null);
     if (changed) log.unshift({ at: Date.now(), msg: `${reason} · 점수 ${prev.score ?? '-'}→${x.score} · ${prev.stage || '-'}→${x.stage}${x.ai?.level ? ` · 의심 ${x.ai.level}` : ''}` });
     const ai = opt.keepAi ? x.ai || null : x.ai && !x.ai.error ? x.ai : prev.ai || null; // 이번에 AI를 못 돌렸으면 이전 분석 유지
-    const prof = { ...x, ai, hist: undefined, first: prev.first || Date.now(), at: Date.now(), log: log.slice(0, 60) };
+    const prof = { ...x, ai, rv: RULE_V, hist: undefined, first: prev.first || Date.now(), at: Date.now(), log: log.slice(0, 60) };
     await setJSON(k, prof);
     if (opt.rank !== false && rank) { const row = rankRow(prof); if (opt.touch === false && rank[x.code]?.up) row.up = rank[x.code].up; rank[x.code] = row; } // 재확인·자동 갱신은 '최근 신호' 시각을 바꾸지 않음 (오래된 줄이 계속 남던 문제)
   }
@@ -1679,7 +1697,7 @@ export async function migrateProf(code, reason = '새 계산 방식으로 자동
   const idx = (await getJSON('mp/idx')) || [];
   const snap = (await getJSON(`mp/snap/${idx[0] || kst().date}`))?.rows || {};
   const ctx = await ctxLoad(snap);
-  const x = await analyzeOne({ c: code, name: prev?.name || null, mkt: prev?.mkt || null }, { snap, ctx, keepLow: true, aiOk: () => false, light });
+  const x = await analyzeOne({ c: code, name: prev?.name || null, mkt: prev?.mkt || null }, { snap, snapD: idx[0] || null, ctx, keepLow: true, aiOk: () => false, light });
   if (prev?.ck && !x?.ck) x.ck = prev.ck;
   if (!x || !x.f) return null; // 일봉을 못 받으면 그대로 둠
   if (!x.events.length && (prev?.events || []).some((e) => Date.now() - e.ms < 170 * DAY)) return null; // 최근 공시가 있었는데 하나도 못 읽어 왔으면(보관소 오류 등) 그대로 둠
@@ -1768,7 +1786,7 @@ async function eventsOf(code, now) {
   return out.sort((a, b) => b.ms - a.ms);
 }
 /** 한 종목을 정기 분석과 똑같은 방식으로 판단 (공시 180일 · 일봉 · 원문 가격 · 보정 · 단계 · 상승/하락 · AI) */
-async function analyzeOne(job, { snap = {}, ctx = null, now = Date.now(), aiOk = () => false, aiUsed = () => {}, forceAi = false, keepLow = false, light = false } = {}) {
+async function analyzeOne(job, { snap = {}, snapD = null, ctx = null, now = Date.now(), aiOk = () => false, aiUsed = () => {}, forceAi = false, keepLow = false, light = false } = {}) {
   const code = job.c;
   const evs = await eventsOf(code, now);
   const s = eventScore(evs, now);
@@ -1779,7 +1797,7 @@ async function analyzeOne(job, { snap = {}, ctx = null, now = Date.now(), aiOk =
   const ex = extras(code, evs, s.by, ctx || {});
   const score = Math.round((s.score + (f?.score || 0) + ex.add) * ex.mult * 10) / 10;
   if (score < 4 && !prev && !keepLow) return null; // 원래 레이더에 없던 종목이고 점수도 낮으면 넘김
-  const x = { code, name: r[0] || (prev?.name && prev.name !== code ? prev.name : null) || job.name || code, mkt: r[1] || prev?.mkt || job.mkt || null, close: f?.close ?? r[2] ?? null, pct: r[3] ?? prev?.pct ?? null, mcap: r[6] ?? prev?.mcap ?? null, score, es: s.score, vs: f?.score || 0, xs: ex.add, mult: ex.mult, by: s.by, sig: [...(f?.sig || []), ...ex.sig], xnotes: ex.notes, links: ex.links, warn: ex.warn, ind: ex.ind, capPct: ex.capPct, f, stage: stageOf(s.by, f, evs), events: keepEv(evs), streak: prev?.streak || 1, px: [], ai: prev?.ai || null };
+  const x = { code, name: r[0] || (prev?.name && prev.name !== code ? prev.name : null) || job.name || code, mkt: r[1] || prev?.mkt || job.mkt || null, close: (r[2] > 0 && snapD && f?.date && f.date <= snapD) ? r[2] : f?.close ?? r[2] ?? null, pct: r[3] ?? prev?.pct ?? null, mcap: r[6] ?? prev?.mcap ?? null, score, es: s.score, vs: f?.score || 0, xs: ex.add, mult: ex.mult, by: s.by, sig: [...(f?.sig || []), ...ex.sig], xnotes: ex.notes, links: ex.links, warn: ex.warn, ind: ex.ind, capPct: ex.capPct, f, stage: stageOf(s.by, f, evs), events: keepEv(evs), streak: prev?.streak || 1, px: [], ai: prev?.ai || null };
   // 공시 원문 가격 (새 공시 포함)
   for (const e of docPick(evs, 10)) {
     const p = await docPrice(e, { cacheOnly: light }).catch(() => null);
@@ -1816,7 +1834,7 @@ export async function manipLookup(code, { name = null, refresh = false } = {}) {
   const idx = (await getJSON('mp/idx')) || [];
   const snap = (await getJSON(`mp/snap/${idx[0] || z.date}`))?.rows || {};
   const ctx = await ctxLoad(snap);
-  const x = await analyzeOne({ c: code, name }, { snap, ctx, now, forceAi: true, keepLow: true, aiOk: () => lk.ai < AI_LOOKUP_DAY, aiUsed: () => { lk.ai++; } });
+  const x = await analyzeOne({ c: code, name }, { snap, snapD: idx[0] || null, ctx, now, forceAi: true, keepLow: true, aiOk: () => lk.ai < AI_LOOKUP_DAY, aiUsed: () => { lk.ai++; } });
   await setJSON('mp/lookup', lk);
   // 일봉·공시를 잠깐 못 받아 온 경우: 이전 분석을 망가뜨리지 않고 그대로 둠
   if (prev && ((!x.f && prev.f) || (!x.events.length && (prev.events || []).length))) return { prof: await manipProfile(code), cached: true, keptOld: true, aiLeft: Math.max(0, AI_LOOKUP_DAY - lk.ai), inRank: !!(await getJSON('mp/rank'))?.[code], aiErr: '이번에 일봉 또는 공시 데이터를 받지 못해, 이전 분석 결과를 그대로 보여드려요. 잠시 뒤 다시 분석해 보세요.' };
@@ -1855,7 +1873,7 @@ export async function manipIncr() {
   const ctxI = part.length ? await ctxLoad(snap) : null;
   for (const job of part) {
     try {
-      const x = await analyzeOne(job, { snap, ctx: ctxI, now, aiOk: () => iq.ai < AI_INCR_DAY, aiUsed: () => { iq.ai++; } });
+      const x = await analyzeOne(job, { snap, snapD: snapIdx[0] || null, ctx: ctxI, now, aiOk: () => iq.ai < AI_INCR_DAY, aiUsed: () => { iq.ai++; } });
       if (!x) continue;
       await saveProfiles([x], `새 공시 반영: ${job.why}`);
       out.n++;

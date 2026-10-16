@@ -2,7 +2,7 @@
 // 환경변수: KIS_APP_KEY, KIS_APP_SECRET (KIS Developers에서 발급, 실전투자 앱키)
 import { fetchWithTimeout, sleep, decodeText } from './util.mjs';
 import { unzipFirst } from './krnames.mjs';
-import { getJSON, setJSON } from './store.mjs';
+import { getJSON, getJSONStrict, setJSON } from './store.mjs';
 
 const BASE = 'https://openapi.koreainvestment.com:9443';
 export const hasKis = () => !!(process.env.KIS_APP_KEY && process.env.KIS_APP_SECRET);
@@ -21,23 +21,49 @@ async function issueToken() {
   return { token: j.access_token, exp };
 }
 
-/** 저장된 토큰 버리기 (키가 바뀌었거나 토큰이 무효일 때 새로 발급받게) */
-export async function resetKisToken() { mem = null; await setJSON('kis/token', { token: null, exp: 0 }).catch(() => {}); }
+/** 저장된 토큰 버리기 (키가 바뀌었거나 토큰이 무효일 때 새로 발급받게)
+ *  bad: 무효로 확인된 토큰 — 다른 실행이 이미 새로 받아 둔 토큰은 지우지 않음 (동시에 여러 번 재발급·문자 오던 문제) */
+export async function resetKisToken(bad = null, why = 'reset') {
+  mem = null;
+  try {
+    const cur = await getJSONStrict('kis/token');
+    if (bad && cur?.token && cur.token !== bad) return; // 이미 다른 실행이 새 토큰을 받아 둠
+    await setJSON('kis/token', { token: null, exp: 0, why });
+  } catch {}
+}
+
+// 같은 시각에 여러 실행(매분·3분 크론, 화면 요청)이 동시에 발급하지 않도록 60초 잠금
+async function tryLock() {
+  try {
+    const l = await getJSONStrict('kis/tokenlock');
+    if (l && Date.now() - l.at < 60e3) return false;
+    const me = Math.random().toString(36).slice(2);
+    await setJSON('kis/tokenlock', { at: Date.now(), me });
+    await sleep(300);
+    return (await getJSONStrict('kis/tokenlock'))?.me === me;
+  } catch { return false; } // DB를 못 읽으면 발급하지 않음 (저장된 토큰이 있는데 못 읽은 것일 수 있음)
+}
 
 export async function kisToken() {
   if (mem && mem.exp > Date.now()) return mem.token;
-  let saved = await getJSON('kis/token');
-  if (!saved) { await sleep(400); saved = await getJSON('kis/token'); } // DB가 잠깐 응답을 못 한 경우 → 새로 발급하기 전에 한 번 더 확인 (불필요한 재발급·문자 방지)
-  if (saved && saved.exp > Date.now()) { mem = saved; return mem.token; }
+  let saved = null;
+  // DB 읽기 오류는 '토큰 없음'과 구분 — 오류면 새로 발급하지 않고 잠시 뒤 다시 읽음 (불필요한 재발급·문자 방지)
+  for (let t = 0; t < 3; t++) { try { saved = await getJSONStrict('kis/token'); break; } catch { await sleep(500); if (t === 2) throw new Error('KIS 토큰 저장소 읽기 실패 (재발급 안 함)'); } }
+  if (saved && saved.token && saved.exp > Date.now()) { mem = saved; return mem.token; }
+  if (!(await tryLock())) {
+    // 다른 실행이 발급 중 → 그 결과를 기다려 씀
+    for (let t = 0; t < 6; t++) { await sleep(1500); const again = await getJSONStrict('kis/token').catch(() => null); if (again?.token && again.exp > Date.now()) { mem = again; return mem.token; } }
+    throw new Error('KIS 토큰 발급 대기 시간 초과');
+  }
   try {
     mem = await issueToken();
-    // 발급 기록 (하루 몇 번 발급되는지 확인용, 최근 20건)
-    try { const log = (await getJSON('kis/issued')) || []; log.push(new Date().toISOString()); await setJSON('kis/issued', log.slice(-20)); } catch {}
+    // 발급 기록 (하루 몇 번·왜 발급되는지 확인용, 최근 20건)
+    try { const log = (await getJSON('kis/issued')) || []; log.push({ at: new Date().toISOString(), why: saved?.why || (saved ? 'expired' : 'none') }); await setJSON('kis/issued', log.slice(-20)); } catch {}
   } catch (e) {
     // 토큰 발급은 1분에 1회 제한 → 다른 함수가 방금 발급했을 수 있으니 잠시 후 저장본 재확인
     await sleep(1500);
     const again = await getJSON('kis/token');
-    if (again && again.exp > Date.now()) { mem = again; return mem.token; }
+    if (again && again.token && again.exp > Date.now()) { mem = again; return mem.token; }
     throw e;
   }
   await setJSON('kis/token', mem).catch(() => {});
@@ -80,7 +106,7 @@ export async function kisGet(path, trId, params, _retried = false) {
     if (j && j.rt_cd === '0') return j;
     lastErr = new Error(j ? `KIS ${trId}: ${j.msg1 || j.msg_cd}` : `KIS ${trId} HTTP ${r.status}`);
     // 토큰이 정말 만료·무효일 때만 새로 발급 (EGW00121 무효, EGW00123 만료)
-    if (/EGW00121|EGW00123/.test(`${j?.msg_cd || ''} ${j?.msg1 || ''}`) && !_retried) { await resetKisToken(); return kisGet(path, trId, params, true); }
+    if (/EGW00121|EGW00123/.test(`${j?.msg_cd || ''} ${j?.msg1 || ''}`) && !_retried) { await resetKisToken(token, j?.msg_cd || 'invalid'); return kisGet(path, trId, params, true); }
     if (!(RATE.test(`${j?.msg1 || ''} ${j?.msg_cd || ''}`) || r.status === 500 || r.status === 429)) break;
     await sleep(700 + attempt * 600); // 초과 → 잠깐 쉬고 재시도
   }
