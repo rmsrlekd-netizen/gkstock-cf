@@ -9,7 +9,7 @@ const DAILY_MAX = Number(process.env.PREWARM_DAILY_MAX || 400); // v213: 200 →
 async function runOne(it) {
   const { analyzeId } = await import('../functions/analyze.mjs');
   const company = (await import('../functions/company.mjs')).default;
-  const jobs = [analyzeId(it.id).catch(() => null)];
+  const jobs = [analyzeId(it.id, it).catch(() => null)];
   if (it.ticker) {
     const q = it.market === 'KR' || it.src === 'DART'
       ? (it.corpCode ? `src=KR&t=${encodeURIComponent(it.ticker)}&corp=${it.corpCode}&ex=${encodeURIComponent(it.exchange || '')}` : null)
@@ -29,7 +29,7 @@ export async function prewarmQuick(items, { max = 8, budgetMs = 20000 } = {}) {
   const cnt = (await getJSON(dayKey))?.n || 0;
   if (cnt >= QUICK_DAILY) return 0;
   const todo = [];
-  for (const it of items) {
+  for (const it of items.slice(0, 20)) { // 최근 20건만 확인 (DB 읽기 줄이기)
     if (todo.length >= Math.min(max, QUICK_DAILY - cnt)) break;
     if (!it.ticker || (await getJSON(`aiq/${it.id}`)) || (await getJSON(`ai3/${it.id}`))) continue;
     todo.push(it);
@@ -37,8 +37,8 @@ export async function prewarmQuick(items, { max = 8, budgetMs = 20000 } = {}) {
   if (!todo.length) return 0;
   const { quickSummary } = await import('../functions/analyze.mjs');
   const until = Date.now() + budgetMs;
-  for (let i = 0; i < todo.length && Date.now() < until; i += 4) {
-    await Promise.race([Promise.all(todo.slice(i, i + 4).map((it) => quickSummary(it.id).catch(() => null))), new Promise((r) => setTimeout(r, Math.max(1000, until - Date.now())))]);
+  for (let i = 0; i < todo.length && Date.now() < until; i += 2) {
+    await Promise.race([Promise.all(todo.slice(i, i + 2).map((it) => quickSummary(it.id, it).catch(() => null))), new Promise((r) => setTimeout(r, Math.max(1000, until - Date.now())))]);
   }
   await setJSON(dayKey, { n: cnt + todo.length }).catch(() => {});
   return todo.length;
@@ -54,7 +54,7 @@ export async function prewarm(items, { max = 3, budgetMs = 45000 } = {}) {
   const cnt = (await getJSON(dayKey))?.n || 0;
   if (cnt >= DAILY_MAX) return 0;
   const todo = [];
-  for (const it of items) {
+  for (const it of items.slice(0, 30)) { // v215: 최근 30건만 확인 (DB 읽기 줄이기)
     if (todo.length >= Math.min(max, DAILY_MAX - cnt)) break;
     if (await getJSON(`ai3/${it.id}`)) continue;
     todo.push(it);

@@ -8,7 +8,7 @@ import { getJSON, setJSON } from './store.mjs';
 
 const DAY = 86400e3;
 const BT_V = 1;
-const PER_RUN = 12; // 3분마다 이만큼 종목
+const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
 const STEP = 10, BACK = 12; // 10거래일 간격으로 최대 12개 날짜 (약 6개월)
 
 export async function btStep({ restart = false, now = Date.now(), max = PER_RUN } = {}) {

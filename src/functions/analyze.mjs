@@ -82,11 +82,11 @@ function fallback(title, sub, lines) {
 
 // 진행 중인 분석을 같은 서버 안에서 공유 (미리 분석 중인 항목을 방문자가 열면 그 결과를 같이 기다림)
 const inflight = new Map();
-export function analyzeId(id) {
+export function analyzeId(id, it0 = null) {
   if (inflight.has(id)) return inflight.get(id);
   // 전체 110초 제한 — 어딘가에서 응답이 멈춰도 같은 공시를 여는 모든 사람이 끝없이 기다리지 않게
   const guard = new Promise((res) => setTimeout(() => res({ body: { ok: false, error: 'AI 분석이 너무 오래 걸려 멈췄어요 — 잠시 뒤 다시 시도해 주세요' }, opt: { status: 504, cdnSeconds: 10 } }), 110e3));
-  const p = Promise.race([handle(id), guard]).finally(() => setTimeout(() => inflight.delete(id), 1000));
+  const p = Promise.race([handle(id, it0), guard]).finally(() => setTimeout(() => inflight.delete(id), 1000));
   inflight.set(id, p);
   return p;
 }
@@ -99,10 +99,10 @@ export async function savedHeadline(id) {
   return a?.headline && !a.fallback ? a.headline : null;
 }
 export { quick as quickSummary };
-async function quick(id) {
+async function quick(id, it0 = null) {
   const c = await getJSON(`aiq/${id}`);
   if (c) return c;
-  const it = await findFiling(id);
+  const it = it0 || (await findFiling(id)); // v215: 미리 만들기는 항목을 바로 넘겨 큰 피드를 다시 읽지 않음
   if (!it) throw new Error('공시를 찾을 수 없습니다');
   const doc = await getFilingDoc(it);
   const text = (doc.lines || []).join('\n');
@@ -146,13 +146,13 @@ export default async (req) => {
 };
 
 // 반환: { body, opt } (json() 인자)
-async function handle(id) {
+async function handle(id, it0 = null) {
   const json = (body, opt) => ({ body, opt });
   const cached = await getJSON(`ai3/${id}`);
   if (cached) return json({ ok: true, ...cached }, { cdnSeconds: 86400, swr: 86400 });
   let it, doc, title;
   try {
-    it = await findFiling(id);
+    it = it0 || (await findFiling(id));
     if (!it) return json({ ok: false, error: '공시를 찾을 수 없습니다' }, { status: 404, cdnSeconds: 60 });
     doc = await getFilingDoc(it);
     title = it.titleKo || it.title || it.summary?.title || it.ko?.title || it.pr?.headline || it.formKo || it.form;
