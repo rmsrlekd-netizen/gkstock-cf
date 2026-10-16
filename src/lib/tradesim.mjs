@@ -580,7 +580,7 @@ export async function simRows(src, s, limit = 500) {
   const [ai, gai] = await Promise.all([getJSON('mp/sim/ai'), getJSON('mp/sim/gai')]);
   const p = src === 'bt' ? 'b' : 'l';
   const rows = L.filter((t) => t.s === s).sort((a, b) => (a.d < b.d ? 1 : -1)).slice(0, limit).map(({ g, ...t }) => ({ ...t, ai: ai?.m?.[`${p}|${t.c}|${t.d}`]?.t || null }));
-  return { rows, gai: gai?.m?.[`${p}|${s}`]?.t || null };
+  return { rows: await fixNames(rows), gai: gai?.m?.[`${p}|${s}`]?.t || null };
 }
 
 /** v222 🔎 성과검증 종목 검색: 이름·코드로 그 종목의 따라 샀다면 기록(실제·과거 재현)·판정 기록·AI 해설 */
@@ -591,13 +591,14 @@ export async function simStock(q) {
   for (const [c, z] of Object.entries(tl?.codes || {})) names.set(c, z.n || names.get(c) || c);
   const btBy = new Map();
   for (const a of bt?.t || []) { const t = unpack(a); if (!btBy.has(t.c)) btBy.set(t.c, []); btBy.get(t.c).push(t); if (!names.has(t.c) || names.get(t.c) === t.c) names.set(t.c, t.n || t.c); }
+  try { const nc = (await getJSON('mp/names')) || {}; for (const [c, n] of Object.entries(nc)) if (names.has(c) && (names.get(c) === c || !names.get(c))) names.set(c, n); } catch {}
   const norm = (x) => String(x || '').replace(/\s+/g, '').toLowerCase();
   const qq = norm(q);
   if (!qq) return { matches: [] };
   let codes = [...names.keys()].filter((c) => c === qq || norm(names.get(c)) === qq);
   if (!codes.length) codes = [...names.keys()].filter((c) => c.startsWith(qq) || norm(names.get(c)).includes(qq));
   const cnt = (c) => (tr?.codes?.[c]?.t?.length || 0) + (btBy.get(c)?.length || 0);
-  if (codes.length !== 1) return { matches: codes.sort((a, b) => cnt(b) - cnt(a)).slice(0, 15).map((c) => ({ c, n: names.get(c), live: tr?.codes?.[c]?.t?.length || 0, bt: btBy.get(c)?.length || 0 })) };
+  if (codes.length !== 1) return { matches: await fixNames(codes.sort((a, b) => cnt(b) - cnt(a)).slice(0, 15).map((c) => ({ c, n: names.get(c), live: tr?.codes?.[c]?.t?.length || 0, bt: btBy.get(c)?.length || 0 }))) };
   const c = codes[0];
   // 같은 날 산 여러 신호는 한 매수로 묶음 (같은 날·같은 가격이면 결과도 같음)
   const group = (L, p) => { const m = new Map(); for (const t of L.sort((a, b) => (a.d < b.d ? 1 : -1))) { const k = t.d; if (!m.has(k)) m.set(k, { ...t, sigs: [], ai: ai?.m?.[`${p}|${c}|${t.d}`]?.t || null }); m.get(k).sigs.push(t.s); } return [...m.values()].map(({ g, ...x }) => x); };
@@ -605,5 +606,32 @@ export async function simStock(q) {
   const back = group(btBy.get(c) || [], 'b');
   const z = tl?.codes?.[c];
   const judg = (z?.p || []).slice(-60).reverse().map(([di, f, tp, sp, a]) => ({ d: tl.dates[di], vd: a?.vd || null, st: a?.st || null, ck: a?.ck || null, rr: a?.rr || null, bad: !!(f & BAD), tp, sp }));
-  return { c, n: names.get(c), live, bt: back, judg, sigs: Object.fromEntries(SIGS) };
+  const nm = names.get(c) && names.get(c) !== c ? names.get(c) : (await namesOf([c]))[c] || c;
+  return { c, n: nm, live, bt: back, judg, sigs: Object.fromEntries(SIGS) };
+}
+
+// v222: 이름 없이 코드만 있는 종목(그날 시세 목록에 없던 거래정지·상장폐지 종목 등) → 공시 보관함(items)의 회사 이름으로 채움, `mp/names`에 저장
+export async function namesOf(codes) {
+  const { getJSON, setJSON, sqlDB } = await import('./store.mjs');
+  const want = [...new Set(codes.filter((c) => /^[0-9A-Z]{6}$/.test(c)))];
+  const cache = (await getJSON('mp/names')) || {};
+  const miss = want.filter((c) => !cache[c]);
+  if (miss.length) {
+    const d = await sqlDB().catch(() => null);
+    if (d) {
+      for (let i = 0; i < miss.length && i < 300; i += 50) {
+        const part = miss.slice(i, i + 50);
+        try { const r = await d.prepare(`SELECT ticker AS t, MAX(name) AS n FROM items WHERE market = 'KR' AND ticker IN (${part.map(() => '?').join(',')}) AND name IS NOT NULL AND name != '' GROUP BY ticker`).bind(...part).all(); for (const row of r.results || []) if (row.n) cache[row.t] = String(row.n).replace(/^\(주\)|㈜|주식회사/g, '').trim(); } catch {}
+      }
+      let k = 0; for (const c of miss) { if (cache[c]) continue; if (++k > 30) break; const p = await getJSON(`mp/prof/${c}`).catch(() => null); if (p?.name && p.name !== c) cache[c] = p.name; } // 보관함에도 없으면 레이더 카드 이름 (최대 30개)
+      await setJSON('mp/names', cache).catch(() => {});
+    }
+  }
+  return cache;
+}
+export async function fixNames(rows, ck = 'c', nk = 'n') {
+  const need = rows.filter((r) => !r[nk] || r[nk] === r[ck]).map((r) => r[ck]);
+  if (!need.length) return rows;
+  const m = await namesOf(need);
+  return rows.map((r) => (!r[nk] || r[nk] === r[ck]) && m[r[ck]] ? { ...r, [nk]: m[r[ck]] } : r);
 }

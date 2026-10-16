@@ -4,7 +4,7 @@ import { getJSON, setJSON, hasKeys } from './store.mjs';
 import { hasAI, aiPauseInfo } from './ai.mjs';
 import { kstDate } from './util.mjs';
 
-const DAILY_MAX = Number(process.env.PREWARM_DAILY_MAX || 30000); // v222: GK 요청 '돈 상관없이 무조건 바로' → 사실상 전부 (이전 2500) // v220: 심층 분석이 가벼운 모델이라 싸짐 → 새 공시 거의 전부 미리 (200 → 400 → 2500) // AI 미리 분석 하루 최대 건수 (요금·한도 보호)
+const DAILY_MAX = Number(process.env.PREWARM_DAILY_MAX || 400); // v222: '전부(30000)'를 시험했다가 GK 요청으로 v220 이전 기준 400으로 (비용) // v220: 심층 분석이 가벼운 모델이라 싸짐 → 새 공시 거의 전부 미리 (200 → 400 → 2500) // AI 미리 분석 하루 최대 건수 (요금·한도 보호)
 
 async function runOne(it, withCo = true) {
   const { analyzeId } = await import('../functions/analyze.mjs');
@@ -21,7 +21,7 @@ async function runOne(it, withCo = true) {
 
 // v213 빠른 요약(3줄) 미리 만들기: 종목이 있는 새 공시는 중요도와 상관없이 전부 (가벼운 모델이라 싸고 빠름)
 //  → 어떤 공시를 눌러도 3줄 요약은 바로 뜨고, 심층 분석만 기다리면 됨
-const QUICK_DAILY = Number(process.env.PREWARM_QUICK_MAX || 2000);
+const QUICK_DAILY = Number(process.env.PREWARM_QUICK_MAX || 300); // v222: GK 요청으로 비용 줄임 (이전 2000)
 export async function prewarmQuick(items, { max = 8, budgetMs = 20000 } = {}) {
   if (!hasAI() || !items?.length) return 0;
   if (await aiPauseInfo()) return 0;
@@ -75,15 +75,14 @@ export const pickSec = (items) => (items || []).filter((x) => x.ticker && x.impa
 export const pickDart = (items) => (items || []).filter((x) => x.ticker && x.impact >= 3 && (x.seenAt ? recent(Date.parse(x.seenAt)) : x.date >= kstDate(-2))).slice(0, 80);
 export const pickPR = (items) => (items || []).filter((x) => x.src === 'PR' && x.market === 'US' && x.ticker && recent(Date.parse(x.time))).slice(0, 80);
 
-// v220 → v222 3분 크론: 들어온 공시·보도자료를 '전부' 미리 심층 분석 (GK: 돈 상관없이 무조건 바로)
-//  · 최근 48시간 · 최신순 · 우선순위: 종목 있는 일반 공시·보도자료 → 종목 없는 공시 → 13F·Form 4·144 같은 대량 보고
-//  · 한 번에 최대 24건·8건씩 동시·55초 (3분 크론이라 1분 크론 규칙과 별개) · 이미 분석된 건 400건까지 한 번에 확인
+// v220 3분 크론: 1분 크론이 못 다 한 '종목 있는 새 공시' 심층 분석을 최신순으로 더 미리 만들어 둠 (사람이 누르기 전에)
+//  · 중요도와 상관없이(13F·Form 4·144 같은 대량 보고는 뒤로) · 한 번에 최대 8건·4건씩·40초
+//  · v222: 이미 분석됐는지는 최근 100건까지 한 번에 확인(`hasKeys`) — 예전엔 30건만 봐서 한꺼번에 몰리면 밀린 공시가 영영 빠졌음
 const BULK = /^(4|4\/A|3|5|144|13F|SC 13G)/;
-export async function prewarmMore({ max = 24, budgetMs = 55000 } = {}) {
+export async function prewarmMore({ max = 8, budgetMs = 40000 } = {}) {
   const [sec, dart, news] = await Promise.all([getJSON('sec/feed'), getJSON('dart/feed'), getJSON('news/feed')]);
-  const rank = (x) => (BULK.test(x.form || '') ? 2 : x.ticker ? 0 : 1);
   const all = [...(dart?.items || []), ...(sec?.items || []), ...(news?.items || []).filter((x) => x.src === 'PR')]
-    .filter((x) => x.id && fresh(x, 48))
-    .sort((a, b) => rank(a) - rank(b) || (Date.parse(b.time || b.seenAt || 0) || 0) - (Date.parse(a.time || a.seenAt || 0) || 0));
-  return prewarm(all, { max, budgetMs, withCo: false, scan: 400, par: 8 }); // 기업 정보 미리 받기는 빼서 바깥 요청 줄임
+    .filter((x) => x.ticker && fresh(x, 24))
+    .sort((a, b) => (BULK.test(a.form || '') ? 1 : 0) - (BULK.test(b.form || '') ? 1 : 0) || (Date.parse(b.time || b.seenAt || 0) || 0) - (Date.parse(a.time || a.seenAt || 0) || 0));
+  return prewarm(all, { max, budgetMs, withCo: false, scan: 100, par: 4 }); // 기업 정보 미리 받기는 빼서 바깥 요청 줄임
 }

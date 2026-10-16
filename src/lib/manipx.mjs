@@ -503,5 +503,5 @@ export async function perfRows(g, limit = 400) {
       if (row.st !== '거래정지' && perfGroupKeys(row).includes(g)) out.push({ c: code, d, ...row });
     }
   }
-  return out.slice(-limit);
+  return (await import('./tradesim.mjs')).fixNames(out.slice(-limit)); // v222: 코드만 있던 이름 채움
 }

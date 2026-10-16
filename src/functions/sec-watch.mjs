@@ -16,7 +16,7 @@ export default async ({ backfillMs = 12000 } = {}) => {
     // 새 중요 공시는 AI 분석·기업 정보를 미리 준비
     // v215: 1분 크론 안에서 끝나도록 시간 예산을 나눔 (v214에서 심층 6건·빠른 요약 8건이 겹쳐 실행이 1분을 넘기고 쌓이며 DB가 막혔던 문제)
     const feedItems = (await getJSON('sec/feed'))?.items;
-    const n = await prewarm(pickSec(feedItems), { max: 2, budgetMs: 28000 }).catch((e) => console.warn('prewarm', e.message));
+    const n = await prewarm(pickSec(feedItems), { max: 3, budgetMs: 28000 }).catch((e) => console.warn('prewarm', e.message));
     if (!n) { const nq = await prewarmQuick(pickQuick(feedItems), { max: 4, budgetMs: 12000 }).catch((e) => console.warn('prewarmQ', e.message)); if (nq) console.log('quick prewarm', nq); } // 심층 분석을 안 한 차례에만 3줄 요약 미리
     if (n) console.log('sec prewarm', n);
     // 남는 시간에 과거 공시 채우기 (하루치씩 거슬러 올라감)

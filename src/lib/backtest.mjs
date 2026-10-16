@@ -97,5 +97,5 @@ export async function btSummary() {
 export async function btRows(g, limit = 400) {
   const { perfGroupKeys } = await import('./manipx.mjs');
   const R = (await getJSON('mp/bt/rows')) || { rows: [] };
-  return (R.rows || []).filter((r) => perfGroupKeys(r).includes(g)).slice(-limit);
+  return (await import('./tradesim.mjs')).fixNames((R.rows || []).filter((r) => perfGroupKeys(r).includes(g)).slice(-limit)); // v222: 코드만 있던 이름 채움
 }
