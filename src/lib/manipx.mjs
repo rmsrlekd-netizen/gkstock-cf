@@ -76,7 +76,7 @@ export function pathStats(B, i, opt = {}) {
   return out;
 }
 /** 크론: 판정한 날 이후 5·20·60거래일이 지난 종목의 실제 수익률을 채움 (한 번에 최대 20종목) */
-const PV = 2; // v222 성적표 계산 버전 (감자·액면분할 보정)
+const PV = 3; // v222 성적표 계산 버전 (감자·액면분할 보정 · 3: 거래량 0 정지도 보정)
 /** 그날 판정한 종목 1개 → 성적표 줄 (결과 칸은 나중에) */
 export async function perfRowOf(x, rv = null) {
   const row = { n: x.name || null, mk: x.mkt || null, rv, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
@@ -205,6 +205,7 @@ export async function perfSummary() {
       const k = `${code}|${row.st || '-'}`, prevMs = last.get(k);
       last.set(k, dMs);
       if (prevMs != null && dMs - prevMs <= 30 * DAY) { dup++; continue; }
+      if (row.st === '거래정지') continue; // v222: 거래정지 중 판정은 실제로 살 수 없음 → 성적에서 뺌
       for (const g of perfGroupKeys(row)) perfAdd(groups, g, row);
     }
   }
@@ -499,7 +500,7 @@ export async function perfRows(g, limit = 400) {
       const k = `${code}|${row.st || '-'}`, prevMs = last.get(k);
       last.set(k, dMs);
       if (prevMs != null && dMs - prevMs <= 30 * DAY) continue;
-      if (perfGroupKeys(row).includes(g)) out.push({ c: code, d, ...row });
+      if (row.st !== '거래정지' && perfGroupKeys(row).includes(g)) out.push({ c: code, d, ...row });
     }
   }
   return out.slice(-limit);

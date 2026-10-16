@@ -215,7 +215,9 @@ export function adjustCA(B) {
     const g = (x.o || x.c) / p.c;
     if (g > 1.45 || g < 0.6) {
       const gapDays = (Date.parse(x.d) - Date.parse(p.d)) / 864e5;
-      if (gapDays < 5) continue;
+      // v222: 네이버 일봉은 거래정지 날도 '거래량 0·가격 그대로' 줄로 주는 경우가 있어 날짜 빈칸이 안 생김 → 직전 2일 이상 거래량 0도 정지로 봄 (에이프로젠 +1725% 문제)
+      const halted = k >= 2 && !out[k - 1].v && !out[k - 2].v;
+      if (gapDays < 5 && !halted) continue;
       let f = null;
       if (g > 1.45) { const n = CA_R.reduce((a, r) => (Math.abs(Math.log(g / r)) < Math.abs(Math.log(g / a)) ? r : a), CA_R[0]); f = Math.abs(Math.log(g / n)) < Math.log(1.3) ? n : g; }
       else if (out.length - k >= 10) { const n = SPLIT_R.reduce((a, r) => (Math.abs(Math.log(g * r)) < Math.abs(Math.log(g * a)) ? r : a), SPLIT_R[0]); if (Math.abs(Math.log(g * n)) < Math.log(1.08)) f = 1 / n; } // 정리매매(뒤에 거래 10일 미만)는 그대로

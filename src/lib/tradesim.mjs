@@ -367,7 +367,7 @@ export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp:
 // ───── 실제 성적표(매일 판정 기록)로 계산 ─────
 //  mp/sim/tl {dates:[], codes:{코드:{n, m(시장), p:[[날짜번호, 신호비트, 목표가, 손절선, 조건]]}}}
 //  mp/sim/tr {codes:{코드:{chk, need, open, nf, t:[pack…]}}} · mp/sim/sum 통계 캐시
-const SIM_V = 4;
+const SIM_V = 5; // v222: 거래량 0 정지 감자 보정 → 다시 계산
 export async function simStep({ maxDates = 2, maxCodes = 12, budgetMs = 30000 } = {}) {
   const { getJSON, setJSON } = await import('./store.mjs');
   const t0 = Date.now();
