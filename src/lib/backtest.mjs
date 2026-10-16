@@ -7,7 +7,7 @@
 import { getJSON, setJSON } from './store.mjs';
 
 const DAY = 86400e3;
-const BT_V = 13; // v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
+const BT_V = 15; // v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
 const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
 const STEP = 10, BACK = 16; // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
@@ -20,8 +20,8 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
     // v222: 레이더 랭킹·내 세력주 종목부터 계산 (예전엔 코드 순서라 351320 같은 뒤쪽 코드는 몇 시간 뒤에야 나옴)
     const rk = (await getJSON('mp/rank')) || {}, my = (await getJSON('mp/my')) || {};
     const pri = new Set([...(Array.isArray(my.items) ? my.items.map((i) => i.code) : []), ...Object.keys(rk)]);
-    const big = await (await import('./tradesim.mjs')).bigCaps(); // v222: 대형주(시총 상위 10%)는 세력주 과거 재현에서 뺌
-    const codes = Object.entries(evm).filter(([c, evs]) => !big.has(c) && evs.some((e) => SET.has(e.kind))).map(([c]) => c).sort((a, b) => (pri.has(a) ? 0 : 1) - (pri.has(b) ? 0 : 1) || (a < b ? -1 : 1)).slice(0, 700);
+    const TSc = await import('./tradesim.mjs'); const cm0 = await TSc.capMap(); // v222: 지금 시총 8조↑(그날 2조 미만이었을 가능성 낮음)은 처음부터 뺌, 나머지는 판정일 시총으로 거름
+    const codes = Object.entries(evm).filter(([c, evs]) => !((TSc.capAt(cm0, c, null) ?? 0) >= 80000) && evs.some((e) => SET.has(e.kind))).map(([c]) => c).sort((a, b) => (pri.has(a) ? 0 : 1) - (pri.has(b) ? 0 : 1) || (a < b ? -1 : 1)).slice(0, 700);
     st = { v: BT_V, queue: codes, pos: 0, started: now, samples: 0, kept: 0, groups: {}, done: false };
     await setJSON('mp/bt/state', st);
     await setJSON('mp/bt/rows', { v: BT_V, rows: [] }); // 종목별 판정 목록 (그룹 눌러서 보기용)
@@ -34,7 +34,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   const ixd = await M.indexDaily().catch(() => ({}));
   const idx = (await getJSON('mp/idx')) || [];
   const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows || {} : {};
-  const capP = (await (await import('./tradesim.mjs')).bigCaps()).pct || {}; // 지금 시가총액 순위 (근사) → 소형주 항목·대형주 감점이 재현됨
+  const TSm = await import('./tradesim.mjs'); const cmap = await TSm.capMap(); const capP = cmap.pct || {}; // 시가총액 순위(근사) → 소형주 항목·대형주 감점 재현 · 판정일 시총으로 세력주만
   const part = st.queue.slice(st.pos, st.pos + max);
   const newRows = [], newTr = [], newNf = {}, newFw = [];
   const TS = await import('./tradesim.mjs');
@@ -60,6 +60,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
         const score = Math.round((s.score + (f.score || 0)) * 10) / 10;
         st.samples++;
         if (score < 4) continue; // 그날 레이더에 오를 만한 종목만
+        if (TSm.tooBig(cmap, code, f.close)) continue; // v222: 그날 시가총액 2조↑은 세력주 아님
         const x = { code, name: snap[code]?.[0] || code, mkt, close: f.close, pct: null, f, by: s.by, score, events: M.keepEv(evs), px: px.filter((p) => p.date <= d), capPct: capP[code] ?? null, links: [], xnotes: [], sig: [] };
         x.stage = M.stageOf(s.by, f, evs);
         x.dir = M.direction(x, Tms);

@@ -3700,6 +3700,7 @@
       ${G.length ? G.map(card).join('') : simEmpty(D, src)}
       <div class="in-card">${icHTML(D.ic) || '<p class="muted sm">점수 검증은 판정 기록이 더 쌓이면 나와요.</p>'}</div>
       <div class="in-card">${condsHTML(D)}</div>
+      ${D.capStudy?.some((x) => x.n) ? `<div class="in-card"><h5>📏 시가총액별 성적 <small class="muted">세력주를 몇 억까지로 볼지 데이터로 정하기 · 판정 그날 시가총액 · 레이더 전체 · 지금 기준 ${fmtInt(j.capMax)}억 미만만 성적에 넣음</small></h5><div class="cap-grid">${D.capStudy.map((x) => `<div class="cap-r${x.n ? '' : ' muted'}"><b>${esc(x.ko)}</b><span>${x.n ? `${x.n}번` : '없음'}</span><span class="${dirCls(x.avg)}">${x.n ? '한 번 ' + sgn(x.avg) : ''}</span><span>${x.up != null ? `60일 최고 ${sgn(x.up)}` : ''}</span><span>${x.r20 != null ? `+20%↑ ${x.r20}%` : ''}</span></div>`).join('')}</div><p class="muted sm">구간마다 거래가 30번 넘게 쌓이면, 성적이 확 떨어지기 시작하는 시가총액이 '세력주 상한'이에요. 그 숫자로 기준을 바꿀 수 있어요 (Cloudflare 변수 RADAR_CAP_MAX).</p></div>` : ''}
       <details class="sx-more"><summary>ⓘ 6가지 검증이 뭔가요</summary><ul class="sx-ul">
         <li><b>① 거래 수</b> — 30번 미만이면 동전 던지기와 구별이 안 돼요.</li>
         <li><b>② 레이더 전체보다</b> — 레이더에 오른 종목을 아무거나 샀을 때보다 나은지. 같은 주에 산 거래는 한 묶음으로 보고 수백 번 다시 뽑아 '나을 확률'을 계산해요 (붓스트랩).</li>

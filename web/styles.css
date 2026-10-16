@@ -2378,3 +2378,5 @@ body.pbm-open{overflow:hidden}
 .sf-judg{display:flex;flex-wrap:wrap;gap:5px;margin-top:.4rem}.sf-j{font-size:.72rem;padding:.2rem .45rem;border-radius:6px;background:rgba(255,255,255,.05)}.sf-j.bad{background:rgba(96,165,250,.15)}
 .pb-bar.pb-be{position:relative;overflow:visible}.pb-bar.pb-be em{position:absolute;top:-3px;bottom:-3px;width:2px;background:#fff;border-radius:1px;opacity:.9}
 .pb-wl small{display:block;font-size:.66rem;font-weight:600}
+.cap-grid{display:flex;flex-direction:column;gap:4px}.cap-r{display:grid;grid-template-columns:1.2fr .6fr 1fr 1fr .9fr;gap:8px;font-size:.82rem;padding:.35rem .5rem;border-radius:8px;background:rgba(255,255,255,.03)}
+@media (max-width:720px){.cap-r{grid-template-columns:1fr 1fr}}

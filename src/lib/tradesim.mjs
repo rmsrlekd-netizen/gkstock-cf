@@ -549,16 +549,16 @@ export async function simSummary() {
   const { getJSON, setJSON } = await import('./store.mjs');
   const [tl, tr, bt, bfw, cache] = await Promise.all([getJSON('mp/sim/tl'), getJSON('mp/sim/tr'), getJSON('mp/bt/trades'), getJSON('mp/bt/fw'), getJSON('mp/sim/sum')]);
   const { RULE_V } = await import('./manip.mjs');
-  const key = `${SIM_V}|${RULE_V}|${tr?.at || 0}|${bt?.at || 0}|${bfw?.at || 0}|big1`;
+  const key = `${SIM_V}|${RULE_V}|${tr?.at || 0}|${bt?.at || 0}|${bfw?.at || 0}|cap${CAP_MAX}`;
   if (cache?.key === key) return cache.out;
-  const big = await bigCaps();
-  const L = Object.values(tr?.codes || {}).flatMap((z) => (z.t || []).map(unpack)).filter((t) => !big.has(t.c));
-  const BT = (bt?.t || []).map(unpack).filter((t) => !big.has(t.c));
+  const cm = await capMap();
+  const L0 = Object.values(tr?.codes || {}).flatMap((z) => (z.t || []).map(unpack)), BT0 = (bt?.t || []).map(unpack);
+  const L = L0.filter((t) => !tooBig(cm, t.c, t.e)), BT = BT0.filter((t) => !tooBig(cm, t.c, t.e));
   const nfL = nfSum(Object.values(tr?.codes || {}).map((z) => z.nf));
   // 점수 검증용 점: 실제 기록(판정 기록의 숫자 + 그 뒤 수익률) · 과거 재현
   const ptsL = [];
-  for (const [c, z] of Object.entries(tl?.codes || {})) { if (big.has(c)) continue; const fw = new Map((tr?.codes?.[c]?.fw || []).map((r) => [r[0], r.slice(1)])); for (const p of z.p) { const x = fw.get(p[0]); if (x) ptsL.push({ di: p[0], v: p[6] || {}, x }); } }
-  const ptsB = (bfw?.r || []).filter((r) => !r[8] || !big.has(r[8])).map((r) => ({ di: r[0], v: { s: r[1], ws: r[2], rr: r[3], gp: r[4] }, x: [r[5], r[6], r[7]] }));
+  for (const [c, z] of Object.entries(tl?.codes || {})) { if (tooBig(cm, c, null)) continue; const fw = new Map((tr?.codes?.[c]?.fw || []).map((r) => [r[0], r.slice(1)])); for (const p of z.p) { const x = fw.get(p[0]); if (x) ptsL.push({ di: p[0], v: p[6] || {}, x }); } }
+  const ptsB = (bfw?.r || []).filter((r) => !r[8] || !tooBig(cm, r[8], null)).map((r) => ({ di: r[0], v: { s: r[1], ws: r[2], rr: r[3], gp: r[4] }, x: [r[5], r[6], r[7]] }));
   const now = L.filter((t) => t.rv === RULE_V);
   const out = {
     rv: RULE_V,
@@ -568,6 +568,14 @@ export async function simSummary() {
   };
   // 지금 규칙만 보기의 점수 검증: 그 규칙으로 판정한 날만
   { const okD = new Set(); for (const z of Object.values(tl?.codes || {})) for (const p of z.p) if (p[5] === RULE_V) okD.add(p[0]); out.now.ic = icStats(ptsL.filter((p) => okD.has(p.di))); out.now.days = okD.size; }
+  // v222 📏 시가총액별 성적 (세력주를 몇 억까지로 볼지 데이터로 정하기): 거르기 전 모든 거래('레이더 전체' 신호)를 그날 시총 구간별로
+  const capStudy = (T0) => CAP_B.map(([lo, hi, ko]) => {
+    const g = T0.filter((t) => t.s === 'all' && t.T && (() => { const c = capAt(cm, t.c, t.e); return c != null && c >= lo && c < hi; })());
+    if (!g.length) return { ko, n: 0 };
+    const rs = g.map((t) => t.T.r), pk = g.map((t) => t.pk?.[2]).filter(Boolean);
+    return { ko, n: g.length, avg: r1(mean(rs)), win: Math.round((rs.filter((x) => x > 0).length / rs.length) * 100), up: pk.length ? r1(pct(pk.map((x) => x[0]), 0.5)) : null, dn: pk.length ? r1(pct(pk.map((x) => x[1]), 0.5)) : null, r20: pk.length ? Math.round((pk.filter((x) => x[0] >= 20).length / pk.length) * 100) : null };
+  });
+  out.live.capStudy = capStudy(L0); out.bt.capStudy = capStudy(BT0); out.capMax = CAP_MAX;
   // 실제 vs 과거 재현 차이 (실제가 훨씬 나쁘면 '과거에만 맞춘 규칙' 신호)
   out.gap = out.live.groups.map((g) => { const a = g.T, b2 = out.bt.groups.find((x) => x.s === g.s)?.T; return a && b2 && a.n >= 20 && b2.n >= 20 ? { s: g.s, ko: g.ko, live: a.avg, bt: b2.avg, d: r1(a.avg - b2.avg) } : null; }).filter(Boolean);
   await setJSON('mp/sim/sum', { key, out }).catch(() => {});
@@ -578,7 +586,7 @@ export async function simRows(src, s, limit = 500) {
   const { getJSON } = await import('./store.mjs');
   let L = src === 'bt' ? ((await getJSON('mp/bt/trades'))?.t || []).map(unpack) : Object.values((await getJSON('mp/sim/tr'))?.codes || {}).flatMap((z) => (z.t || []).map(unpack));
   if (src === 'now') { const { RULE_V } = await import('./manip.mjs'); L = L.filter((t) => t.rv === RULE_V); }
-  { const big = await bigCaps(); L = L.filter((t) => !big.has(t.c)); }
+  { const cm = await capMap(); L = L.filter((t) => !tooBig(cm, t.c, t.e)); }
   const [ai, gai] = await Promise.all([getJSON('mp/sim/ai'), getJSON('mp/sim/gai')]);
   const p = src === 'bt' ? 'b' : 'l';
   const rows = L.filter((t) => t.s === s).sort((a, b) => (a.d < b.d ? 1 : -1)).slice(0, limit).map(({ g, ...t }) => ({ ...t, ai: ai?.m?.[`${p}|${t.c}|${t.d}`]?.t || null }));
@@ -638,18 +646,23 @@ export async function fixNames(rows, ck = 'c', nk = 'n') {
   return rows.map((r) => (!r[nk] || r[nk] === r[ck]) && m[r[ck]] ? { ...r, [nk]: m[r[ck]] } : r);
 }
 
-// v222 대형주(시가총액 상위 10%)는 세력주 성적에서 뺌 — 레이더도 대형주는 '작전 해석 약함'·후보 제외인데 성적에는 섞여 있었음 (GK 지적)
-//  기준: 가장 최근 전 종목 시세 목록(mp/snap)의 시가총액 순위 (지난 날짜도 지금 순위로 판단 — 근사)
-let _big = null, _bigAt = 0;
-export async function bigCaps() {
-  if (_big && Date.now() - _bigAt < 30 * 60e3) return _big;
+// v222 세력주 기준: 판정 '그날'의 시가총액이 5000억원 미만인 종목만 성적에 넣음 (GK: 우량주 빼고, 시총 기준으로)
+//  그날 시가총액 = 지금 시가총액 × (그날 가격 ÷ 지금 가격)  — 일봉은 감자·분할 보정돼 있어 비율이 맞음 (증자·CB 전환으로 주식 수가 늘었으면 약간 크게 나옴)
+export const CAP_MAX = Number(process.env.RADAR_CAP_MAX || 20000); // 억원 (GK: 최대 2조)
+const CAP_B = [[0, 500, '500억 미만'], [500, 1000, '500억~1천억'], [1000, 3000, '1천억~3천억'], [3000, 5000, '3천억~5천억'], [5000, 10000, '5천억~1조'], [10000, 20000, '1조~2조'], [20000, 1e9, '2조 이상']];
+let _cm = null, _cmAt = 0;
+export async function capMap() {
+  if (_cm && Date.now() - _cmAt < 30 * 60e3) return _cm;
   const { getJSON } = await import('./store.mjs');
   const idx = (await getJSON('mp/idx')) || [];
   let snap = null; for (const d of idx.slice(0, 5)) { snap = (await getJSON(`mp/snap/${d}`))?.rows; if (snap) break; }
-  const caps = Object.entries(snap || {}).filter(([, r]) => r?.[6] > 0).sort((a, b) => a[1][6] - b[1][6]);
-  const out = new Set(); const pct = {};
-  caps.forEach(([c], i) => { const p = caps.length > 1 ? i / (caps.length - 1) : 0.5; pct[c] = p; if (p >= 0.9) out.add(c); });
-  out.pct = pct;
-  _big = out; _bigAt = Date.now();
-  return out;
+  const m = new Map(); const caps = [];
+  for (const [c, r] of Object.entries(snap || {})) { const v = r?.[6]; if (!(v > 0) || !(r[2] > 0)) continue; const eok = v > 1e7 ? v / 1e8 : v; m.set(c, { cap: eok, close: r[2] }); caps.push([c, eok]); }
+  caps.sort((a, b) => a[1] - b[1]); const pct = {}; caps.forEach(([c], i) => { pct[c] = caps.length > 1 ? i / (caps.length - 1) : 0.5; });
+  m.pct = pct;
+  _cm = m; _cmAt = Date.now();
+  return m;
 }
+/** 그날 가격 기준 시가총액(억) — 모르면 null */
+export const capAt = (cm, code, price) => { const z = cm.get(code); if (!z) return null; return price > 0 ? z.cap * (price / z.close) : z.cap; };
+export const tooBig = (cm, code, price, capKnown = null) => { const c = capKnown ?? capAt(cm, code, price); return c != null && c >= CAP_MAX; };

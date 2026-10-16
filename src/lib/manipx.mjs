@@ -79,7 +79,7 @@ export function pathStats(B, i, opt = {}) {
 const PV = 4; // v222 성적표 계산 버전 (감자·액면분할 보정 · 3: 거래량 0 정지도 보정 · 4: 거래량으로 진짜 급등락과 구분)
 /** 그날 판정한 종목 1개 → 성적표 줄 (결과 칸은 나중에) */
 export async function perfRowOf(x, rv = null) {
-  const row = { n: x.name || null, mk: x.mkt || null, rv, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
+  const row = { n: x.name || null, mk: x.mkt || null, rv, cap: x.mcap ? Math.round(x.mcap > 1e7 ? x.mcap / 1e8 : x.mcap) : null, c0: x.close ?? null, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
   // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
   try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.vd = M.verdictOf(rk)?.c || null; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
   return row;
@@ -190,7 +190,7 @@ export function perfOut(groups) {
 }
 export async function perfSummary() {
   const idx = (await getJSON('mp/idx')) || [];
-  const big = await (await import('./tradesim.mjs')).bigCaps();
+  const TSc = await import('./tradesim.mjs'); const cm = await TSc.capMap(); const big = { has: (c, row) => TSc.tooBig(cm, c, row?.c0, row?.cap ?? null) };
   const groups = {};
   let days = 0, raw = 0, dup = 0;
   // 같은 종목이 같은 단계로 랭킹에 며칠씩 계속 있으면 하루마다 따로 세지 않고 '처음 그 단계로 판정된 날' 1번만 셈
@@ -206,7 +206,7 @@ export async function perfSummary() {
       const k = `${code}|${row.st || '-'}`, prevMs = last.get(k);
       last.set(k, dMs);
       if (prevMs != null && dMs - prevMs <= 30 * DAY) { dup++; continue; }
-      if (row.st === '거래정지' || big.has(code)) continue; // v222: 거래정지 중 판정은 실제로 살 수 없음 · 대형주(시총 상위 10%)는 세력주 성적에서 뺌
+      if (row.st === '거래정지' || big.has(code, row)) continue; // v222: 거래정지 중 판정은 실제로 살 수 없음 · 대형주(시총 상위 10%)는 세력주 성적에서 뺌
       for (const g of perfGroupKeys(row)) perfAdd(groups, g, row);
     }
   }
@@ -492,7 +492,7 @@ export async function ruleCheck({ force = false, now = Date.now() } = {}) {
 /** 실제 성적표에서 그룹에 들어간 종목별 판정과 결과 (집계와 같은 중복 제외) */
 export async function perfRows(g, limit = 400) {
   const idx = (await getJSON('mp/idx')) || [];
-  const big = await (await import('./tradesim.mjs')).bigCaps();
+  const TSc = await import('./tradesim.mjs'); const cm = await TSc.capMap(); const big = { has: (c, row) => TSc.tooBig(cm, c, row?.c0, row?.cap ?? null) };
   const last = new Map(), out = [];
   for (const d of idx.slice().sort()) {
     const perf = await getJSON(`mp/perf/${d}`);
@@ -502,7 +502,7 @@ export async function perfRows(g, limit = 400) {
       const k = `${code}|${row.st || '-'}`, prevMs = last.get(k);
       last.set(k, dMs);
       if (prevMs != null && dMs - prevMs <= 30 * DAY) continue;
-      if (row.st !== '거래정지' && !big.has(code) && perfGroupKeys(row).includes(g)) out.push({ c: code, d, ...row });
+      if (row.st !== '거래정지' && !big.has(code, row) && perfGroupKeys(row).includes(g)) out.push({ c: code, d, ...row });
     }
   }
   return (await import('./tradesim.mjs')).fixNames(out.slice(-limit)); // v222: 코드만 있던 이름 채움
