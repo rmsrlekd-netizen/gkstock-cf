@@ -77,19 +77,22 @@ async function withFill(m) {
   try { const f = (await getJSON('sectors/krfill')) || {}; if (Object.keys(f).length) m = { ...m, kr: { ...f, ...(m.kr || {}) } }; } catch {}
   return m;
 }
+// v222 속도: 예전엔 '저장된 목록이 6시간 안에 만든 것'일 때만 메모리에 두어서, 목록이 오래되면(업종 목록 받기 실패 등)
+//  기업 정보를 열 때마다 큰 업종 목록을 DB에서 다시 읽음(약 2.5초) → 메모리 보관은 '읽어 온 시각' 기준 30분
+let memLoad = 0;
 export async function getSectors(opt = {}) {
-  if (mem && Date.now() - mem.at < 6 * 3600e3 && mem.filled) return mem;
+  if (mem && mem.filled && Date.now() - memLoad < 30 * 60e3) return mem;
   const m = await getSectorsRaw(opt);
   if (!m) return m;
   const out = await withFill(m);
   out.filled = true;
-  if (mem === m) mem = out;
+  mem = out; memLoad = Date.now();
   return out;
 }
 async function getSectorsRaw({ allowFetch = true } = {}) {
-  if (mem && Date.now() - mem.at < 6 * 3600e3) return mem;
+  if (mem && Date.now() - memLoad < 30 * 60e3 && (!allowFetch || Date.now() - mem.at < 7 * 86400e3)) return mem;
   const saved = await getJSON('sectors/map');
-  if (saved && Date.now() - saved.at < 7 * 86400e3) { mem = saved; return saved; }
+  if (saved && Date.now() - saved.at < 7 * 86400e3) return saved;
   if (!allowFetch) return saved || { at: 0, us: {}, kr: {} };
   const [us, kr] = await Promise.allSettled([usSectors(), krSectors()]);
   const next = {
@@ -100,7 +103,7 @@ async function getSectorsRaw({ allowFetch = true } = {}) {
   };
   // 둘 다 실패하면 1시간 뒤 다시 시도하도록 저장 시각을 앞당김
   if (next.errors.length === 2) next.at = Date.now() - 7 * 86400e3 + 3600e3;
-  mem = next;
   await setJSON('sectors/map', next).catch(() => {});
+  mem = null; memLoad = 0; // 새 목록으로 다음에 다시 채움
   return next;
 }

@@ -14,7 +14,8 @@ export default async (req, ctx) => {
   if (src === 'US' ? !/^[A-Z0-9.\-]{1,10}$/.test(t) : !/^\d{8}$/.test(corp)) return json({ ok: false, error: '종목 정보가 부족합니다' }, { status: 400, cdnSeconds: 60 });
   const key = `company2/${src}/${src === 'KR' ? corp : t}`;
   try {
-    let d = await getJSON(key);
+    const ovKey = `aiov/${src}/${src === 'KR' ? corp : t}`;
+    let [d, ov] = await Promise.all([getJSON(key), getJSON(ovKey)]); // v222: 두 개를 동시에 읽음
     const fetchFresh = async () => {
       const fresh = src === 'KR' ? await krCompany(t, corp, ex) : await usCompany(t);
       fresh.at = Date.now();
@@ -23,11 +24,14 @@ export default async (req, ctx) => {
     };
     if (!d) d = await fetchFresh();
     else if (Date.now() - (d.at || 0) > 12 * 3600e3 || (src === 'US' && d.wall === undefined && process.env.FINNHUB_API_KEY)) refreshInBackground(ctx, key, fetchFresh); // (월가 정보가 없던 예전 저장분도 새로) // 오래된 값은 먼저 보여주고 뒤에서 갱신
-    const sm = await getSectors({ allowFetch: false }).catch(() => null);
-    const sraw = sm ? (src === 'KR' ? sm.kr?.[t] : sm.us?.[t]) : null;
-    if (sraw) { const [ind, prod] = sraw.split('|'); d = { ...d, sectorKo: ind, products: prod || d.products || null }; }
-    const ovKey = `aiov/${src}/${src === 'KR' ? corp : t}`;
-    let ov = await getJSON(ovKey);
+    // v222: 업종은 기업 정보에 함께 저장(3일) → 열 때마다 전체 업종 목록을 읽지 않음
+    if (!d.secAt || Date.now() - d.secAt > 3 * 86400e3) {
+      const sm = await getSectors({ allowFetch: false }).catch(() => null);
+      const sraw = sm ? (src === 'KR' ? sm.kr?.[t] : sm.us?.[t]) : null;
+      d = { ...d, secRaw: sraw || null, secAt: Date.now() };
+      const save = d; refreshInBackground(ctx, 'sec:' + key, async () => { await setJSON(key, save); }, 1000);
+    }
+    if (d.secRaw) { const [ind, prod] = d.secRaw.split('|'); d = { ...d, sectorKo: ind, products: prod || d.products || null }; }
     // 영문 기업 소개 → 한국어 (한 번 번역하면 저장해 재사용)
     // (번역을 기다리지 않고 영문으로 먼저 응답 → 번역은 뒤에서 진행, 다음부터 한국어)
     if (!ov && src === 'US' && d.overviewRaw && hasAI()) {

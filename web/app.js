@@ -18,7 +18,7 @@
     // 서버가 멈춰도 '불러오는 중'에 영원히 머물지 않게 기본 45초 제한 (AI 분석 등은 120초, 따로 정한 제한이 있으면 그걸 씀)
     const o = { ...(opt || { cache: 'no-store' }) };
     let tm = null;
-    const lim = /\/api\/(analyze|translate|doc|company|stock|admin)/.test(url) ? 120000 : 45000; // AI 분석·원문 번역은 오래 걸릴 수 있음
+    const lim = /\/api\/(analyze|translate|doc|admin)/.test(url) ? 120000 : /\/api\/(issues|company|stock)/.test(url) ? 20000 : 45000; // AI 분석·원문 번역은 오래 걸릴 수 있음 · v222: 이슈·기업 정보는 20초 넘으면 끊고 다시 시도
     if (!o.signal && typeof AbortController !== 'undefined') { const ac = new AbortController(); tm = setTimeout(() => ac.abort(), lim); o.signal = ac.signal; }
     let r;
     try { r = await fetch(url, o); }
@@ -1173,7 +1173,7 @@
       const j = await getJSON(`/api/issues?mk=${mk}`, {});
       S.iss[mk] = { ...j, _at: Date.now() };
       if (j.ed) issEd.set(j.ed.id, j.ed);
-    } catch (e) { S.iss[mk] = { error: e.message, _at: Date.now() - 3 * 60e3 }; }
+    } catch (e) { S.iss[mk] = { error: e.message, _at: Date.now() - 3 * 60e3 }; setTimeout(() => { if (S.iss[mk]?.error) loadIssues(true); }, 15000); } // 실패하면 15초 뒤 자동 재시도
     if (mk === S.issMk) renderIssueBox();
   }
   async function getEd(id) {
@@ -1246,7 +1246,7 @@
     if (!box) return;
     $$('#issSeg button').forEach((b) => b.classList.toggle('on', b.dataset.imk === S.issMk));
     const c = S.iss[S.issMk];
-    if (!c) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; return; }
+    if (!c) { box.innerHTML = '<div class="skel"></div><div class="skel"></div>'; const mk0 = S.issMk; clearTimeout(S.issRetry); S.issRetry = setTimeout(() => { if (!S.iss[mk0]) loadIssues(true); }, 8000); return; } // v222: 8초 안에 안 오면 한 번 더 요청
     if (c.error || !c.ed) {
       $('#issMeta').textContent = '';
       box.innerHTML = `<div class="ib-empty">${c.error ? '주요 이슈를 불러오지 못했습니다. 잠시 후 다시 시도합니다.' : 'AI가 첫 회차를 만드는 중입니다. 1~3분 뒤 자동으로 나타납니다.'}</div>`;
@@ -2337,7 +2337,7 @@
   const coPending = new Map();
   async function fetchCo(url) {
     if (!url) return null;
-    if (S.co.has(url)) return S.co.get(url);
+    if (S.co.has(url) && !S.co.get(url)?.error) return S.co.get(url); // v222: 실패했던 건 다시 열 때 다시 받음
     if (coPending.has(url)) return coPending.get(url);
     const p = getJSON(url, {}).catch((e) => ({ error: e.message })).then((d) => { S.co.set(url, d); coPending.delete(url); if (d && !d.error && d.src === 'US' && d.overviewRaw && !d.overviewKo) pollOvKo(url); return d; });
     coPending.set(url, p);

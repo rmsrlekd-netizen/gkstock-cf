@@ -70,6 +70,21 @@ export async function listKeys(prefix, limit = 2000) {
   const r = await db.prepare('SELECT k FROM kv WHERE k >= ? AND k < ? ORDER BY k LIMIT ?').bind(prefix, prefix + '\uffff', limit).all();
   return (r.results || []).map((x) => x.k);
 }
+/** v222: 여러 키가 있는지만 한 번에 (값은 안 읽음 → 가벼움) → 있는 키 Set */
+export async function hasKeys(keys) {
+  const out = new Set();
+  if (!keys.length) return out;
+  if (useMem()) { for (const k of keys) if (mem.has(k)) out.add(k); return out; }
+  try {
+    await init();
+    for (let i = 0; i < keys.length; i += 90) {
+      const part = keys.slice(i, i + 90);
+      const r = await db.prepare(`SELECT k FROM kv WHERE k IN (${part.map(() => '?').join(',')})`).bind(...part).all();
+      for (const row of r.results || []) out.add(row.k);
+    }
+  } catch (e) { console.warn('store hasKeys', e.message); throw e; }
+  return out;
+}
 /** 여러 키를 한 번에 (없는 키는 빠짐) */
 export async function getManyJSON(keys) {
   const out = {};
