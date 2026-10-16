@@ -232,6 +232,7 @@ export default {
     // 장 마감 정리 카드 → 텔레그램 채널 (국장 16:08~ · 미장 뉴욕 16:10~)
     jobs.push(import('./lib/push.mjs').then((x) => x.alertWatch(now)).then((r) => { if (r?.hits) console.log('alert', JSON.stringify(r)); }).catch((e) => console.warn('alert', e.message))); // 가격 알림
     jobs.push(import('./lib/manipck.mjs').then((x) => x.intradayWatch()).then((r) => { if (r) console.log('mp-live', JSON.stringify(r)); }).catch((e) => console.warn('mp-live', e.message)));
+    jobs.push(import('./lib/manipx.mjs').then((x) => x.flushAlertQ()).catch((e) => console.warn('alertq', e.message))); // 못 보낸 작전 레이더 알림 이어 보내기
     jobs.push(import('./lib/manipck.mjs').then((x) => x.myDiscWatch()).then((r) => { if (r) console.log('my-disc', JSON.stringify(r)); }).catch((e) => console.warn('my-disc', e.message))); // 💼 내 포트폴리오 종목 새 공시 → 텔레그램 // 작전 레이더: 장중 띄우기 시작·관심 종목 손절/목표 알림
     jobs.push(import('./lib/weekcard.mjs').then((x) => x.weekWatch(ctx)).then((r) => { if (r) console.log('week', JSON.stringify(r)); }).catch((e) => console.warn('week', e.message))); // 토요일 주간 정리 카드
     jobs.push(import('./lib/closecard.mjs').then((x) => x.closeWatch(now, ctx)).then((r) => { if (r && Object.keys(r).length) console.log('close', JSON.stringify(r)); }).catch((e) => console.warn('close', e.message)));

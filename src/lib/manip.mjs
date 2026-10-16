@@ -1464,7 +1464,9 @@ async function saveProfiles(list, reason, opt = {}) {
     for (const [c, r] of Object.entries(rank)) if (Date.now() - (r.up || 0) > 120 * DAY) delete rank[c]; // 4개월 넘게 신호 없는 줄은 랭킹 목록에서만 정리 (종목 카드는 남김)
     await setJSON('mp/rank', rank);
   }
-  if (alerts.length) {
+  // 규칙을 바꿔서 다시 계산한 것(자동 갱신·관리자 검색·거래정지 확인 등)은 새 사건이 아니라서 텔레그램을 보내지 않음 (알림 폭주 방지)
+  const quiet = /자동 갱신|새 계산 방식|열어 볼 때|거래정지 풀림|거래정지 확인|관리자 검색/.test(String(reason || ''));
+  if (alerts.length && !quiet) {
     const mine = new Set(((await getJSON('mp/my'))?.items || []).filter((i) => !i.closed).map((i) => i.name));
     const codeOf = Object.fromEntries(list.map((x) => [x.name, x.code]));
     const lines = alerts.map((l) => ([...mine].some((nm) => l.startsWith(`• ${nm} `)) ? l.replace('• ', '• ⭐ ') : l));

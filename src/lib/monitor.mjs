@@ -158,8 +158,15 @@ async function checks() {
 export async function telegram(text) {
   const token = process.env.TELEGRAM_BOT_TOKEN, chat = process.env.TELEGRAM_CHAT_ID;
   if (!token || !chat) return false;
-  const r = await fetchWithTimeout(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) }, 8000);
-  return r.ok;
+  const body = JSON.stringify({ chat_id: chat, text: String(text).slice(0, 4000), disable_web_page_preview: true }); // 텔레그램 한 글 최대 4096자
+  for (let t = 0; t < 2; t++) {
+    const r = await fetchWithTimeout(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' }, body }, 8000);
+    if (r.ok) return true;
+    // 429(너무 자주 보냄 — 채널 자동 게시와 같은 봇을 써서 생길 수 있음): 잠깐 기다렸다 한 번 더
+    if (r.status === 429 && t === 0) { const j = await r.json().catch(() => ({})); const w = Math.min(15, Number(j?.parameters?.retry_after) || 3); await new Promise((res) => setTimeout(res, w * 1000)); continue; }
+    return false;
+  }
+  return false;
 }
 
 /** 점검 실행 → 상태 저장, 2번 연속 실패하면 알림, 복구되면 복구 알림 */

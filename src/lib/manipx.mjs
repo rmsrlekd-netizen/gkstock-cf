@@ -275,14 +275,43 @@ export async function radarAlert(lines, codes = [], opt = {}) {
     await setJSON('mp/alerts', h);
   } catch {}
   if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) return false;
+  // 바로 보내지 않고 대기열에 넣은 뒤 보냄 → 실패(텔레그램 429 등)·한 번에 12줄 넘는 나머지도 다음 차례(매분)에 이어서 보냄
+  const q = (await getJSON('mp/alertq')) || { items: [] };
+  q.items.push({ at: Date.now(), title: opt.title || null, force: !!opt.force, lines: lines.map(String) });
+  q.items = q.items.slice(-40);
+  await setJSON('mp/alertq', q).catch(() => {});
+  return flushAlertQ();
+}
+const ALERT_CAP = 80; // 하루 작전 레이더 알림 줄 수 한도 (내 포트폴리오 알림은 한도와 상관없이 보냄)
+/** 대기 중인 알림을 텔레그램으로 (매분 크론에서도 불러 실패분을 이어서 보냄) */
+export async function flushAlertQ() {
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) return false;
+  const q = (await getJSON('mp/alertq')) || { items: [] };
+  if (!q.items.length) return false;
+  if (Date.now() - (q.lock || 0) < 50e3) return false; // 다른 실행이 보내는 중
+  q.lock = Date.now(); await setJSON('mp/alertq', q).catch(() => {});
   const st = (await getJSON('mp/alert')) || {};
   const day = kstDate();
-  if (st.day !== day) { st.day = day; st.n = 0; }
-  const room = opt.force ? 12 : Math.max(0, 40 - (st.n || 0)); // 내 보유 종목 알림(force)은 하루 한도와 상관없이 보냄
-  if (!room) return false;
-  const send = lines.slice(0, Math.min(room, 12));
+  if (st.day !== day) { st.day = day; st.n = 0; st.capMsg = false; }
   const { telegram } = await import('./monitor.mjs');
-  const ok = await telegram(`${opt.title || '🕵️ 작전 레이더 알림 (관리자 전용)'}\n\n${send.join('\n')}${lines.length > send.length ? `\n…외 ${lines.length - send.length}건` : ''}\n\n※ 패턴 신호일 뿐 증거 아님 · gk-stock.com/#radar`).catch(() => false);
-  if (ok) { st.n = (st.n || 0) + send.length; await setJSON('mp/alert', st); }
-  return ok;
+  let sentAny = false;
+  for (let k = 0; k < 3 && q.items.length; k++) { // 한 번에 최대 3개 글
+    const it = q.items[0];
+    const room = it.force ? 12 : Math.max(0, ALERT_CAP - (st.n || 0));
+    if (!room) {
+      if (!st.capMsg) { const ok = await telegram(`🕵️ 작전 레이더 — 오늘 알림이 ${ALERT_CAP}줄을 넘었어요. 나머지는 사이트 🔔 알림 기록에서 보세요 · gk-stock.com/#radar`).catch(() => false); if (ok) st.capMsg = true; }
+      q.items.shift(); continue; // 한도 넘은 일반 알림은 사이트 기록에만
+    }
+    const send = it.lines.slice(0, Math.min(room, 12));
+    const ok = await telegram(`${it.title || '🕵️ 작전 레이더 알림 (관리자 전용)'}\n\n${send.join('\n')}\n\n※ 패턴 신호일 뿐 증거 아님 · gk-stock.com/#radar`).catch(() => false);
+    if (!ok) { it.tries = (it.tries || 0) + 1; if (it.tries >= 5) q.items.shift(); break; } // 실패하면 다음 분에 다시 (5번 실패하면 포기)
+    sentAny = true;
+    if (!it.force) st.n = (st.n || 0) + send.length;
+    it.lines = it.lines.slice(send.length);
+    if (!it.lines.length) q.items.shift();
+  }
+  q.lock = 0;
+  await setJSON('mp/alertq', q).catch(() => {});
+  await setJSON('mp/alert', st).catch(() => {});
+  return sentAny;
 }
