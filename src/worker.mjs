@@ -180,6 +180,7 @@ export default {
       const usOpen = !['Sat', 'Sun'].includes(usz.wd) && usz.m >= 4 * 60 && usz.m <= 20 * 60;
       // 🧪 과거 재현 백테스트: 작전 레이더 정기 분석이 돌고 있지 않을 때만 조금씩 (3분에 12종목, 끝나면 멈춤)
       jobs3.push((async () => { const kh = new Date(Date.now() + 9 * 3600e3), hh = kh.getUTCHours(), wd = kh.getUTCDay(); if (!(wd === 0 || wd === 6 || hh >= 21 || hh < 7)) return; /* 사이트 이용이 많은 낮·저녁엔 안 돌림 (서버 부담) */ const ms = await (await import('./lib/store.mjs')).getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return; const r = await (await import('./lib/backtest.mjs')).btStep(); if (r) console.log('bt', JSON.stringify(r)); })().catch((e) => console.warn('bt', e.message)));
+      jobs3.push(import('./lib/prewarm.mjs').then((x) => x.prewarmMore()).then((n) => { if (n) console.log('prewarm+', n); }).catch((e) => console.warn('prewarm+', e.message))); // v220: 새 공시 AI 분석 더 미리
       jobs3.push(import('./lib/themedir.mjs').then((x) => x.themeDirWatch()).then((r) => { if (r?.done) console.log('tdir', JSON.stringify(r)); }).catch((e) => console.warn('tdir', e.message))); // 테마·섹터 관련주 사전 (조금씩 채움)
       if (krOpen || usOpen || min % 30 < 3) jobs3.push(whyWatch().then((r) => console.log('why', JSON.stringify(r))).catch((e) => console.warn('why', e.message)));
       // 내일 일정 (20분마다 새로 모으고, 새 거래일이 되면 AI 요약)

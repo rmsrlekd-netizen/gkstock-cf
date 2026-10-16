@@ -3542,11 +3542,12 @@
     const ckRows = Object.keys(CKK).map((k) => { const a = ckG[`ck:${k}:1`], b = ckG[`ck:${k}:0`]; if (!a?.n20 && !b?.n20) return ''; const d = a?.n20 && b?.n20 ? a.win20 - b.win20 : null; return `<tr><td class="t"><b>${esc(CKK[k])}</b></td><td>${a?.n20 ? `${a.win20}% <small>${a.n20}건</small>` : '—'}</td><td>${b?.n20 ? `${b.win20}% <small>${b.n20}건</small>` : '—'}</td><td>${d == null ? '—' : `<b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : ''}${d}%p</b>${a.n20 >= 30 && b.n20 >= 30 ? ' <small>중요도에 반영</small>' : ' <small>30건씩 쌓이면 반영</small>'}`}</td></tr>`; }).join('');
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · +20%↑ ${r['big' + h]}% · −20%↓ ${r['loss' + h]}% · ${r['n' + h]}건</small></td>` : '<td class="muted">아직</td>');
     $('#mpBody').innerHTML = `<p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
-      ${ckRows ? `<h4 style="margin:.8rem 0 .3rem">✅ 체크리스트 항목별 20거래일 뒤 오른 비율 <small class="muted">충족(✓)한 종목 vs 아닌(✗) 종목 · 차이가 클수록 등급 계산에서 그 항목의 중요도가 자동으로 커져요</small></h4><div class="mp-perf"><table class="tbl"><tr><th>항목</th><th>✓ 충족</th><th>✗ 미충족</th><th>차이</th></tr>${ckRows}</table></div>` : ''}
-      ${g.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분 (누르면 종목)</th><th>먼저 닿은 쪽 (60일 안)</th><th>5거래일 안</th><th>20거래일 안</th><th>60거래일 안</th><th>120거래일 안</th></tr>${g.map((r) => `<tr>${grpName(r, 'perf', '레이더 전체')}${ftCell(r)}${perfCell(r, 5)}${perfCell(r, 20)}${perfCell(r, 60)}${perfCell(r, 120)}</tr>`).join('')}</table></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
+      ${ckRows ? `<details class="pb-ck"><summary>✅ 체크리스트 항목별 비교 (눌러서 보기)</summary><h4 style="margin:.8rem 0 .3rem">✅ 체크리스트 항목별 20거래일 뒤 오른 비율 <small class="muted">충족(✓)한 종목 vs 아닌(✗) 종목 · 차이가 클수록 등급 계산에서 그 항목의 중요도가 자동으로 커져요</small></h4><div class="mp-perf"><table class="tbl"><tr><th>항목</th><th>✓ 충족</th><th>✗ 미충족</th><th>차이</th></tr>${ckRows}</table></div></details>` : ''}
+      ${g.length ? `<div id="pbPerf"></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
       <div id="btBox"></div>
       <p class="note">📊 <b>월간 규칙 점검</b> — 매달 1일 아침 관리자 텔레그램으로 그룹별 승률과 ⚠ 거꾸로 나온 규칙을 보내요 (표본 30건 미만은 '아직 판단 이름'). <button class="btn sm" data-mp-rulechk>지금 한 번 받기</button> <span class="muted sm" data-mp-rulechk-msg></span></p>
       <p class="note">수집 상태 · 거래소 시장경보·관리종목·거래정지: ${j.warn ? `${j.warn.at ? `${j.warn.n || 0}종목 · ${esc(rel(j.warn.at))}` : '첫 확인 중'}${j.warn.src === 'KIS' ? ' (한국투자증권 기준)' : ''}${j.warn.scan && j.warn.scan.pos < j.warn.scan.of ? ` · 오늘 확인 ${j.warn.scan.pos}/${j.warn.scan.of}` : ''}${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
+    if (g.length) { S.pbData = S.pbData || {}; S.pbData.perf = g; renderBoard('perf'); }
     loadBt();
   }
   // v218 성적표 칸: 진입 = 판정 다음 날 시가 · 기간 안 최고/최저(중앙값·평균) · N일째 종가(수수료 뺌)·시장 대비 · 먼저 닿은 쪽
@@ -3573,6 +3574,7 @@
       ${L.map((x) => `<tr><td><span class="ca-co" data-mp-go="${esc(x.c)}"><b>${esc(x.n || x.c)}</b></span></td><td>${esc(x.d)}</td><td class="sm">${x.vd ? VDK[x.vd] + ' ' : ''}${esc(x.st || '')}${x.ck ? ' · ' + esc(x.ck) : ''}${x.rr != null ? ' · 1:' + x.rr : ''}</td><td class="${dirCls(x.gp)}">${sgn(x.gp)}</td><td><b class="up">${sgn(x.u20 ?? x.u5)}</b> / <span class="down">${sgn(x.d20 ?? x.d5)}</span></td><td class="${dirCls(x.r20)}">${sgn(x.r20)}${x.x20 != null ? ` <small class="muted">(${sgn(x.x20)})</small>` : ''}</td><td class="sm">${ft(x)}${x.ft2 ? `<br><small>${x.ft2 === 'w' ? '목표가 먼저' : x.ft2 === 'l' ? '손절선 먼저' : '목표·손절 둘 다 안 닿음'}</small>` : ''}${x.wy?.length ? `<br><small class="${x.ft === 'w' ? 'up' : 'down'}">${esc(x.wy.map((k) => WHY_KO[k] || k).join(' · '))}</small>` : ''}</td><td class="${dirCls(x.u60)}">${sgn(x.u60)}</td><td class="${dirCls(x.u120)}">${sgn(x.u120)}</td></tr>`).join('')}</table></div>`;
   }
   const pgCache = new Map();
+  try { S.pbH = +(load('gk_pbh') || 20); S.pbCat = load('gk_pbcat') || '결론'; } catch {}
   document.addEventListener('click', async (ev) => {
     const sb = ev.target.closest?.('[data-pg-sort]');
     if (sb) { const tr = sb.closest('tr.pg-rows'); const k = tr?.dataset.k; if (k && pgCache.has(k)) tr.querySelector('td').innerHTML = grpRowsHTML(pgCache.get(k), sb.dataset.pgSort); return; }
@@ -3582,6 +3584,66 @@
     const row = document.createElement('tr'); row.className = 'pg-rows'; row.dataset.k = k; row.innerHTML = `<td colspan="6"><div class="loading"><span class="spin"></span>종목 불러오는 중…</div></td>`; tr.after(row);
     try { if (!pgCache.has(k)) { const j = await mpGet(`mp=grows&src=${encodeURIComponent(b.dataset.src)}&g=${encodeURIComponent(b.dataset.pg)}`); pgCache.set(k, j.rows || []); } row.querySelector('td').innerHTML = pgCache.get(k).length ? grpRowsHTML(pgCache.get(k), 'up') : '<p class="muted sm">아직 종목 기록이 없어요</p>'; }
     catch (e) { row.querySelector('td').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  });
+  // ───── v221 성적표 보드: 기간·분류를 골라 한 화면에 · 그룹 누르면 종목 목록 창(닫기·뒤로 가기) ─────
+  const PB_CATS = [['결론', '한 줄 결론'], ['후보', '매매 후보 조건'], ['등급', '체크리스트'], ['단계', '단계'], ['분류', '분류'], ['손익비', '손익비'], ['기타', '']];
+  const PB_H = [5, 20, 60, 120];
+  function pbVals(r, h) {
+    return { n: r['n' + h] || 0, up: r['mu' + h] ?? r['up' + h], dn: r['dn' + h], end: r['mr' + h] ?? r['avg' + h], mk: r['ax' + h], hu: r['hu' + h] };
+  }
+  function pbWin(r) {
+    if (!r.ftn) return '<span class="muted sm">—</span>';
+    const w = r.ftw || 0, l = r.ftl || 0;
+    return `<div class="pb-bar" title="+20% 먼저 ${w}% · −10% 먼저 ${l}% · 둘 다 안 닿음 ${Math.max(0, 100 - w - l)}%"><i class="w" style="width:${w}%"></i><i class="l" style="width:${l}%"></i></div><span class="pb-wl"><b class="up">${w}%</b> : <b class="down">${l}%</b></span>`;
+  }
+  function renderBoard(src) {
+    const box = $(src === 'bt' ? '#pbBt' : '#pbPerf'); const rows = S.pbData?.[src]; if (!box || !rows) return;
+    const h = S.pbH || 20, cat = S.pbCat || '결론';
+    const pre = PB_CATS.find((c) => c[0] === cat)?.[1];
+    const known = PB_CATS.map((c) => c[1]).filter(Boolean);
+    const list = rows.filter((r) => r.g !== '전체' && (pre ? r.g.startsWith(pre + ':') : !known.some((k) => r.g.startsWith(k + ':'))));
+    const all = rows.find((r) => r.g === '전체');
+    const line = (r, isAll) => { const v = pbVals(r, h); const why = [r.whyW?.[0] ? `<span class="up">↑${esc(WHY_KO[r.whyW[0][0]] || '')}</span>` : '', r.whyL?.[0] ? `<span class="down">↓${esc(WHY_KO[r.whyL[0][0]] || '')}</span>` : ''].filter(Boolean).join(' ');
+      return `<button class="pb-row${isAll ? ' all' : ''}" data-pb-open="${esc(r.g)}" data-pb-src="${src}"><span class="pb-name">${esc(isAll ? '전체' : r.g.replace(/^[^:]+:/, ''))}<small>${v.n ? `${v.n}건${v.n < 30 ? ' · 적음' : ''}` : '결과 전'}</small></span><span class="pb-win">${pbWin(r)}</span><span class="pb-num"><em>최고</em><b class="${dirCls(v.up)}">${sgn(v.up)}</b></span><span class="pb-num"><em>최저</em><b class="${dirCls(v.dn)}">${sgn(v.dn)}</b></span><span class="pb-num"><em>${h}일째</em><b class="${dirCls(v.end)}">${sgn(v.end)}</b></span><span class="pb-num hide-m"><em>시장 대비</em><b class="${dirCls(v.mk)}">${sgn(v.mk)}</b></span><span class="pb-why hide-m">${why || '<span class="muted">—</span>'}</span><span class="pb-go">›</span></button>`; };
+    box.innerHTML = `<div class="pb">
+      <div class="pb-ctl"><div class="pb-seg">${PB_H.map((x) => `<button data-pb-h="${x}" class="${x === h ? 'on' : ''}">${x}일</button>`).join('')}</div>
+        <div class="pb-seg">${PB_CATS.map(([c]) => `<button data-pb-cat="${c}" class="${c === cat ? 'on' : ''}">${c}</button>`).join('')}</div></div>
+      <div class="pb-legend muted sm">진입 = 판정 다음 날 시가 · <b class="up">+20%</b> : <b class="down">−10%</b> = 60일 안에 먼저 닿은 비율 · 최고/최저 = ${h}거래일 안 (중앙값) · ${h}일째 = 그날 종가 (수수료 뺌) · 줄을 누르면 종목</div>
+      <div class="pb-list">${all ? line(all, true) : ''}${list.length ? list.map((r) => line(r)).join('') : '<p class="muted sm">이 분류엔 아직 결과가 없어요</p>'}</div></div>`;
+  }
+  // 종목 목록 창
+  function pbModal(src, g, rows, sort) {
+    const h = S.pbH || 20;
+    const key = { up: (x) => -(x['u' + h] ?? -999), down: (x) => (x['d' + h] ?? 999), new: (x) => -Date.parse(x.d) }[sort] || ((x) => -(x['u' + h] ?? -999));
+    const L = [...rows].sort((a, b) => key(a) - key(b));
+    const res = (x) => (x.ft === 'w' ? '<b class="up">+20% 먼저</b>' : x.ft === 'l' ? `<b class="down">−10% 먼저</b>` : x.ft === 'n' ? '<span class="muted">둘 다 안 닿음</span>' : '<span class="muted">진행 중</span>');
+    let m = $('#pbModal'); if (!m) { m = document.createElement('div'); m.id = 'pbModal'; document.body.appendChild(m); }
+    m.dataset.src = src; m.dataset.g = g;
+    m.innerHTML = `<div class="pbm-back" data-pbm-close></div><div class="pbm" role="dialog" aria-label="종목 목록">
+      <div class="pbm-head"><div><b>${esc(g === '전체' ? '전체' : g.replace(/^[^:]+:/, ''))}</b> <small class="muted">${esc(g.includes(':') ? g.split(':')[0] : '')} · ${L.length}건 · ${h}거래일 기준</small></div><button class="pbm-x" data-pbm-close aria-label="닫기">✕</button></div>
+      <div class="pbm-sort">${[['up', '최고 높은 순'], ['down', '최저 낮은 순'], ['new', '최근 판정 순']].map(([k, t]) => `<button data-pbm-sort="${k}" class="${(sort || 'up') === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+      <div class="pbm-list">${L.length ? L.map((x) => `<div class="pbm-row"><span class="pbm-nm"><span class="ca-co" data-mp-go="${esc(x.c)}" data-pbm-close-go><b>${esc(x.n || x.c)}</b></span><small>${esc(x.d)} · ${x.vd ? VDK[x.vd] + ' ' : ''}${esc(x.st || '')}${x.ck ? ' · ' + esc(x.ck) : ''}</small></span>
+        <span class="pb-num"><em>최고</em><b class="up">${sgn(x['u' + h])}</b></span><span class="pb-num"><em>최저</em><b class="down">${sgn(x['d' + h])}</b></span><span class="pb-num"><em>${h}일째</em><b class="${dirCls(x['r' + h])}">${sgn(x['r' + h])}</b></span>
+        <span class="pbm-res">${res(x)}${x.wy?.length ? `<small class="${x.ft === 'w' ? 'up' : 'down'}">${esc(x.wy.map((k) => WHY_KO[k] || k).slice(0, 2).join(' · '))}</small>` : ''}</span></div>`).join('') : '<p class="muted sm">아직 종목 기록이 없어요</p>'}</div></div>`;
+    m.hidden = false; document.body.classList.add('pbm-open');
+  }
+  function pbClose(fromPop) { const m = $('#pbModal'); if (!m || m.hidden) return; m.hidden = true; document.body.classList.remove('pbm-open'); if (!fromPop && history.state?.pbm) history.back(); }
+  window.addEventListener('popstate', () => pbClose(true));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') pbClose(); });
+  const pbRows = new Map();
+  document.addEventListener('click', async (ev) => {
+    const hb = ev.target.closest?.('[data-pb-h]'); if (hb) { S.pbH = +hb.dataset.pbH; save('gk_pbh', S.pbH); renderBoard('perf'); renderBoard('bt'); return; }
+    const cb = ev.target.closest?.('[data-pb-cat]'); if (cb) { S.pbCat = cb.dataset.pbCat; save('gk_pbcat', S.pbCat); renderBoard('perf'); renderBoard('bt'); return; }
+    if (ev.target.closest?.('[data-pbm-close-go]')) { pbClose(true); return; } // 종목 이름 → 창 닫고 종목 페이지 (data-mp-go가 이어서 처리)
+    if (ev.target.closest?.('[data-pbm-close]')) { pbClose(); return; }
+    const so = ev.target.closest?.('[data-pbm-sort]'); if (so) { const m = $('#pbModal'); const k = `${m.dataset.src}|${m.dataset.g}`; if (pbRows.has(k)) pbModal(m.dataset.src, m.dataset.g, pbRows.get(k), so.dataset.pbmSort); return; }
+    const ob = ev.target.closest?.('[data-pb-open]'); if (!ob) return;
+    const src = ob.dataset.pbSrc, g = ob.dataset.pbOpen, k = `${src}|${g}`;
+    if (!history.state?.pbm) history.pushState({ ...(history.state || {}), pbm: 1 }, '');
+    pbModal(src, g, pbRows.get(k) || [], 'up');
+    if (!pbRows.has(k)) { const m = $('#pbModal .pbm-list'); if (m) m.innerHTML = '<div class="loading"><span class="spin"></span>종목 불러오는 중…</div>';
+      try { const j = await mpGet(`mp=grows&src=${encodeURIComponent(src)}&g=${encodeURIComponent(g)}`); pbRows.set(k, j.rows || []); } catch (e) { pbRows.set(k, []); }
+      const mm = $('#pbModal'); if (mm && !mm.hidden && mm.dataset.g === g) pbModal(src, g, pbRows.get(k), 'up'); }
   });
   // 🧪 과거 재현 백테스트 (성적표 탭 안)
   async function loadBt() {
@@ -3594,7 +3656,8 @@
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · ${r['n' + h]}건${r['n' + h] < 30 ? ' (적음)' : ''}</small></td>` : '<td class="muted">—</td>');
     b.innerHTML = `<h4 style="margin:1rem 0 .3rem">🧪 과거 재현(백테스트) <small class="muted">참고용 · 지난 약 8개월 동안 '그날 지금 규칙이었다면' 판정 → 실제 5·20·60거래일 뒤 결과 · ${j.done ? `완료 (${esc(rel(j.doneAt))})` : `계산 중 ${fmtInt(j.pos)}/${fmtInt(j.of)}종목`} · 판정 ${fmtInt(j.kept)}건</small> <button class="btn sm" data-bt-run>처음부터 다시</button></h4>
       <p class="muted sm">한계: AI 판단·지분·신용·거래원·재무 같은 바깥 자료는 그날 기준으로 재현 못 해서 빠져요 · 시가총액 순위 모름 · 공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임 · 대상은 최근 6개월 판 깔기 공시가 있던 종목</p>
-      ${rows.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분 (누르면 종목)</th><th>먼저 닿은 쪽 (60일 안)</th><th>5거래일 안</th><th>20거래일 안</th><th>60거래일 안</th><th>120거래일 안</th></tr>${rows.map((r) => `<tr>${grpName(r, 'bt', '전체')}${ftCell(r)}${perfCell(r, 5)}${perfCell(r, 20)}${perfCell(r, 60)}${perfCell(r, 120)}</tr>`).join('')}</table></div>` : '<p class="muted sm">아직 결과 없음</p>'}`;
+      ${rows.length ? '<div id="pbBt"></div>' : '<p class="muted sm">아직 결과 없음</p>'}`;
+    if (rows.length) { S.pbData = S.pbData || {}; S.pbData.bt = rows; renderBoard('bt'); }
   }
   document.addEventListener('click', async (ev) => {
     const br = ev.target.closest?.('[data-bt-run]'); if (!br) return;

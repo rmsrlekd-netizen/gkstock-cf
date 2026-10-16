@@ -4,13 +4,13 @@ import { getJSON, setJSON } from './store.mjs';
 import { hasAI, aiPauseInfo } from './ai.mjs';
 import { kstDate } from './util.mjs';
 
-const DAILY_MAX = Number(process.env.PREWARM_DAILY_MAX || 400); // v213: 200 → 400 // AI 미리 분석 하루 최대 건수 (요금·한도 보호)
+const DAILY_MAX = Number(process.env.PREWARM_DAILY_MAX || 2500); // v220: 심층 분석이 가벼운 모델이라 싸짐 → 새 공시 거의 전부 미리 (200 → 400 → 2500) // AI 미리 분석 하루 최대 건수 (요금·한도 보호)
 
-async function runOne(it) {
+async function runOne(it, withCo = true) {
   const { analyzeId } = await import('../functions/analyze.mjs');
   const company = (await import('../functions/company.mjs')).default;
   const jobs = [analyzeId(it.id, it).catch(() => null)];
-  if (it.ticker) {
+  if (it.ticker && withCo) {
     const q = it.market === 'KR' || it.src === 'DART'
       ? (it.corpCode ? `src=KR&t=${encodeURIComponent(it.ticker)}&corp=${it.corpCode}&ex=${encodeURIComponent(it.exchange || '')}` : null)
       : `src=US&t=${encodeURIComponent(String(it.ticker).toUpperCase())}`;
@@ -47,7 +47,7 @@ const fresh = (x, h = 12) => { const t = Date.parse(x.time || x.seenAt || (x.dat
 export const pickQuick = (items) => (items || []).filter((x) => x.ticker && fresh(x) && !/^(4|144|13F|SC 13G)/.test(x.form || '')).slice(0, 60);
 
 /** items: 후보 목록(최신순). max: 이번에 분석할 최대 건수. budgetMs: 시간 제한 */
-export async function prewarm(items, { max = 3, budgetMs = 45000 } = {}) {
+export async function prewarm(items, { max = 3, budgetMs = 45000, withCo = true } = {}) {
   if (!hasAI() || !items.length) return 0;
   if (await aiPauseInfo()) return 0; // 한도 초과로 쉬는 중이면 미리 분석도 쉼
   const dayKey = `prewarm/count/${kstDate(0)}`;
@@ -61,9 +61,10 @@ export async function prewarm(items, { max = 3, budgetMs = 45000 } = {}) {
   }
   if (!todo.length) return 0;
   const until = Date.now() + budgetMs;
-  // 두 건씩 동시에
-  for (let i = 0; i < todo.length && Date.now() < until; i += 2) {
-    await Promise.race([Promise.all(todo.slice(i, i + 2).map(runOne)), new Promise((r) => setTimeout(r, Math.max(1000, until - Date.now())))]);
+  // 두 건씩 동시에 (prewarmMore는 네 건씩)
+  const par = max >= 8 ? 4 : 2;
+  for (let i = 0; i < todo.length && Date.now() < until; i += par) {
+    await Promise.race([Promise.all(todo.slice(i, i + par).map((it) => runOne(it, withCo))), new Promise((r) => setTimeout(r, Math.max(1000, until - Date.now())))]);
   }
   await setJSON(dayKey, { n: cnt + todo.length }).catch(() => {});
   return todo.length;
@@ -74,3 +75,13 @@ const recent = (ms, h = 48) => Date.now() - ms < h * 3600e3;
 export const pickSec = (items) => (items || []).filter((x) => x.ticker && x.impact >= 3 && !/^(4|144|13F)/.test(x.form || '') && recent(Date.parse(x.time))).slice(0, 80);
 export const pickDart = (items) => (items || []).filter((x) => x.ticker && x.impact >= 3 && (x.seenAt ? recent(Date.parse(x.seenAt)) : x.date >= kstDate(-2))).slice(0, 80);
 export const pickPR = (items) => (items || []).filter((x) => x.src === 'PR' && x.market === 'US' && x.ticker && recent(Date.parse(x.time))).slice(0, 80);
+
+// v220 3분 크론: 1분 크론이 못 다 한 '종목 있는 새 공시' 심층 분석을 최신순으로 더 미리 만들어 둠 (사람이 누르기 전에)
+//  · 중요도와 상관없이(13F·Form 4·144 같은 대량 보고는 뒤로) · 한 번에 최대 8건·40초 · 공시/보도자료 피드를 번갈아
+export async function prewarmMore({ max = 8, budgetMs = 40000 } = {}) {
+  const [sec, dart, news] = await Promise.all([getJSON('sec/feed'), getJSON('dart/feed'), getJSON('news/feed')]);
+  const all = [...(dart?.items || []), ...(sec?.items || []), ...(news?.items || []).filter((x) => x.src === 'PR')]
+    .filter((x) => x.ticker && fresh(x, 24))
+    .sort((a, b) => (/^(4|144|13F|SC 13G)/.test(a.form || '') ? 1 : 0) - (/^(4|144|13F|SC 13G)/.test(b.form || '') ? 1 : 0) || (Date.parse(b.time || b.seenAt || 0) || 0) - (Date.parse(a.time || a.seenAt || 0) || 0));
+  return prewarm(all.slice(0, 40), { max, budgetMs, withCo: false }); // 기업 정보 미리 받기는 빼서 바깥 요청 줄임
+}
