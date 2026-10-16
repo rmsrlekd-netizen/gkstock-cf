@@ -73,12 +73,20 @@ export async function perfSummary() {
     o.n++;
     for (const h of H) { const v = row['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; if (v >= 20) o['b' + h] = (o['b' + h] || 0) + 1; if (v <= -20) o['l' + h] = (o['l' + h] || 0) + 1; }
   };
-  let days = 0;
-  for (const d of idx) {
+  let days = 0, raw = 0, dup = 0;
+  // 같은 종목이 같은 단계로 랭킹에 며칠씩 계속 있으면 하루마다 따로 세지 않고 '처음 그 단계로 판정된 날' 1번만 셈
+  //  (종목 몇 개가 승률을 부풀리던 문제) · 30일 넘게 안 보이다 다시 나오거나 단계가 바뀌면 새 판정으로 다시 셈
+  const last = new Map();
+  for (const d of idx.slice().sort()) {
     const perf = await getJSON(`mp/perf/${d}`);
     if (!perf?.rows) continue;
     days++;
-    for (const row of Object.values(perf.rows)) {
+    const dMs = Date.parse(d);
+    for (const [code, row] of Object.entries(perf.rows)) {
+      raw++;
+      const k = `${code}|${row.st || '-'}`, prevMs = last.get(k);
+      last.set(k, dMs);
+      if (prevMs != null && dMs - prevMs <= 30 * DAY) { dup++; continue; }
       add('전체', row);
       if (row.st) add('단계:' + row.st, row);
       if (row.dir) add('분류:' + (row.dir === 'up' ? '상승 가능성' : row.dir === 'down' ? '하락 위험' : '분류 없음'), row);
@@ -96,7 +104,7 @@ export async function perfSummary() {
     for (const h of H) if (o['n' + h]) { r['n' + h] = o['n' + h]; r['avg' + h] = Math.round((o['s' + h] / o['n' + h]) * 10) / 10; r['win' + h] = Math.round(((o['w' + h] || 0) / o['n' + h]) * 100); r['big' + h] = Math.round(((o['b' + h] || 0) / o['n' + h]) * 100); r['loss' + h] = Math.round(((o['l' + h] || 0) / o['n' + h]) * 100); }
     return r;
   });
-  return { days, groups: out, at: Date.now() };
+  return { days, raw, dup, groups: out, at: Date.now() };
 }
 
 // ───── ② 같은 세력 추적 ─────
