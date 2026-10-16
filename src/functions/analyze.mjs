@@ -118,8 +118,9 @@ JSON만: {"headline":"","summary":["","",""],"verdict":""}
 [회사] ${it.name || it.company || ''}${it.ticker ? ` (${it.ticker})` : ''}
 [제목] ${title}${it.form ? ` [${it.form}]` : ''}
 [원문]
-${text.slice(0, 5000)}`;
-  const j = parseJSON(await claude(prompt, { maxTokens: 800, timeout: 15000, think: 0, tag: '빠른 요약' }));
+${text.slice(0, 4000)}`;
+  // v213: 빠른 요약은 가벼운 모델(flash-lite)로 — 3줄 요약은 품질 차이가 거의 없고 응답이 훨씬 빠름
+  const j = parseJSON(await claude(prompt, { maxTokens: 700, timeout: 12000, think: 0, tag: '빠른 요약', lite: true }));
   const summary = (Array.isArray(j?.summary) ? j.summary : []).map((x) => String(x || '').trim()).filter(Boolean).slice(0, 3);
   if (!summary.length) throw new Error('빠른 요약 실패');
   const out = { id, quick: true, headline: String(j.headline || '').slice(0, 60) || null, summary, verdict: ['긍정', '중립', '부정'].includes(j.verdict) ? j.verdict : '중립', at: Date.now() };

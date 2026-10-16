@@ -4,7 +4,7 @@ import { getJSON } from '../lib/store.mjs';
 import { capturePx0 } from '../lib/px0.mjs';
 import { archiveItems } from '../lib/archive.mjs';
 import { backfillStep } from '../lib/backfill.mjs';
-import { prewarm, pickSec } from '../lib/prewarm.mjs';
+import { prewarm, pickSec, prewarmQuick, pickQuick } from '../lib/prewarm.mjs';
 
 export default async ({ backfillMs = 12000 } = {}) => {
   try {
@@ -14,7 +14,8 @@ export default async ({ backfillMs = 12000 } = {}) => {
     await capturePx0(feedNow).catch((e) => console.warn('px0', e.message)); // 발표 시점 주가 기록
     await archiveItems(feedNow).catch((e) => console.warn('archive', e.message)); // 영구 보관 (지우지 않음)
     // 새 중요 공시는 AI 분석·기업 정보를 미리 준비
-    const n = await prewarm(pickSec((await getJSON('sec/feed'))?.items), { max: 3 }).catch((e) => console.warn('prewarm', e.message));
+    const n = await prewarm(pickSec((await getJSON('sec/feed'))?.items), { max: 6 }).catch((e) => console.warn('prewarm', e.message));
+    const nq = await prewarmQuick(pickQuick((await getJSON('sec/feed'))?.items)).catch((e) => console.warn('prewarmQ', e.message)); if (nq) console.log('quick prewarm', nq); // v213: 새 공시 3줄 요약 미리
     if (n) console.log('sec prewarm', n);
     // 남는 시간에 과거 공시 채우기 (하루치씩 거슬러 올라감)
     const b = backfillMs ? await backfillStep('sec', { budgetMs: backfillMs }).catch((e) => console.warn('backfill', e.message)) : 0;

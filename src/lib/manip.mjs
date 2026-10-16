@@ -1294,7 +1294,7 @@ async function aiReview(x) {
 종목: ${x.name}(${x.code}) ${x.mkt === 'P' ? '코스피' : '코스닥'}
 사실 목록:
 ${F.map((f) => `${f.id}. ${f.t} (출처: ${f.src})`).join('\n')}`;
-  const j = parseJSON(await askAI(prompt, { maxTokens: 3200, timeout: 70000, tag: '작전 의심 레이더' }));
+  const j = parseJSON(await askAI(prompt, { maxTokens: 4000, timeout: 80000, think: 2048, tag: '작전 의심 레이더' }) /* v213: 작전 레이더는 생각하며 읽기(정확도 우선) */);
   const unv = []; // 근거 확인이 안 된 문장도 버리지 않고 '참고용'으로 따로 보관 (화면에 ⚠ 표시)
   const whyBad = (t) => (![...String(t).matchAll(/\[?F(\d{1,2})\]?/g)].length ? '근거 번호 없음' : '사실 목록에 없는 숫자');
   const vlist = (a, n, k) => (Array.isArray(a) ? a : []).map((t) => { const v = verifyLine(t, F); if (!v && k && String(t).trim()) unv.push({ k, t: String(t).replace(/\s*\[?F\d{1,2}\]?/g, '').trim().slice(0, 220), why: whyBad(t) }); return v; }).filter(Boolean).slice(0, n);

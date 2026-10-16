@@ -59,7 +59,15 @@ async function secLines(it) {
 }
 
 /** 원문 줄 배열 (캐시) */
-export async function getFilingDoc(it) {
+// 같은 원문을 빠른 요약·심층 분석·원문 보기가 동시에 요청하면 한 번만 받음 (v213)
+const docInflight = new Map();
+export function getFilingDoc(it) {
+  if (docInflight.has(it.id)) return docInflight.get(it.id);
+  const p = getFilingDoc0(it).finally(() => setTimeout(() => docInflight.delete(it.id), 2000));
+  docInflight.set(it.id, p);
+  return p;
+}
+async function getFilingDoc0(it) {
   const key = `doc2/${it.id}`;
   const cached = await getJSON(key);
   if (cached) return cached;

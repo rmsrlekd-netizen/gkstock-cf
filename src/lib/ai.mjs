@@ -327,7 +327,7 @@ ${lens.map((x) => '- ' + x).join('\n')}
 }
 매수·매도 추천이나 목표주가는 쓰지 마세요.`;
   let j, raw1 = '', raw2 = '';
-  try { raw1 = await claude(prompt, { maxTokens: 6000, timeout: 55000, think: 1024, tag: '공시 AI 분석' }); j = parseJSON(raw1); }
+  try { raw1 = await claude(prompt, { maxTokens: 6000, timeout: 45000, think: 0, tag: '공시 AI 분석' }); j = parseJSON(raw1); } // v213: 일반 공시는 속도 우선 (생각하며 읽기 끔) — 작전 레이더만 생각하며 읽기
   catch (e) {
     if (!raw1) throw e; // AI 호출 자체가 실패(한도 등)
     // 형식이 깨졌으면 한 번 더 요청 (이번엔 빠르게)
