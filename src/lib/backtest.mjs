@@ -7,7 +7,7 @@
 import { getJSON, setJSON } from './store.mjs';
 
 const DAY = 86400e3;
-const BT_V = 10; // v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
+const BT_V = 11; // v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
 const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
 const STEP = 10, BACK = 16; // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
@@ -17,7 +17,10 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   if (restart || !st || st.v !== BT_V) {
     const evm = await M._loadEvents(now, { maxBuild: 0 });
     const SET = new Set(['mna', 'rights3', 'cb', 'fund5', 'refix']);
-    const codes = Object.entries(evm).filter(([, evs]) => evs.some((e) => SET.has(e.kind))).map(([c]) => c).sort().slice(0, 700);
+    // v222: 레이더 랭킹·내 세력주 종목부터 계산 (예전엔 코드 순서라 351320 같은 뒤쪽 코드는 몇 시간 뒤에야 나옴)
+    const rk = (await getJSON('mp/rank')) || {}, my = (await getJSON('mp/my')) || {};
+    const pri = new Set([...(Array.isArray(my.items) ? my.items.map((i) => i.code) : []), ...Object.keys(rk)]);
+    const codes = Object.entries(evm).filter(([, evs]) => evs.some((e) => SET.has(e.kind))).map(([c]) => c).sort((a, b) => (pri.has(a) ? 0 : 1) - (pri.has(b) ? 0 : 1) || (a < b ? -1 : 1)).slice(0, 700);
     st = { v: BT_V, queue: codes, pos: 0, started: now, samples: 0, kept: 0, groups: {}, done: false };
     await setJSON('mp/bt/state', st);
     await setJSON('mp/bt/rows', { v: BT_V, rows: [] }); // 종목별 판정 목록 (그룹 눌러서 보기용)

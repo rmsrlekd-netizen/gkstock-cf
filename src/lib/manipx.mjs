@@ -164,19 +164,19 @@ export function perfGroupKeys(row) {
 export function perfAdd(groups, g, row) {
   const o = (groups[g] ||= { n: 0 });
   o.n++;
-  for (const h of H) { const u = row['u' + h], dd = row['d' + h]; if (u != null && dd != null) { o['pn' + h] = (o['pn' + h] || 0) + 1; o['su' + h] = (o['su' + h] || 0) + u; o['sd' + h] = (o['sd' + h] || 0) + dd; if (u >= 20) o['hu' + h] = (o['hu' + h] || 0) + 1; if (dd <= -15) o['hd' + h] = (o['hd' + h] || 0) + 1; } }
+  for (const h of H) { const u = row['u' + h], dd = row['d' + h]; if (u != null && dd != null) { o['pn' + h] = (o['pn' + h] || 0) + 1; o['su' + h] = (o['su' + h] || 0) + u; o['sd' + h] = (o['sd' + h] || 0) + dd; if (u >= 20) o['hu' + h] = (o['hu' + h] || 0) + 1; if (u > -dd) o['ud' + h] = (o['ud' + h] || 0) + 1; /* v222: 오른 폭이 빠진 폭보다 큰 판정 */ if (dd <= -15) o['hd' + h] = (o['hd' + h] || 0) + 1; } }
   if (row.ft) { o.ftn = (o.ftn || 0) + 1; if (row.ft === 'w') { o.ftw = (o.ftw || 0) + 1; if (row.ftd) o.ftds = (o.ftds || 0) + row.ftd; } if (row.ft === 'l') o.ftl = (o.ftl || 0) + 1; if (row.stop) o.stp = (o.stp || 0) + 1; }
   if (row.ft2) { o.f2n = (o.f2n || 0) + 1; if (row.ft2 === 'w') o.f2w = (o.f2w || 0) + 1; if (row.ft2 === 'l') o.f2l = (o.f2l || 0) + 1; }
   if (row.gp != null) { o.gpn = (o.gpn || 0) + 1; o.gps = (o.gps || 0) + row.gp; }
   if (row.wy?.length) { const W = (o.wy ||= {}); for (const k of row.wy) W[k] = (W[k] || 0) + 1; }
   for (const h of [20, 60, 120]) for (const [K, f] of [['R', 'r'], ['U', 'u'], ['X', 'x']]) { const v = row[f + h]; if (v != null) { const a = (o[K + h] ||= []); if (a.length < 4000) a.push(v); } } // 중앙값용
   for (const h of H) if (row['x' + h] != null) { o['xn' + h] = (o['xn' + h] || 0) + 1; o['xs' + h] = (o['xs' + h] || 0) + row['x' + h]; }
-  for (const h of H) { const v = row['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; if (v >= 20) o['b' + h] = (o['b' + h] || 0) + 1; if (v <= -20) o['l' + h] = (o['l' + h] || 0) + 1; }
+  for (const h of H) { const v = row['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) { o['sw' + h] = (o['sw' + h] || 0) + v; } else { o['sl' + h] = (o['sl' + h] || 0) + v; } if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; if (v >= 20) o['b' + h] = (o['b' + h] || 0) + 1; if (v <= -20) o['l' + h] = (o['l' + h] || 0) + 1; }
 }
 export function perfOut(groups) {
   return Object.entries(groups).map(([g, o]) => {
     const r = { g, n: o.n };
-    for (const h of H) if (o['pn' + h]) { r['up' + h] = Math.round((o['su' + h] / o['pn' + h]) * 10) / 10; r['dn' + h] = Math.round((o['sd' + h] / o['pn' + h]) * 10) / 10; r['hu' + h] = Math.round(((o['hu' + h] || 0) / o['pn' + h]) * 100); r['hd' + h] = Math.round(((o['hd' + h] || 0) / o['pn' + h]) * 100); }
+    for (const h of H) if (o['pn' + h]) { r['up' + h] = Math.round((o['su' + h] / o['pn' + h]) * 10) / 10; r['dn' + h] = Math.round((o['sd' + h] / o['pn' + h]) * 10) / 10; r['hu' + h] = Math.round(((o['hu' + h] || 0) / o['pn' + h]) * 100); r['hd' + h] = Math.round(((o['hd' + h] || 0) / o['pn' + h]) * 100); r['ud' + h] = Math.round(((o['ud' + h] || 0) / o['pn' + h]) * 100); r['rr' + h] = o['sd' + h] < 0 ? Math.round((o['su' + h] / -o['sd' + h]) * 100) / 100 : null; r['pn' + h] = o['pn' + h]; } // v222 손익비 = 평균 최고 상승 ÷ 평균 최고 하락
     if (o.ftn) { r.ftn = o.ftn; r.ftw = Math.round(((o.ftw || 0) / o.ftn) * 100); r.ftl = Math.round(((o.ftl || 0) / o.ftn) * 100); r.ftd = o.ftw ? Math.round((o.ftds || 0) / o.ftw) : null; r.stp = o.stp || 0; }
     if (o.f2n) { r.f2n = o.f2n; r.f2w = Math.round(((o.f2w || 0) / o.f2n) * 100); r.f2l = Math.round(((o.f2l || 0) / o.f2n) * 100); }
     if (o.gpn) r.gap = Math.round((o.gps / o.gpn) * 10) / 10;
@@ -184,7 +184,7 @@ export function perfOut(groups) {
     const med = (a) => { if (!a?.length) return null; const b = [...a].sort((x, y) => x - y), m = b.length >> 1; return Math.round((b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2) * 10) / 10; };
     for (const h of [20, 60, 120]) { r['mr' + h] = med(o['R' + h]); r['mu' + h] = med(o['U' + h]); r['mx' + h] = med(o['X' + h]); }
     for (const h of H) if (o['xn' + h]) r['ax' + h] = Math.round((o['xs' + h] / o['xn' + h]) * 10) / 10;
-    for (const h of H) if (o['n' + h]) { r['n' + h] = o['n' + h]; r['avg' + h] = Math.round((o['s' + h] / o['n' + h]) * 10) / 10; r['win' + h] = Math.round(((o['w' + h] || 0) / o['n' + h]) * 100); r['big' + h] = Math.round(((o['b' + h] || 0) / o['n' + h]) * 100); r['loss' + h] = Math.round(((o['l' + h] || 0) / o['n' + h]) * 100); }
+    for (const h of H) if (o['n' + h]) { r['n' + h] = o['n' + h]; r['avg' + h] = Math.round((o['s' + h] / o['n' + h]) * 10) / 10; r['win' + h] = Math.round(((o['w' + h] || 0) / o['n' + h]) * 100); r['big' + h] = Math.round(((o['b' + h] || 0) / o['n' + h]) * 100); r['loss' + h] = Math.round(((o['l' + h] || 0) / o['n' + h]) * 100); const nw = o['w' + h] || 0, nl = o['n' + h] - nw; r['aw' + h] = nw ? Math.round(((o['sw' + h] || 0) / nw) * 10) / 10 : null; r['al' + h] = nl ? Math.round(((o['sl' + h] || 0) / nl) * 10) / 10 : null; r['pf' + h] = o['sl' + h] ? Math.round(((o['sw' + h] || 0) / -o['sl' + h]) * 100) / 100 : (o['sw' + h] ? 99 : null); } // v222: 결과 기준 — 오른 비율·평균 수익/손실·번 돈÷잃은 돈
     return r;
   });
 }

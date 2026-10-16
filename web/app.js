@@ -3789,12 +3789,14 @@
   const PB_CATS = [['결론', '한 줄 결론'], ['후보', '매매 후보 조건'], ['등급', '체크리스트'], ['단계', '단계'], ['분류', '분류'], ['손익비', '손익비'], ['기타', '']];
   const PB_H = [5, 20, 60, 120];
   function pbVals(r, h) {
-    return { n: r['n' + h] || 0, up: r['mu' + h] ?? r['up' + h], dn: r['dn' + h], end: r['mr' + h] ?? r['avg' + h], mk: r['ax' + h], hu: r['hu' + h] };
+    return { n: r['pn' + h] || r['n' + h] || 0, up: r['up' + h], dn: r['dn' + h], end: r['mr' + h] ?? r['avg' + h], mk: r['ax' + h], hu: r['hu' + h] };
   }
-  function pbWin(r) {
-    if (!r.ftn) return '<span class="muted sm">—</span>';
-    const w = r.ftw || 0, l = r.ftl || 0;
-    return `<div class="pb-bar" title="+20% 먼저 ${w}% · −10% 먼저 ${l}% · 둘 다 안 닿음 ${Math.max(0, 100 - w - l)}%"><i class="w" style="width:${w}%"></i><i class="l" style="width:${l}%"></i></div><span class="pb-wl"><b class="up">${w}%</b> : <b class="down">${l}%</b></span>`;
+  // v222: 손익비 막대 — 판정 다음 날 시가부터 N거래일 안에 '가장 많이 오른 폭' vs '가장 많이 빠진 폭' (손절·흔들기 기준 안 씀)
+  //  막대 = 오른 폭이 더 컸던 판정 : 빠진 폭이 더 컸던 판정 · 손익비 = 평균 최고 상승 ÷ 평균 최고 하락
+  function pbWin(r, h) {
+    const n = r['pn' + h]; if (!n) return '<span class="muted sm">결과 전</span>';
+    const w = r['ud' + h] || 0, l = 100 - w, rr = r['rr' + h];
+    return `<div class="pb-bar" title="오른 폭이 더 컸던 판정 ${w}% · 빠진 폭이 더 컸던 판정 ${l}%"><i class="w" style="width:${w}%"></i><i class="l" style="width:${l}%"></i></div><span class="pb-wl"><b class="up">${w}%</b> : <b class="down">${l}%</b><small>${rr != null ? `손익비 <b class="${rr >= 1 ? 'up' : 'down'}">1 : ${rr}</b>` : ''}</small></span>`;
   }
   function renderBoard(src) {
     const box = $(src === 'bt' ? '#pbBt' : '#pbPerf'); const rows = S.pbData?.[src]; if (!box || !rows) return;
@@ -3804,11 +3806,11 @@
     const list = rows.filter((r) => r.g !== '전체' && (pre ? r.g.startsWith(pre + ':') : !known.some((k) => r.g.startsWith(k + ':'))));
     const all = rows.find((r) => r.g === '전체');
     const line = (r, isAll) => { const v = pbVals(r, h); const why = [r.whyW?.[0] ? `<span class="up">↑${esc(WHY_KO[r.whyW[0][0]] || '')}</span>` : '', r.whyL?.[0] ? `<span class="down">↓${esc(WHY_KO[r.whyL[0][0]] || '')}</span>` : ''].filter(Boolean).join(' ');
-      return `<button class="pb-row${isAll ? ' all' : ''}" data-pb-open="${esc(r.g)}" data-pb-src="${src}"><span class="pb-name">${esc(isAll ? '전체' : r.g.replace(/^[^:]+:/, ''))}<small>${v.n ? `${v.n}건${v.n < 30 ? ' · 적음' : ''}` : '결과 전'}</small></span><span class="pb-win">${pbWin(r)}</span><span class="pb-num"><em>최고</em><b class="${dirCls(v.up)}">${sgn(v.up)}</b></span><span class="pb-num"><em>최저</em><b class="${dirCls(v.dn)}">${sgn(v.dn)}</b></span><span class="pb-num"><em>${h}일째</em><b class="${dirCls(v.end)}">${sgn(v.end)}</b></span><span class="pb-num hide-m"><em>시장 대비</em><b class="${dirCls(v.mk)}">${sgn(v.mk)}</b></span><span class="pb-why hide-m">${why || '<span class="muted">—</span>'}</span><span class="pb-go">›</span></button>`; };
+      return `<button class="pb-row${isAll ? ' all' : ''}" data-pb-open="${esc(r.g)}" data-pb-src="${src}"><span class="pb-name">${esc(isAll ? '전체' : r.g.replace(/^[^:]+:/, ''))}<small>${v.n ? `${v.n}건${v.n < 30 ? ' · 적음' : ''}` : '결과 전'}</small></span><span class="pb-win">${pbWin(r, h)}</span><span class="pb-num"><em>최고</em><b class="${dirCls(v.up)}">${sgn(v.up)}</b></span><span class="pb-num"><em>최저</em><b class="${dirCls(v.dn)}">${sgn(v.dn)}</b></span><span class="pb-num"><em>${h}일째</em><b class="${dirCls(v.end)}">${sgn(v.end)}</b></span><span class="pb-num hide-m"><em>시장 대비</em><b class="${dirCls(v.mk)}">${sgn(v.mk)}</b></span><span class="pb-why hide-m">${why || '<span class="muted">—</span>'}</span><span class="pb-go">›</span></button>`; };
     box.innerHTML = `<div class="pb">
       <div class="pb-ctl"><div class="pb-seg">${PB_H.map((x) => `<button data-pb-h="${x}" class="${x === h ? 'on' : ''}">${x}일</button>`).join('')}</div>
         <div class="pb-seg">${PB_CATS.map(([c]) => `<button data-pb-cat="${c}" class="${c === cat ? 'on' : ''}">${c}</button>`).join('')}</div></div>
-      <div class="pb-legend muted sm">진입 = 판정 다음 날 시가 · <b class="up">+20%</b> : <b class="down">−10%</b> = 60일 안에 먼저 닿은 비율 · 최고/최저 = ${h}거래일 안 (중앙값) · ${h}일째 = 그날 종가 (수수료 뺌) · 줄을 누르면 종목</div>
+      <div class="pb-legend muted sm"><b>막대</b> = 판정 다음 날 시가에 샀다면 ${h}거래일 안에 <b>가장 많이 오른 폭이 가장 많이 빠진 폭보다 컸던 판정 : 반대</b> · <b>손익비 1 : N</b> = 평균 최고 상승 ÷ 평균 최고 하락 (손절·흔들기 기준 안 씀, N이 1보다 크면 오른 폭이 더 큼) · 최고/최저 = ${h}거래일 안 평균 · 줄을 누르면 종목</div>
       <div class="pb-list">${all ? line(all, true) : ''}${list.length ? list.map((r) => line(r)).join('') : '<p class="muted sm">이 분류엔 아직 결과가 없어요</p>'}</div></div>`;
   }
   // 종목 목록 창
@@ -3816,7 +3818,7 @@
     const h = S.pbH || 20;
     const key = { up: (x) => -(x['u' + h] ?? -999), down: (x) => (x['d' + h] ?? 999), new: (x) => -Date.parse(x.d) }[sort] || ((x) => -(x['u' + h] ?? -999));
     const L = [...rows].sort((a, b) => key(a) - key(b));
-    const res = (x) => (x.ft === 'w' ? '<b class="up">+20% 먼저</b>' : x.ft === 'l' ? `<b class="down">−10% 먼저</b>` : x.ft === 'n' ? '<span class="muted">둘 다 안 닿음</span>' : '<span class="muted">진행 중</span>');
+    const res = (x) => { const u = x['u' + h], d = x['d' + h]; if (u == null || d == null) return '<span class="muted">진행 중</span>'; const q = d < 0 ? Math.round((u / -d) * 10) / 10 : null; return u > -d ? `<b class="up">오른 폭이 큼</b><small>손익비 1 : ${q ?? '∞'}</small>` : `<b class="down">빠진 폭이 큼</b><small>손익비 1 : ${q ?? 0}</small>`; }; // v222: 손익비 기준
     let m = $('#pbModal'); if (!m) { m = document.createElement('div'); m.id = 'pbModal'; document.body.appendChild(m); }
     m.dataset.src = src; m.dataset.g = g;
     m.innerHTML = `<div class="pbm-back" data-pbm-close></div><div class="pbm" role="dialog" aria-label="종목 목록">
