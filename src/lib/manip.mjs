@@ -1696,6 +1696,10 @@ export async function manipRank(kind = 'all') {
   let list = Object.entries(rank).map(([code, r]) => ({ code, ...r }))
     .filter((r) => Date.now() - (r.up || 0) < 45 * DAY); // 45일 넘게 신호가 없던 종목은 랭킹에서만 내림 (카드·기록은 남김)
   list = list.filter((r) => !r.ht && r.st !== '거래정지'); // 거래정지 종목은 랭킹에서 뺌 (카드는 남김)
+  for (const r of list) { // v211: 예전 줄의 '같은 세력 연결'에 남은 거래소·감독기관 이름은 읽을 때 지움 (카드는 열 때 정리됨)
+    if (!Array.isArray(r.sig)) continue;
+    r.sig = r.sig.map((t) => { if (!/^같은 세력 연결 의심:/.test(t)) return t; const parts = t.replace(/^같은 세력 연결 의심:\s*/, '').split(' / ').filter((q) => !NOT_PARTY.test(q.split('→')[0] || '')); if (r.lk != null) r.lk = parts.length || null; return parts.length ? `같은 세력 연결 의심: ${parts.join(' / ')}` : null; }).filter(Boolean);
+  }
   try { // 한국투자증권으로 확인한 지금 상태(시장경보·관리종목·거래정지)를 줄에 바로 반영
     const wd = (await getJSON('mp/warn')) || {}, wm = wd.map || {};
     list = list.filter((r) => !wm[r.code]?.halt);
