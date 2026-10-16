@@ -2244,3 +2244,4 @@ button.br-mv:hover { border-color: var(--accent); }
 .mp-w2{margin:8px 0;padding:10px 12px;border-radius:10px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3)}.mp-w2 ul{margin:0 0 6px;padding-left:18px}.mp-w2 p{margin:0;color:#fbbf24;font-weight:600}.rb-wave2{color:#fbbf24}.mp-rbchip.rb-wave2{background:rgba(251,191,36,.14);color:#fbbf24}
 .mp-chip.ev-tsell { background: rgba(255,90,154,.14); color: #ff9ac8; }
 a.ca-co { text-decoration: none; }
+.vd{display:flex;gap:.5rem;align-items:baseline;flex-wrap:wrap;margin:.35rem 0 .2rem;padding:.35rem .6rem;border-radius:8px;font-size:.85rem}.vd b{white-space:nowrap}.vd span{color:var(--muted)}.vd-g{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.35)}.vd-g b{color:#4ade80}.vd-y{background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.3)}.vd-y b{color:#facc15}.vd-r{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.32)}.vd-r b{color:#f87171}

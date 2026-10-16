@@ -1358,6 +1358,7 @@ export async function manipWatch({ force = false } = {}) {
   if (tk === st.tryK) st.tryN = (st.tryN || 0) + 1; else { st.tryK = tk; st.tryN = 1; }
   if (st.tryN >= 4 && st.phase !== 'done') {
     log(`'${st.phase}' 단계가 4번 연속 진전 없이 멈춰 오늘 분석을 중단 (서버 부담 방지 · 다음 거래일 15:50에 다시 시작)`);
+    await runHist(st, `${st.phase} 단계 반복 실패로 중단`).catch(() => {});
     st.err = `${st.phase} 단계 반복 실패로 중단`; st.phase = 'done'; st.force = false; st.histDone = date; st.busyUntil = 0; st.tryN = 0;
     await setJSON('mp/state', st).catch(() => {});
     return { ...out, gaveUp: true };
@@ -1499,7 +1500,7 @@ export async function manipWatch({ force = false } = {}) {
       if (todo.length) await saveProfiles(todo, `${date} 정기 분석 · AI 판단`);
       if (!todo.length) {
         if (doc) { delete doc.building; doc.done = Date.now(); await setJSON(`mp/day/${date}`, doc); }
-        st.phase = 'done'; st.force = false; log(`완료 · AI 분석 ${Math.min(AI_TOP, doc?.list?.length || 0)}개`);
+        st.phase = 'done'; st.force = false; log(`완료 · AI 분석 ${Math.min(AI_TOP, doc?.list?.length || 0)}개`); await runHist(st, null).catch(() => {});
       }
     }
   } catch (e) { st.err = String(e.message || e).slice(0, 200); log('오류: ' + st.err); }
@@ -1568,10 +1569,32 @@ export function rankRow(x) {
   const rbk = x.rbk || null;
   const hv = x.f?.halted || evHalt(x.events, Date.now(), x.f);
   const cf = x.pex && ((d.dir === 'up' && x.pex.lv === '낮음') || (d.dir === 'down' && x.pex.lv === '높음')) ? 1 : 0;
-  return { ...chipsOf(x), cf, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  return { ...chipsOf(x), cf, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, bm: cl?.bombs?.length || 0, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 // 판단 규칙 버전 — 규칙을 바꾸면 +1. 이전 규칙으로 저장된 카드는 다음 저장 1번만 '단계·분류 변화' 알림을 안 보냄 (규칙 변경 때문에 생긴 변화라 알림 폭주 방지)
 export const RULE_V = 208;
+// v212 서버 부담 점검: 정기 분석이 언제 시작·끝났고 몇 분 걸렸는지 최근 20번 기록 (/api/health?db=1 · 이상치 점검에서 봄)
+async function runHist(st, err) {
+  const h = (await getJSON('mp/runhist')) || [];
+  const done = Date.now(), mins = st.started ? Math.round((done - st.started) / 60e3) : null;
+  const doneKst = new Date(done + 9 * 3600e3).toISOString().slice(11, 16);
+  h.unshift({ date: st.date, started: st.started || null, done, doneKst, mins, err: err || null, force: !!st.force });
+  await setJSON('mp/runhist', h.slice(0, 20));
+}
+// v212 한 줄 결론: 🟢 매수 검토(매매 후보 조건 모두 통과) · 🟡 지켜보기 · 🔴 피하기(폭탄 신호·D등급·하락 위험·털기/엑시트 후/거래정지)
+export function verdictOf(r) {
+  if (!r) return null;
+  const red = [];
+  if ((r.bm || 0) > 0) red.push('폭탄 신호');
+  if (r.ckg === 'D') red.push('체크 D등급');
+  if (r.d === 'down') red.push('하락 위험 분류');
+  if (['털기', '엑시트 후', '거래정지'].includes(r.st)) red.push(`단계 ${r.st}`);
+  if (r.st === '띄우기' && (r.gap ?? 0) > 50) red.push(`띄우기 중 평단 +${r.gap}%`);
+  if (red.length) return { c: 'r', t: red.slice(0, 2).join(' · ') };
+  const f = pickFails(r);
+  if (!f.length) return { c: 'g', t: '매매 후보 조건 모두 통과' };
+  return { c: 'y', t: f.length === 1 ? `부족: ${f[0]}` : `부족 ${f.length}개: ${f.slice(0, 2).join(' · ')}` };
+}
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
   try { rank = (await getJSONStrict('mp/rank')) || {}; } catch (e) { console.warn('mp/rank 읽기 실패 — 랭킹은 이번에 안 고침', e.message); }
@@ -1713,6 +1736,7 @@ export async function manipRank(kind = 'all') {
   for (const r of list) if (r.rr?.v > 20) r.rr = { ...r.rr, v: 20, big: true }; // 예전 줄의 비현실적 손익비는 1:20+로
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
+  for (const r of list) { const v = verdictOf(r); if (v) r.vd = v; } // v212 한 줄 결론 (경보·벌점 반영 뒤 읽을 때 계산 → 예전 줄에도 바로)
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
   else if (kind === 'pex') list = list.filter((r) => r.pex).sort((a, b) => (b.pex.net - a.pex.net) || (b.pex.su - a.pex.su));
   else if (kind === 'ck') list = list.filter((r) => r.ckg && r.d !== 'down').sort((a, b) => ((b.cnp || 0) - 2 * (b.cnr || 0)) - ((a.cnp || 0) - 2 * (a.cnr || 0)) || (b.us || 0) - (a.us || 0));
@@ -1883,6 +1907,7 @@ export async function manipProfile(code) {
       p.rbk = p.f?.rb ? reboundOf(p) : p.rbk || null; // 규칙 계산이라 열 때마다 지금 기준으로 (v202 눌림 뒤 재상승)
       p.pex = postExitOf(p);
       p.story = narrativeOf(p);
+      try { p.vd = verdictOf(rankRow(p)); } catch {} // v212 한 줄 결론
       try { p.plan = await (await import('./manipck.mjs')).myPlanOf(p); } catch {}
       // 랭킹 줄도 지금 계산과 맞춤 (체크 등급·분류·손익비가 페이지와 다르게 보이던 문제)
       try {
@@ -2064,4 +2089,4 @@ export async function manipAux() {
   await setJSON('mp/auxlock', { busyUntil: 0 }).catch(() => {});
   return Object.keys(out).length ? out : null;
 }
-export { docPrice as _docPrice }; // 테스트용
+export { docPrice as _docPrice, bars as _bars, eventsOf as _eventsOf, loadEvents as _loadEvents, pxRow as _pxRow }; // 테스트·과거 재현(backtest.mjs)용

@@ -3309,6 +3309,7 @@
       <div class="rp-head">
         <button class="ca-co" data-open-co="KR|${esc(x.code)}|${esc(x.name)}">${logoHTML('KR', x.code, x.name)}<span><b>${esc(x.name)}</b><small>${esc(x.code)}${x.mkt === 'P' ? ' · 코스피' : x.mkt === 'Q' ? ' · 코스닥' : ''}${x.ind ? ' · ' + esc(String(x.ind).split('|')[0]) : ''}</small></span></button>
         <div class="rp-px" data-lq="${esc(x.code)}" data-lqb="1"><b>${x.close != null ? fmtInt(x.close) + '원' : '—'}</b><small class="${dirCls(x.pct)}">${x.pct != null ? fmtPct(x.pct) : ''}</small></div>
+        ${x.vd ? `<div class="vd vd-${esc(x.vd.c)}"><b>${{ g: '🟢 매수 검토', y: '🟡 지켜보기', r: '🔴 피하기' }[x.vd.c]}</b> <span>${esc(x.vd.t)}</span></div>` : ''}
         <div class="rp-chips"><span class="mp-stage ${MP_ST[x.stage] || 'watch'}">${esc(x.stage || '')}${a?.level ? `<small>의심 ${esc(a.level)}</small>` : ''}</span>${DIRB[d.dir] || '<span class="mp-dirb">분류 없음</span>'}${d.big ? `<span class="mp-big" title="시가총액 상위 ${d.big}% — 작전 패턴 해석 신뢰도 낮음">🏢 대형주 · 작전 해석 약함</span>` : ''}<span class="muted sm">상승 ${d.upS || 0}/10 · 하락 ${d.downS || 0}/10 · 종합 ${x.score ?? '-'}점</span></div>
         <div class="mp-chips rp-evchips">${(() => { const cb = (x.events || []).filter((e) => e.kind === 'cb').sort((p, q) => q.ms - p.ms); return mpChips(Object.entries(x.by || {}).filter(([, v]) => v > 0).sort((p, q) => q[1] - p[1]).map(([k]) => k), (x.sig || []).filter((t) => t && !/Infinity|NaN/.test(t)), x.warn?.lv, null, cb.length || null, cb[0] ? new Date(cb[0].ms + 9 * 3600e3).toISOString().slice(0, 10) : null); })()}</div>
       </div>
@@ -3339,7 +3340,7 @@
   });
   // ───── 작전 의심 레이더 ─────
   const MP_ST = { '판 깔기': 'setup', 매집: 'acc', 띄우기: 'pump', 털기: 'exit', '엑시트 후': 'done', 거래정지: 'halt', 관찰: 'watch' };
-  const mpChips = (by, sig, wn, pn, cbn, cbd) => `${wn ? `<span class="mp-chip ev-risk">⚠ 거래소 ${esc(wn)}</span>` : ''}${cbn ? `<span class="mp-chip ev-cb">💳 최근 CB·BW ${cbn}건${cbd ? ` · ${esc(cbd.slice(2))}` : ''}</span>` : ''}${(by || []).filter((k) => !(k === 'cb' && cbn)).map((k) => `<span class="mp-chip ev-${esc(k)}">${esc(MP_EV[k] || k)}</span>`).join('')}${(sig || []).map((t) => `<span class="mp-chip vol">${esc(t)}</span>`).join('')}${pn != null ? `<span class="mp-chip ev-risk">📛 벌점 ${pn}/15</span>` : ''}`;
+  const mpChips = (by, sig, wn, pn, cbn, cbd) => `${wn ? `<span class="mp-chip ev-risk">⚠ 거래소 ${esc(wn)}</span>` : ''}${cbn ? `<span class="mp-chip ev-cb">💳 최근 CB·BW ${cbn}건${cbd ? ` · ${esc(cbd.slice(2))}` : ''}</span>` : ''}${(by || []).filter((k) => !(k === 'cb' && cbn)).map((k) => `<span class="mp-chip ev-${esc(k)}">${esc(MP_EV[k] || k)}</span>`).join('')}${(sig || []).map((t) => `<span class="mp-chip vol">${esc(t)}</span>`).join('')}${pn != null ? `<span class="mp-chip ev-risk">📛 벌점 ${pn}점</span>` : ''}`;
   // 서술형 정리·AI 문장의 핵심 단어에 색 (가격·등락률·날짜·단계·좋은 점/조심할 점)
   const HL_RE = new RegExp([
     '(\\d{4}-\\d{2}-\\d{2}(?:\\s*~\\s*\\d{4}-\\d{2}-\\d{2})?)',
@@ -3468,6 +3469,7 @@
           <span class="mp-px" data-lq="${esc(r.code)}">${won(r.c)}<small class="${dirCls(r.pct)}">${r.pct != null ? fmtPct(r.pct) : ''}</small></span>
           <span class="mp-stage ${MP_ST[r.st] || 'watch'}">${esc(r.st || '')}${r.lv ? `<small>의심 ${esc(r.lv)}</small>` : ''}</span>
           ${S.rkKind === 'pick' ? `<span class="mp-score"><b>${r.pat?.on ? r.pat.est + '<em>%</em>' : (r.ckg ? esc(r.ckg) + '<em>등급</em>' : '—')}</b><small>${r.pat?.on ? '비슷한 패턴 승률(추정)' : '체크 등급'}<br>손익비 ${r.rr ? '1:' + r.rr.v : '—'} · 종합 ${r.s ?? '-'}점</small></span>` : S.rkKind === 'pex' && r.pex ? `<span class="mp-score"><b>${esc(r.pex.lv)}</b><small>털기 후 상승<br>근거 차이 ${r.pex.net > 0 ? '+' : ''}${r.pex.net}</small></span>` : S.rkKind === 'rr' && r.rr ? `<span class="mp-score"><b>1:${r.rr.v}${r.rr.big ? '+' : ''}</b><small>손익비<br>종합 점수 ${r.s}</small></span>` : S.rkKind === 'up' || S.rkKind === 'down' ? `<span class="mp-score"><b>${S.rkKind === 'up' ? r.us || 0 : r.ds || 0}<em>/10</em></b><small>${S.rkKind === 'up' ? '상승' : '하락'} 근거 점수<br>종합 점수 ${r.s}</small></span>` : `<span class="mp-score"><b>${r.s}</b><small>종합 점수 ${r.s >= 20 ? '(매우 많음)' : r.s >= 10 ? '(많음)' : '(보통)'}</small></span>`}</div>
+        ${r.vd ? `<div class="vd vd-${esc(r.vd.c)}"><b>${{ g: '🟢 매수 검토', y: '🟡 지켜보기', r: '🔴 피하기' }[r.vd.c]}</b> <span>${esc(r.vd.t)}</span></div>` : ''}
         <div class="rk-strip">
           ${DIRB[r.d] ? DIRB[r.d] : ''}
           ${r.ckg ? `<span class="mp-ckg g${esc(r.ckg)}">체크 ${esc(r.ckg)}</span>` : ''}
@@ -3531,8 +3533,9 @@
     let j; try { j = await mpGet(`mp=perf`); } catch (e) { j = { ok: false, error: e.message }; }
     if (!$('#mpBody') || S.mpTab !== 'perf' || seq !== S.mpSeq) return;
     if (!j.ok) { $('#mpBody').innerHTML = `<p class="err">${esc(j.error || '')}</p>`; return; }
-    const order = ['전체', '체크리스트:A등급', '체크리스트:B등급', '체크리스트:C등급', '체크리스트:D등급', '손익비:3 이상', '손익비:2~3', '손익비:2 미만', '분류:상승 가능성', '분류:하락 위험', '분류:분류 없음', '단계:판 깔기', '단계:매집', '단계:띄우기', '단계:털기', '단계:관찰', 'AI 의심:높음', 'AI 의심:중간', 'AI 의심:낮음'];
-    const g = (j.groups || []).filter((r) => !r.g.startsWith('ck:')).sort((a, b) => order.indexOf(a.g) - order.indexOf(b.g));
+    const order = ['전체', '한 줄 결론:🟢 매수 검토', '한 줄 결론:🟡 지켜보기', '한 줄 결론:🔴 피하기', '매매 후보 조건:충족', '매매 후보 조건:미충족', '체크리스트:A등급', '체크리스트:B등급', '체크리스트:C등급', '체크리스트:D등급', '손익비:3 이상', '손익비:2~3', '손익비:2 미만', '분류:상승 가능성', '분류:하락 위험', '분류:분류 없음', '단계:판 깔기', '단계:매집', '단계:띄우기', '단계:털기', '단계:관찰', 'AI 의심:높음', 'AI 의심:중간', 'AI 의심:낮음'];
+    const ordIx = (k) => { const i = order.indexOf(k); return i < 0 ? 999 : i; };
+    const g = (j.groups || []).filter((r) => !r.g.startsWith('ck:')).sort((a, b) => ordIx(a.g) - ordIx(b.g));
     const CKK = { money: '세력 자금 실제 투입', cost: '평단 근처', acc: '매집 흔적', unlock: '물량 해제 2~3개월 전', rr: '손익비 2↑', small: '소형주', float: '최대주주 지분 40%↑', story: '사업목적 추가', theme: '업종·테마 강세', insider: '내부자 매수', broker: '창구 쏠림', buzz: '기사·종토방 증가' };
     const ckG = Object.fromEntries((j.groups || []).filter((r) => r.g.startsWith('ck:')).map((r) => [r.g, r]));
     const ckRows = Object.keys(CKK).map((k) => { const a = ckG[`ck:${k}:1`], b = ckG[`ck:${k}:0`]; if (!a?.n20 && !b?.n20) return ''; const d = a?.n20 && b?.n20 ? a.win20 - b.win20 : null; return `<tr><td class="t"><b>${esc(CKK[k])}</b></td><td>${a?.n20 ? `${a.win20}% <small>${a.n20}건</small>` : '—'}</td><td>${b?.n20 ? `${b.win20}% <small>${b.n20}건</small>` : '—'}</td><td>${d == null ? '—' : `<b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : ''}${d}%p</b>${a.n20 >= 30 && b.n20 >= 30 ? ' <small>중요도에 반영</small>' : ' <small>30건씩 쌓이면 반영</small>'}`}</td></tr>`; }).join('');
@@ -3540,9 +3543,28 @@
     $('#mpBody').innerHTML = `<p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
       ${ckRows ? `<h4 style="margin:.8rem 0 .3rem">✅ 체크리스트 항목별 20거래일 뒤 오른 비율 <small class="muted">충족(✓)한 종목 vs 아닌(✗) 종목 · 차이가 클수록 등급 계산에서 그 항목의 중요도가 자동으로 커져요</small></h4><div class="mp-perf"><table class="tbl"><tr><th>항목</th><th>✓ 충족</th><th>✗ 미충족</th><th>차이</th></tr>${ckRows}</table></div>` : ''}
       ${g.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분</th><th>5거래일 뒤</th><th>20거래일 뒤</th><th>60거래일 뒤</th></tr>${g.map((r) => `<tr><td class="t"><b>${esc(r.g.replace(/^[^:]+:/, ''))}</b><small>${esc(r.g.includes(':') ? r.g.split(':')[0] : '레이더 전체')}</small></td>${cell(r, 5)}${cell(r, 20)}${cell(r, 60)}</tr>`).join('')}</table></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
+      <div id="btBox"></div>
       <p class="note">📊 <b>월간 규칙 점검</b> — 매달 1일 아침 관리자 텔레그램으로 그룹별 승률과 ⚠ 거꾸로 나온 규칙을 보내요 (표본 30건 미만은 '아직 판단 이름'). <button class="btn sm" data-mp-rulechk>지금 한 번 받기</button> <span class="muted sm" data-mp-rulechk-msg></span></p>
       <p class="note">수집 상태 · 거래소 시장경보·관리종목·거래정지: ${j.warn ? `${j.warn.at ? `${j.warn.n || 0}종목 · ${esc(rel(j.warn.at))}` : '첫 확인 중'}${j.warn.src === 'KIS' ? ' (한국투자증권 기준)' : ''}${j.warn.scan && j.warn.scan.pos < j.warn.scan.of ? ` · 오늘 확인 ${j.warn.scan.pos}/${j.warn.scan.of}` : ''}${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
+    loadBt();
   }
+  // 🧪 과거 재현 백테스트 (성적표 탭 안)
+  async function loadBt() {
+    const box = $('#btBox'); if (!box) return;
+    let j; try { j = await mpGet('mp=bt'); } catch (e) { box.innerHTML = `<p class="muted sm">과거 재현 결과를 못 불러옴: ${esc(e.message)}</p>`; return; }
+    const b = $('#btBox'); if (!b) return;
+    if (j.none) { b.innerHTML = '<p class="note">🧪 <b>과거 재현(백테스트)</b> — 아직 시작 전 (3분마다 자동으로 조금씩 계산) <button class="btn sm" data-bt-run>지금 시작</button></p>'; return; }
+    const ord = ['전체', '한 줄 결론:🟢 매수 검토', '한 줄 결론:🟡 지켜보기', '한 줄 결론:🔴 피하기', '매매 후보 조건:충족', '매매 후보 조건:미충족', '체크리스트:A등급', '체크리스트:B등급', '체크리스트:C등급', '체크리스트:D등급', '분류:상승 가능성', '분류:하락 위험', '분류:분류 없음', '단계:판 깔기', '단계:매집', '단계:띄우기', '단계:털기', '단계:엑시트 후', '단계:관찰', '손익비:3 이상', '손익비:2~3', '손익비:2 미만'];
+    const rows = (j.groups || []).filter((r) => ord.includes(r.g)).sort((a, c) => ord.indexOf(a.g) - ord.indexOf(c.g));
+    const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · ${r['n' + h]}건${r['n' + h] < 30 ? ' (적음)' : ''}</small></td>` : '<td class="muted">—</td>');
+    b.innerHTML = `<h4 style="margin:1rem 0 .3rem">🧪 과거 재현(백테스트) <small class="muted">참고용 · 지난 6개월 동안 '그날 지금 규칙이었다면' 판정 → 실제 5·20·60거래일 뒤 결과 · ${j.done ? `완료 (${esc(rel(j.doneAt))})` : `계산 중 ${fmtInt(j.pos)}/${fmtInt(j.of)}종목`} · 판정 ${fmtInt(j.kept)}건</small> <button class="btn sm" data-bt-run>처음부터 다시</button></h4>
+      <p class="muted sm">한계: AI 판단·지분·신용·거래원·재무 같은 바깥 자료는 그날 기준으로 재현 못 해서 빠져요 · 시가총액 순위 모름 · 공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임 · 대상은 최근 6개월 판 깔기 공시가 있던 종목</p>
+      ${rows.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분</th><th>5거래일 뒤</th><th>20거래일 뒤</th><th>60거래일 뒤</th></tr>${rows.map((r) => `<tr><td class="t"><b>${esc(r.g.replace(/^[^:]+:/, ''))}</b><small>${esc(r.g.includes(':') ? r.g.split(':')[0] : '전체')}</small></td>${cell(r, 5)}${cell(r, 20)}${cell(r, 60)}</tr>`).join('')}</table></div>` : '<p class="muted sm">아직 결과 없음</p>'}`;
+  }
+  document.addEventListener('click', async (ev) => {
+    const br = ev.target.closest?.('[data-bt-run]'); if (!br) return;
+    br.disabled = true; try { await mpGet('mp=btrun'); } catch {} setTimeout(loadBt, 500);
+  });
   document.addEventListener('click', async (ev) => {
     const b = ev.target.closest?.('[data-mp-rulechk]'); if (!b) return;
     const m = document.querySelector('[data-mp-rulechk-msg]'); b.disabled = true; if (m) m.textContent = '보내는 중…';
@@ -3672,12 +3694,13 @@
     const sum = fixed.reduce((a, p) => a + (p.pen.p || 0), 0), cumDoc = fixed.find((p) => p.pen.cum != null)?.pen.cum ?? null;
     const cum = Math.max(sum, cumDoc || 0);
     const kospi = x.mkt === 'P', stop1 = kospi ? 10 : 8;
-    const pct = Math.min(100, Math.round((cum / 15) * 100));
+    const LIM = kospi ? 15 : 10; // 코스닥은 2026-07-01부터 누계 10점이면 실질심사 (이전 15점)
+    const pct = Math.min(100, Math.round((cum / LIM) * 100));
     return `<div class="mp-pen"><h5>📛 불성실공시 벌점 <small>최근 1년 · 공시 원문 기준</small></h5>
-      ${L.length ? `<div class="mp-penbar"><i style="width:${pct}%" class="${cum >= 15 ? 'over' : cum >= 10 ? 'warn' : ''}"></i><span>누계 <b>${cum}점</b> / 15점${cum < 15 ? ` · ${15 - cum}점 남음` : ' · 기준 초과'}</span></div>
+      ${L.length ? `<div class="mp-penbar"><i style="width:${pct}%" class="${cum >= LIM ? 'over' : cum >= LIM - 5 ? 'warn' : ''}"></i><span>누계 <b>${cum}점</b> / ${LIM}점${cum < LIM ? ` · ${LIM - cum}점 남음` : ' · 기준 초과'}</span></div>
       <ul>${L.map((p) => `<li>${esc(p.date)} ${p.pen.pre ? '<b>지정 예고</b> (벌점 확정 전)' : `부과벌점 <b>${p.pen.p ?? '?'}점</b>${p.pen.p >= stop1 ? ` <span class="err">→ ${stop1}점 이상: 지정일 하루 매매정지</span>` : ''}`}${p.pen.cum != null ? ` · 원문상 누계 ${p.pen.cum}점` : ''} <a class="mp-src" href="/p/${esc(p.ref || '')}" target="_blank">공시</a></li>`).join('')}</ul>`
         : `<p class="muted sm">불성실공시 관련 공시 ${ev.length}건이 있지만 원문에서 점수를 아직 못 읽었어요 (다음 분석 때 다시 확인). ${ev.map((e) => `<a class="mp-src" href="/p/${esc(e.id)}" target="_blank">${esc(e.title)}</a>`).join(' ')}</p>`}
-      <p class="muted sm">${kospi ? '코스피: 1회 10점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 15점 이상이면 관리종목 지정 (관리종목 후 1년간 추가 15점이면 상장적격성 실질심사)' : '코스닥: 1회 8점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 15점 이상이면 상장적격성 실질심사'}</p></div>`;
+      <p class="muted sm">${kospi ? '코스피: 1회 10점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 15점 이상이면 관리종목 지정 (관리종목 후 1년간 추가 15점이면 상장적격성 실질심사)' : '코스닥: 1회 8점 이상이면 지정일 하루 매매정지 · 최근 1년 누계 10점 이상이면 상장적격성 실질심사 (2026-07-01부터, 이전 15점)'}</p></div>`;
   }
   function mpDetail(x) { const p = mpParts(x); return `${p.myBtn}${p.pexBox}${p.rbBox}${p.ckBox}${p.cycLine}${p.accLine}${p.markBox}${p.wf}${p.dirBox}${p.tgtBox}${p.aiBox}${p.grid}`; }
   function mpParts(x) {

@@ -126,6 +126,19 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
   });
 
   // ⑧ 기존 고장 감시에서 계속 실패 중인 항목
+  await tryRun('서버 부담', async () => { // v212: 정기 분석이 제때 끝나는지·얼마나 걸리는지
+    const { isTradingDay } = await import('./schedule.mjs');
+    const kd = new Date(now + 9 * H), today = kd.toISOString().slice(0, 10), hm = kd.getUTCHours() * 60 + kd.getUTCMinutes();
+    const hist = (await getJSON('mp/runhist')) || [];
+    const st = (await getJSON('mp/state')) || {};
+    if (isTradingDay('KR', today) && hm >= 21 * 60 && !(st.date === today && st.phase === 'done')) add('warn', '서버 부담', `오늘 작전 레이더 정기 분석이 21시까지 안 끝남 (지금 '${st.phase || '-'}' 단계)`);
+    const last = hist.filter((h) => !h.force).slice(0, 5);
+    const failed = last.filter((h) => h.err);
+    if (failed.length >= 2) add('warn', '서버 부담', `최근 정기 분석 ${last.length}번 중 ${failed.length}번이 중간에 멈춤`, failed.map((h) => `${h.date} ${h.err}`));
+    const avg = last.length ? Math.round(last.reduce((a, h) => a + (h.mins || 0), 0) / last.length) : 0;
+    if (last.length >= 3 && avg >= 300) add('warn', '서버 부담', `정기 분석이 평균 ${avg}분 걸림 (15:50 시작 → 대략 ${Math.floor((950 + avg) / 60)}시 끝) — 원문 읽기·바깥 자료가 늘어 느려졌는지 확인`, last.map((h) => `${h.date} ${h.mins}분 (${h.doneKst} 완료)`));
+    else if (last.length >= 3 && avg >= 180) add('info', '서버 부담', `정기 분석 평균 ${avg}분`, last.map((h) => `${h.date} ${h.mins}분 (${h.doneKst} 완료)`));
+  });
   await tryRun('고장 감시', async () => {
     const mon = await getJSON('monitor/state');
     const bad = Object.values(mon?.checks || {}).filter((c) => !c.ok && (c.fails || 0) >= 2);

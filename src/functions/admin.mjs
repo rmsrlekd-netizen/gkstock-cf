@@ -42,6 +42,8 @@ export default async (req) => {
     try {
       const m = await import('../lib/manip.mjs');
       if (mp === 'rank') { const list = await m.manipRank(u.searchParams.get('kind') || 'all'); return J({ ok: true, list, pat: list.pat || null, state: await m.manipState() }); }
+      if (mp === 'bt') { const b = await import('../lib/backtest.mjs'); return J({ ok: true, ...(await b.btSummary()) }); } // 과거 재현 백테스트 결과
+      if (mp === 'btrun') { const b = await import('../lib/backtest.mjs'); return J({ ok: true, ...((await b.btStep({ restart: true, max: 0 })) || {}) }); } // 처음부터 다시 계산
       if (mp === 'rulechk') { const x = await import('../lib/manipx.mjs'); return J({ ok: true, ...((await x.ruleCheck({ force: true })) || {}) }); } // 월간 규칙 점검 지금 보내기
       if (mp === 'perf') { const x = await import('../lib/manipx.mjs'); return J({ ok: true, ...(await x.perfSummary()), warn: await (async () => { const w = await getJSON('mp/warn'); return w ? { at: w.at, n: w.n, err: w.err, src: w.src || 'KIND', scan: w.scan ? { date: w.scan.date, pos: w.scan.pos, of: (w.scan.q || []).length } : null } : null; })(), party: await (async () => { const p = await getJSON('mp/party'); return p ? { at: p.at, n: Object.keys(p.idx || {}).length } : null; })() }); }
       if (mp === 'prof') return J({ ok: true, prof: await m.manipProfile(String(u.searchParams.get('code') || '').replace(/\D/g, '').slice(0, 6)) });

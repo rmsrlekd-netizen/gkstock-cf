@@ -39,7 +39,7 @@ export async function perfWatch(max = 20) {
       if (!row) {
         row = { st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null };
         // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
-        try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
+        try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.vd = M.verdictOf(rk)?.c || null; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
       }
       if (H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
       // 아직 다음 기간(5·20·60거래일)이 안 지났으면 받지 않음 (같은 종목만 계속 받느라 다른 종목·날짜가 밀리던 문제)
@@ -65,14 +65,36 @@ export async function perfWatch(max = 20) {
   return fetched || filled ? { fetched, filled } : null;
 }
 /** 단계별·분류별 평균 수익률·상승 비율 */
+// 성적표 한 줄 → 묶을 그룹 이름들 (성적표·과거 재현 백테스트가 같이 씀)
+export function perfGroupKeys(row) {
+  const k = ['전체'];
+  if (row.st) k.push('단계:' + row.st);
+  if (row.dir) k.push('분류:' + (row.dir === 'up' ? '상승 가능성' : row.dir === 'down' ? '하락 위험' : '분류 없음'));
+  if (row.lv) k.push('AI 의심:' + row.lv);
+  if (row.ck) k.push('체크리스트:' + row.ck + '등급');
+  if (row.rr != null) k.push('손익비:' + (row.rr >= 3 ? '3 이상' : row.rr >= 2 ? '2~3' : '2 미만'));
+  if (row.pk != null) k.push('매매 후보 조건:' + (row.pk ? '충족' : '미충족'));
+  if (row.vd) k.push('한 줄 결론:' + ({ g: '🟢 매수 검토', y: '🟡 지켜보기', r: '🔴 피하기' }[row.vd]));
+  if (row.pexl) k.push('털기 후 상승:' + row.pexl);
+  if (row.cm != null) k.push('매집봉:' + (row.cm > 0 ? '있음' : '없음'));
+  for (const [kk, v] of Object.entries(row.ckv || {})) k.push(`ck:${kk}:${v}`); // 체크리스트 항목별 (중요도 자동 조정용)
+  return k;
+}
+export function perfAdd(groups, g, row) {
+  const o = (groups[g] ||= { n: 0 });
+  o.n++;
+  for (const h of H) { const v = row['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; if (v >= 20) o['b' + h] = (o['b' + h] || 0) + 1; if (v <= -20) o['l' + h] = (o['l' + h] || 0) + 1; }
+}
+export function perfOut(groups) {
+  return Object.entries(groups).map(([g, o]) => {
+    const r = { g, n: o.n };
+    for (const h of H) if (o['n' + h]) { r['n' + h] = o['n' + h]; r['avg' + h] = Math.round((o['s' + h] / o['n' + h]) * 10) / 10; r['win' + h] = Math.round(((o['w' + h] || 0) / o['n' + h]) * 100); r['big' + h] = Math.round(((o['b' + h] || 0) / o['n' + h]) * 100); r['loss' + h] = Math.round(((o['l' + h] || 0) / o['n' + h]) * 100); }
+    return r;
+  });
+}
 export async function perfSummary() {
   const idx = (await getJSON('mp/idx')) || [];
   const groups = {};
-  const add = (g, row) => {
-    const o = (groups[g] ||= { n: 0 });
-    o.n++;
-    for (const h of H) { const v = row['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; if (v >= 20) o['b' + h] = (o['b' + h] || 0) + 1; if (v <= -20) o['l' + h] = (o['l' + h] || 0) + 1; }
-  };
   let days = 0, raw = 0, dup = 0;
   // 같은 종목이 같은 단계로 랭킹에 며칠씩 계속 있으면 하루마다 따로 세지 않고 '처음 그 단계로 판정된 날' 1번만 셈
   //  (종목 몇 개가 승률을 부풀리던 문제) · 30일 넘게 안 보이다 다시 나오거나 단계가 바뀌면 새 판정으로 다시 셈
@@ -87,24 +109,10 @@ export async function perfSummary() {
       const k = `${code}|${row.st || '-'}`, prevMs = last.get(k);
       last.set(k, dMs);
       if (prevMs != null && dMs - prevMs <= 30 * DAY) { dup++; continue; }
-      add('전체', row);
-      if (row.st) add('단계:' + row.st, row);
-      if (row.dir) add('분류:' + (row.dir === 'up' ? '상승 가능성' : row.dir === 'down' ? '하락 위험' : '분류 없음'), row);
-      if (row.lv) add('AI 의심:' + row.lv, row);
-      if (row.ck) add('체크리스트:' + row.ck + '등급', row);
-      if (row.rr != null) add('손익비:' + (row.rr >= 3 ? '3 이상' : row.rr >= 2 ? '2~3' : '2 미만'), row);
-      if (row.pk != null) add('매매 후보 조건:' + (row.pk ? '충족' : '미충족'), row);
-      if (row.pexl) add('털기 후 상승:' + row.pexl, row);
-      if (row.cm != null) add('매집봉:' + (row.cm > 0 ? '있음' : '없음'), row);
-      for (const [k, v] of Object.entries(row.ckv || {})) add(`ck:${k}:${v}`, row); // 체크리스트 항목별 (중요도 자동 조정용)
+      for (const g of perfGroupKeys(row)) perfAdd(groups, g, row);
     }
   }
-  const out = Object.entries(groups).map(([g, o]) => {
-    const r = { g, n: o.n };
-    for (const h of H) if (o['n' + h]) { r['n' + h] = o['n' + h]; r['avg' + h] = Math.round((o['s' + h] / o['n' + h]) * 10) / 10; r['win' + h] = Math.round(((o['w' + h] || 0) / o['n' + h]) * 100); r['big' + h] = Math.round(((o['b' + h] || 0) / o['n' + h]) * 100); r['loss' + h] = Math.round(((o['l' + h] || 0) / o['n' + h]) * 100); }
-    return r;
-  });
-  return { days, raw, dup, groups: out, at: Date.now() };
+  return { days, raw, dup, groups: perfOut(groups), at: Date.now() };
 }
 
 // ───── ② 같은 세력 추적 ─────
@@ -348,6 +356,7 @@ export async function ruleCheck({ force = false, now = Date.now() } = {}) {
   for (const k of ['판 깔기', '매집', '띄우기', '털기', '엑시트 후']) if (G['단계:' + k]) lines.push(fmt(`단계 ${k}`, G['단계:' + k]));
   for (const k of ['상승 가능성', '하락 위험']) if (G['분류:' + k]) lines.push(fmt(`분류 ${k}`, G['분류:' + k]));
   if (G['매매 후보 조건:충족']) lines.push(fmt('🎯 매매 후보 조건 충족', G['매매 후보 조건:충족']));
+  for (const k of ['🟢 매수 검토', '🟡 지켜보기', '🔴 피하기']) if (G['한 줄 결론:' + k]) lines.push(fmt(k, G['한 줄 결론:' + k]));
   for (const k of ['3 이상', '2~3', '2 미만']) if (G['손익비:' + k]) lines.push(fmt(`손익비 ${k}`, G['손익비:' + k]));
   // ⚠ 거꾸로 나온 규칙
   const wv = (g) => g.win20;
@@ -361,6 +370,8 @@ export async function ruleCheck({ force = false, now = Date.now() } = {}) {
     if (ok(dn) && wv(dn) > wv(base) + 5) warns.push(`⚠ '하락 위험'(${wv(dn)}%)이 전체 평균(${wv(base)}%)보다 오히려 많이 오름 — 하락 판단 규칙 점검 필요`);
     for (const k of ['판 깔기', '매집']) { const g = G['단계:' + k]; if (ok(g) && wv(g) < wv(base) - 10) warns.push(`⚠ 단계 '${k}'(${wv(g)}%)가 전체 평균(${wv(base)}%)보다 10%p 넘게 낮음 — 단계 판정 규칙 점검 필요`); }
   }
+  const vg = G['한 줄 결론:🟢 매수 검토'], vr = G['한 줄 결론:🔴 피하기'];
+  if (ok(vg) && ok(vr) && wv(vg) <= wv(vr)) warns.push(`⚠ 🟢 매수 검토(${wv(vg)}%)가 🔴 피하기(${wv(vr)}%)보다 덜 오름 — 한 줄 결론 기준 점검 필요`);
   const r3 = G['손익비:3 이상'], r1 = G['손익비:2 미만'];
   if (ok(r3) && ok(r1) && (r3.avg20 ?? 0) < (r1.avg20 ?? 0)) warns.push(`⚠ 손익비 3 이상(평균 ${r3.avg20}%)이 2 미만(평균 ${r1.avg20}%)보다 수익이 낮음 — 목표·손절 계산 점검 필요`);
   const judged = sum.groups.filter((g) => ok(g)).length;

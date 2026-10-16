@@ -18,7 +18,8 @@ export default async (req) => {
     const ping = await t(() => getJSON('health/ping').then(() => 'ok'));
     const st = await t(() => getJSON('mp/state').then((s) => s && { date: s.date, phase: s.phase, force: s.force, err: s.err || null, tryN: s.tryN || 0, busy: (s.busyUntil || 0) > Date.now(), log: (s.log || []).slice(-6) }));
     const ai = await t(() => getJSON('ai/pause'));
-    return json({ ok: true, at: new Date().toISOString(), dbRead: ping, radar: st, aiPause: ai }, { cdnSeconds: 0, swr: 0 });
+    const runs = await t(() => getJSON('mp/runhist').then((h) => (h || []).slice(0, 7).map((x) => ({ date: x.date, mins: x.mins, done: x.doneKst, err: x.err, force: x.force }))));
+    return json({ ok: true, at: new Date().toISOString(), dbRead: ping, radar: st, radarRuns: runs, aiPause: ai }, { cdnSeconds: 0, swr: 0 });
   }
   const testAI = new URL(req.url).searchParams.get('ai') === '1';
   let aiTest = null;
