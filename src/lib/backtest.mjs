@@ -7,9 +7,9 @@
 import { getJSON, setJSON } from './store.mjs';
 
 const DAY = 86400e3;
-const BT_V = 1;
+const BT_V = 4; // v219: 120거래일·성공/실패 이유 추가 → 처음부터 다시
 const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
-const STEP = 10, BACK = 12; // 10거래일 간격으로 최대 12개 날짜 (약 6개월)
+const STEP = 10, BACK = 16; // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
 export async function btStep({ restart = false, now = Date.now(), max = PER_RUN } = {}) {
   let st = (await getJSON('mp/bt/state')) || null;
@@ -20,14 +20,16 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
     const codes = Object.entries(evm).filter(([, evs]) => evs.some((e) => SET.has(e.kind))).map(([c]) => c).sort().slice(0, 700);
     st = { v: BT_V, queue: codes, pos: 0, started: now, samples: 0, kept: 0, groups: {}, done: false };
     await setJSON('mp/bt/state', st);
+    await setJSON('mp/bt/rows', { v: BT_V, rows: [] }); // 종목별 판정 목록 (그룹 눌러서 보기용)
     if (!codes.length) return { started: true, n: 0 };
   }
   if (st.done) return null;
-  const { perfGroupKeys, perfAdd } = await import('./manipx.mjs');
+  const { perfGroupKeys, perfAdd, pathStats, outcomeWhy } = await import('./manipx.mjs');
   const ixd = await M.indexDaily().catch(() => ({}));
   const idx = (await getJSON('mp/idx')) || [];
   const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows || {} : {};
   const part = st.queue.slice(st.pos, st.pos + max);
+  const newRows = [];
   for (const code of part) {
     try {
       const B = await M._bars(code);
@@ -59,13 +61,15 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
         // 같은 종목·같은 단계가 30일 안에 이어지면 처음 1번만 (성적표 집계와 같은 기준)
         if (prev && prev.st === x.stage && Tms - prev.ms <= 30 * DAY) continue;
         prev = { st: x.stage, ms: Tms };
-        const c0 = B[i].c, rr = (h) => (B[i + h] ? Math.round((B[i + h].c / c0 - 1) * 1000) / 10 : null);
-        const row = { st: x.stage, dir: x.dir?.dir || null, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, pk: M.pickFails(rk).length ? 0 : 1, vd: M.verdictOf(rk)?.c || null, pexl: rk.pex?.lv || null, cm: rk.cm || 0, r5: rr(5), r20: rr(20), r60: rr(60) };
+        const row = { st: x.stage, dir: x.dir?.dir || null, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, pk: M.pickFails(rk).length ? 0 : 1, vd: M.verdictOf(rk)?.c || null, pexl: rk.pex?.lv || null, cm: rk.cm || 0, ...pathStats(B, i, { ix: ixd, mkt, tp: x.dir?.rr?.t, sp: x.dir?.rr?.s, now }) }; // v218: 진입은 다음 날 시가
+        { const w = outcomeWhy(B, i, row, evAll, { ix: ixd, mkt }); if (w) row.wy = w; } // v219 성공·실패 이유
         for (const g of perfGroupKeys(row)) perfAdd(st.groups, g, row);
+        newRows.push({ c: code, n: x.name, d, ...row });
         st.kept++;
       }
     } catch (e) { console.warn('bt', code, e.message); }
   }
+  if (newRows.length) { const R = (await getJSON('mp/bt/rows')) || { v: BT_V, rows: [] }; R.rows = [...(R.rows || []), ...newRows].slice(-6000); await setJSON('mp/bt/rows', R).catch(() => {}); }
   st.pos += part.length; st.at = Date.now();
   if (st.pos >= st.queue.length) { st.done = true; st.doneAt = Date.now(); }
   await setJSON('mp/bt/state', st);
@@ -77,4 +81,11 @@ export async function btSummary() {
   if (!st) return { none: true };
   const { perfOut } = await import('./manipx.mjs');
   return { pos: st.pos, of: st.queue?.length || 0, done: !!st.done, started: st.started, doneAt: st.doneAt || null, samples: st.samples, kept: st.kept, groups: perfOut(st.groups || {}) };
+}
+
+/** 그룹(예: '한 줄 결론:🟢 매수 검토')에 들어간 종목별 판정과 결과 */
+export async function btRows(g, limit = 400) {
+  const { perfGroupKeys } = await import('./manipx.mjs');
+  const R = (await getJSON('mp/bt/rows')) || { rows: [] };
+  return (R.rows || []).filter((r) => perfGroupKeys(r).includes(g)).slice(-limit);
 }

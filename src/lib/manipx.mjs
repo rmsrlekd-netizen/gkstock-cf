@@ -10,19 +10,78 @@ const DAY = 86400e3;
 const kstDate = (ms = Date.now()) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
 
 // ───── ① 성적표 ─────
-async function bars(code) {
-  const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${code}&timeframe=day&count=170&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 9000);
-  if (!r.ok) throw new Error('일봉 HTTP ' + r.status);
-  const xml = await r.text();
-  return [...xml.matchAll(/data="(\d{8})\|[^|]*\|[^|]*\|[^|]*\|([\d.]+)\|/g)].map((m) => ({ d: `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6)}`, c: +m[2] })).filter((x) => x.c > 0);
+async function bars(code) { return (await import('./manip.mjs'))._bars(code); } // v219: 약 1년 2개월치 일봉(시가·고가·저가·거래량 포함) — 120거래일 결과용
+const H = [5, 20, 60, 120]; // v219: 120거래일(약 6개월) 추가
+// v218 성적표 계산 기준 (실제 매매에 가깝게)
+//  · 진입: 판정한 '다음 날 시가' (장 마감 뒤 판정이라 그날 종가엔 못 삼) · 그날 종가 대비 갭도 기록
+//  · N거래일 '안'의 최고(고가)·최저(저가), N거래일째 종가 수익률(수수료·세금 0.25% 뺌)
+//  · 같은 기간 시장(코스피·코스닥) 대비 초과 수익
+//  · +20%와 −10% 중 먼저 닿은 쪽(같은 날이면 손절 먼저)과 +20%까지 걸린 거래일 · 그 종목의 1차 목표가·손절선 중 먼저 닿은 쪽
+//  · 60거래일 전에 거래가 끊기면(정지·상폐) '손절 먼저'로 보수적으로 셈
+export const FT_UP = 20, FT_DN = -10, COST = 0.25;
+// v219 성공·실패 이유: +20%(성공)·−10%(실패) 중 먼저 닿은 날까지 그 사이에 무슨 일이 있었는지 (공시·시장·갭·거래량·흔들기)
+export const WHY_KO = { 'f:conv': '전환청구(물량 출회)', 'f:sell': '최대주주·주요주주 지분 매도', 'f:pledge': '주식 담보·반대매매', 'f:fail': '증자·사채 철회·납입 연기', 'f:risk': '위험 공시(벌점·횡령·감사 등)', 'f:tsell': '자사주 처분', 'f:dil': '추가 증자·CB(희석)', 'f:mkt': '시장 급락(지수 −5%↓)', 'f:gap': '추격 매수(다음 날 +10%↑ 갭)', 'f:shake': '흔들기(손절 뒤 +20% 반등)', 'f:stop': '거래정지·상장폐지', 'f:drift': '뚜렷한 이유 없이 흘러내림',
+  's:news': '재료 공시(계약·MOU·투자)', 's:bonus': '무상증자', 's:setup': '추가 판 깔기 공시', 's:hot': '조회공시·시황 급변', 's:mkt': '시장 상승(지수 +5%↑)', 's:vol': '거래량 폭증(평소 5배↑)', 's:plain': '공시 없이 수급으로 상승' };
+export function outcomeWhy(B, i, ps, evs = [], opt = {}) {
+  if (!ps?.ft || ps.ft === 'n') return null;
+  const win = ps.ft === 'w', out = new Set();
+  let kEnd = Math.min(B.length - 1, i + 60);
+  const entry = B[i + 1]?.o || B[i + 1]?.c; if (!entry) return null;
+  for (let k = i + 1; k <= Math.min(B.length - 1, i + 60); k++) { if (win ? (B[k].h ?? B[k].c) >= entry * 1.2 : (B[k].l ?? B[k].c) <= entry * 0.9) { kEnd = k; break; } }
+  const t0 = Date.parse(B[i].d + 'T15:40:00+09:00'), t1 = Date.parse(B[kEnd].d + 'T23:59:00+09:00');
+  const inW = (evs || []).filter((e) => e.ms > t0 && e.ms <= t1);
+  const has = (...k) => inW.some((e) => k.includes(e.kind));
+  if (win) {
+    if (has('contract', 'invest')) out.add('s:news');
+    if (has('bonus')) out.add('s:bonus');
+    if (has('mna', 'rights3', 'cb', 'fund5', 'purpose', 'refix')) out.add('s:setup');
+    if (has('inquiry')) out.add('s:hot');
+  } else {
+    if (has('conv')) out.add('f:conv');
+    if (has('majsell', 'insider') && inW.some((e) => e.kind === 'majsell')) out.add('f:sell');
+    if (has('pledge')) out.add('f:pledge');
+    if (has('fail')) out.add('f:fail');
+    if (has('risk')) out.add('f:risk');
+    if (has('tsell')) out.add('f:tsell');
+    if (has('rights', 'rights3', 'cb')) out.add('f:dil');
+    if ((ps.gp ?? 0) >= 10) out.add('f:gap');
+    if (ps.stop) out.add('f:stop');
+    if ((ps.u60 ?? 0) >= 20) out.add('f:shake');
+  }
+  if (opt.ix) { let m = 1; for (let k = i + 1; k <= kEnd; k++) { const p = opt.ix[B[k].d]?.[opt.mkt === 'P' ? 'P' : 'Q']; if (p != null) m *= 1 + p / 100; } const ir = (m - 1) * 100; if (win && ir >= 5) out.add('s:mkt'); if (!win && ir <= -5) out.add('f:mkt'); }
+  if (win) { const v20 = B.slice(Math.max(0, i - 19), i + 1).map((b) => b.v || 0); const av = v20.reduce((a, b) => a + b, 0) / (v20.length || 1); if (av && B.slice(i + 1, kEnd + 1).some((b) => (b.v || 0) >= av * 5)) out.add('s:vol'); }
+  if (!out.size) out.add(win ? 's:plain' : 'f:drift');
+  return [...out];
 }
-const H = [5, 20, 60];
+export function pathStats(B, i, opt = {}) {
+  const c0 = B[i]?.c, e0 = B[i + 1];
+  if (!c0 || !e0) return {};
+  const entry = e0.o || e0.c;
+  const out = { gp: Math.round((entry / c0 - 1) * 1000) / 10 };
+  const ixRet = (from, to) => { if (!opt.ix) return null; let m = 1, n = 0; for (let k = from; k <= to; k++) { const p = opt.ix[B[k].d]?.[opt.mkt === 'P' ? 'P' : 'Q']; if (p != null) { m *= 1 + p / 100; n++; } } return n ? (m - 1) * 100 : null; };
+  for (const h of H) {
+    const e = i + h; if (!B[e]) continue;
+    let hi = -Infinity, lo = Infinity;
+    for (let k = i + 1; k <= e; k++) { hi = Math.max(hi, B[k].h ?? B[k].c); lo = Math.min(lo, B[k].l ?? B[k].c); }
+    const r = (B[e].c / entry - 1) * 100 - COST;
+    out['r' + h] = Math.round(r * 10) / 10;
+    out['u' + h] = Math.round((hi / entry - 1) * 1000) / 10; out['d' + h] = Math.round((lo / entry - 1) * 1000) / 10;
+    const ir = ixRet(i + 1, e); if (ir != null) out['x' + h] = Math.round((r - ir) * 10) / 10;
+  }
+  const touch = (up, dn) => { for (let k = i + 1; k < Math.min(B.length, i + 61); k++) { const H1 = B[k].h ?? B[k].c, L1 = B[k].l ?? B[k].c; if (L1 <= dn) return { r: 'l', k }; if (H1 >= up) return { r: 'w', k }; } return null; };
+  const stopped = B.length < i + 61 && opt.now && Date.parse(B[B.length - 1].d) < opt.now - 10 * DAY; // 60일 전에 거래가 끊김
+  const t1 = touch(entry * (1 + FT_UP / 100), entry * (1 + FT_DN / 100));
+  if (t1) { out.ft = t1.r; if (t1.r === 'w') out.ftd = t1.k - i; } else if (B[i + 60]) out.ft = 'n'; else if (stopped) { out.ft = 'l'; out.stop = 1; }
+  if (opt.tp > entry && opt.sp > 0 && opt.sp < entry) { const t2 = touch(opt.tp, opt.sp); if (t2) out.ft2 = t2.r; else if (B[i + 60]) out.ft2 = 'n'; else if (stopped) out.ft2 = 'l'; }
+  return out;
+}
 /** 크론: 판정한 날 이후 5·20·60거래일이 지난 종목의 실제 수익률을 채움 (한 번에 최대 20종목) */
 export async function perfWatch(max = 20) {
   const idx = ((await getJSON('mp/idx')) || []).slice().sort(); // 오래된 날부터
   const today = kstDate();
   const cache = new Map();
   let fetched = 0, filled = 0;
+  const ixd = await (await import('./manip.mjs')).indexDaily().catch(() => null); // 시장 대비 수익률용
   for (const date of idx) {
     if (date >= today) continue;
     const age = (Date.parse(today) - Date.parse(date)) / DAY;
@@ -37,14 +96,14 @@ export async function perfWatch(max = 20) {
     for (const x of doc.list.slice(0, 80)) {
       let row = perf.rows[x.code];
       if (!row) {
-        row = { st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null };
+        row = { n: x.name || null, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
         // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
         try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.vd = M.verdictOf(rk)?.c || null; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
       }
       if (H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
       // 아직 다음 기간(5·20·60거래일)이 안 지났으면 받지 않음 (같은 종목만 계속 받느라 다른 종목·날짜가 밀리던 문제)
       const due = H.some((h) => row['r' + h] === undefined && tdays >= h);
-      if (!due && age <= 120) { pending++; perf.rows[x.code] = row; continue; }
+      if (!due && age <= 200) { pending++; perf.rows[x.code] = row; continue; }
       if (fetched >= max && !cache.has(x.code)) { pending++; continue; }
       let B = cache.get(x.code);
       if (!B) { try { B = await bars(x.code); } catch { B = null; } cache.set(x.code, B); fetched++; }
@@ -52,8 +111,11 @@ export async function perfWatch(max = 20) {
       let i = -1; for (let k = 0; k < B.length; k++) if (B[k].d <= date) i = k;
       if (i < 0) { for (const h of H) row['r' + h] = null; perf.rows[x.code] = row; continue; } // 일봉 범위 밖
       row.c0 = B[i].c;
-      for (const h of H) if (row['r' + h] === undefined && B[i + h]) { row['r' + h] = Math.round((B[i + h].c / B[i].c - 1) * 1000) / 10; filled++; }
-      if (age > 120) for (const h of H) if (row['r' + h] === undefined) row['r' + h] = null; // 너무 오래돼 일봉에 없음
+      { const ps = pathStats(B, i, { ix: ixd, mkt: x.mkt, tp: row.tp, sp: row.sp, now: Date.now() }); // v218: 다음 날 시가 진입·기간 중 최고/최저·시장 대비·먼저 닿은 쪽
+        for (const h of H) if (row['r' + h] === undefined && ps['r' + h] != null) filled++;
+        for (const [k, v] of Object.entries(ps)) if (!/^r\d/.test(k) || row[k] === undefined) row[k] = v;
+        if (row.ft && row.ft !== 'n' && !row.wy) { try { const M = await import('./manip.mjs'); const evs = await M._eventsOf(x.code, Date.now()); row.wy = outcomeWhy(B, i, row, evs, { ix: ixd, mkt: x.mkt }); } catch {} } } // v219 성공·실패 이유
+      if (age > 200) for (const h of H) if (row['r' + h] === undefined) row['r' + h] = null; // 너무 오래돼 일봉에 없음
       if (H.some((h) => row['r' + h] === undefined)) pending++;
       perf.rows[x.code] = row;
     }
@@ -83,11 +145,26 @@ export function perfGroupKeys(row) {
 export function perfAdd(groups, g, row) {
   const o = (groups[g] ||= { n: 0 });
   o.n++;
+  for (const h of H) { const u = row['u' + h], dd = row['d' + h]; if (u != null && dd != null) { o['pn' + h] = (o['pn' + h] || 0) + 1; o['su' + h] = (o['su' + h] || 0) + u; o['sd' + h] = (o['sd' + h] || 0) + dd; if (u >= 20) o['hu' + h] = (o['hu' + h] || 0) + 1; if (dd <= -15) o['hd' + h] = (o['hd' + h] || 0) + 1; } }
+  if (row.ft) { o.ftn = (o.ftn || 0) + 1; if (row.ft === 'w') { o.ftw = (o.ftw || 0) + 1; if (row.ftd) o.ftds = (o.ftds || 0) + row.ftd; } if (row.ft === 'l') o.ftl = (o.ftl || 0) + 1; if (row.stop) o.stp = (o.stp || 0) + 1; }
+  if (row.ft2) { o.f2n = (o.f2n || 0) + 1; if (row.ft2 === 'w') o.f2w = (o.f2w || 0) + 1; if (row.ft2 === 'l') o.f2l = (o.f2l || 0) + 1; }
+  if (row.gp != null) { o.gpn = (o.gpn || 0) + 1; o.gps = (o.gps || 0) + row.gp; }
+  if (row.wy?.length) { const W = (o.wy ||= {}); for (const k of row.wy) W[k] = (W[k] || 0) + 1; }
+  for (const h of [20, 60, 120]) for (const [K, f] of [['R', 'r'], ['U', 'u'], ['X', 'x']]) { const v = row[f + h]; if (v != null) { const a = (o[K + h] ||= []); if (a.length < 4000) a.push(v); } } // 중앙값용
+  for (const h of H) if (row['x' + h] != null) { o['xn' + h] = (o['xn' + h] || 0) + 1; o['xs' + h] = (o['xs' + h] || 0) + row['x' + h]; }
   for (const h of H) { const v = row['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; if (v >= 20) o['b' + h] = (o['b' + h] || 0) + 1; if (v <= -20) o['l' + h] = (o['l' + h] || 0) + 1; }
 }
 export function perfOut(groups) {
   return Object.entries(groups).map(([g, o]) => {
     const r = { g, n: o.n };
+    for (const h of H) if (o['pn' + h]) { r['up' + h] = Math.round((o['su' + h] / o['pn' + h]) * 10) / 10; r['dn' + h] = Math.round((o['sd' + h] / o['pn' + h]) * 10) / 10; r['hu' + h] = Math.round(((o['hu' + h] || 0) / o['pn' + h]) * 100); r['hd' + h] = Math.round(((o['hd' + h] || 0) / o['pn' + h]) * 100); }
+    if (o.ftn) { r.ftn = o.ftn; r.ftw = Math.round(((o.ftw || 0) / o.ftn) * 100); r.ftl = Math.round(((o.ftl || 0) / o.ftn) * 100); r.ftd = o.ftw ? Math.round((o.ftds || 0) / o.ftw) : null; r.stp = o.stp || 0; }
+    if (o.f2n) { r.f2n = o.f2n; r.f2w = Math.round(((o.f2w || 0) / o.f2n) * 100); r.f2l = Math.round(((o.f2l || 0) / o.f2n) * 100); }
+    if (o.gpn) r.gap = Math.round((o.gps / o.gpn) * 10) / 10;
+    if (o.wy) { const top = (pre, n) => Object.entries(o.wy).filter(([k]) => k.startsWith(pre)).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, c]) => [k, n ? Math.round((c / n) * 100) : 0]); r.whyW = top('s:', o.ftw || 0); r.whyL = top('f:', o.ftl || 0); }
+    const med = (a) => { if (!a?.length) return null; const b = [...a].sort((x, y) => x - y), m = b.length >> 1; return Math.round((b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2) * 10) / 10; };
+    for (const h of [20, 60, 120]) { r['mr' + h] = med(o['R' + h]); r['mu' + h] = med(o['U' + h]); r['mx' + h] = med(o['X' + h]); }
+    for (const h of H) if (o['xn' + h]) r['ax' + h] = Math.round((o['xs' + h] / o['xn' + h]) * 10) / 10;
     for (const h of H) if (o['n' + h]) { r['n' + h] = o['n' + h]; r['avg' + h] = Math.round((o['s' + h] / o['n' + h]) * 10) / 10; r['win' + h] = Math.round(((o['w' + h] || 0) / o['n' + h]) * 100); r['big' + h] = Math.round(((o['b' + h] || 0) / o['n' + h]) * 100); r['loss' + h] = Math.round(((o['l' + h] || 0) / o['n' + h]) * 100); }
     return r;
   });
@@ -347,7 +424,7 @@ export async function ruleCheck({ force = false, now = Date.now() } = {}) {
   const sum = await perfSummary();
   const G = Object.fromEntries(sum.groups.map((g) => [g.g, g]));
   const ok = (g) => g && (g.n20 || 0) >= RULE_MIN;
-  const fmt = (name, g) => (g?.n20 ? `${name}: 20일 뒤 오른 비율 ${g.win20}% · 평균 ${g.avg20 > 0 ? '+' : ''}${g.avg20}% (${g.n20}건)${ok(g) ? '' : ' — 아직 판단 이름'}` : `${name}: 결과 없음`);
+  const fmt = (name, g) => (g?.n20 ? `${name}: ${g.ftn ? `+20% 먼저 ${g.ftw}% · −10% 먼저 ${g.ftl}% · ` : ''}20일 안 최고 평균 ${g.up20 != null ? (g.up20 > 0 ? '+' : '') + g.up20 + '%' : '-'} · 20일째 오른 비율 ${g.win20}% (${g.n20}건)${ok(g) ? '' : ' — 아직 판단 이름'}` : `${name}: 결과 없음`);
   const base = G['전체'];
   const lines = [], warns = [];
   lines.push(`기록 ${sum.days}일치 · 집계 ${(sum.raw || 0) - (sum.dup || 0)}건 (같은 종목 반복 ${sum.dup || 0}건 제외)`);
@@ -358,6 +435,7 @@ export async function ruleCheck({ force = false, now = Date.now() } = {}) {
   if (G['매매 후보 조건:충족']) lines.push(fmt('🎯 매매 후보 조건 충족', G['매매 후보 조건:충족']));
   for (const k of ['🟢 매수 검토', '🟡 지켜보기', '🔴 피하기']) if (G['한 줄 결론:' + k]) lines.push(fmt(k, G['한 줄 결론:' + k]));
   for (const k of ['3 이상', '2~3', '2 미만']) if (G['손익비:' + k]) lines.push(fmt(`손익비 ${k}`, G['손익비:' + k]));
+  { const gg = G['한 줄 결론:🟢 매수 검토'] || G['전체']; const t = (L) => (L || []).map(([k, p]) => `${WHY_KO[k] || k} ${p}%`).join(' · '); if (gg?.whyL?.length) lines.push(`${G['한 줄 결론:🟢 매수 검토'] ? '🟢' : '전체'} 실패 이유: ${t(gg.whyL)}`); if (gg?.whyW?.length) lines.push(`${G['한 줄 결론:🟢 매수 검토'] ? '🟢' : '전체'} 성공 이유: ${t(gg.whyW)}`); }
   // ⚠ 거꾸로 나온 규칙
   const wv = (g) => g.win20;
   const order = ['A', 'B', 'C', 'D'].map((k) => [k, G['체크리스트:' + k + '등급']]).filter(([, g]) => ok(g));
@@ -379,4 +457,22 @@ export async function ruleCheck({ force = false, now = Date.now() } = {}) {
   st.month = month; st.at = now; st.warns = warns.length; await setJSON('mp/rulechk', st);
   await radarAlert([...lines, ...tail].filter((t) => t !== undefined), [], { force: true, title: `📊 ${month} 월간 규칙 점검 (관리자 전용)` });
   return { lines: lines.length, warns: warns.length };
+}
+
+/** 실제 성적표에서 그룹에 들어간 종목별 판정과 결과 (집계와 같은 중복 제외) */
+export async function perfRows(g, limit = 400) {
+  const idx = (await getJSON('mp/idx')) || [];
+  const last = new Map(), out = [];
+  for (const d of idx.slice().sort()) {
+    const perf = await getJSON(`mp/perf/${d}`);
+    if (!perf?.rows) continue;
+    const dMs = Date.parse(d);
+    for (const [code, row] of Object.entries(perf.rows)) {
+      const k = `${code}|${row.st || '-'}`, prevMs = last.get(k);
+      last.set(k, dMs);
+      if (prevMs != null && dMs - prevMs <= 30 * DAY) continue;
+      if (perfGroupKeys(row).includes(g)) out.push({ c: code, d, ...row });
+    }
+  }
+  return out.slice(-limit);
 }

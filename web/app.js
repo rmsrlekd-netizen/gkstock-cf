@@ -3543,12 +3543,46 @@
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · +20%↑ ${r['big' + h]}% · −20%↓ ${r['loss' + h]}% · ${r['n' + h]}건</small></td>` : '<td class="muted">아직</td>');
     $('#mpBody').innerHTML = `<p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
       ${ckRows ? `<h4 style="margin:.8rem 0 .3rem">✅ 체크리스트 항목별 20거래일 뒤 오른 비율 <small class="muted">충족(✓)한 종목 vs 아닌(✗) 종목 · 차이가 클수록 등급 계산에서 그 항목의 중요도가 자동으로 커져요</small></h4><div class="mp-perf"><table class="tbl"><tr><th>항목</th><th>✓ 충족</th><th>✗ 미충족</th><th>차이</th></tr>${ckRows}</table></div>` : ''}
-      ${g.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분</th><th>5거래일 뒤</th><th>20거래일 뒤</th><th>60거래일 뒤</th></tr>${g.map((r) => `<tr><td class="t"><b>${esc(r.g.replace(/^[^:]+:/, ''))}</b><small>${esc(r.g.includes(':') ? r.g.split(':')[0] : '레이더 전체')}</small></td>${cell(r, 5)}${cell(r, 20)}${cell(r, 60)}</tr>`).join('')}</table></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
+      ${g.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분 (누르면 종목)</th><th>먼저 닿은 쪽 (60일 안)</th><th>5거래일 안</th><th>20거래일 안</th><th>60거래일 안</th><th>120거래일 안</th></tr>${g.map((r) => `<tr>${grpName(r, 'perf', '레이더 전체')}${ftCell(r)}${perfCell(r, 5)}${perfCell(r, 20)}${perfCell(r, 60)}${perfCell(r, 120)}</tr>`).join('')}</table></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
       <div id="btBox"></div>
       <p class="note">📊 <b>월간 규칙 점검</b> — 매달 1일 아침 관리자 텔레그램으로 그룹별 승률과 ⚠ 거꾸로 나온 규칙을 보내요 (표본 30건 미만은 '아직 판단 이름'). <button class="btn sm" data-mp-rulechk>지금 한 번 받기</button> <span class="muted sm" data-mp-rulechk-msg></span></p>
       <p class="note">수집 상태 · 거래소 시장경보·관리종목·거래정지: ${j.warn ? `${j.warn.at ? `${j.warn.n || 0}종목 · ${esc(rel(j.warn.at))}` : '첫 확인 중'}${j.warn.src === 'KIS' ? ' (한국투자증권 기준)' : ''}${j.warn.scan && j.warn.scan.pos < j.warn.scan.of ? ` · 오늘 확인 ${j.warn.scan.pos}/${j.warn.scan.of}` : ''}${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
     loadBt();
   }
+  // v218 성적표 칸: 진입 = 판정 다음 날 시가 · 기간 안 최고/최저(중앙값·평균) · N일째 종가(수수료 뺌)·시장 대비 · 먼저 닿은 쪽
+  const sgn = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${v}%`);
+  const WHY_KO = { 'f:conv': '전환청구(물량)', 'f:sell': '대주주 지분 매도', 'f:pledge': '담보·반대매매', 'f:fail': '증자·사채 철회·연기', 'f:risk': '위험 공시', 'f:tsell': '자사주 처분', 'f:dil': '추가 증자·CB', 'f:mkt': '시장 급락', 'f:gap': '추격 매수(갭 +10%↑)', 'f:shake': '흔들기(손절 뒤 반등)', 'f:stop': '거래정지·상폐', 'f:drift': '이유 없이 흘러내림', 's:news': '재료 공시', 's:bonus': '무상증자', 's:setup': '추가 판 깔기', 's:hot': '조회공시·시황 급변', 's:mkt': '시장 상승', 's:vol': '거래량 폭증', 's:plain': '공시 없이 수급' };
+  const whyTxt = (L) => (L || []).map(([k, p]) => `${WHY_KO[k] || k} ${p}%`).join(' · ');
+  function perfCell(r, h) {
+    if (!r['n' + h]) return '<td class="muted">아직</td>';
+    const mu = r['mu' + h], up = r['up' + h];
+    return `<td><b class="${dirCls(mu ?? up ?? r['avg' + h])}">${up != null ? `최고 ${mu != null ? `중앙 ${sgn(mu)}` : sgn(up)}` : sgn(r['avg' + h])}</b><small>${up != null ? `기간 안 최고 평균 ${sgn(up)} · +20% 찍음 <b>${r['hu' + h]}%</b><br>최저 평균 ${sgn(r['dn' + h])} · −15% 찍음 ${r['hd' + h]}%<br>` : ''}${h}일째 ${r['mr' + h] != null ? `중앙 ${sgn(r['mr' + h])} · ` : ''}평균 ${sgn(r['avg' + h])}${r['ax' + h] != null ? ` · 시장 대비 ${sgn(r['ax' + h])}` : ''} · ${r['n' + h]}건${r['n' + h] < 30 ? ' (적음)' : ''}</small></td>`;
+  }
+  function ftCell(r) {
+    if (!r.ftn) return '<td class="muted">아직</td>';
+    return `<td><b class="${r.ftw >= r.ftl ? 'up' : 'down'}">${r.ftw}% : ${r.ftl}%</b><small>+20% 먼저 : −10% 먼저 · ${r.ftn}건${r.ftn < 30 ? ' (적음)' : ''}${r.ftd ? ` · +20%까지 평균 ${r.ftd}거래일` : ''}${r.stp ? ` · 거래 끊김 ${r.stp}건(손절로 셈)` : ''}${r.f2n ? `<br>종목별 1차 목표 먼저 ${r.f2w}% : 손절선 먼저 ${r.f2l}% (${r.f2n}건)` : ''}${r.gap != null ? `<br>다음 날 시가 갭 평균 ${sgn(r.gap)}` : ''}${r.whyW?.length ? `<br><span class="up">성공 이유</span> ${esc(whyTxt(r.whyW))}` : ''}${r.whyL?.length ? `<br><span class="down">실패 이유</span> ${esc(whyTxt(r.whyL))}` : ''}</small></td>`;
+  }
+  const grpName = (r, src, dflt) => `<td class="t"><button class="pg-open" data-pg="${esc(r.g)}" data-src="${src}" title="이 구분에 들어간 종목 보기"><b>${esc(r.g.replace(/^[^:]+:/, ''))}</b><small>${esc(r.g.includes(':') ? r.g.split(':')[0] : dflt)} · 종목 보기 ▾</small></button></td>`;
+  const VDK = { g: '🟢', y: '🟡', r: '🔴' };
+  function grpRowsHTML(rows, sort) {
+    const key = { up: (x) => -(x.u20 ?? x.u5 ?? -999), down: (x) => (x.d20 ?? x.d5 ?? 999), new: (x) => -Date.parse(x.d) }[sort] || ((x) => -(x.u20 ?? -999));
+    const L = [...rows].sort((a, b) => key(a) - key(b));
+    const ft = (x) => (x.ft === 'w' ? '<b class="up">+20% 먼저</b>' : x.ft === 'l' ? `<b class="down">−10% 먼저${x.stop ? '(거래 끊김)' : ''}</b>` : x.ft === 'n' ? '둘 다 안 닿음' : '<span class="muted">진행 중</span>');
+    return `<div class="pg-sort">정렬 <button data-pg-sort="up" class="${sort === 'up' ? 'on' : ''}">20일 안 최고 높은 순</button><button data-pg-sort="down" class="${sort === 'down' ? 'on' : ''}">최저 낮은 순</button><button data-pg-sort="new" class="${sort === 'new' ? 'on' : ''}">최근 판정 순</button> <span class="muted sm">${L.length}건 · 진입 = 판정 다음 날 시가</span></div>
+      <div class="pg-wrap"><table class="tbl pg-tbl"><tr><th>종목</th><th>판정일</th><th>판정</th><th>갭</th><th>20일 안 최고 / 최저</th><th>20일째 (시장 대비)</th><th>먼저 닿은 쪽 · 이유</th><th>60일 안 최고</th><th>120일 안 최고</th></tr>
+      ${L.map((x) => `<tr><td><span class="ca-co" data-mp-go="${esc(x.c)}"><b>${esc(x.n || x.c)}</b></span></td><td>${esc(x.d)}</td><td class="sm">${x.vd ? VDK[x.vd] + ' ' : ''}${esc(x.st || '')}${x.ck ? ' · ' + esc(x.ck) : ''}${x.rr != null ? ' · 1:' + x.rr : ''}</td><td class="${dirCls(x.gp)}">${sgn(x.gp)}</td><td><b class="up">${sgn(x.u20 ?? x.u5)}</b> / <span class="down">${sgn(x.d20 ?? x.d5)}</span></td><td class="${dirCls(x.r20)}">${sgn(x.r20)}${x.x20 != null ? ` <small class="muted">(${sgn(x.x20)})</small>` : ''}</td><td class="sm">${ft(x)}${x.ft2 ? `<br><small>${x.ft2 === 'w' ? '목표가 먼저' : x.ft2 === 'l' ? '손절선 먼저' : '목표·손절 둘 다 안 닿음'}</small>` : ''}${x.wy?.length ? `<br><small class="${x.ft === 'w' ? 'up' : 'down'}">${esc(x.wy.map((k) => WHY_KO[k] || k).join(' · '))}</small>` : ''}</td><td class="${dirCls(x.u60)}">${sgn(x.u60)}</td><td class="${dirCls(x.u120)}">${sgn(x.u120)}</td></tr>`).join('')}</table></div>`;
+  }
+  const pgCache = new Map();
+  document.addEventListener('click', async (ev) => {
+    const sb = ev.target.closest?.('[data-pg-sort]');
+    if (sb) { const tr = sb.closest('tr.pg-rows'); const k = tr?.dataset.k; if (k && pgCache.has(k)) tr.querySelector('td').innerHTML = grpRowsHTML(pgCache.get(k), sb.dataset.pgSort); return; }
+    const b = ev.target.closest?.('[data-pg]'); if (!b) return;
+    const tr = b.closest('tr'); const k = `${b.dataset.src}|${b.dataset.pg}`;
+    const nx = tr.nextElementSibling; if (nx?.classList.contains('pg-rows')) { nx.remove(); return; }
+    const row = document.createElement('tr'); row.className = 'pg-rows'; row.dataset.k = k; row.innerHTML = `<td colspan="6"><div class="loading"><span class="spin"></span>종목 불러오는 중…</div></td>`; tr.after(row);
+    try { if (!pgCache.has(k)) { const j = await mpGet(`mp=grows&src=${encodeURIComponent(b.dataset.src)}&g=${encodeURIComponent(b.dataset.pg)}`); pgCache.set(k, j.rows || []); } row.querySelector('td').innerHTML = pgCache.get(k).length ? grpRowsHTML(pgCache.get(k), 'up') : '<p class="muted sm">아직 종목 기록이 없어요</p>'; }
+    catch (e) { row.querySelector('td').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  });
   // 🧪 과거 재현 백테스트 (성적표 탭 안)
   async function loadBt() {
     const box = $('#btBox'); if (!box) return;
@@ -3558,9 +3592,9 @@
     const ord = ['전체', '한 줄 결론:🟢 매수 검토', '한 줄 결론:🟡 지켜보기', '한 줄 결론:🔴 피하기', '매매 후보 조건:충족', '매매 후보 조건:미충족', '체크리스트:A등급', '체크리스트:B등급', '체크리스트:C등급', '체크리스트:D등급', '분류:상승 가능성', '분류:하락 위험', '분류:분류 없음', '단계:판 깔기', '단계:매집', '단계:띄우기', '단계:털기', '단계:엑시트 후', '단계:관찰', '손익비:3 이상', '손익비:2~3', '손익비:2 미만'];
     const rows = (j.groups || []).filter((r) => ord.includes(r.g)).sort((a, c) => ord.indexOf(a.g) - ord.indexOf(c.g));
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · ${r['n' + h]}건${r['n' + h] < 30 ? ' (적음)' : ''}</small></td>` : '<td class="muted">—</td>');
-    b.innerHTML = `<h4 style="margin:1rem 0 .3rem">🧪 과거 재현(백테스트) <small class="muted">참고용 · 지난 6개월 동안 '그날 지금 규칙이었다면' 판정 → 실제 5·20·60거래일 뒤 결과 · ${j.done ? `완료 (${esc(rel(j.doneAt))})` : `계산 중 ${fmtInt(j.pos)}/${fmtInt(j.of)}종목`} · 판정 ${fmtInt(j.kept)}건</small> <button class="btn sm" data-bt-run>처음부터 다시</button></h4>
+    b.innerHTML = `<h4 style="margin:1rem 0 .3rem">🧪 과거 재현(백테스트) <small class="muted">참고용 · 지난 약 8개월 동안 '그날 지금 규칙이었다면' 판정 → 실제 5·20·60거래일 뒤 결과 · ${j.done ? `완료 (${esc(rel(j.doneAt))})` : `계산 중 ${fmtInt(j.pos)}/${fmtInt(j.of)}종목`} · 판정 ${fmtInt(j.kept)}건</small> <button class="btn sm" data-bt-run>처음부터 다시</button></h4>
       <p class="muted sm">한계: AI 판단·지분·신용·거래원·재무 같은 바깥 자료는 그날 기준으로 재현 못 해서 빠져요 · 시가총액 순위 모름 · 공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임 · 대상은 최근 6개월 판 깔기 공시가 있던 종목</p>
-      ${rows.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분</th><th>5거래일 뒤</th><th>20거래일 뒤</th><th>60거래일 뒤</th></tr>${rows.map((r) => `<tr><td class="t"><b>${esc(r.g.replace(/^[^:]+:/, ''))}</b><small>${esc(r.g.includes(':') ? r.g.split(':')[0] : '전체')}</small></td>${cell(r, 5)}${cell(r, 20)}${cell(r, 60)}</tr>`).join('')}</table></div>` : '<p class="muted sm">아직 결과 없음</p>'}`;
+      ${rows.length ? `<div class="mp-perf"><table class="tbl"><tr><th>구분 (누르면 종목)</th><th>먼저 닿은 쪽 (60일 안)</th><th>5거래일 안</th><th>20거래일 안</th><th>60거래일 안</th><th>120거래일 안</th></tr>${rows.map((r) => `<tr>${grpName(r, 'bt', '전체')}${ftCell(r)}${perfCell(r, 5)}${perfCell(r, 20)}${perfCell(r, 60)}${perfCell(r, 120)}</tr>`).join('')}</table></div>` : '<p class="muted sm">아직 결과 없음</p>'}`;
   }
   document.addEventListener('click', async (ev) => {
     const br = ev.target.closest?.('[data-bt-run]'); if (!br) return;
