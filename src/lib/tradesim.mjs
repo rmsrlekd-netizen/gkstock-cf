@@ -549,15 +549,16 @@ export async function simSummary() {
   const { getJSON, setJSON } = await import('./store.mjs');
   const [tl, tr, bt, bfw, cache] = await Promise.all([getJSON('mp/sim/tl'), getJSON('mp/sim/tr'), getJSON('mp/bt/trades'), getJSON('mp/bt/fw'), getJSON('mp/sim/sum')]);
   const { RULE_V } = await import('./manip.mjs');
-  const key = `${SIM_V}|${RULE_V}|${tr?.at || 0}|${bt?.at || 0}|${bfw?.at || 0}`;
+  const key = `${SIM_V}|${RULE_V}|${tr?.at || 0}|${bt?.at || 0}|${bfw?.at || 0}|big1`;
   if (cache?.key === key) return cache.out;
-  const L = Object.values(tr?.codes || {}).flatMap((z) => (z.t || []).map(unpack));
-  const BT = (bt?.t || []).map(unpack);
+  const big = await bigCaps();
+  const L = Object.values(tr?.codes || {}).flatMap((z) => (z.t || []).map(unpack)).filter((t) => !big.has(t.c));
+  const BT = (bt?.t || []).map(unpack).filter((t) => !big.has(t.c));
   const nfL = nfSum(Object.values(tr?.codes || {}).map((z) => z.nf));
   // 점수 검증용 점: 실제 기록(판정 기록의 숫자 + 그 뒤 수익률) · 과거 재현
   const ptsL = [];
-  for (const [c, z] of Object.entries(tl?.codes || {})) { const fw = new Map((tr?.codes?.[c]?.fw || []).map((r) => [r[0], r.slice(1)])); for (const p of z.p) { const x = fw.get(p[0]); if (x) ptsL.push({ di: p[0], v: p[6] || {}, x }); } }
-  const ptsB = (bfw?.r || []).map((r) => ({ di: r[0], v: { s: r[1], ws: r[2], rr: r[3], gp: r[4] }, x: [r[5], r[6], r[7]] }));
+  for (const [c, z] of Object.entries(tl?.codes || {})) { if (big.has(c)) continue; const fw = new Map((tr?.codes?.[c]?.fw || []).map((r) => [r[0], r.slice(1)])); for (const p of z.p) { const x = fw.get(p[0]); if (x) ptsL.push({ di: p[0], v: p[6] || {}, x }); } }
+  const ptsB = (bfw?.r || []).filter((r) => !r[8] || !big.has(r[8])).map((r) => ({ di: r[0], v: { s: r[1], ws: r[2], rr: r[3], gp: r[4] }, x: [r[5], r[6], r[7]] }));
   const now = L.filter((t) => t.rv === RULE_V);
   const out = {
     rv: RULE_V,
@@ -577,6 +578,7 @@ export async function simRows(src, s, limit = 500) {
   const { getJSON } = await import('./store.mjs');
   let L = src === 'bt' ? ((await getJSON('mp/bt/trades'))?.t || []).map(unpack) : Object.values((await getJSON('mp/sim/tr'))?.codes || {}).flatMap((z) => (z.t || []).map(unpack));
   if (src === 'now') { const { RULE_V } = await import('./manip.mjs'); L = L.filter((t) => t.rv === RULE_V); }
+  { const big = await bigCaps(); L = L.filter((t) => !big.has(t.c)); }
   const [ai, gai] = await Promise.all([getJSON('mp/sim/ai'), getJSON('mp/sim/gai')]);
   const p = src === 'bt' ? 'b' : 'l';
   const rows = L.filter((t) => t.s === s).sort((a, b) => (a.d < b.d ? 1 : -1)).slice(0, limit).map(({ g, ...t }) => ({ ...t, ai: ai?.m?.[`${p}|${t.c}|${t.d}`]?.t || null }));
@@ -634,4 +636,20 @@ export async function fixNames(rows, ck = 'c', nk = 'n') {
   if (!need.length) return rows;
   const m = await namesOf(need);
   return rows.map((r) => (!r[nk] || r[nk] === r[ck]) && m[r[ck]] ? { ...r, [nk]: m[r[ck]] } : r);
+}
+
+// v222 대형주(시가총액 상위 10%)는 세력주 성적에서 뺌 — 레이더도 대형주는 '작전 해석 약함'·후보 제외인데 성적에는 섞여 있었음 (GK 지적)
+//  기준: 가장 최근 전 종목 시세 목록(mp/snap)의 시가총액 순위 (지난 날짜도 지금 순위로 판단 — 근사)
+let _big = null, _bigAt = 0;
+export async function bigCaps() {
+  if (_big && Date.now() - _bigAt < 30 * 60e3) return _big;
+  const { getJSON } = await import('./store.mjs');
+  const idx = (await getJSON('mp/idx')) || [];
+  let snap = null; for (const d of idx.slice(0, 5)) { snap = (await getJSON(`mp/snap/${d}`))?.rows; if (snap) break; }
+  const caps = Object.entries(snap || {}).filter(([, r]) => r?.[6] > 0).sort((a, b) => a[1][6] - b[1][6]);
+  const out = new Set(); const pct = {};
+  caps.forEach(([c], i) => { const p = caps.length > 1 ? i / (caps.length - 1) : 0.5; pct[c] = p; if (p >= 0.9) out.add(c); });
+  out.pct = pct;
+  _big = out; _bigAt = Date.now();
+  return out;
 }
