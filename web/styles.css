@@ -2359,3 +2359,20 @@ body.pbm-open{overflow:hidden}
   .sx-row{grid-template-columns:auto 1fr}.sx-row .sx-big{display:flex;grid-column:1;grid-row:2}.sx-row .sx-mid{grid-column:2;grid-row:2}.sx-row .sx-vd{grid-column:1/-1;grid-row:3;flex-direction:row;align-items:center;gap:.5rem}
   .sx-tiles{grid-template-columns:1fr 1fr}.sx-eq{flex-direction:column;align-items:stretch}.sim-spark{width:100%}}
 @media (max-width:720px){.sx-tr1 .sx-co{flex-basis:100%}.sx-tr1 .sx-res{align-items:flex-start;flex:1}}
+/* v222 성적표 3탭 · 기관식 검증 */
+.pf-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:.2rem 0 .8rem}.pf-tabs button{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:inherit;border-radius:999px;padding:.45rem .95rem;font:inherit;font-weight:700;font-size:.9rem;cursor:pointer}
+.pf-tabs button.on{background:#4c3fb5;border-color:#6d5fe0}
+.sx-pct{font-size:.85rem}.sx-pct b{font-size:1.05rem;margin-right:.15rem}
+.in-card{padding:.7rem .8rem;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);margin-bottom:8px}
+.in-h{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.5rem}.in-h b{font-size:.98rem}.in-pass{margin-left:auto;font-size:.8rem;color:var(--muted,#9aa3c0)}.in-pass b{color:#e5e7eb}
+.in-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}.in-c{display:flex;flex-direction:column;padding:.45rem .55rem;border-radius:8px;background:rgba(255,255,255,.04)}
+.in-c em{font-style:normal;font-size:.7rem;color:var(--muted,#9aa3c0)}.in-c b{font-size:.98rem;margin:.1rem 0}.in-c small{font-size:.66rem;color:var(--muted,#9aa3c0)}
+@media (max-width:720px){.in-grid{grid-template-columns:1fr 1fr}.pf-tabs button{padding:.4rem .7rem;font-size:.84rem}}
+/* v222 성과검증 종목 검색 */
+.sf-form{display:flex;gap:8px;margin:.2rem 0 .8rem}.sf-in{flex:1;min-width:0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:.6rem .8rem;color:inherit;font:inherit}
+.sf-list{display:flex;flex-direction:column;gap:6px}.sf-m{display:flex;align-items:center;gap:.6rem;text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.55rem .7rem;color:inherit;cursor:pointer}
+.sf-m span{display:flex;flex-direction:column}.sf-m small{color:var(--muted,#9aa3c0);font-size:.72rem}
+.sf-head{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;padding:.6rem .7rem;border-radius:12px;background:rgba(255,255,255,.04);margin-bottom:.4rem}.sf-head b{font-size:1.05rem}
+.sf-d{flex:1;font-size:.88rem}.sf-sig{display:flex;flex-wrap:wrap;gap:4px;margin:.35rem 0}.sf-chip{font-size:.7rem;padding:.1rem .45rem;border-radius:999px;background:rgba(124,58,237,.18);color:#d8ccff}
+.sf-pks{display:flex;flex-wrap:wrap;gap:.4rem .9rem;font-size:.78rem;align-items:center}.sf-pk small{color:var(--muted,#9aa3c0)}
+.sf-judg{display:flex;flex-wrap:wrap;gap:5px;margin-top:.4rem}.sf-j{font-size:.72rem;padding:.2rem .45rem;border-radius:6px;background:rgba(255,255,255,.05)}.sf-j.bad{background:rgba(96,165,250,.15)}

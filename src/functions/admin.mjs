@@ -44,6 +44,7 @@ export default async (req) => {
       if (mp === 'rank') { const list = await m.manipRank(u.searchParams.get('kind') || 'all'); return J({ ok: true, list, pat: list.pat || null, state: await m.manipState() }); }
       if (mp === 'sim') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simSummary()) }); } // v222 매매 따라하기 성적
       if (mp === 'simrows') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simRows(u.searchParams.get('src') || 'live', u.searchParams.get('s') || 'g')) }); }
+      if (mp === 'simstock') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simStock(u.searchParams.get('q') || '')) }); } // v222 성과검증 종목 검색
       if (mp === 'simrun') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...((await t.simStep({ maxCodes: 4, budgetMs: 20000 })) || {}) }); }
       if (mp === 'bt') { const b = await import('../lib/backtest.mjs'); return J({ ok: true, ...(await b.btSummary()) }); } // 과거 재현 백테스트 결과
       if (mp === 'grows') { const g = u.searchParams.get('g') || '전체'; const rows = u.searchParams.get('src') === 'perf' ? await (await import('../lib/manipx.mjs')).perfRows(g) : await (await import('../lib/backtest.mjs')).btRows(g); return J({ ok: true, g, rows }); } // 그룹별 종목 목록

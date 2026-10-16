@@ -582,3 +582,28 @@ export async function simRows(src, s, limit = 500) {
   const rows = L.filter((t) => t.s === s).sort((a, b) => (a.d < b.d ? 1 : -1)).slice(0, limit).map(({ g, ...t }) => ({ ...t, ai: ai?.m?.[`${p}|${t.c}|${t.d}`]?.t || null }));
   return { rows, gai: gai?.m?.[`${p}|${s}`]?.t || null };
 }
+
+/** v222 🔎 성과검증 종목 검색: 이름·코드로 그 종목의 따라 샀다면 기록(실제·과거 재현)·판정 기록·AI 해설 */
+export async function simStock(q) {
+  const { getJSON } = await import('./store.mjs');
+  const [tl, tr, bt, ai] = await Promise.all([getJSON('mp/sim/tl'), getJSON('mp/sim/tr'), getJSON('mp/bt/trades'), getJSON('mp/sim/ai')]);
+  const names = new Map();
+  for (const [c, z] of Object.entries(tl?.codes || {})) names.set(c, z.n || names.get(c) || c);
+  const btBy = new Map();
+  for (const a of bt?.t || []) { const t = unpack(a); if (!btBy.has(t.c)) btBy.set(t.c, []); btBy.get(t.c).push(t); if (!names.has(t.c) || names.get(t.c) === t.c) names.set(t.c, t.n || t.c); }
+  const norm = (x) => String(x || '').replace(/\s+/g, '').toLowerCase();
+  const qq = norm(q);
+  if (!qq) return { matches: [] };
+  let codes = [...names.keys()].filter((c) => c === qq || norm(names.get(c)) === qq);
+  if (!codes.length) codes = [...names.keys()].filter((c) => c.startsWith(qq) || norm(names.get(c)).includes(qq));
+  const cnt = (c) => (tr?.codes?.[c]?.t?.length || 0) + (btBy.get(c)?.length || 0);
+  if (codes.length !== 1) return { matches: codes.sort((a, b) => cnt(b) - cnt(a)).slice(0, 15).map((c) => ({ c, n: names.get(c), live: tr?.codes?.[c]?.t?.length || 0, bt: btBy.get(c)?.length || 0 })) };
+  const c = codes[0];
+  // 같은 날 산 여러 신호는 한 매수로 묶음 (같은 날·같은 가격이면 결과도 같음)
+  const group = (L, p) => { const m = new Map(); for (const t of L.sort((a, b) => (a.d < b.d ? 1 : -1))) { const k = t.d; if (!m.has(k)) m.set(k, { ...t, sigs: [], ai: ai?.m?.[`${p}|${c}|${t.d}`]?.t || null }); m.get(k).sigs.push(t.s); } return [...m.values()].map(({ g, ...x }) => x); };
+  const live = group((tr?.codes?.[c]?.t || []).map(unpack), 'l');
+  const back = group(btBy.get(c) || [], 'b');
+  const z = tl?.codes?.[c];
+  const judg = (z?.p || []).slice(-60).reverse().map(([di, f, tp, sp, a]) => ({ d: tl.dates[di], vd: a?.vd || null, st: a?.st || null, ck: a?.ck || null, rr: a?.rr || null, bad: !!(f & BAD), tp, sp }));
+  return { c, n: names.get(c), live, bt: back, judg, sigs: Object.fromEntries(SIGS) };
+}
