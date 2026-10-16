@@ -219,8 +219,15 @@ export function adjustCA(B) {
       const halted = k >= 2 && !out[k - 1].v && !out[k - 2].v;
       if (gapDays < 5 && !halted) continue;
       let f = null;
-      if (g > 1.45) { const n = CA_R.reduce((a, r) => (Math.abs(Math.log(g / r)) < Math.abs(Math.log(g / a)) ? r : a), CA_R[0]); f = Math.abs(Math.log(g / n)) < Math.log(1.3) ? n : g; }
-      else if (out.length - k >= 10) { const n = SPLIT_R.reduce((a, r) => (Math.abs(Math.log(g * r)) < Math.abs(Math.log(g * a)) ? r : a), SPLIT_R[0]); if (Math.abs(Math.log(g * n)) < Math.log(1.08)) f = 1 / n; } // 정리매매(뒤에 거래 10일 미만)는 그대로
+      // v222: 주식 수가 바뀌면 하루 거래량(주 수)도 그 비율만큼 바뀜 → 정지 전 20일·재개 뒤 20일 거래량 중간값 비율로 확인
+      //  (실질심사 뒤 거래 재개처럼 가격제한폭이 넓은 날의 '진짜 급등·급락'을 감자로 잘못 보정하면 가짜 −50% 손실이 생김)
+      const vb = median(out.slice(Math.max(0, k - 22), k).map((y) => y.v)), aft = out.slice(k, k + 20), va = aft.length >= 5 ? median(aft.map((y) => y.v)) : 0;
+      const vr = vb && va ? vb / va : null; // 감자·병합이면 약 n배, 분할이면 약 1/n배
+      if (g > 1.45) {
+        const n = CA_R.reduce((a, r) => (Math.abs(Math.log(g / r)) < Math.abs(Math.log(g / a)) ? r : a), CA_R[0]);
+        const near = Math.abs(Math.log(g / n));
+        if (vr != null ? near < Math.log(1.3) && vr >= Math.max(1.6, n / 3) : near < Math.log(1.12)) f = n; // 거래량 근거가 없으면 딱 떨어지는 비율일 때만 · 비율이 안 맞으면 보정 안 함
+      } else if (out.length - k >= 10) { const n = SPLIT_R.reduce((a, r) => (Math.abs(Math.log(g * r)) < Math.abs(Math.log(g * a)) ? r : a), SPLIT_R[0]); if (Math.abs(Math.log(g * n)) < Math.log(1.08) && (vr == null || vr <= Math.min(0.62, 3 / n))) f = 1 / n; } // 정리매매(뒤에 거래 10일 미만)는 그대로
       if (!f) continue;
       for (let j = 0; j < k; j++) { const y = out[j]; y.o *= f; y.h *= f; y.l *= f; y.c *= f; y.v = Math.round(y.v / f); y.ca = 1; }
     }

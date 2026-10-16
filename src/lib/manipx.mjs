@@ -76,7 +76,7 @@ export function pathStats(B, i, opt = {}) {
   return out;
 }
 /** 크론: 판정한 날 이후 5·20·60거래일이 지난 종목의 실제 수익률을 채움 (한 번에 최대 20종목) */
-const PV = 3; // v222 성적표 계산 버전 (감자·액면분할 보정 · 3: 거래량 0 정지도 보정)
+const PV = 4; // v222 성적표 계산 버전 (감자·액면분할 보정 · 3: 거래량 0 정지도 보정 · 4: 거래량으로 진짜 급등락과 구분)
 /** 그날 판정한 종목 1개 → 성적표 줄 (결과 칸은 나중에) */
 export async function perfRowOf(x, rv = null) {
   const row = { n: x.name || null, mk: x.mkt || null, rv, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
@@ -116,7 +116,7 @@ export async function perfWatch(max = 20) {
       let row = perf.rows[x.code];
       if (!row) row = await perfRowOf(x, doc.rv ?? null);
       // v222: 감자·액면분할 보정 전 계산이라 '+2000%' 같은 가짜 값이 들어간 줄은 일봉을 다시 받아 새로 계산
-      const redo = row.pv !== PV && H.some((h) => (row['u' + h] ?? 0) >= 150 || (row['d' + h] ?? 0) <= -70 || Math.abs(row['r' + h] ?? 0) >= 150);
+      const redo = row.pv !== PV && H.some((h) => (row['u' + h] ?? 0) >= 100 || (row['d' + h] ?? 0) <= -40 || Math.abs(row['r' + h] ?? 0) >= 100);
       if (!redo && H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
       // 아직 다음 기간(5·20·60거래일)이 안 지났으면 받지 않음 (같은 종목만 계속 받느라 다른 종목·날짜가 밀리던 문제)
       const due = H.some((h) => row['r' + h] === undefined && tdays >= h);

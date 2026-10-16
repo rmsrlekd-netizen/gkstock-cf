@@ -3791,12 +3791,12 @@
   function pbVals(r, h) {
     return { n: r['pn' + h] || r['n' + h] || 0, up: r['up' + h], dn: r['dn' + h], end: r['mr' + h] ?? r['avg' + h], mk: r['ax' + h], hu: r['hu' + h] };
   }
-  // v222: 손익비 막대 — 판정 다음 날 시가부터 N거래일 안에 '가장 많이 오른 폭' vs '가장 많이 빠진 폭' (손절·흔들기 기준 안 씀)
-  //  막대 = 오른 폭이 더 컸던 판정 : 빠진 폭이 더 컸던 판정 · 손익비 = 평균 최고 상승 ÷ 평균 최고 하락
+  // v222: 손익비 막대 (GK: 성공/실패 개수가 아니라 총 수익률 vs 총 손실률) — N거래일 안 최고 상승 폭의 합 : 최고 하락 폭의 합
   function pbWin(r, h) {
     const n = r['pn' + h]; if (!n) return '<span class="muted sm">결과 전</span>';
-    const w = r['ud' + h] || 0, l = 100 - w, rr = r['rr' + h];
-    return `<div class="pb-bar" title="오른 폭이 더 컸던 판정 ${w}% · 빠진 폭이 더 컸던 판정 ${l}%"><i class="w" style="width:${w}%"></i><i class="l" style="width:${l}%"></i></div><span class="pb-wl"><b class="up">${w}%</b> : <b class="down">${l}%</b><small>${rr != null ? `손익비 <b class="${rr >= 1 ? 'up' : 'down'}">1 : ${rr}</b>` : ''}</small></span>`;
+    const rr = r['rr' + h]; if (rr == null) return '<span class="muted sm">—</span>';
+    const w = Math.round((rr / (1 + rr)) * 100), l = 100 - w;
+    return `<div class="pb-bar" title="오른 폭 합 ${w}% · 빠진 폭 합 ${l}% · 오른 폭이 더 컸던 판정 ${r['ud' + h] ?? '-'}%"><i class="w" style="width:${w}%"></i><i class="l" style="width:${l}%"></i></div><span class="pb-wl"><b class="up">${w}%</b> : <b class="down">${l}%</b><small>손익비 <b class="${rr >= 1 ? 'up' : 'down'}">1 : ${rr}</b></small></span>`;
   }
   function renderBoard(src) {
     const box = $(src === 'bt' ? '#pbBt' : '#pbPerf'); const rows = S.pbData?.[src]; if (!box || !rows) return;
@@ -3810,7 +3810,7 @@
     box.innerHTML = `<div class="pb">
       <div class="pb-ctl"><div class="pb-seg">${PB_H.map((x) => `<button data-pb-h="${x}" class="${x === h ? 'on' : ''}">${x}일</button>`).join('')}</div>
         <div class="pb-seg">${PB_CATS.map(([c]) => `<button data-pb-cat="${c}" class="${c === cat ? 'on' : ''}">${c}</button>`).join('')}</div></div>
-      <div class="pb-legend muted sm"><b>막대</b> = 판정 다음 날 시가에 샀다면 ${h}거래일 안에 <b>가장 많이 오른 폭이 가장 많이 빠진 폭보다 컸던 판정 : 반대</b> · <b>손익비 1 : N</b> = 평균 최고 상승 ÷ 평균 최고 하락 (손절·흔들기 기준 안 씀, N이 1보다 크면 오른 폭이 더 큼) · 최고/최저 = ${h}거래일 안 평균 · 줄을 누르면 종목</div>
+      <div class="pb-legend muted sm"><b>막대</b> = 판정 다음 날 시가에 샀다면 ${h}거래일 안에 <b>오른 폭을 모두 더한 것 : 빠진 폭을 모두 더한 것</b> (몇 개가 성공했나가 아니라 얼마나 벌 수 있었나 vs 얼마나 잃을 수 있었나) · <b>손익비 1 : N</b> = 평균 최고 상승 ÷ 평균 최고 하락 · 손절·흔들기 기준 안 씀 · 최고/최저 = 평균 · 줄을 누르면 종목</div>
       <div class="pb-list">${all ? line(all, true) : ''}${list.length ? list.map((r) => line(r)).join('') : '<p class="muted sm">이 분류엔 아직 결과가 없어요</p>'}</div></div>`;
   }
   // 종목 목록 창
