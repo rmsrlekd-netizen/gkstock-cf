@@ -3287,7 +3287,7 @@
     const d = x.dir || {}, cl = x.cl, rk = x.rbk, f = x.f || {}, a = x.ai && !x.ai.error ? x.ai : null;
     const P = mpParts(x);
     const DIRB = { up: '<span class="mp-dirb up">📈 상승 가능성</span>', down: '<span class="mp-dirb down">📉 하락 위험</span>' };
-    const RBS = { deadcat: '① 기술적 반등', dump: '② 털기 중 반등', second: '③ 2차 작전', unclear: '판단 보류' };
+    const RBS = { deadcat: '① 기술적 반등', dump: '② 털기 중 반등', second: '③ 2차 작전', wave2: '🔁 눌림 뒤 재상승', unclear: '판단 보류' };
     const nd = (d.dates || []).find((z) => !z.past);
     const tile = (label, val, sub, cls = '') => `<div class="rp-tile ${cls}"><em>${label}</em><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
     const tiles = [
@@ -3472,7 +3472,7 @@
           ${DIRB[r.d] ? DIRB[r.d] : ''}
           ${r.ckg ? `<span class="mp-ckg g${esc(r.ckg)}">체크 ${esc(r.ckg)}</span>` : ''}
           ${r.pex ? `<span class="pex-chip pex-${{ 높음: 'h', 중간: 'm', 낮음: 'l' }[r.pex.lv]}">🔁 털기 후 상승 ${esc(r.pex.lv)}</span>` : ''}
-          ${r.rbt && r.rbt !== 'unclear' ? `<span class="mp-rbchip rb-${esc(r.rbt)}">🔄 ${{ deadcat: '기술적 반등', dump: '털기 중 반등', second: '2차 작전' }[r.rbt]}</span>` : ''}
+          ${r.rbt && r.rbt !== 'unclear' ? `<span class="mp-rbchip rb-${esc(r.rbt)}">🔄 ${{ deadcat: '기술적 반등', dump: '털기 중 반등', second: '2차 작전', wave2: '눌림 뒤 재상승' }[r.rbt]}</span>` : ''}
           ${r.cm ? `<span class="mp-chip vol">🕯 매집봉 ${r.cm}</span>` : ''}${r.lk ? `<span class="mp-chip net">🕸 연결 ${r.lk}</span>` : ''}${r.big ? '<span class="mp-big">🏢 대형주 · 작전 해석 약함</span>' : ''}
         </div>
         <div class="mp-chips rk-chips">${mpChips(r.by, r.sig, r.wn, r.pn?.c, r.cbn, r.cbd)}</div>
@@ -3682,10 +3682,11 @@
       <div class="mp-ckgrid"><div><h6>띄울 이유·힘 (✓가 많을수록 좋음)</h6><ul>${[...cl.pos].sort((a, b) => (b.w ?? 0) - (a.w ?? 0)).map((i) => ckItem(i, false)).join('')}</ul></div><div><h6>실패·폭탄 신호 (⚠가 없어야 좋음)</h6><ul>${[...cl.red].sort((a, b) => (b.bomb ? 1 : 0) - (a.bomb ? 1 : 0)).map((i) => ckItem(i, true)).join('')}</ul></div></div>
       ${x.ck?.broker?.last ? `<details class="mp-facts"><summary>최근 거래원 (${esc(x.ck.broker.last.d || '')} · 기록 ${x.ck.broker.n}일)</summary><p class="sm">매수 상위: ${(x.ck.broker.last.buy || []).map((b) => `${esc(b.nm)} ${fmtInt(b.v)}`).join(' · ')}<br>매도 상위: ${(x.ck.broker.last.sell || []).map((b) => `${esc(b.nm)} ${fmtInt(b.v)}`).join(' · ')}</p>${x.ck.broker.list?.length ? `<p class="muted sm">최근 매수 상위 등장 일수: ${x.ck.broker.list.map((b) => `${esc(b.nm)} ${b.days}일`).join(' · ')}</p>` : ''}</details>` : ''}</div>` : '<div class="mp-ck"><h5>✅ 성공 가능성 체크리스트</h5><p class="muted sm">이전 방식으로 분석된 기록이에요 — 다음 분석(또는 지금 다시 분석) 때 채워져요</p></div>';
     const wf = f.wf ? `<div class="mp-wf"><b>🚨 시장경보(투자경고 지정예고) 근사 계산</b> ${f.wf.items.map((w) => `<span>${esc(w.lbl)}: 오늘까지 ${w.now != null ? (w.now > 0 ? '+' : '') + w.now + '%' : '-'} · 내일 종가 ${fmtInt(w.need)}원(${w.pct > 0 ? '+' : ''}${w.pct}%)↑이면 요건</span>`).join('')}<br><small class="muted">거래소 기준(3일 +100% · 5일 +60% · 15일 +100%, 최근 15일 최고가 등)으로 근사 계산 — 정확한 지정 여부는 거래소 공시로 확인${f.wf.hi15 ? ' · 오늘 종가가 최근 15일 최고' : ''}</small></div>` : '';
-    const RBK = { deadcat: ['① 기술적 반등(데드캣) 쪽', 'a'], dump: ['② 털기 중 반등(물량 넘기기) 쪽', 'b'], second: ['③ 2차 작전(재매집 뒤 상승) 쪽', 'c'], unclear: ['판단 보류 — 근거가 비슷하거나 부족', ''] };
+    const RBK = { deadcat: ['① 기술적 반등(데드캣) 쪽', 'a'], dump: ['② 털기 중 반등(물량 넘기기) 쪽', 'b'], second: ['③ 2차 작전(재매집 뒤 상승) 쪽', 'c'], wave2: ['🔁 눌림 뒤 재상승 (같은 판 2파) — 털기 후 새 작전이 아니라 첫 판이 아직 진행 중', ''], unclear: ['판단 보류 — 근거가 비슷하거나 부족', ''] };
     const rk = x.rbk;
     const rbCol = (k, title, sub) => `<div class="mp-rbc ${rk.type && RBK[rk.type][1] === k ? 'on' : ''}"><h6>${title} <small>${rk.s[k]}점 · ${sub}</small></h6>${rk.why[k].length ? `<ul>${rk.why[k].map((r) => `<li>${esc(r.t)}</li>`).join('')}</ul>` : '<p class="muted sm">해당 근거 없음</p>'}</div>`;
     const rbBox = rk ? `<div class="mp-rb"><h5>🔄 반등 성격 <b class="rb-${esc(rk.type)}">${esc(RBK[rk.type]?.[0] || '')}</b> <small>${esc(rk.rb.topD)} 고점 ${fmtInt(rk.rb.top)}원 → ${esc(rk.rb.lowD)} 바닥 ${fmtInt(rk.rb.low)}원(${rk.rb.fall}%) → 지금 바닥 대비 +${rk.rb.up}% (${rk.rb.days}거래일) · 규칙 계산(AI 아님)</small></h5>
+      ${rk.type === 'wave2' && rk.w2 ? `<div class="mp-w2"><ul>${rk.w2.why.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><p>⚠ ${esc(rk.w2.warn)}</p><small class="muted">아래 세 칸은 참고용 점수</small></div>` : ''}
       <div class="mp-rbgrid">${rbCol('a', '① 기술적 반등', '다시 빠지기 쉬움')}${rbCol('b', '② 털기 중 반등', '가장 위험')}${rbCol('c', '③ 2차 작전', '같이 탈 만한 쪽')}</div>
       ${rk.ov?.list?.length ? `<p class="muted sm">남은 전환 가능 물량(추정): ${rk.ov.list.map((v) => `${v.date} ${v.src === 'conv' ? '청구 공시의 미전환 잔액' : 'CB 발행 총액(청구 공시 없음)'} ${fmtInt(v.amt)}원${v.price ? ` ÷ 전환가 ${fmtInt(v.price)}원 ≈ ${fmtInt(v.shares)}주` : ''}`).join(' · ')}${rk.ov.days != null ? ` → 하루 평균 거래량의 ${rk.ov.days}일치` : ''}${rk.ov.bought ? ` · CB 되사기 공시 ${rk.ov.bought}건` : ''}</p>` : ''}</div>` : '';
     const px2 = x.pex;

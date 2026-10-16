@@ -838,6 +838,7 @@ export function direction(x, now = Date.now()) {
   const rbk = reboundOf(x, now);
   if (rbk?.type === 'dump') R(down, 2, `🔄 지금 반등은 '털기 중 반등' 쪽 — ${rbk.why.b[0]?.t || ''}`, '일봉');
   if (rbk?.type === 'second') R(up, 2, `🔄 지금 반등은 '2차 작전' 쪽 — ${rbk.why.c[0]?.t || ''}`, '일봉');
+  if (rbk?.type === 'wave2') R(down, 1, `🔁 눌림 뒤 고점 재도전 중 — ${rbk.w2.warn}`, '일봉');
   const fund = ev.find((e) => e.kind === 'fund5' && age(e) <= 120);
   if (fund) R(up, 1, `${ymdOf(fund.ms)} 투자조합 등 5% 지분 신고${fund.party ? ` (${fund.party})` : ''}`, fund.id);
   for (const l of (x.links || []).slice(0, 2)) R(up, 2, `'${l.who}'이(가) 다른 종목(${l.others.map((o) => o.nm || o.c).slice(0, 3).join(', ')})에도 등장 — 같은 세력이 여러 종목을 다룰 가능성`, '공시');
@@ -958,10 +959,20 @@ export function reboundOf(x, now = Date.now()) {
   const sc = (arr) => arr.reduce((a, r) => a + r.w, 0);
   const s = { a: sc(A), b: sc(Bw), c: sc(C) };
   const best = Object.entries(s).sort((p, q) => q[1] - p[1]);
-  const type = best[0][1] < 2 || best[0][1] === best[1][1] ? 'unclear' : { a: 'deadcat', b: 'dump', c: 'second' }[best[0][0]];
-  return { type, s, why: { a: A, b: Bw, c: C }, rb, ov };
+  let type = best[0][1] < 2 || best[0][1] === best[1][1] ? 'unclear' : { a: 'deadcat', b: 'dump', c: 'second' }[best[0][0]];
+  // 🔁 눌림 뒤 재상승(같은 판 2파): 고점→바닥이 짧고(약 30거래일 안) 지금 고점 대비 −20% 안으로 회복, 고점 뒤 물량 공시 없음
+  //  → 털기가 끝나고 새로 시작하는 '2차 작전'이 아니라, 아직 첫 판이 진행 중인데 한 번 흔든 뒤 다시 올리는 모양
+  let w2 = null;
+  const t2l = Math.round(((lowMs - topMs) / DAY) * 5 / 7), offTop = x.close && rb.top ? Math.round((x.close / rb.top - 1) * 100) : null;
+  const exitTop = ev.filter((e) => ['conv', 'majsell'].includes(e.kind) && e.ms >= topMs - 10 * DAY);
+  if (t2l <= 30 && offTop != null && offTop >= -20 && !exitTop.length && type !== 'dump') {
+    type = 'wave2';
+    w2 = { t2l, offTop, why: [`고점(${rb.topD})에서 바닥(${rb.lowD})까지 약 ${t2l}거래일 — 털기라기엔 짧은 눌림`, `지금 고점 ${fmtW(rb.top)}원 대비 ${offTop}% — 고점 근처까지 회복`, '고점 뒤 전환청구·지분 매도 같은 물량 공시 없음'],
+      warn: `고점 ${fmtW(rb.top)}원을 다시 못 넘고 꺾이면 고점 두 개(쌍봉) = 털기 자리가 될 수 있음`, ref: s.c >= s.a ? 'c' : 'a' };
+  }
+  return { type, s, why: { a: A, b: Bw, c: C }, rb, ov, w2 };
 }
-export const RB_KO = { deadcat: '① 기술적 반등(데드캣) 쪽', dump: '② 털기 중 반등(물량 넘기기) 쪽', second: '③ 2차 작전(재매집 뒤 상승) 쪽', unclear: '판단 보류 (근거가 비슷하거나 부족)' };
+export const RB_KO = { deadcat: '① 기술적 반등(데드캣) 쪽', dump: '② 털기 중 반등(물량 넘기기) 쪽', second: '③ 2차 작전(재매집 뒤 상승) 쪽', wave2: '🔁 눌림 뒤 재상승(같은 판 2파) 쪽', unclear: '판단 보류 (근거가 비슷하거나 부족)' };
 
 // ───── 🔁 털기 후 상승 가능성 (규칙 · 반등 전이어도 계산) ─────
 //  대상: 털기·엑시트 후 단계, 또는 고점에서 33%↑ 빠진 종목. 바닥 유지·물량 소진·새 판 깔기·매집 흔적 vs 남은 물량·계속되는 매도 공시·위험
@@ -1629,7 +1640,7 @@ export function narrativeOf(x, now = Date.now()) {
   const pn = penaltyOf(x, now);
   if (pn?.cum) P.push(`불성실공시 벌점은 최근 1년 누계 ${pn.cum}점입니다 (15점이 넘으면 ${x.mkt === 'P' ? '관리종목' : '상장적격성 실질심사'} 기준).`);
   // 반등·매집봉·경보
-  if (rk) P.push(`최근 반등(${rk.rb.lowD} 바닥 대비 +${rk.rb.up}%)은 ${RB_KO[rk.type]}으로 봅니다${rk.type !== 'unclear' ? ` — ${({ deadcat: rk.why.a, dump: rk.why.b, second: rk.why.c }[rk.type][0] || {}).t || ''}` : ''}.`);
+  if (rk) P.push(`최근 반등(${rk.rb.lowD} 바닥 대비 +${rk.rb.up}%)은 ${RB_KO[rk.type]}으로 봅니다${rk.type === 'wave2' ? ` — ${rk.w2.why[0]}, ${rk.w2.why[1]}. ${rk.w2.warn}` : rk.type !== 'unclear' ? ` — ${({ deadcat: rk.why.a, dump: rk.why.b, second: rk.why.c }[rk.type][0] || {}).t || ''}` : ''}.`);
   const pex = x.pex || postExitOf(x, now);
   if (pex) P.push(`털기 후 다시 오를 가능성은 '${pex.lv}'으로 봅니다 (올라갈 근거 ${pex.su}점 · 못 올라갈 근거 ${pex.sd}점)${pex.up[0] ? `. 근거: ${pex.up[0].t}` : ''}${pex.down[0] ? `. 걸림돌: ${pex.down[0].t}` : ''}.`);
   const cf = conflictOf(x, d, pex); if (cf) P.push(cf);
@@ -1719,7 +1730,7 @@ export async function manipProfile(code) {
       const d2 = direction(p);
       p.dir = { ...d2, dir: p.dir?.dir ?? d2.dir, sticky: p.dir?.sticky };
       const hadCl = !!p.cl; p.cl = checklistOf(p); bombGate(p); if (!hadCl) p.clOld = true; // 등급 기준이 바뀌어도 열 때마다 지금 기준으로
-      if (!p.rbk) p.rbk = reboundOf(p);
+      p.rbk = p.f?.rb ? reboundOf(p) : p.rbk || null; // 규칙 계산이라 열 때마다 지금 기준으로 (v202 눌림 뒤 재상승)
       p.pex = postExitOf(p);
       p.story = narrativeOf(p);
       try { p.plan = await (await import('./manipck.mjs')).myPlanOf(p); } catch {}
@@ -1729,7 +1740,7 @@ export async function manipProfile(code) {
         const old = rk?.[code];
         if (old) {
           const nw = rankRow(p); nw.up = old.up;
-          const sig = (r) => JSON.stringify([r.ckg, r.cnp, r.cnr, r.d, r.us, r.ds, r.rr?.v, r.rr?.s, r.pex?.lv, r.cr, r.cl, r.ch, r.st, r.ht, r.c]);
+          const sig = (r) => JSON.stringify([r.ckg, r.cnp, r.cnr, r.d, r.us, r.ds, r.rr?.v, r.rr?.s, r.pex?.lv, r.cr, r.cl, r.ch, r.st, r.ht, r.c, r.rbt, r.oc, r.big]);
           if (sig(old) !== sig(nw) || !('by' in old)) { rk[code] = { ...old, ...nw }; await setJSON('mp/rank', rk); }
         }
       } catch (e) { console.warn('rank 줄 맞춤 실패', e.message); }
