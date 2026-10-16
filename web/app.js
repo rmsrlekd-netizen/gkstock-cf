@@ -2260,7 +2260,7 @@
         ${a.points?.length ? `<div class="apoints">${a.points.map((x) => `<div><h6>${esc(x.t)}</h6><p>${esc(x.d)}</p></div>`).join('')}</div>` : ''}
         ${a.watch?.length ? `<h4 style="margin:1rem 0 0">앞으로 체크할 포인트</h4><ul class="watch">${a.watch.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div>` : ''}
       ${a.fallback ? `<p class="note">AI 분석이 잠시 준비되지 않아 원문의 핵심 문장과 키워드로 자동 정리했습니다. <button class="link" data-ai-retry>AI로 다시 분석</button></p>`
-        : `<p class="note">${esc(a.provider || 'AI')}가 ${a.basis ? esc(a.basis) : '원문'}을 읽고 작성한 참고용 분석입니다. 투자 판단 전 원문을 확인하세요.</p>`}`;
+        : `<p class="note">${esc(a.provider || 'AI')}가 ${a.basis ? esc(a.basis) : '원문'}을 읽고 작성한 참고용 분석입니다.${a.numDrop ? ` 원문에서 확인되지 않는 숫자가 든 문장 ${a.numDrop}개는 자동으로 뺐어요.` : ' 숫자는 원문과 자동 대조했어요.'} 투자 판단 전 원문을 확인하세요.</p>`}`;
   }
 
   // 마우스를 올려두면(0.25초) 클릭 전에 AI 분석·원문·기업 정보를 미리 요청 → 누르는 순간 이미 준비됨

@@ -121,7 +121,9 @@ JSON만: {"headline":"","summary":["","",""],"verdict":""}
 ${text.slice(0, 4000)}`;
   // v213: 빠른 요약은 가벼운 모델(flash-lite)로 — 3줄 요약은 품질 차이가 거의 없고 응답이 훨씬 빠름
   const j = parseJSON(await claude(prompt, { maxTokens: 700, timeout: 12000, think: 0, tag: '빠른 요약', lite: true }));
-  const summary = (Array.isArray(j?.summary) ? j.summary : []).map((x) => String(x || '').trim()).filter(Boolean).slice(0, 3);
+  const { makeChecker } = await import('../lib/numcheck.mjs'); const chk = makeChecker(`${title}\n${text}`); // v216: 3줄 요약도 원문에 없는 숫자가 든 줄은 뺌
+  const summary = (Array.isArray(j?.summary) ? j.summary : []).map((x) => String(x || '').trim()).filter((x) => x && !chk.bad(x).length).slice(0, 3);
+  if (j?.headline && chk.bad(j.headline).length) j.headline = null;
   if (!summary.length) throw new Error('빠른 요약 실패');
   const out = { id, quick: true, headline: String(j.headline || '').slice(0, 60) || null, summary, verdict: ['긍정', '중립', '부정'].includes(j.verdict) ? j.verdict : '중립', at: Date.now() };
   await setJSON(`aiq/${id}`, out).catch(() => {});
@@ -177,10 +179,13 @@ async function handle(id, it0 = null) {
       const sraw = it.ticker && sm ? (src === 'KR' ? sm.kr?.[it.ticker] : sm.us?.[String(it.ticker).toUpperCase()]) : null;
       const sector = (sraw ? sraw.split('|')[0] : '') || comp?.sectorKo || [comp?.sector, comp?.industry].filter(Boolean).join(' · ') || '';
       const cx = await Promise.race([context(it, src, comp), new Promise((r) => setTimeout(() => r({ val: '', recent: [], move: '' }), 4000))]);
-      const a = await analyzeFiling({ company: it.name || it.company || '', ticker: it.ticker, market: src, kind: it.src, title, form: it.form || it.source || '', text, overviewRaw: !hasOv && comp?.overviewRaw ? comp.overviewRaw : null, sector, valuation: cx.val, recent: cx.recent, move: cx.move });
+      const a0 = await analyzeFiling({ company: it.name || it.company || '', ticker: it.ticker, market: src, kind: it.src, title, form: it.form || it.source || '', text, overviewRaw: !hasOv && comp?.overviewRaw ? comp.overviewRaw : null, sector, valuation: cx.val, recent: cx.recent, move: cx.move });
+      // v216 숫자 검사: 가벼운 모델이 원문에 없는 숫자를 지어내지 못하게 — 원문·배경 자료에 없는 숫자가 든 문장은 뺌
+      const { scrubAnalysis } = await import('../lib/numcheck.mjs');
+      const { a, dropped } = scrubAnalysis(a0, [title, text, cx.val, cx.move, ...(cx.recent || []), comp?.overviewRaw || ''].join('\n'));
       if (!a.summary.length) throw new Error('AI 응답에 요약이 없습니다');
       if (a.overview && ck) await setJSON(`aiov/${src}/${ck}`, { text: a.overview, at: Date.now() }).catch(() => {});
-      const out = { id, provider: aiProvider(), basis: doc.note || null, headline: a.headline || null, summary: a.summary, positive: a.positive, negative: a.negative, analyst: a.analyst, points: a.points, impact: a.impact, watch: a.watch, sector: sector || null, verdict: a.verdict, overview: a.overview || hasOv?.text || null, at: Date.now() };
+      const out = { id, provider: aiProvider(), basis: doc.note || null, headline: a.headline || null, summary: a.summary, positive: a.positive, negative: a.negative, analyst: a.analyst, points: a.points, impact: a.impact, watch: a.watch, sector: sector || null, verdict: a.verdict, overview: a.overview || hasOv?.text || null, numDrop: dropped.length || undefined, at: Date.now() };
       await setJSON(`ai3/${id}`, out).catch(() => {});
       await setJSON('ai/lastOk', { at: Date.now(), id }).catch(() => {});
       await snapshotItem(it);

@@ -327,12 +327,12 @@ ${lens.map((x) => '- ' + x).join('\n')}
 }
 매수·매도 추천이나 목표주가는 쓰지 마세요.`;
   let j, raw1 = '', raw2 = '';
-  try { raw1 = await claude(prompt, { maxTokens: 6000, timeout: 45000, think: 0, tag: '공시 AI 분석' }); j = parseJSON(raw1); } // v213: 일반 공시는 속도 우선 (생각하며 읽기 끔) — 작전 레이더만 생각하며 읽기
+  try { raw1 = await claude(prompt, { maxTokens: 6000, timeout: 30000, think: 0, tag: '공시 AI 분석', lite: true }); /* v216: 일반 공시는 속도 우선 — 가벼운 모델(flash-lite) */ j = parseJSON(raw1); } // v213: 일반 공시는 속도 우선 (생각하며 읽기 끔) — 작전 레이더만 생각하며 읽기
   catch (e) {
     if (!raw1) throw e; // AI 호출 자체가 실패(한도 등)
     // 형식이 깨졌으면 한 번 더 요청 (이번엔 빠르게)
     console.warn('analyze JSON retry', e.message);
-    try { raw2 = await claude(prompt + '\n\n주의: 반드시 올바른 JSON만 출력하세요. 문장 안에서 큰따옴표(")는 쓰지 말고 작은따옴표(\')를 쓰세요. 항목 사이 쉼표를 빠뜨리지 마세요.', { maxTokens: 6000, timeout: 40000, think: 0, tag: '공시 AI 분석' }); j = parseJSON(raw2); }
+    try { raw2 = await claude(prompt + '\n\n주의: 반드시 올바른 JSON만 출력하세요. 문장 안에서 큰따옴표(")는 쓰지 말고 작은따옴표(\')를 쓰세요. 항목 사이 쉼표를 빠뜨리지 마세요.', { maxTokens: 6000, timeout: 40000, think: 0, tag: '공시 AI 분석', lite: true }); j = parseJSON(raw2); }
     catch (e2) {
       // 그래도 깨졌으면 항목별로 느슨하게 뽑아냄 (요약·긍정·부정·코멘트만 있어도 충분)
       j = looseParse(raw2) || looseParse(raw1);
