@@ -3541,15 +3541,90 @@
     const ckG = Object.fromEntries((j.groups || []).filter((r) => r.g.startsWith('ck:')).map((r) => [r.g, r]));
     const ckRows = Object.keys(CKK).map((k) => { const a = ckG[`ck:${k}:1`], b = ckG[`ck:${k}:0`]; if (!a?.n20 && !b?.n20) return ''; const d = a?.n20 && b?.n20 ? a.win20 - b.win20 : null; return `<tr><td class="t"><b>${esc(CKK[k])}</b></td><td>${a?.n20 ? `${a.win20}% <small>${a.n20}건</small>` : '—'}</td><td>${b?.n20 ? `${b.win20}% <small>${b.n20}건</small>` : '—'}</td><td>${d == null ? '—' : `<b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : ''}${d}%p</b>${a.n20 >= 30 && b.n20 >= 30 ? ' <small>중요도에 반영</small>' : ' <small>30건씩 쌓이면 반영</small>'}`}</td></tr>`; }).join('');
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · +20%↑ ${r['big' + h]}% · −20%↓ ${r['loss' + h]}% · ${r['n' + h]}건</small></td>` : '<td class="muted">아직</td>');
-    $('#mpBody').innerHTML = `<p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
+    $('#mpBody').innerHTML = `<div id="simBox"><div class="loading"><span class="spin"></span>매매 따라하기 성적 불러오는 중…</div></div>
+      <details class="pb-old"><summary>참고: 판정한 날 기준 기간별 결과 (예전 방식 · 눌러서 보기)</summary><p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
       ${ckRows ? `<details class="pb-ck"><summary>✅ 체크리스트 항목별 비교 (눌러서 보기)</summary><h4 style="margin:.8rem 0 .3rem">✅ 체크리스트 항목별 20거래일 뒤 오른 비율 <small class="muted">충족(✓)한 종목 vs 아닌(✗) 종목 · 차이가 클수록 등급 계산에서 그 항목의 중요도가 자동으로 커져요</small></h4><div class="mp-perf"><table class="tbl"><tr><th>항목</th><th>✓ 충족</th><th>✗ 미충족</th><th>차이</th></tr>${ckRows}</table></div></details>` : ''}
       ${g.length ? `<div id="pbPerf"></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
-      <div id="btBox"></div>
+      <div id="btBox"></div></details>
       <p class="note">📊 <b>월간 규칙 점검</b> — 매달 1일 아침 관리자 텔레그램으로 그룹별 승률과 ⚠ 거꾸로 나온 규칙을 보내요 (표본 30건 미만은 '아직 판단 이름'). <button class="btn sm" data-mp-rulechk>지금 한 번 받기</button> <span class="muted sm" data-mp-rulechk-msg></span></p>
       <p class="note">수집 상태 · 거래소 시장경보·관리종목·거래정지: ${j.warn ? `${j.warn.at ? `${j.warn.n || 0}종목 · ${esc(rel(j.warn.at))}` : '첫 확인 중'}${j.warn.src === 'KIS' ? ' (한국투자증권 기준)' : ''}${j.warn.scan && j.warn.scan.pos < j.warn.scan.of ? ` · 오늘 확인 ${j.warn.scan.pos}/${j.warn.scan.of}` : ''}${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
     if (g.length) { S.pbData = S.pbData || {}; S.pbData.perf = g; renderBoard('perf'); }
-    loadBt();
+    loadBt(); loadSim();
   }
+  // ───── v222 📈 매매 따라하기 성적: 신호가 '새로' 뜬 날 다음 날 시가에 사서 규칙대로 팔았다면 ─────
+  const SIM_WHY = { stop: '손절선', tgt: '1차 목표', view: '판정 🔴 전환', time: '60일 정리', halt: '거래정지' };
+  try { S.simSrc = load('gk_simsrc') || 'live'; S.simM = load('gk_simm') || 'T'; } catch {}
+  async function loadSim() {
+    let j; try { j = await mpGet('mp=sim'); } catch (e) { const b = $('#simBox'); if (b) b.innerHTML = `<p class="muted sm">매매 따라하기 성적을 못 불러옴: ${esc(e.message)}</p>`; return; }
+    S.simData = j; renderSim();
+  }
+  const VDC = { ok: 'v-ok', good: 'v-good', n: 'v-n', weak: 'v-weak', bad: 'v-bad', base: 'v-base' };
+  const vdBadge = (v) => (v ? `<span class="simv ${VDC[v.k] || 'v-n'}" title="${esc(v.why || (v.p != null ? `기준선보다 좋을 확률 ${v.p}%` : ''))}">${esc(v.k === 'good' ? '좋아 보임 · 확인 중' : v.k === 'weak' ? '나빠 보임 · 확인 중' : v.t)}</span>` : '');
+  function spark(curve) {
+    if (!curve || curve.length < 2) return '';
+    const ys = curve.map((c) => c[1]), mn = Math.min(0, ...ys), mx = Math.max(0, ...ys), W = 220, H = 48;
+    const y = (v) => H - 4 - ((v - mn) / (mx - mn || 1)) * (H - 8), x = (i) => (i / (curve.length - 1)) * W;
+    return `<svg class="sim-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" class="z"/><polyline points="${curve.map((c, i) => `${x(i).toFixed(1)},${y(c[1]).toFixed(1)}`).join(' ')}" class="${ys[ys.length - 1] >= 0 ? 'up' : 'down'}"/></svg>`;
+  }
+  function renderSim() {
+    const box = $('#simBox'), j = S.simData; if (!box || !j) return;
+    const src = S.simSrc === 'bt' ? 'bt' : 'live', m = S.simM === 'U' ? 'U' : 'T';
+    const D = j[src] || {}, G = D.groups || [];
+    const line = (x) => { const v = x[m];
+      const name = `<span class="pb-name">${esc(x.ko)}<small>${v ? `${v.n}번 거래` : '결과 전'}${x.open ? ` · 진행 중 ${x.open}` : ''}${x.nf ? ` · 못 산 ${x.nf}` : ''}</small></span>`;
+      if (!v) return `<button class="pb-row sim-line${x.s === 'all' ? ' all' : ''}" data-sim-open="${x.s}">${name}<span class="muted sm">아직 끝난 거래가 없어요</span><span class="pb-go">›</span></button>`;
+      return `<button class="pb-row sim-line${x.s === 'all' ? ' all' : ''}" data-sim-open="${x.s}">${name}
+        <span class="sim-vd">${vdBadge(v.vd)}${x.s !== 'all' && v.vs != null ? `<small>전체보다 <b class="${dirCls(v.vs)}">${v.vs > 0 ? '+' : ''}${v.vs}%p</b></small>` : '<small>비교 기준</small>'}</span>
+        <span class="pb-num"><em>거래당 평균</em><b class="${dirCls(v.avg)}">${sgn(v.avg)}</b><small>${v.lo != null ? `범위 ${sgn(v.lo)}~${sgn(v.hi)}` : ''}</small></span>
+        <span class="pb-num"><em>이긴 거래</em><b class="${v.win >= 50 ? 'up' : 'down'}">${v.win}%</b><small><span class="up">${sgn(v.aw)}</span> / <span class="down">${sgn(v.al)}</span></small></span>
+        <span class="pb-num hide-m"><em>시장 대비</em><b class="${dirCls(v.ex)}">${sgn(v.ex)}</b><small>평균 ${v.h}일 보유</small></span>
+        <span class="pb-num hide-m"><em>계좌로 했다면</em><b class="${dirCls(v.eq?.tot)}">${sgn(v.eq?.tot)}</b><small>최대 낙폭 ${sgn(v.eq?.mdd)}</small></span><span class="pb-go">›</span></button>`; };
+    const cv = (D.conds || []).filter((c) => c.vd?.k === 'ok' || c.vd?.k === 'bad');
+    const cg = (D.conds || []).filter((c) => c.vd?.k === 'good' || c.vd?.k === 'weak');
+    const ck = (c) => `<li><b>${esc(c.ko)}: ${esc(c.k === 'vd' ? ({ g: '🟢 매수 검토', y: '🟡 지켜보기', r: '🔴 피하기' }[c.v] || c.v) : c.v)}</b> <span class="${dirCls(c.diff)}">${c.diff > 0 ? '+' : ''}${c.diff}%p</span> <small class="muted">(${c.n}번 · 이긴 거래 ${c.win}%)</small></li>`;
+    box.innerHTML = `<h4 style="margin:.2rem 0 .4rem">📈 따라 샀다면 <small class="muted">신호가 새로 뜬 날 다음 날 시가에 사서 규칙대로 팔았을 때 · 비용 0.5% 뺌</small></h4>
+      <div class="pb"><div class="pb-ctl"><div class="pb-seg">${[['live', '실제 기록'], ['bt', '과거 재현']].map(([k, t]) => `<button data-sim-src="${k}" class="${k === src ? 'on' : ''}">${t}</button>`).join('')}</div>
+        <div class="pb-seg">${[['T', '1차 목표에서 팔기'], ['U', '끝까지 들고 가기']].map(([k, t]) => `<button data-sim-m="${k}" class="${k === m ? 'on' : ''}">${t}</button>`).join('')}</div></div>
+      <div class="pb-legend muted sm"><b>판정</b>은 '레이더에 오른 종목 아무거나'(맨 위 줄)보다 나은지를 봐요 — <span class="simv v-ok">✅ 효과 있음</span> = 30번↑ 거래에서 앞·뒤 기간 모두 확실히 나음 · <span class="simv v-good">좋아 보임</span> = 아직 확인 중 · <span class="simv v-n">아직 모름</span> = 우연과 구별 안 됨. 범위 = 같은 주에 산 거래를 묶어 다시 뽑아 본 90% 범위. ${src === 'live' ? `실제 판정 ${D.days || 0}일치${D.from ? ` · 거래 ${esc(D.from)}~${esc(D.to)}` : ''}${D.left ? ` · 계산 중 ${fmtInt(D.left)}종목 남음` : ''}` : '과거 재현: 10거래일 간격 판정이라 🔴 전환을 늦게 잡을 수 있음 · AI·바깥 자료 없음'}</div>
+      <div class="pb-list">${G.length ? [...G.filter((x) => x.s === 'all'), ...G.filter((x) => x.s !== 'all')].map(line).join('') : '<p class="muted sm">아직 계산 전이에요 (3분마다 조금씩 채워져요)</p>'}</div></div>
+      <div class="sim-conds"><h4>🔬 어떤 조건이 실제로 성과를 올리나 <small class="muted">전체 거래에서 그 조건일 때 − 아닐 때 (1차 목표 팔기 기준) · 여러 조건을 한꺼번에 비교하므로 더 엄격한 98% 범위·앞뒤 기간 일치로 판정</small></h4>
+        ${cv.length ? `<ul>${cv.map(ck).join('')}</ul>` : '<p class="muted sm">아직 확실한 조건이 없어요 — 조건마다 30번 넘게 쌓이고 앞·뒤 기간이 같은 방향이어야 확실하다고 봐요.</p>'}
+        ${cg.length ? `<details><summary class="muted sm">확인 중인 조건 ${cg.length}개 (우연일 수 있음)</summary><ul>${cg.map(ck).join('')}</ul></details>` : ''}</div>`;
+  }
+  function simModal(src, s, rows) {
+    const m0 = S.simM === 'U' ? 'U' : 'T', o = m0 === 'T' ? 'U' : 'T';
+    const D = S.simData?.[src] || {}, x = (D.groups || []).find((z) => z.s === s) || {}, v = x[m0];
+    const GS = D.gridS || [7, 10, 15, 'c'], GT = D.gridT || [15, 30, 't', 0];
+    let m = $('#pbModal'); if (!m) { m = document.createElement('div'); m.id = 'pbModal'; document.body.appendChild(m); }
+    m.dataset.src = ''; m.dataset.g = '';
+    const res = (z) => (z ? `<b class="${dirCls(z.r)}">${sgn(Math.round(z.r * 10) / 10)}</b><small>${esc(SIM_WHY[z.w] || z.w)} · ${esc(z.xd)} · ${z.h}일${z.x != null ? ` · 시장 대비 ${sgn(z.x)}` : ''}</small>` : '<span class="muted">진행 중</span>');
+    const grid = x.grid ? `<table class="sim-grid"><tr><th></th>${GT.map((t) => `<th>${t === 't' ? '1차 목표' : t ? '+' + t + '%' : '끝까지'}</th>`).join('')}</tr>${GS.map((sv, si) => `<tr><th>${sv === 'c' ? '세력 원가' : '−' + sv + '%'}</th>${GT.map((_, ti) => { const gi = si * 4 + ti, c = x.grid[gi]; return `<td class="${x.best?.gi === gi ? 'best' : ''}${gi === 14 ? ' cur' : ''}">${c?.[0] != null ? `<b class="${dirCls(c[0])}">${sgn(c[0])}</b><small>${c[1]}번</small>` : '—'}</td>`; }).join('')}</tr>`).join('')}</table>` : '';
+    const card = v ? `<div class="sim-card">
+        <div class="sim-k"><div>${vdBadge(v.vd)}${v.vd?.why ? `<small class="muted">${esc(v.vd.why)}</small>` : ''}${v.vd?.p != null ? `<small class="muted">기준선보다 좋을 확률 ${v.vd.p}% · 차이 범위 ${sgn(v.vd.lo)}~${sgn(v.vd.hi)}</small>` : ''}</div>
+          <div><em>앞 기간</em><b class="${dirCls(v.half?.a)}">${sgn(v.half?.a)}</b><small>${v.half?.an || 0}번</small></div><div><em>뒤 기간</em><b class="${dirCls(v.half?.z)}">${sgn(v.half?.z)}</b><small>${v.half?.zn || 0}번</small></div>
+          <div><em>손익비 평균</em><b class="${dirCls(v.R)}">${v.R}R</b><small>이익/손실 ${v.pf ?? '-'}배</small></div>
+          <div><em>흔들기</em><b>${v.shake != null ? v.shake + '%' : '-'}</b><small>손절 뒤 +20% 간 비율</small></div></div>
+        ${v.eq ? `<div class="sim-eq"><div><em>계좌로 따라 했다면</em> <small class="muted">동시에 최대 5종목 · 종목당 20% · ${v.eq.taken}/${v.eq.of}번 매수</small><br><b class="${dirCls(v.eq.tot)}">${sgn(v.eq.tot)}</b> <small>최대 낙폭 <b class="down">${sgn(v.eq.mdd)}</b></small></div>${spark(v.eq.curve)}</div>` : ''}
+        <div class="sim-gw"><h5>손절·목표를 바꿨다면 <small class="muted">거래당 평균 · 테두리 = 지금 규칙(세력 원가 손절·1차 목표) · 초록 = 앞 기간에서 가장 좋았던 규칙</small></h5>${grid}
+        ${x.best ? `<p class="sm">가장 좋았던 규칙 <b>${esc(x.best.name)}</b>: 앞 기간 ${sgn(x.best.train)} (${x.best.trainN}번) → <b>안 본 뒤 기간 ${sgn(x.best.test)}</b> (${x.best.testN}번) · 같은 기간 지금 규칙 ${sgn(x.best.baseTest)} ${x.best.test != null && x.best.baseTest != null ? (x.best.test > x.best.baseTest && x.best.testN >= 20 ? '<b class="up">→ 바꿀 만함</b>' : '<span class="muted">→ 아직 바꿀 근거 부족</span>') : ''}</p>` : '<p class="muted sm">앞 기간 거래가 15번 넘게 쌓이면 가장 좋은 손절·목표를 찾아 안 본 기간으로 검증해요.</p>'}</div></div>` : '';
+    m.innerHTML = `<div class="pbm-back" data-pbm-close></div><div class="pbm" role="dialog" aria-label="거래 목록">
+      <div class="pbm-head"><div><b>${esc(x.ko || s)}</b> <small class="muted">${src === 'bt' ? '과거 재현' : '실제 기록'} · ${m0 === 'T' ? '1차 목표에서 팔기' : '끝까지 들고 가기'}</small></div><button class="pbm-x" data-pbm-close aria-label="닫기">✕</button></div>
+      <div class="pbm-list">${card}<h5 style="margin:.6rem 0 .2rem">거래 ${rows.length}번 <small class="muted">최근 순</small></h5>${rows.length ? rows.map((t) => `<div class="pbm-row sim-row"><span class="pbm-nm"><span class="ca-co" data-mp-go="${esc(t.c)}" data-pbm-close-go><b>${esc(t.n || t.c)}</b></span><small>${esc(t.d)} 신호 → 다음 날 ${fmtInt(t.e)}원 · 손절 ${fmtInt(t.sp)} · 목표 ${fmtInt(t.tp)} · 60일 안 최고 ${sgn(t.mf)} / 최저 ${sgn(t.ma)}</small></span>
+        <span class="pbm-res"><em class="muted sm">${m0 === 'T' ? '목표 팔기' : '끝까지'}</em>${res(t[m0])}</span><span class="pbm-res hide-m"><em class="muted sm">${o === 'T' ? '목표 팔기' : '끝까지'}</em>${res(t[o])}</span></div>`).join('') : '<p class="muted sm">아직 거래가 없어요</p>'}</div></div>`;
+    m.hidden = false; document.body.classList.add('pbm-open');
+  }
+  const simCache = new Map();
+  document.addEventListener('click', async (ev) => {
+    const a = ev.target.closest?.('[data-sim-src]'); if (a) { S.simSrc = a.dataset.simSrc; save('gk_simsrc', S.simSrc); renderSim(); return; }
+    const b = ev.target.closest?.('[data-sim-m]'); if (b) { S.simM = b.dataset.simM; save('gk_simm', S.simM); renderSim(); return; }
+    const r = ev.target.closest?.('[data-sim-open]'); if (!r) return;
+    const src = S.simSrc === 'bt' ? 'bt' : 'live', s = r.dataset.simOpen, k = src + '|' + s;
+    if (!history.state?.pbm) history.pushState({ ...(history.state || {}), pbm: 1 }, '');
+    simModal(src, s, simCache.get(k) || []);
+    if (!simCache.has(k)) { const L = $('#pbModal .pbm-list'); if (L) L.innerHTML = '<div class="loading"><span class="spin"></span>거래 불러오는 중…</div>';
+      try { const j = await mpGet(`mp=simrows&src=${src}&s=${encodeURIComponent(s)}`); simCache.set(k, j.rows || []); } catch { simCache.set(k, []); }
+      const mm = $('#pbModal'); if (mm && !mm.hidden) simModal(src, s, simCache.get(k)); }
+  });
   // v218 성적표 칸: 진입 = 판정 다음 날 시가 · 기간 안 최고/최저(중앙값·평균) · N일째 종가(수수료 뺌)·시장 대비 · 먼저 닿은 쪽
   const sgn = (v) => (v == null ? '-' : `${v > 0 ? '+' : ''}${v}%`);
   const WHY_KO = { 'f:conv': '전환청구(물량)', 'f:sell': '대주주 지분 매도', 'f:pledge': '담보·반대매매', 'f:fail': '증자·사채 철회·연기', 'f:risk': '위험 공시', 'f:tsell': '자사주 처분', 'f:dil': '추가 증자·CB', 'f:mkt': '시장 급락', 'f:gap': '추격 매수(갭 +10%↑)', 'f:shake': '흔들기(손절 뒤 반등)', 'f:stop': '거래정지·상폐', 'f:drift': '이유 없이 흘러내림', 's:news': '재료 공시', 's:bonus': '무상증자', 's:setup': '추가 판 깔기', 's:hot': '조회공시·시황 급변', 's:mkt': '시장 상승', 's:vol': '거래량 폭증', 's:plain': '공시 없이 수급' };

@@ -200,7 +200,30 @@ async function bars(code) {
   if (!r.ok) throw new Error('일봉 HTTP ' + r.status);
   const xml = await r.text();
   // 거래정지·단일가 날은 시가·고가·저가가 0으로 올 때가 있음 → 종가로 채움 (0이면 '60일 저점 대비 +Infinity%' 같은 오류)
-  return [...xml.matchAll(/data="(\d{8})\|([\d.]+)\|([\d.]+)\|([\d.]+)\|([\d.]+)\|(\d+)"/g)].map((m) => { const c = +m[5]; const o = +m[2] || c, h = Math.max(+m[3] || c, c), l = Math.min(+m[4] || c, c); return { d: `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6)}`, o, h, l, c, v: +m[6] }; }).filter((x) => x.c > 0);
+  const B = [...xml.matchAll(/data="(\d{8})\|([\d.]+)\|([\d.]+)\|([\d.]+)\|([\d.]+)\|(\d+)"/g)].map((m) => { const c = +m[5]; const o = +m[2] || c, h = Math.max(+m[3] || c, c), l = Math.min(+m[4] || c, c); return { d: `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6)}`, o, h, l, c, v: +m[6] }; }).filter((x) => x.c > 0);
+  return adjustCA(B);
+}
+// v222 감자·주식병합·액면분할 보정: 네이버 일봉은 이런 날 앞뒤 가격이 그대로라 '+2000% 상승' 같은 가짜 급등락이 생김
+//  → 국장 가격제한폭(±30%)을 넘는 시초가 갭이 거래정지(달력 5일↑) 뒤에 나오면 주식 수 변경으로 보고 그 전 가격을 비율만큼 맞춤
+//  (감자·병합은 2·3·5·10·20배 같은 딱 떨어지는 비율에 가까우면 그 비율로, 아래로는 액면분할 비율에 가까울 때만 — 정리매매 급락은 그대로 둠)
+const CA_R = [2, 2.5, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 25, 30, 40, 50, 100], SPLIT_R = [2, 5, 10, 20, 50, 100];
+export function adjustCA(B) {
+  if (!B || B.length < 2) return B;
+  const out = B.map((x) => ({ ...x }));
+  for (let k = out.length - 1; k > 0; k--) {
+    const p = out[k - 1], x = out[k];
+    const g = (x.o || x.c) / p.c;
+    if (g > 1.45 || g < 0.6) {
+      const gapDays = (Date.parse(x.d) - Date.parse(p.d)) / 864e5;
+      if (gapDays < 5) continue;
+      let f = null;
+      if (g > 1.45) { const n = CA_R.reduce((a, r) => (Math.abs(Math.log(g / r)) < Math.abs(Math.log(g / a)) ? r : a), CA_R[0]); f = Math.abs(Math.log(g / n)) < Math.log(1.3) ? n : g; }
+      else if (out.length - k >= 10) { const n = SPLIT_R.reduce((a, r) => (Math.abs(Math.log(g * r)) < Math.abs(Math.log(g * a)) ? r : a), SPLIT_R[0]); if (Math.abs(Math.log(g * n)) < Math.log(1.08)) f = 1 / n; } // 정리매매(뒤에 거래 10일 미만)는 그대로
+      if (!f) continue;
+      for (let j = 0; j < k; j++) { const y = out[j]; y.o *= f; y.h *= f; y.l *= f; y.c *= f; y.v = Math.round(y.v / f); y.ca = 1; }
+    }
+  }
+  return out;
 }
 const median = (a) => { const s = a.filter((x) => x > 0).sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
 const vwap = (rows) => { let pv = 0, v = 0; for (const x of rows) { pv += ((x.h + x.l + x.c) / 3) * x.v; v += x.v; } return v ? pv / v : null; };

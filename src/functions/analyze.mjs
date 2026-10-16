@@ -1,7 +1,7 @@
 // /api/analyze?id=... → AI 5줄 요약 + 주가 긍정/부정 요인 (+ 기업 개요 한국어 요약). 결과는 저장해 재사용
 // AI 키가 없거나 AI 호출이 실패하면 원문 기반 자동 요약(규칙 기반)을 대신 돌려줌 (fallback: true)
 import { json as jsonRes } from '../lib/util.mjs';
-import { getJSON, setJSON } from '../lib/store.mjs';
+import { getJSON, setJSON, delKeys } from '../lib/store.mjs';
 import { hasAI, analyzeFiling, aiProvider, claude, parseJSON } from '../lib/ai.mjs';
 import { findFiling, getFilingDoc, snapshotItem } from '../lib/filing-doc.mjs';
 import { koHeadline } from '../lib/sec-ko.mjs';
@@ -80,19 +80,28 @@ function fallback(title, sub, lines) {
   return { summary: sents.slice(0, 5), positive, negative, verdict };
 }
 
-// 진행 중인 분석을 같은 서버 안에서 공유 (미리 분석 중인 항목을 방문자가 열면 그 결과를 같이 기다림)
-const inflight = new Map();
-export function analyzeId(id, it0 = null) {
-  if (inflight.has(id)) return inflight.get(id);
-  // 전체 110초 제한 — 어딘가에서 응답이 멈춰도 같은 공시를 여는 모든 사람이 끝없이 기다리지 않게
-  const guard = new Promise((res) => setTimeout(() => res({ body: { ok: false, error: 'AI 분석이 너무 오래 걸려 멈췄어요 — 잠시 뒤 다시 시도해 주세요' }, opt: { status: 504, cdnSeconds: 10 } }), 110e3));
-  const p = Promise.race([handle(id, it0), guard]).finally(() => setTimeout(() => inflight.delete(id), 1000));
-  inflight.set(id, p);
-  return p;
+// v222: 진행 중인 분석을 요청끼리 메모리로 공유하던 방식 제거 (Cloudflare에선 먼저 시작한 요청이 끝나거나 끊기면
+//  공유된 작업이 영원히 안 끝나 → 그 공시를 여는 모든 사람이 무한 로딩). 대신 DB에 '분석 중' 표시(aiwork)를 남기고,
+//  다른 곳에서 이미 분석 중이면 결과가 저장되길 잠깐(분석 시작 뒤 최대 25초) 기다렸다가, 안 나오면 직접 분석. 시간 제한은 이 요청 안에서만.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export async function analyzeId(id, it0 = null) {
+  let tm;
+  const guard = (ms) => new Promise((res) => { tm = setTimeout(() => res({ body: { ok: false, error: 'AI 분석이 너무 오래 걸려 멈췄어요 — 잠시 뒤 다시 시도해 주세요' }, opt: { status: 504, cdnSeconds: 10 } }), ms); });
+  const w = await getJSON(`aiwork/${id}`).catch(() => null);
+  if (w?.at && Date.now() - w.at < 25e3) {
+    const until = w.at + 25e3;
+    while (Date.now() < until) {
+      await sleep(1500);
+      const c = await getJSON(`ai3/${id}`).catch(() => null);
+      if (c) return { body: { ok: true, ...c }, opt: { cdnSeconds: 86400, swr: 86400 } };
+    }
+  }
+  await setJSON(`aiwork/${id}`, { at: Date.now() }).catch(() => {});
+  if (Math.random() < 0.02) delKeys('aiwork/', Date.now() - 3600e3).catch(() => {}); // 오래된 '분석 중' 표시 정리
+  return Promise.race([handle(id, it0), guard(100e3)]).finally(() => clearTimeout(tm));
 }
 
 // 빠른 요약: 처음 여는 공시는 심층 분석(20~40초) 전에 3~5초 안에 핵심 3줄 + 주가 영향을 먼저 보여줌
-const qInflight = new Map();
 /** 공시 한 줄 핵심 (저장된 심층·빠른 요약에서, 없으면 null) */
 export async function savedHeadline(id) {
   const a = (await getJSON(`ai3/${id}`)) || (await getJSON(`aiq/${id}`));
@@ -139,8 +148,9 @@ export default async (req) => {
   if (u.searchParams.get('quick') === '1') {
     if (!hasAI()) return jsonRes({ ok: false, error: 'AI 없음' }, { status: 503, cdnSeconds: 60 });
     try {
-      if (!qInflight.has(id)) qInflight.set(id, quick(id).finally(() => setTimeout(() => qInflight.delete(id), 1000)));
-      return jsonRes({ ok: true, ...(await qInflight.get(id)) }, { cdnSeconds: 300 });
+      let qt; // v222: 요청끼리 공유 안 함, 25초 제한은 이 요청 안에서
+      const q = await Promise.race([quick(id), new Promise((_, rej) => { qt = setTimeout(() => rej(new Error('빠른 요약 시간 초과')), 25e3); })]).finally(() => clearTimeout(qt));
+      return jsonRes({ ok: true, ...q }, { cdnSeconds: 300 });
     } catch (e) { return jsonRes({ ok: false, error: String(e.message || e) }, { status: 502, cdnSeconds: 30 }); }
   }
   const r = await analyzeId(id);

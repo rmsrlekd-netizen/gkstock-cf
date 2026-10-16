@@ -2292,3 +2292,27 @@ body.pbm-open{overflow:hidden}
   .pbm-row{grid-template-columns:1fr 1fr 1fr;grid-template-areas:"nm nm res" "a b c"}
   .pbm-row .pbm-nm{grid-area:nm}.pbm-row .pbm-res{grid-area:res}
 }
+/* v222 매매 따라하기 */
+.pb-old{margin:1rem 0;border:1px solid var(--line,#2a3150);border-radius:10px;padding:.5rem .8rem}
+.pb-old>summary{cursor:pointer;font-weight:700;color:var(--muted,#9aa3c0)}
+#simBox .pb-num b .up,#simBox .pb-num b .down{font-weight:700}
+.pbm-res em{display:block;font-style:normal}
+.pbm-row.sim-row{grid-template-columns:minmax(140px,1.6fr) 1fr 1fr;grid-template-areas:none}
+.pbm-row.sim-row>*{grid-area:auto}
+@media (max-width:720px){.pbm-row.sim-row{grid-template-columns:1fr 1fr}.pbm-row.sim-row .pbm-nm{grid-column:1/-1}.pbm-row.sim-row .hide-m{display:flex}}
+.simv{display:inline-block;font-size:.72rem;font-weight:700;padding:.12rem .45rem;border-radius:999px;white-space:nowrap}
+.v-ok{background:rgba(46,204,113,.18);color:#4ade80}.v-good{background:rgba(250,204,21,.14);color:#facc15}.v-n{background:rgba(255,255,255,.07);color:#9aa3c0}
+.v-weak{background:rgba(96,165,250,.14);color:#93c5fd}.v-bad{background:rgba(96,165,250,.25);color:#60a5fa}.v-base{background:rgba(255,255,255,.12);color:#e5e7eb}
+.sim-line{grid-template-columns:minmax(150px,1.5fr) minmax(120px,1fr) repeat(4,minmax(80px,.8fr)) 18px !important}
+.sim-vd{display:flex;flex-direction:column;gap:.15rem;font-size:.75rem}
+.pb-num small{display:block;font-size:.68rem;color:var(--muted,#9aa3c0);font-weight:400}
+.sim-conds{margin:.8rem 0 1rem;padding:.6rem .8rem;border-radius:10px;background:rgba(255,255,255,.03)}.sim-conds h4{margin:0 0 .4rem}.sim-conds ul{margin:.2rem 0;padding-left:1.1rem}.sim-conds li{margin:.15rem 0;font-size:.85rem}
+.sim-card{display:flex;flex-direction:column;gap:.6rem;padding:.6rem;border-radius:10px;background:rgba(255,255,255,.04);margin-bottom:.4rem}
+.sim-k{display:grid;grid-template-columns:1.6fr repeat(4,1fr);gap:.5rem}.sim-k>div{display:flex;flex-direction:column;font-size:.8rem}.sim-k em{font-style:normal;color:var(--muted,#9aa3c0);font-size:.7rem}.sim-k small{font-size:.68rem}
+.sim-eq{display:flex;align-items:center;justify-content:space-between;gap:.6rem;font-size:.82rem}.sim-eq em{font-style:normal;color:var(--muted,#9aa3c0)}
+.sim-spark{width:220px;height:48px;flex:none}.sim-spark polyline{fill:none;stroke-width:2}.sim-spark .up{stroke:#f87171}.sim-spark .down{stroke:#60a5fa}.sim-spark .z{stroke:rgba(255,255,255,.2);stroke-dasharray:3 3}
+.sim-gw h5{margin:0 0 .3rem}.sim-grid{border-collapse:separate;border-spacing:3px;font-size:.75rem;width:100%}.sim-grid th{color:var(--muted,#9aa3c0);font-weight:600;text-align:center}
+.sim-grid td{text-align:center;padding:.25rem;border-radius:6px;background:rgba(255,255,255,.04)}.sim-grid td small{display:block;font-size:.62rem;color:var(--muted,#9aa3c0)}
+.sim-grid td.cur{outline:1.5px solid rgba(255,255,255,.5)}.sim-grid td.best{background:rgba(46,204,113,.2)}
+@media (max-width:720px){.sim-line{grid-template-columns:1fr 1fr 1fr !important}.sim-line .pb-name{grid-column:1/-1}.sim-line .pb-go{display:none}
+  .sim-k{grid-template-columns:1fr 1fr}.sim-k>div:first-child{grid-column:1/-1}.sim-eq{flex-direction:column;align-items:flex-start}.sim-spark{width:100%}}

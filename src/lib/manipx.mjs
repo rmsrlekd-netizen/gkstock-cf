@@ -76,6 +76,25 @@ export function pathStats(B, i, opt = {}) {
   return out;
 }
 /** 크론: 판정한 날 이후 5·20·60거래일이 지난 종목의 실제 수익률을 채움 (한 번에 최대 20종목) */
+const PV = 2; // v222 성적표 계산 버전 (감자·액면분할 보정)
+/** 그날 판정한 종목 1개 → 성적표 줄 (결과 칸은 나중에) */
+async function perfRowOf(x) {
+  const row = { n: x.name || null, mk: x.mkt || null, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
+  // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
+  try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.vd = M.verdictOf(rk)?.c || null; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
+  return row;
+}
+/** v222 매매 따라하기용: 그날 목록의 판정 줄을 (결과 칸 없이) 바로 전부 만들어 둠 → 판정이 바뀐 날을 놓치지 않게 */
+export async function ensurePerfRows(date) {
+  const pk = `mp/perf/${date}`;
+  const perf = (await getJSON(pk)) || { rows: {} };
+  if (perf.rowsAll || perf.done) return perf;
+  const doc = await getJSON(`mp/day/${date}`);
+  for (const x of (doc?.list || []).slice(0, 80)) if (!perf.rows[x.code]) perf.rows[x.code] = await perfRowOf(x);
+  perf.rowsAll = 1;
+  await setJSON(pk, perf);
+  return perf;
+}
 export async function perfWatch(max = 20) {
   const idx = ((await getJSON('mp/idx')) || []).slice().sort(); // 오래된 날부터
   const today = kstDate();
@@ -88,22 +107,20 @@ export async function perfWatch(max = 20) {
     if (age < 7) continue; // 5거래일도 안 지났으면 아직
     const pk = `mp/perf/${date}`;
     const perf = (await getJSON(pk)) || { rows: {} };
-    if (perf.done) continue;
+    if (perf.done && perf.pv === PV) continue;
     const doc = await getJSON(`mp/day/${date}`);
     if (!doc?.list?.length) { perf.done = true; await setJSON(pk, perf); continue; }
     let pending = 0;
     const tdays = Math.floor(age * 5 / 7) - 1; // 지난 거래일 수(대략, 휴일 무시 → 조금 적게 잡음)
     for (const x of doc.list.slice(0, 80)) {
       let row = perf.rows[x.code];
-      if (!row) {
-        row = { n: x.name || null, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
-        // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
-        try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.vd = M.verdictOf(rk)?.c || null; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
-      }
-      if (H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
+      if (!row) row = await perfRowOf(x);
+      // v222: 감자·액면분할 보정 전 계산이라 '+2000%' 같은 가짜 값이 들어간 줄은 일봉을 다시 받아 새로 계산
+      const redo = row.pv !== PV && H.some((h) => (row['u' + h] ?? 0) >= 150 || (row['d' + h] ?? 0) <= -70 || Math.abs(row['r' + h] ?? 0) >= 150);
+      if (!redo && H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
       // 아직 다음 기간(5·20·60거래일)이 안 지났으면 받지 않음 (같은 종목만 계속 받느라 다른 종목·날짜가 밀리던 문제)
       const due = H.some((h) => row['r' + h] === undefined && tdays >= h);
-      if (!due && age <= 200) { pending++; perf.rows[x.code] = row; continue; }
+      if (!redo && !due && age <= 200) { pending++; perf.rows[x.code] = row; continue; }
       if (fetched >= max && !cache.has(x.code)) { pending++; continue; }
       let B = cache.get(x.code);
       if (!B) { try { B = await bars(x.code); } catch { B = null; } cache.set(x.code, B); fetched++; }
@@ -113,13 +130,15 @@ export async function perfWatch(max = 20) {
       row.c0 = B[i].c;
       { const ps = pathStats(B, i, { ix: ixd, mkt: x.mkt, tp: row.tp, sp: row.sp, now: Date.now() }); // v218: 다음 날 시가 진입·기간 중 최고/최저·시장 대비·먼저 닿은 쪽
         for (const h of H) if (row['r' + h] === undefined && ps['r' + h] != null) filled++;
+        if (redo) { for (const k of Object.keys(row)) if (/^[rudx]\d|^(ft|ftd|ft2|stop|gp|wy)$/.test(k)) delete row[k]; }
         for (const [k, v] of Object.entries(ps)) if (!/^r\d/.test(k) || row[k] === undefined) row[k] = v;
+        row.pv = PV;
         if (row.ft && row.ft !== 'n' && !row.wy) { try { const M = await import('./manip.mjs'); const evs = await M._eventsOf(x.code, Date.now()); row.wy = outcomeWhy(B, i, row, evs, { ix: ixd, mkt: x.mkt }); } catch {} } } // v219 성공·실패 이유
       if (age > 200) for (const h of H) if (row['r' + h] === undefined) row['r' + h] = null; // 너무 오래돼 일봉에 없음
       if (H.some((h) => row['r' + h] === undefined)) pending++;
       perf.rows[x.code] = row;
     }
-    if (!pending) perf.done = true;
+    if (!pending) { perf.done = true; perf.pv = PV; }
     perf.at = Date.now();
     await setJSON(pk, perf);
     if (fetched >= max) break;
@@ -435,6 +454,15 @@ export async function ruleCheck({ force = false, now = Date.now() } = {}) {
   if (G['매매 후보 조건:충족']) lines.push(fmt('🎯 매매 후보 조건 충족', G['매매 후보 조건:충족']));
   for (const k of ['🟢 매수 검토', '🟡 지켜보기', '🔴 피하기']) if (G['한 줄 결론:' + k]) lines.push(fmt(k, G['한 줄 결론:' + k]));
   for (const k of ['3 이상', '2~3', '2 미만']) if (G['손익비:' + k]) lines.push(fmt(`손익비 ${k}`, G['손익비:' + k]));
+  try { // v222 매매 따라하기 판정 (실제 기록)
+    const TS = await import('./tradesim.mjs'); const sm = (await TS.simSummary())?.live;
+    if (sm?.groups?.length) {
+      lines.push('— 📈 따라 샀다면 (1차 목표 팔기, 전체 대비) —');
+      for (const g of sm.groups) { const v = g.T; if (!v) continue; lines.push(`${g.ko}: 거래당 ${v.avg > 0 ? '+' : ''}${v.avg}% · ${v.n}번 · ${g.s === 'all' ? '기준선' : `${v.vd?.t || ''}${v.vs != null ? ` (${v.vs > 0 ? '+' : ''}${v.vs}%p)` : ''}`}`); if (v.vd?.k === 'bad') warns.push(`${g.ko}가 전체보다 확실히 나쁨`); if (g.best && g.best.testN >= 20 && g.best.test > g.best.baseTest + 1) lines.push(`  ↳ 손절·목표를 '${g.best.name}'로 바꾸면 안 본 기간 ${g.best.test}% (지금 규칙 ${g.best.baseTest}%)`); }
+      const sure = (sm.conds || []).filter((c) => c.vd?.k === 'ok' || c.vd?.k === 'bad');
+      if (sure.length) lines.push('확실한 조건: ' + sure.slice(0, 6).map((c) => `${c.ko} ${c.v} ${c.diff > 0 ? '+' : ''}${c.diff}%p`).join(' · '));
+    }
+  } catch {}
   { const gg = G['한 줄 결론:🟢 매수 검토'] || G['전체']; const t = (L) => (L || []).map(([k, p]) => `${WHY_KO[k] || k} ${p}%`).join(' · '); if (gg?.whyL?.length) lines.push(`${G['한 줄 결론:🟢 매수 검토'] ? '🟢' : '전체'} 실패 이유: ${t(gg.whyL)}`); if (gg?.whyW?.length) lines.push(`${G['한 줄 결론:🟢 매수 검토'] ? '🟢' : '전체'} 성공 이유: ${t(gg.whyW)}`); }
   // ⚠ 거꾸로 나온 규칙
   const wv = (g) => g.win20;

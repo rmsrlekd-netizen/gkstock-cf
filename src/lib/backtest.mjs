@@ -7,7 +7,7 @@
 import { getJSON, setJSON } from './store.mjs';
 
 const DAY = 86400e3;
-const BT_V = 4; // v219: 120거래일·성공/실패 이유 추가 → 처음부터 다시
+const BT_V = 7; // v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
 const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
 const STEP = 10, BACK = 16; // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
@@ -21,6 +21,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
     st = { v: BT_V, queue: codes, pos: 0, started: now, samples: 0, kept: 0, groups: {}, done: false };
     await setJSON('mp/bt/state', st);
     await setJSON('mp/bt/rows', { v: BT_V, rows: [] }); // 종목별 판정 목록 (그룹 눌러서 보기용)
+    await setJSON('mp/bt/trades', { v: BT_V, t: [] }); // v222 매매 따라하기 거래
     if (!codes.length) return { started: true, n: 0 };
   }
   if (st.done) return null;
@@ -29,7 +30,8 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   const idx = (await getJSON('mp/idx')) || [];
   const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows || {} : {};
   const part = st.queue.slice(st.pos, st.pos + max);
-  const newRows = [];
+  const newRows = [], newTr = [], newNf = {};
+  const TS = await import('./tradesim.mjs');
   for (const code of part) {
     try {
       const B = await M._bars(code);
@@ -41,7 +43,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
       const n = B.length;
       const pts = [];
       for (let k = BACK - 1; k >= 0; k--) { const i = n - 1 - 20 - k * STEP; if (i >= 60) pts.push(i); }
-      let prev = null;
+      let prev = null; const tlist = [];
       for (const i of pts) {
         const d = B[i].d, Tms = Date.parse(d + 'T15:40:00+09:00');
         const f = M.barFeatures(B.slice(0, i + 1), { now: Tms });
@@ -58,6 +60,8 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
         x.cl = M.checklistOf(x, Tms); M.bombGate(x);
         x.rbk = M.reboundOf(x, Tms); x.pex = M.postExitOf(x, Tms);
         const rk = M.rankRow(x);
+        { const rr0 = { st: x.stage, dir: x.dir?.dir, ck: x.cl?.grade, pk: M.pickFails(rk).length ? 0 : 1, vd: M.verdictOf(rk)?.c, rr: x.dir?.rr?.v ?? null, gp: rk.gap ?? null, cm: rk.cm || 0, pexl: rk.pex?.lv || null };
+          tlist.push({ d, f: TS.flagsOf(rr0), tp: x.dir?.rr?.t || 0, sp: x.dir?.rr?.s || 0, a: TS.attrsOf(rr0) }); }
         // 같은 종목·같은 단계가 30일 안에 이어지면 처음 1번만 (성적표 집계와 같은 기준)
         if (prev && prev.st === x.stage && Tms - prev.ms <= 30 * DAY) continue;
         prev = { st: x.stage, ms: Tms };
@@ -67,8 +71,10 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
         newRows.push({ c: code, n: x.name, d, ...row });
         st.kept++;
       }
+      { const R = TS.simTrades(B, tlist, { final: true, now, ix: ixd, mkt }); for (const t of R.trades) newTr.push(TS.pack(code, snap[code]?.[0] || code, t)); for (const [k, v] of Object.entries(R.nf)) newNf[k] = (newNf[k] || 0) + v; } // v222 매매 따라하기 (과거 재현은 10거래일 간격 판정)
     } catch (e) { console.warn('bt', code, e.message); }
   }
+  if (newTr.length || Object.keys(newNf).length) { const R = (await getJSON('mp/bt/trades')) || { v: BT_V, t: [] }; R.t = [...(R.t || []), ...newTr].slice(-8000); R.nf = R.nf || {}; for (const [k, v] of Object.entries(newNf)) R.nf[k] = (R.nf[k] || 0) + v; R.at = Date.now(); await setJSON('mp/bt/trades', R).catch(() => {}); }
   if (newRows.length) { const R = (await getJSON('mp/bt/rows')) || { v: BT_V, rows: [] }; R.rows = [...(R.rows || []), ...newRows].slice(-6000); await setJSON('mp/bt/rows', R).catch(() => {}); }
   st.pos += part.length; st.at = Date.now();
   if (st.pos >= st.queue.length) { st.done = true; st.doneAt = Date.now(); }

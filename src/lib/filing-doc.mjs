@@ -59,14 +59,9 @@ async function secLines(it) {
 }
 
 /** 원문 줄 배열 (캐시) */
-// 같은 원문을 빠른 요약·심층 분석·원문 보기가 동시에 요청하면 한 번만 받음 (v213)
-const docInflight = new Map();
-export function getFilingDoc(it) {
-  if (docInflight.has(it.id)) return docInflight.get(it.id);
-  const p = getFilingDoc0(it).finally(() => setTimeout(() => docInflight.delete(it.id), 2000));
-  docInflight.set(it.id, p);
-  return p;
-}
+// v222: 요청끼리 진행 중인 작업(Promise)을 같이 기다리던 방식(v213) 제거 — Cloudflare에선 먼저 시작한 요청(미리 분석 크론·창을 닫은 방문자)이
+//  끝나거나 끊기면 그 작업이 영원히 안 끝나서, 같은 서버에서 그 공시를 여는 모든 사람이 무한 로딩에 걸렸음
+export function getFilingDoc(it) { return getFilingDoc0(it); }
 async function getFilingDoc0(it) {
   const key = `doc2/${it.id}`;
   const cached = await getJSON(key);
