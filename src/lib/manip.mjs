@@ -1346,7 +1346,7 @@ ${F.map((f) => `${f.id}. ${f.t} (출처: ${f.src})`).join('\n')}`;
 
 // ───── 저장 ─────
 async function saveDay(date, list, extra = {}) {
-  const doc = { date, at: Date.now(), n: list.length, list, ...extra };
+  const doc = { date, at: Date.now(), n: list.length, rv: RULE_V, list, ...extra }; // v222: 그날 판정 규칙 버전 (성적표에서 '지금 규칙만' 보기)
   await setJSON(`mp/day/${date}`, doc);
   let idx = null;
   try { idx = (await getJSONStrict('mp/idx')) || []; } catch (e) { console.warn('mp/idx 읽기 실패 — 목록은 그대로 둠', e.message); }
@@ -2112,4 +2112,4 @@ export async function manipAux() {
   await setJSON('mp/auxlock', { busyUntil: 0 }).catch(() => {});
   return Object.keys(out).length ? out : null;
 }
-export { docPrice as _docPrice, bars as _bars, eventsOf as _eventsOf, loadEvents as _loadEvents, pxRow as _pxRow }; // 테스트·과거 재현(backtest.mjs)용
+export { analyzeOne as _analyzeOne, ctxLoad as _ctxLoad, docPrice as _docPrice, bars as _bars, eventsOf as _eventsOf, loadEvents as _loadEvents, pxRow as _pxRow }; // 테스트·과거 재현(backtest.mjs)용

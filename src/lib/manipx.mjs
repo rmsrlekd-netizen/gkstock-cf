@@ -78,8 +78,8 @@ export function pathStats(B, i, opt = {}) {
 /** 크론: 판정한 날 이후 5·20·60거래일이 지난 종목의 실제 수익률을 채움 (한 번에 최대 20종목) */
 const PV = 2; // v222 성적표 계산 버전 (감자·액면분할 보정)
 /** 그날 판정한 종목 1개 → 성적표 줄 (결과 칸은 나중에) */
-async function perfRowOf(x) {
-  const row = { n: x.name || null, mk: x.mkt || null, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
+export async function perfRowOf(x, rv = null) {
+  const row = { n: x.name || null, mk: x.mkt || null, rv, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
   // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
   try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.vd = M.verdictOf(rk)?.c || null; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
   return row;
@@ -90,7 +90,7 @@ export async function ensurePerfRows(date) {
   const perf = (await getJSON(pk)) || { rows: {} };
   if (perf.rowsAll || perf.done) return perf;
   const doc = await getJSON(`mp/day/${date}`);
-  for (const x of (doc?.list || []).slice(0, 80)) if (!perf.rows[x.code]) perf.rows[x.code] = await perfRowOf(x);
+  for (const x of (doc?.list || []).slice(0, 80)) if (!perf.rows[x.code]) perf.rows[x.code] = await perfRowOf(x, doc.rv ?? null);
   perf.rowsAll = 1;
   await setJSON(pk, perf);
   return perf;
@@ -114,7 +114,7 @@ export async function perfWatch(max = 20) {
     const tdays = Math.floor(age * 5 / 7) - 1; // 지난 거래일 수(대략, 휴일 무시 → 조금 적게 잡음)
     for (const x of doc.list.slice(0, 80)) {
       let row = perf.rows[x.code];
-      if (!row) row = await perfRowOf(x);
+      if (!row) row = await perfRowOf(x, doc.rv ?? null);
       // v222: 감자·액면분할 보정 전 계산이라 '+2000%' 같은 가짜 값이 들어간 줄은 일봉을 다시 받아 새로 계산
       const redo = row.pv !== PV && H.some((h) => (row['u' + h] ?? 0) >= 150 || (row['d' + h] ?? 0) <= -70 || Math.abs(row['r' + h] ?? 0) >= 150);
       if (!redo && H.every((h) => row['r' + h] !== undefined)) { perf.rows[x.code] = row; continue; }
