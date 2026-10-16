@@ -104,8 +104,14 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
     const idx = (await getJSON('mp/idx')) || [];
     const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows : null;
     if (snap) {
+      // 같은 종가끼리만 비교: 시세 목록 날 장 마감(15:30) 뒤 ~ 다음 거래일 장 시작(09:00) 전에 갱신된 줄만
+      //  (다음 날 장중에 새 공시로 다시 판단된 줄은 그날 장중 가격이라 비교하면 안 됨)
       const day0 = Date.parse(idx[0] + 'T15:30:00+09:00');
-      const off = rows.filter((r) => snap[r.code]?.[2] > 0 && r.c > 0 && (r.up || 0) > day0 && Math.abs(r.c / snap[r.code][2] - 1) > 0.15);
+      const { isTradingDay } = await import('./schedule.mjs');
+      let nd = new Date(Date.parse(idx[0] + 'T12:00:00+09:00') + DAY);
+      for (let k = 0; k < 10 && !isTradingDay('KR', new Date(nd.getTime() + 9 * H).toISOString().slice(0, 10)); k++) nd = new Date(nd.getTime() + DAY);
+      const dayEnd = Date.parse(new Date(nd.getTime() + 9 * H).toISOString().slice(0, 10) + 'T09:00:00+09:00');
+      const off = rows.filter((r) => snap[r.code]?.[2] > 0 && r.c > 0 && (r.up || 0) > day0 && (r.up || 0) < dayEnd && Math.abs(r.c / snap[r.code][2] - 1) > 0.15);
       if (off.length) add('warn', '작전 레이더', `랭킹 현재가가 같은 날 전 종목 시세와 15% 넘게 다름 ${off.length}개`, off.map((r) => `${r.n} ${r.c} vs ${snap[r.code][2]}`));
     }
     // 날짜 기록·성적표
