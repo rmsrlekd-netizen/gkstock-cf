@@ -31,10 +31,10 @@ export const SIGS = [
 // v222: 'hot' = 레이더가 🔴로 빼던 띄우기·엑시트 후 — 과거 재현에서 손익비가 가장 높게 나와(1:2.1~2.6) 단타 구간으로 따로 검증 (🔴여도 사고, 판정 🔴 전환으로 팔지 않음)
 const BIT = { g: 1, pk: 2, A: 4, AB: 8, acc: 16, up: 32, all: 128, hot: 256 };
 const BAD = 64;
-export const WHY_X = { stop: '손절선', tgt: '목표가', view: '판정 🔴 전환', time: '60일 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
+export const WHY_X = { stop: '손절선', tgt: '목표가', view: '판정 🔴 전환', time: '기간 끝 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
 const COST = 0.5, HOLD = 60, COOL = 10, NOFILL = 1.25;
 export const PK_H = [5, 20, 60, 120]; // 최고·최저 기록 기간(거래일)
-export const MODES = ['T', 'U', 'ST', 'SU', 'TR', 'TH', 'PL', 'PR']; // v223 PL·PR: 눌림 진입(판정 뒤 5거래일 안 판정일 종가 −3% 지정가, 안 오면 안 삼) → PL 1차 목표 팔기 · PR 최고점 −15% 팔기
+export const MODES = ['T', 'U', 'ST', 'SU', 'TR', 'TH', 'PL', 'PR', 'TT']; // v227 TT: 최고점 −15% 또는 20거래일 지나면 팔기 (과거 재현: 고점까지 중간값 14거래일) // v223 PL·PR: 눌림 진입(판정 뒤 5거래일 안 판정일 종가 −3% 지정가, 안 오면 안 삼) → PL 1차 목표 팔기 · PR 최고점 −15% 팔기
 export const PULL = 0.97, PULL_D = 5; // 한 번에 사기(목표 팔기·끝까지) · 3번 나눠 사기(목표 팔기·끝까지) · v222 추적 매도(TR: 최고점 대비 −15% / TH: +30%에 절반·나머지 최고점 대비 −15%)
 export const GRID_S = [7, 10, 15, 'c'], GRID_T = [15, 30, 't', 0]; // 'c' = 세력 원가 손절선, 't' = 1차 목표가, 0 = 목표 없음
 const gridName = (gi) => { const s = GRID_S[gi >> 2], t = GRID_T[gi & 3]; return `손절 ${s === 'c' ? '세력 원가' : '−' + s + '%'} · ${t === 't' ? '1차 목표가' : t ? '+' + t + '%' : '목표 없이 끝까지'}`; };
@@ -135,16 +135,16 @@ export function simTrades(B, tl, opt = {}) {
       // v222 추적 매도: 세력주는 짧게 크게 쏘고 되돌림(과거 재현: 20일 안 최고 +25%인데 20일째 −5%) → 최고점에서 일정 폭 빠지면 팖
       //  TR: 산 뒤 최고가(고가) 대비 종가가 −15% 아래로 마감하면 다음 날 시가에 매도 · 손절선 · 60일
       //  TH: +30% 닿으면 그 값에 절반 매도, 나머지는 TR과 같은 규칙
-      const runTrail = (half) => {
+      const runTrail = (half, maxH = HOLD) => {
         let hi = e, sold = 0, got = 0; // sold: 이미 판 비율, got: 그 판 돈(진입가 1 기준)
-        for (let k = ei; k < Math.min(B.length, ei + HOLD); k++) {
+        for (let k = ei; k < Math.min(B.length, ei + maxH); k++) {
           const x = B[k], o = x.o || x.c;
           if (x.l <= spc) { const px = Math.min(o, spc); return { px, k, w: 'stop', sold, got }; }
           if (half && !sold && x.h >= e * 1.3) { sold = 0.5; got = 0.5 * Math.max(o, e * 1.3) / e; }
           hi = Math.max(hi, x.h);
           if (x.c <= hi * 0.85 && B[k + 1]) return { px: B[k + 1].o || B[k + 1].c, k: k + 1, w: 'trail', sold, got };
         }
-        const k = ei + HOLD - 1;
+        const k = ei + maxH - 1;
         if (B[k]) return { px: B[k].c, k, w: 'time', sold, got };
         if (stale) return { px: B[B.length - 1].c, k: B.length - 1, w: 'halt', sold, got };
         return null;
@@ -154,7 +154,7 @@ export function simTrades(B, tl, opt = {}) {
         const r = ((x.got + (1 - x.sold) * (x.px / e)) - 1) * 100 - COST, risk = Math.max(3, (1 - spc / e) * 100), m = mret(ei, x.k);
         return { r: r1(r), R: Math.round((r / risk) * 100) / 100, h: x.k - ei + 1, w: x.w, xd: B[x.k].d, x: m == null ? null : r1(r - m) };
       };
-      const TR = finTr(runTrail(false)), TH = finTr(runTrail(true));
+      const TR = finTr(runTrail(false)), TH = finTr(runTrail(true)), TT = finTr(runTrail(false, 20));
       // v223 눌림 진입: 다음 날 시가에 무조건 사지 않고, 판정 뒤 5거래일 안에 판정일 종가 −3% 가격이 오면 그 가격(그보다 낮게 열리면 시가)에 삼 — 미래 자료 안 씀(지정가 주문)
       let PL = null, PR = null, nfP = 0;
       { const lim = B[p.i].c * PULL; let ek = -1, ep = 0;
@@ -197,8 +197,8 @@ export function simTrades(B, tl, opt = {}) {
       const p5 = p.i >= 5 ? (B[p.i].c / B[p.i - 5].c - 1) * 100 : null; let v20 = 0; for (let k = Math.max(0, p.i - 20); k < p.i; k++) v20 += B[k].v; v20 /= Math.max(1, Math.min(20, p.i));
       const vx = v20 ? B[p.i].v / v20 : null;
       const a = { ...(p.a || {}), p5: p5 == null ? null : p5 < -5 ? '−5% 아래' : p5 < 5 ? '±5%' : p5 < 20 ? '+5~20%' : '+20%↑', vx: vx == null ? null : vx < 1.5 ? '평소 수준' : vx < 3 ? '1.5~3배' : vx < 6 ? '3~6배' : '6배↑', lq: lq == null ? null : lq < 5 ? '5억 미만' : lq < 20 ? '5~20억' : lq < 100 ? '20~100억' : '100억↑', mk: m20 == null ? null : m20 >= 3 ? '상승' : m20 <= -3 ? '하락' : '보합', eg: (() => { const v = (e / B[p.i].c - 1) * 100; return v < -3 ? '−3% 아래' : v < 3 ? '±3%' : v < 10 ? '+3~10%' : '+10%↑'; })() };
-      out.push({ s, d: p.d, e: Math.round(e * 100) / 100, sp: Math.round(spc), tp: Math.round(tpt), T, U, ST, SU, TR, TH, PL, PR, nfP, rv: p.rv ?? null, lq, pk, g, mf: r1((mf / e - 1) * 100), ma: r1((ma / e - 1) * 100), a });
-      const ends = [T, U, ST, SU, TR, TH, PL, PR].map((z, zi) => (z ? ix(z.xd) : zi >= 6 && nfP ? -1 : B.length + 999)); // 눌림을 못 산 건 막지 않음
+      out.push({ s, d: p.d, e: Math.round(e * 100) / 100, sp: Math.round(spc), tp: Math.round(tpt), T, U, ST, SU, TR, TH, PL, PR, TT, nfP, rv: p.rv ?? null, lq, pk, g, mf: r1((mf / e - 1) * 100), ma: r1((ma / e - 1) * 100), a });
+      const ends = [T, U, ST, SU, TR, TH, PL, PR, TT].map((z, zi) => (z ? ix(z.xd) : (zi === 6 || zi === 7) && nfP ? -1 : B.length + 999)); // 눌림을 못 산 건 막지 않음
       busyTo = Math.max(...ends);
     }
   }
@@ -484,13 +484,13 @@ export function icStats(pts, nDates) {
 // 저장용 짧은 모양 ↔ 원래 모양
 const pz = (z) => (z ? [z.r, z.R, z.h, z.w, z.xd, z.x] : 0);
 const uz = (z) => (z ? { r: z[0], R: z[1], h: z[2], w: z[3], xd: z[4], x: z[5] ?? null } : null);
-export const pack = (c, n, t) => [c, n || '', t.s, t.d, t.e, t.sp, t.tp, pz(t.T), pz(t.U), t.g || [], t.mf, t.ma, t.a || {}, pz(t.ST), pz(t.SU), t.rv ?? null, t.lq ?? null, t.pk || [], pz(t.TR), pz(t.TH), t.nfP ? 'nf' : pz(t.PL), t.nfP ? 'nf' : pz(t.PR)];
-export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp: a[5], tp: a[6], T: uz(a[7]), U: uz(a[8]), g: a[9] || [], mf: a[10], ma: a[11], a: a[12] || {}, ST: uz(a[13]), SU: uz(a[14]), rv: a[15] ?? null, lq: a[16] ?? null, pk: a[17] || [], TR: uz(a[18]), TH: uz(a[19]), PL: a[20] === 'nf' ? null : uz(a[20]), PR: a[21] === 'nf' ? null : uz(a[21]), nfP: a[20] === 'nf' ? 1 : 0 });
+export const pack = (c, n, t) => [c, n || '', t.s, t.d, t.e, t.sp, t.tp, pz(t.T), pz(t.U), t.g || [], t.mf, t.ma, t.a || {}, pz(t.ST), pz(t.SU), t.rv ?? null, t.lq ?? null, t.pk || [], pz(t.TR), pz(t.TH), t.nfP ? 'nf' : pz(t.PL), t.nfP ? 'nf' : pz(t.PR), pz(t.TT)];
+export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp: a[5], tp: a[6], T: uz(a[7]), U: uz(a[8]), g: a[9] || [], mf: a[10], ma: a[11], a: a[12] || {}, ST: uz(a[13]), SU: uz(a[14]), rv: a[15] ?? null, lq: a[16] ?? null, pk: a[17] || [], TR: uz(a[18]), TH: uz(a[19]), PL: a[20] === 'nf' ? null : uz(a[20]), PR: a[21] === 'nf' ? null : uz(a[21]), nfP: a[20] === 'nf' ? 1 : 0, TT: uz(a[22]) });
 
 // ───── 실제 성적표(매일 판정 기록)로 계산 ─────
 //  mp/sim/tl {dates:[], codes:{코드:{n, m(시장), p:[[날짜번호, 신호비트, 목표가, 손절선, 조건]]}}}
 //  mp/sim/tr {codes:{코드:{chk, need, open, nf, t:[pack…]}}} · mp/sim/sum 통계 캐시
-const SIM_V = 8; // v223: 눌림 진입(PL·PR) 추가 ·  v222: 거래량 0 정지 감자 보정 → 다시 계산
+const SIM_V = 9; // v227 TT(20일 매도) 추가 · // v223: 눌림 진입(PL·PR) 추가 ·  v222: 거래량 0 정지 감자 보정 → 다시 계산
 export async function simStep({ maxDates = 2, maxCodes = 12, budgetMs = 30000 } = {}) {
   const { getJSON, setJSON } = await import('./store.mjs');
   const t0 = Date.now();
@@ -584,7 +584,7 @@ export async function simFollow({ max = 6, budgetMs = 25000 } = {}) {
 //  · 이유를 사실로 설명 못 하면(공시도 없고 시장도 조용) 'NONE' → 표시 안 함 · 하루 최대 150건 · `mp/sim/ai`
 //  · 신호별 'AI 정리'는 7일마다(또는 거래가 30% 늘면) 1번: 통계 숫자 + 거래 해설에서 모은 공시 종류 → 3~4문장 `mp/sim/gai`
 const AI_SIGS = ['g', 'pk', 'AB', 'acc'];
-const KIND_KO = { mna: '경영권 변경', rights3: '3자배정 증자', rights: '유상증자', cb: 'CB·BW 발행', conv: '전환청구', refix: '전환가 조정', fund5: '투자조합 지분', sell: '대주주 매도', pledge: '주식 담보', fail: '철회·납입 연기', risk: '위험 공시', paid: '납입 완료', insider: '임원·주요주주 매매', tsell: '자사주 처분', bonus: '무상증자', supply: '공급계약', ceo: '대표 변경', rename: '상호 변경', agm: '주총 안건', halt: '거래정지', lock: '보호예수' };
+const KIND_KO = { insider_b: '임원·주요주주 장내 매수', insider_s: '임원·주요주주 장내 매도', mna: '경영권 변경', rights3: '3자배정 증자', rights: '유상증자', cb: 'CB·BW 발행', conv: '전환청구', refix: '전환가 조정', fund5: '투자조합 지분', sell: '대주주 매도', pledge: '주식 담보', fail: '철회·납입 연기', risk: '위험 공시', paid: '납입 완료', insider: '임원·주요주주 매매', tsell: '자사주 처분', bonus: '무상증자', supply: '공급계약', ceo: '대표 변경', rename: '상호 변경', agm: '주총 안건', halt: '거래정지', lock: '보호예수' };
 export async function simAiStep({ max = 4, budgetMs = 30000, dayCap = 150 } = {}) {
   const { getJSON, setJSON } = await import('./store.mjs');
   const { claude, hasAI } = await import('./ai.mjs');
@@ -666,7 +666,7 @@ ${facts.join('\n')}`;
   if (done || g) await setJSON(`mp/sim/aicnt/${kst}`, cnt);
   return done || g ? { done, g, left: Math.max(0, pick.length - done) } : null;
 }
-const SIM_WHY_KO = { stop: '손절선', tgt: '1차 목표가', view: '판정 🔴 전환', time: '60일 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
+const SIM_WHY_KO = { stop: '손절선', tgt: '1차 목표가', view: '판정 🔴 전환', time: '기간 끝 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
 const nfSum = (L) => { const o = {}; for (const z of L) for (const [k, v] of Object.entries(z || {})) o[k] = (o[k] || 0) + v; return o; };
 export async function simSummary() {
   const { getJSON, setJSON } = await import('./store.mjs');

@@ -3615,13 +3615,13 @@
   }
   // ───── v222 📈 따라 샀다면 (단순 화면) ─────
   //  위: 한 줄 요약 · 버튼 3개(보기 / 기록 종류 / 방식) · 줄마다 숫자 1개 크게 + 10칸 점 + 판정 칩 · 나머지는 줄을 눌러 상세
-  const SIM_WHY = { stop: '손절선', tgt: '목표가', view: '판정 🔴 전환', time: '60일 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
-  try { S.simSrc = load('gk_simsrc') || 'live'; S.simM = load('gk_simm') || 'T'; S.simB = load('gk_simb') || ''; S.simV = load('gk_simv') || 'trade'; S.pkH = +(load('gk_pkh') || 20); S.simNow = !!load('gk_simnow'); S.simX = !!load('gk_simx'); } catch {}
-  const SIM_SOLO = ['TR', 'TH', 'PL', 'PR']; // 나눠 사기와 섞지 않는 방식
+  const SIM_WHY = { stop: '손절선', tgt: '목표가', view: '판정 🔴 전환', time: '기간 끝 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
+  try { S.simSrc = load('gk_simsrc') || 'live'; S.simM = load('gk_simm') || 'TT'; /* v227 기본 = 20일 안 정리 */ S.simB = load('gk_simb') || ''; S.simV = load('gk_simv') || 'trade'; S.pkH = +(load('gk_pkh') || 20); S.simNow = !!load('gk_simnow'); S.simX = !!load('gk_simx'); } catch {}
+  const SIM_SOLO = ['TR', 'TH', 'PL', 'PR', 'TT']; // 나눠 사기와 섞지 않는 방식
   const simMode = () => (SIM_SOLO.includes(S.simM) ? S.simM : (S.simB === 'S' ? 'S' : '') + (S.simM === 'U' ? 'U' : 'T'));
   const simBase = () => (S.simSrc === 'bt' ? 'bt' : S.simNow ? 'now' : 'live');
   const simSrcK = () => simBase() + (S.simX ? 'X' : ''); // v222: 시장 대비로 보기
-  const ML = { T: '한 번에 사서 · 1차 목표에서 팔기', U: '한 번에 사서 · 끝까지 들고 가기', ST: '3번 나눠 사서 · 1차 목표에서 팔기', SU: '3번 나눠 사서 · 끝까지 들고 가기', TR: '한 번에 사서 · 최고점에서 −15% 빠지면 팔기', TH: '한 번에 사서 · +30%에 절반, 나머지는 최고점 −15%', PL: '📉 눌림에 사서(−3% 지정가) · 1차 목표에서 팔기', PR: '📉 눌림에 사서(−3% 지정가) · 최고점 −15% 팔기' };
+  const ML = { T: '한 번에 사서 · 1차 목표에서 팔기', U: '한 번에 사서 · 끝까지 들고 가기', ST: '3번 나눠 사서 · 1차 목표에서 팔기', SU: '3번 나눠 사서 · 끝까지 들고 가기', TR: '한 번에 사서 · 최고점에서 −15% 빠지면 팔기', TT: '⭐ 한 번에 사서 · 최고점 −15% 또는 20일 지나면 팔기 (추천)', TH: '한 번에 사서 · +30%에 절반, 나머지는 최고점 −15%', PL: '📉 눌림에 사서(−3% 지정가) · 1차 목표에서 팔기', PR: '📉 눌림에 사서(−3% 지정가) · 최고점 −15% 팔기' };
   const VDC = { ok: 'v-ok', good: 'v-good', n: 'v-n', weak: 'v-weak', bad: 'v-bad', base: 'v-base' };
   const vdBadge = (v) => (v ? `<span class="simv ${VDC[v.k] || 'v-n'}">${esc(v.k === 'good' ? '좋아 보임' : v.k === 'weak' ? '나빠 보임' : v.k === 'base' ? '비교 기준' : v.t)}</span>` : '');
   const dots = (pct, n) => { const k = Math.round((pct || 0) / 10); return `<span class="sx-dots" title="${pct}%">${Array.from({ length: 10 }, (_, i) => `<i class="${i < k ? 'on' : ''}"></i>`).join('')}</span>`; };

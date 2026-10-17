@@ -7,7 +7,7 @@
 import { getJSON, setJSON } from './store.mjs';
 
 const DAY = 86400e3;
-const BT_V = 18; // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
+const BT_V = 19; // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
 const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
 const STEP = 10, BACK = 16; // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
@@ -68,7 +68,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
         x.rbk = M.reboundOf(x, Tms); x.pex = M.postExitOf(x, Tms);
         const rk = M.rankRow(x);
         { const rr0 = { st: x.stage, dir: x.dir?.dir, ck: x.cl?.grade, pk: M.pickFails(rk).length ? 0 : 1, vd: M.verdictOf(rk)?.c, rr: x.dir?.rr?.v ?? null, gp: rk.gap ?? null, cm: rk.cm || 0, pexl: rk.pex?.lv || null, ckv: Object.fromEntries((x.cl?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])),
-            ev: [...new Set(evs.filter((e) => e.ms > Tms - 60 * DAY).map((e) => e.kind).filter(Boolean))], lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length }; // v224 🏆 이긴 자리 공통점용: 최근 60일 공시 종류·차트 모양
+            ev: M.evKinds60(evs, x.px, Tms), lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length }; // v224 🏆 이긴 자리 공통점용: 최근 60일 공시 종류·차트 모양
           tlist.push({ d, f: TS.flagsOf(rr0), tp: x.dir?.rr?.t || 0, sp: x.dir?.rr?.s || 0, a: TS.attrsOf(rr0), v: { s: score, ws: x.cl?.ws ?? null, rr: rr0.rr, gp: rr0.gp } }); }
         if (x.stage === '거래정지') continue; // v222: 거래정지 중엔 실제로 살 수 없음 → 판정일 기준 결과에서 뺌 (따라 샀다면에선 '🔴' 판정으로만 씀)
         // 같은 종목·같은 단계가 30일 안에 이어지면 처음 1번만 (성적표 집계와 같은 기준)
