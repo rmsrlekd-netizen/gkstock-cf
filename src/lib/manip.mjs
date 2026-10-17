@@ -1184,6 +1184,9 @@ export const CK_BOMB = ['fail', 'health', 'penalty', 'pledge', 'insell', 'delist
 const CK_RW = { drain: 1, party: 1, exited: 1, unlock30: 1, nocap: 1.5, delist: 1.5, tsell: 0.5, credit: 0.5, warn: 0.5 };
 export const CK_KO = { money: '세력 자금 실제 투입', cost: '평단 근처', acc: '매집 흔적', unlock: '물량 해제 2~3개월 전', rr: '손익비 2↑', small: '소형주', float: '최대주주 지분 40%↑', story: '사업목적 추가', theme: '업종·테마 강세', insider: '내부자 매수', broker: '창구 쏠림', buzz: '기사·종토방 증가' };
 let CK_LEARN = null; // { w: {항목: 배율}, n: 표본 수 }
+// v231 피하기 학습: 과거 재현에서 '크게 빠질 확률을 못 올린' 폭탄 항목은 D등급 강제에서 뺌(작은 위험으로 내림) — 앞·뒤 기간 모두 같은 결과일 때만
+let AV_LEARN = null; // { k: {항목: 'none'|'pump'|'ok'} }
+export function setAvoidLearn(v) { AV_LEARN = v && v.k ? v : null; }
 export function setCkLearn(v) { CK_LEARN = v && v.w && Object.keys(v.w).length ? v : null; }
 // 성적표(20거래일 결과)로 항목별 배율 계산: 충족 종목 승률 − 미충족 종목 승률(%p) → 1 + 차이/20 (0.3~2배), 양쪽 다 30건 이상일 때만
 export function learnCk(map) {
@@ -1295,7 +1298,7 @@ export function checklistOf(x, now = Date.now()) {
   const ratio = known.length ? np / known.length : 0;
   // ── 중요도(가중치) 점수 ──
   for (const i of P) { const base = CK_W[i.k] ?? 0.5, m = CK_LEARN?.w?.[i.k]; i.w = Math.round(base * (m ?? 1) * 100) / 100; if (m != null) i.wl = m; }
-  for (const i of R) { i.bomb = CK_BOMB.includes(i.k); i.w = i.bomb ? null : CK_RW[i.k] ?? 0.5; }
+  for (const i of R) { i.bomb = CK_BOMB.includes(i.k); const lv = AV_LEARN?.k?.[i.k]; if (i.bomb && lv === 'none') { i.bomb = false; i.al = 'none'; } else if (lv === 'pump') i.al = 'pump'; i.w = i.bomb ? null : CK_RW[i.k] ?? 0.5; } // v231 al: 학습 결과 표시
   const kw = known.reduce((a, i) => a + i.w, 0), okw = known.filter((i) => i.ok).reduce((a, i) => a + i.w, 0);
   const ws = kw ? Math.round((okw / kw) * 100) : 0;
   const bombs = R.filter((i) => i.ok === true && i.bomb);
@@ -1616,8 +1619,10 @@ export function patAttrs(x, rk) {
   const Tms = Date.now(), f = x.f || {};
   return tsAttrs({ st: x.stage, dir: (x.dir || {}).dir, ck: x.cl?.grade, rr: x.dir?.rr?.v ?? null, gp: rk?.gap ?? null, cm: rk?.cm || 0, pexl: rk?.pex?.lv || null,
     ckv: Object.fromEntries((x.cl?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])),
-    ev: evKinds60(x.events, x.px, Tms), lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length });
+    ev: evKinds60(x.events, x.px, Tms), lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length, rd: redKeys(x.cl) });
 }
+// v231 그날 걸린 위험 항목(폭탄·작은 위험) — 🔴·D가 정말 피할 만했는지 항목별로 따로 재려고
+export const redKeys = (cl) => (cl?.red || []).filter((i) => i.ok === true && !i.common).map((i) => i.k);
 // 패턴이 이 종목 조건과 맞는지 (공시 '없음'은 그 공시가 없을 때 맞음)
 export function matchPat(pa, P) {
   if (!pa || !P) return { wp: null, lp: null };
@@ -1797,6 +1802,7 @@ async function perfSum() {
     try { const { perfSummary } = await import('./manipx.mjs'); const s = await perfSummary(); c = { at: Date.now(), map: Object.fromEntries(s.groups.map((g) => [g.g, g])) }; await setJSON('mp/perfsum', c).catch(() => {}); } catch { c = c || null; }
   }
   setCkLearn(learnCk(c?.map));
+  try { setAvoidLearn(await getJSON('mp/avoidlearn')); } catch {}
   return c;
 }
 export async function manipRank(kind = 'all') {
@@ -1854,7 +1860,8 @@ export function conflictOf(x, d, pex) {
   if (!a && !b) return null;
   const k = (pex[a ? 'down' : 'up'] || []).slice(0, 2).map((r) => r.t.split(' — ')[0]).join(', ');
   return a ? `ℹ️ 상승 근거는 높은데 '털기 후 상승 가능성'은 낮은 이유: 상승 근거 점수는 새 판 깔기 공시·매집 흔적처럼 '세력이 준비 중인지'를 보고, 털기 후 상승 가능성은 '이미 크게 빠진 뒤 바닥이 단단한지'만 따로 봅니다. 이 종목은 판은 다시 깔리고 있지만 바닥은 아직 확인되지 않았다는 뜻입니다${k ? ` (걸림돌: ${k})` : ''}. 들어간다면 바닥 확인 뒤가 안전합니다.`
-    : `ℹ️ 하락 위험으로 분류됐지만 '털기 후 상승 가능성'은 높은 이유: 하락 위험은 '지금 단계·물량 부담'을, 털기 후 상승 가능성은 '크게 빠진 뒤 바닥이 단단한지'를 봅니다. 바닥 신호는 좋지만 물량 부담이 남아 있다는 뜻입니다${k ? ` (좋은 점: ${k})` : ''}.`;
+    : (() => { const bm = (x.cl?.bombs || []).map((b) => BOMB_KO[b] || b); // v231 애매한 설명 → 결론 먼저
+      return `ℹ️ 결론은 맨 위 판정이 우선이에요${bm.length ? ` — 폭탄 신호(${bm.join(', ')})가 있어 지금은 사지 않는 자리` : ' — 하락 위험(물량 부담)이 남아 지금은 사지 않는 자리'}. '털기 후 상승 가능성 높음'은 '크게 빠진 뒤 바닥이 아직 버티고 있다'는 차트 사실 하나일 뿐, 단기든 장기든 오른다는 뜻이 아니에요${k ? ` (바닥 쪽 좋은 점: ${k})` : ''}. ${bm.length ? '폭탄 신호가 풀리기 전엔 바닥도 깨질 수 있어요.' : '물량 부담이 줄고(전환·해제 소화) 바닥 위에서 거래량이 붙으면 그때 다시 볼 자리예요.'}`; })();
 }
 export function narrativeOf(x, now = Date.now()) {
   const f = x.f || {}, d = x.dir || direction(x, now), cl = x.cl, rk = x.rbk || reboundOf(x, now), P = [];

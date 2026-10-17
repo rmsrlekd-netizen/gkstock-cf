@@ -161,3 +161,10 @@
 - `btstore.mjs` 조각 저장: `mp/bt/{rows,trades,fw}` = meta{v,parts,n,nf} + `/pN`. 읽기는 `partsLoad`(예전 한 덩어리도 읽힘), tradesim `loadBtTrades/loadBtFw`.
 - tradesim SIM_V 10: 모드 `BK`(pack[23], nfB='nf') — 판정 뒤 10거래일 안 종가>직전 20일 고가 & 거래량≥20일 평균 1.5배 → 다음 날 시가 매수, 손절 max(판정 손절, −10%), 최고점 −15%/20일 매도.
 - `stratFind`: ① walk-forward(`wf`: 매달 그 전까지로 1등 규칙 → 그 달 시험, 합산 vs 전체, `ok`) ② 앞 2/3·뒤 1/3 표 + rho ③ best = 전체 기간 1등 규칙이 wf.ok & 뒤 1/3 통과 & rho≥0.2 일 때만 (`why`에 탈락 이유). 생존 편향(상폐 제외) 화면에 명시.
+
+## v231 🛡 피하기 검증 + 판정 화면 모순 정리 (web v=224)
+- 위험 항목 기록: `M.redKeys(cl)` → 실제 기록 row.rd · 과거 재현 rr0.rd · patAttrs.rd → attrsOf `r_<항목>: '걸림'` (RD_KO 이름표).
+- tradesim `avoidStudy(T0)`: 'all' 거래로 그룹(🟢/🟡/🔴/D/A·B/하락 위험)·위험 항목별 −30% 찍은 비율(ma≤−30)·+30% 찍은 비율(mf≥30)·TT 평균. judge: −30% 확률 +5%p↑ & +30% 확률 +5%p↑ = 'pump'(위험하지만 튀는 자리), −30% +5%p↑ 또는 TT −2↓ = 'ok', 아니면 'none'. 항목별은 앞 반·뒤 반 따로 계산, 40번↑ & 양쪽 같은 방향일 때만 `sure`.
+- 자동 반영: simSummary가 bt avoid의 sure 항목을 `mp/avoidlearn {k:{항목:'none'|'pump'|'ok'}}` 저장 → perfSum이 `setAvoidLearn` → checklistOf에서 폭탄 'none'은 D등급 강제에서 빼고 작은 위험(i.al='none', '폭탄 해제(학습)' 표시), 'pump'는 폭탄 유지 + '튀기도 함'.
+- 🏆 탭 ⭐ 박스 아래 '🛡 피하기 검증' 박스.
+- 판정 화면: 🔴이면 '🏆 이긴 자리 닮음' 칩 숨김, '털기 후 상승 가능성' 칸은 '→ 지금은 해당 없음'(pex-off), conflictOf 설명은 '결론은 맨 위 판정 우선 · 바닥 사실일 뿐 오른다는 뜻 아님'으로.

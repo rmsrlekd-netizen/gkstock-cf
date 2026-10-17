@@ -57,13 +57,16 @@ export function flagsOf(r) {
 export function attrsOf(r) {
   const b = (v, cuts, names) => { if (v == null || Number.isNaN(v)) return null; for (let i = 0; i < cuts.length; i++) if (v < cuts[i]) return names[i]; return names[cuts.length]; };
   const ckv = {}; for (const [k, v] of Object.entries(r.ckv || {})) if (CK_KO[k]) ckv['c_' + k] = v ? '✓' : '✗'; // v222: 체크리스트 항목 하나하나의 효과
-  const evA = {}; for (const k of r.ev || []) evA['e_' + k] = '있음'; // v224: 최근 60일에 나온 공시 종류
+  const evA = {}; for (const k of r.ev || []) evA['e_' + k] = '있음';
+  for (const k of r.rd || []) evA['r_' + k] = '걸림'; // v231 위험 항목 // v224: 최근 60일에 나온 공시 종류
   const chA = { lo: b(r.lo60, [10, 30, 60], ['+10% 안', '+10~30%', '+30~60%', '+60%↑']), bx: b(r.bx, [30, 60], ['30% 안(좁음)', '30~60%', '60%↑(넓음)']), cy: r.cy == null ? null : r.cy ? '있음' : '없음', p1: r.p1 == null ? null : r.p1 ? '있음' : '없음', mb: r.mk2 == null ? null : r.mk2 >= 2 ? '2개↑' : r.mk2 ? '1개' : '없음' };
   return { ...ckv, ...evA, ...(r.ev ? chA : {}), st: r.st || null, ck: r.ck || null, rr: b(r.rr, [2, 3], ['2 미만', '2~3', '3 이상']), gp: b(r.gp, [0, 15, 50], ['평단 아래', '평단 +0~15%', '평단 +15~50%', '평단 +50%↑']), dir: r.dir === 'up' ? '상승' : r.dir === 'down' ? '하락 위험' : '없음', cm: r.cm > 0 ? '있음' : '없음', px: r.pexl || null, vd: r.vd || null };
 }
 const CK_KO = { money: '세력 자금 실제 투입', cost: '평단 근처', acc: '매집 흔적', unlock: '물량 해제 2~3개월 전', rr: '손익비 2↑', small: '소형주', float: '최대주주 지분 40%↑', story: '사업목적 추가', theme: '업종·테마 강세', insider: '내부자 매수', broker: '창구 쏠림', buzz: '기사·종토방 증가' };
 export const ATTR_KO = { ...Object.fromEntries(Object.entries(CK_KO).map(([k, v]) => ['c_' + k, '체크: ' + v])), p5: '판정 전 5일 상승률', vx: '판정일 거래량(20일 평균 대비)', lq: '하루 거래대금(20일 평균)', lo: '60일 저점 대비 위치', bx: '60일 가격 폭', cy: '지난 급등·급락 사이클', p1: '최근 1차 급등', mb: '버틴 매집봉 수', st: '단계', ck: '체크리스트 등급', rr: '손익비', gp: '평단 대비 위치', dir: '분류', cm: '매집봉 흔적', px: '털기 후 상승', vd: '한 줄 결론', mk: '진입 때 시장 흐름(20일)', eg: '진입 갭(다음 날 시가)' };
 const r1 = (x) => Math.round(x * 10) / 10;
+export const RD_KO = { fail: '철회·납입 연기', health: '감사의견·자본잠식', penalty: '불성실공시 벌점', pledge: '담보 반대매매', insell: '내부자 매도 우위', delistx: '상장폐지·관리 요건', delist: '관리종목 요건 근처', nocap: '무자본 M&A 의심', tsell: '자사주 처분', exited: '엑시트 후', credit: '신용잔고 많음', warn: '투자경고 근처', drain: '자금 빼돌림 의심', party: '같은 세력 다른 종목 털림', unlock30: '물량 해제 30일 안' };
+const BOMB_KEYS = ['fail', 'health', 'penalty', 'pledge', 'insell', 'delistx'];
 
 /**
  * B: 일봉(감자 보정) · tl: [{d, f, tp, sp, a}] 레이더 목록에 있던 날들(날짜순)
@@ -408,6 +411,34 @@ export function stratFind(T0, m = 'TT') {
   const why = !cand ? '고른 규칙 없음' : !W.ok ? '굴려가며 검증에서 레이더 전체를 못 이김' : !(nowR && nowR.nb >= 10 && nowR.tb > 0 && nowR.tb > baseTe) ? '뒤 1/3 기간에서 못 버팀' : !(rho != null && rho >= 0.2) ? `찾기 믿음도(rho ${rho ?? '-'}) 0.2 미만` : null;
   const best = cand && !why ? cand : null;
   return { n: L.length, m, cut, from: ds[0], to: ds[ds.length - 1], train: tr.length, test: te.length, baseTr, baseTe, wBaseTe: win(te), tried: R.length, rho, top, wf: W, cand: cand && !best ? cand.name : null, why, best };
+}
+// v231 🛡 피하기 검증: 🔴·D·하락 위험이 '피하려던 것(크게 빠짐)'을 실제로 피하게 했나 — 오른 폭이 아니라 큰 손실 확률로 채점
+//  big = 산 뒤 60거래일 안에 −30% 아래를 찍은 비율 · up = +30% 위를 찍은 비율 · TT = 실제로 사고팔았다면(최고점 −15%/20일)
+export function avoidStudy(T0, m = 'TT') {
+  const seen = new Set(), L = [];
+  for (const t of T0) { if (t.s !== 'all' || t.ma == null || !t.a) continue; const k = t.c + '|' + t.d; if (seen.has(k)) continue; seen.add(k); L.push(t); }
+  if (L.length < 60) return { n: L.length, need: 60 };
+  const ds = [...new Set(L.map((t) => t.d))].sort(), cut = ds[Math.floor(ds.length / 2)];
+  const st = (a) => { if (!a.length) return null; const tt = a.filter((t) => t[m]); return { n: a.length, big: Math.round((a.filter((t) => t.ma <= -30).length / a.length) * 100), b20: Math.round((a.filter((t) => t.ma <= -20).length / a.length) * 100), up: Math.round((a.filter((t) => t.mf >= 30).length / a.length) * 100), tt: tt.length ? r1(mean(tt.map((t) => t[m].r))) : null, x: (() => { const v = tt.map((t) => t[m].x).filter((x) => x != null); return v.length ? r1(mean(v)) : null; })() }; };
+  const all = st(L);
+  // 판정: 크게 빠질 확률이 전체보다 5%p↑ 높으면 제 역할 · 큰 상승 확률도 5%p↑ 높으면 '위험하지만 튀는 자리' · 둘 다 아니면 피할 이유 없음
+  const judge = (g, base) => { if (!g || g.n < 30) return { k: 'n', t: `표본 부족 (${g?.n || 0}번, 30번↑ 필요)` };
+    const db = g.big - base.big, du = g.up - base.up, dt = g.tt != null && base.tt != null ? g.tt - base.tt : 0;
+    if (db >= 5 && du >= 5) return { k: 'pump', t: '⚠️ 위험하지만 튀는 자리 — 크게 빠질 확률도, 크게 오를 확률도 높음 (단타 아니면 피하기)' };
+    if (db >= 5 || dt <= -2) return { k: 'ok', t: '✅ 제 역할 — 크게 빠질 확률이 높았거나 사고팔았을 때 손해' };
+    return { k: 'none', t: '❌ 피할 이유 못 찾음 — 크게 빠질 확률이 전체와 비슷하거나 낮음' }; };
+  const G = [['g', '🟢 매수 검토', (t) => t.a.vd === 'g'], ['y', '🟡 지켜보기', (t) => t.a.vd === 'y'], ['r', '🔴 피하기', (t) => t.a.vd === 'r'], ['D', '체크리스트 D등급', (t) => t.a.ck === 'D'], ['AB', '체크리스트 A·B등급', (t) => t.a.ck === 'A' || t.a.ck === 'B'], ['dn', '하락 위험 분류', (t) => t.a.dir === '하락 위험']];
+  const groups = G.map(([k, ko, f]) => { const g = st(L.filter(f)); return { k, ko, ...(g || { n: 0 }), avoid: ['r', 'D', 'dn'].includes(k), vd: ['r', 'D', 'dn'].includes(k) ? judge(g, all) : null }; });
+  // 위험 항목 하나하나: 걸렸을 때 vs 안 걸렸을 때 (앞 반·뒤 반 따로 계산해서 둘 다 같은 방향이어야 '확실')
+  const keys = [...new Set(L.flatMap((t) => Object.keys(t.a).filter((k) => k.startsWith('r_'))))];
+  const items = keys.map((rk) => { const k = rk.slice(2); const on = L.filter((t) => t.a[rk]), off = L.filter((t) => !t.a[rk]);
+    const a = st(on), b = st(off); if (!a || a.n < 15 || !b) return { k, ko: RD_KO[k] || k, n: on.length, bomb: BOMB_KEYS.includes(k), vd: { k: 'n', t: `표본 부족 (${on.length}번)` } };
+    const half = (lo) => { const p = st(on.filter((t) => (lo ? t.d < cut : t.d >= cut))), q = st(off.filter((t) => (lo ? t.d < cut : t.d >= cut))); return p && q && p.n >= 8 ? { db: p.big - q.big, du: p.up - q.up } : null; };
+    const h1 = half(true), h2 = half(false);
+    const vd = judge(a, b); const sure = vd.k !== 'n' && h1 && h2 && (vd.k === 'none' ? h1.db < 5 && h2.db < 5 : h1.db >= 3 && h2.db >= 3) && a.n >= 40;
+    return { k, ko: RD_KO[k] || k, bomb: BOMB_KEYS.includes(k), on: a, off: b, db: a.big - b.big, du: a.up - b.up, h1, h2, vd, sure };
+  }).sort((x, y) => (y.on?.n || 0) - (x.on?.n || 0));
+  return { n: L.length, m, cut, all, groups, items };
 }
 export function winPatOf(W) {
   if (!W || W.need) return null;
@@ -780,6 +811,8 @@ export async function simSummary() {
   out.live.capStudy = capStudy(L0); out.bt.capStudy = capStudy(BT0); out.capMax = CAP_MAX;
   out.live.win = winStudy(L); out.bt.win = winStudy(BT); out.now.win = out.live.win; // v224 🏆 이긴 자리 공통점
   out.bt.strat = stratFind(BT); out.live.strat = stratFind(L); out.now.strat = out.live.strat; // v229 ⭐ 전략 자동 찾기
+  out.bt.avoid = avoidStudy(BT); out.live.avoid = avoidStudy(L); out.now.avoid = out.live.avoid; // v231 🛡 피하기 검증
+  { const A = out.bt.avoid; if (A?.items) { const k = {}; for (const it of A.items) if (it.sure && it.vd?.k && it.vd.k !== 'n') k[it.k] = it.vd.k; await setJSON('mp/avoidlearn', { k, at: Date.now(), n: A.n }).catch(() => {}); } } // 앞·뒤 반 기간이 같은 결과인 항목만 자동 반영
   if (out.bt.strat?.best) await setJSON('mp/strat', { ...out.bt.strat.best, at: Date.now(), baseTe: out.bt.strat.baseTe, rho: out.bt.strat.rho }).catch(() => {}); else await setJSON('mp/strat', { none: 1, at: Date.now() }).catch(() => {});
   { const wp = winPatOf(out.bt.win); if (wp) await setJSON('mp/winpat', { ...wp, at: Date.now(), src: 'bt' }).catch(() => {}); } // 레이더 판정(🟢·🟡)이 읽어 감
   // 실제 vs 과거 재현 차이 (실제가 훨씬 나쁘면 '과거에만 맞춘 규칙' 신호)
