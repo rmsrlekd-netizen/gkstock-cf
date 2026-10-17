@@ -713,9 +713,12 @@ export function stageOf(by, f, evs = []) {
   const exit = (by.conv || 0) + (by.majsell || 0) + (by.pledge || 0);
   const setup = (by.mna || 0) + (by.rights3 || 0) + (by.cb || 0) + (by.fund5 || 0) + (by.purpose || 0) + (by.refix || 0);
   // 이미 한 번 띄우고 빠진 종목: 고점 뒤 새 '판 깔기' 공시가 있으면 2차 판 깔기, 없으면 '엑시트 후'
+  // v225 (GK 10/17 아이티엠반도체: 엑시트 6개월 뒤 저점을 계속 깨는데 '판 깔기·2차 매집'으로 나옴) — 최근 20거래일 안에 새 저점이면 아직 털기·하락 중 → 2차 판 깔기·매집으로 안 봄 (바닥 확인 뒤에만)
+  const falling = !!(f?.post && f.post.held < 20);
   if (f?.cyc) {
     const topMs = Date.parse(f.cyc.topD + 'T15:30:00+09:00');
     const newSetup = (evs || []).some((e) => ['mna', 'rights3', 'cb', 'fund5', 'refix'].includes(e.kind) && e.ms > topMs);
+    if (falling) return '엑시트 후';
     if (newSetup) return '판 깔기';
     // 고점에서 6개월(120거래일) 넘게 지났고 최근 흐름이 다시 매집 모양이면 '매집'(2차)
     if ((f.cyc.since >= 120 || f.cyc.base2) && (stageOf(by, { ...f, cyc: null }, []) === '매집' || (f.nAccMark ?? 0) >= 1)) return '매집';
@@ -727,6 +730,7 @@ export function stageOf(by, f, evs = []) {
     const newSetup = (evs || []).some((e) => ['mna', 'rights3', 'cb', 'fund5', 'refix'].includes(e.kind) && e.ms > topMs);
     const exitAfter = (evs || []).some((e) => ['conv', 'majsell', 'pledge'].includes(e.kind) && e.ms > topMs - 10 * DAY);
     if (p.drop <= -25) {
+      if (falling) return '털기'; // v225 아직 새 저점을 만드는 중
       if (newSetup && p.since >= 20) return '판 깔기';
       if (p.since >= 100 && stageOf(by, { ...f, pump1: null }, []) === '매집') return '매집'; // 고점 뒤 오래 지나 다시 매집 모양
       return '털기';
@@ -1023,6 +1027,10 @@ export function direction(x, now = Date.now()) {
         far: x.close - sup.p > x.close * 0.1 ? Math.round(((t1.p - x.close) / (x.close * 0.07)) * 10) / 10 : null };
     }
   }
+  // v225 하락 근거: ① 지난 급등 뒤 아직 저점을 깨며 내려가는 중 ② 현재가가 CB 전환가보다 많이 아래 → 전환가 조정(리픽싱)으로 물량이 늘 위험
+  if (f.post && f.post.held < 20 && (f.cyc || f.pump1)) R(down, 2, `지난 고점(${f.post.topD}) 뒤 아직 저점을 깨며 내려가는 중 — 최근 저점 ${f.post.lowD} (${f.post.held}거래일 전), 바닥 확인 전`, 'chart');
+  { const cbs = (x.px || []).filter((p) => p.kind === 'cb' && p.p > 0 && (!p.date || now - Date.parse(p.date) < 400 * DAY)); const cbMin = cbs.length ? Math.min(...cbs.map((p) => p.p)) : null;
+    if (cbMin && x.close && x.close < cbMin * 0.95) R(down, 1.5, `현재가가 CB 전환가 ${fmtW(cbMin)}원보다 ${Math.round((1 - x.close / cbMin) * 100)}% 아래 — 전환가 조정(리픽싱)으로 주식 수가 늘 수 있음`, cbs.find((p) => p.p === cbMin)?.ref); }
   // 목표 일정(참고): 물량이 풀릴 수 있는 날 — 일반 규정(사모 CB 전환 제한·사모 신주 전매 제한 1년) 기준 추정
   const dates = [];
   for (const e of ev.filter((e) => ['cb', 'rights3'].includes(e.kind)).slice(0, 4)) {
@@ -1620,7 +1628,7 @@ function rankRow0(x) {
   return { ...chipsOf(x), cf, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, bm: cl?.bombs?.length || 0, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 // 판단 규칙 버전 — 규칙을 바꾸면 +1. 이전 규칙으로 저장된 카드는 다음 저장 1번만 '단계·분류 변화' 알림을 안 보냄 (규칙 변경 때문에 생긴 변화라 알림 폭주 방지)
-export const RULE_V = 209; // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
+export const RULE_V = 210; // v225: 엑시트 뒤 새 저점이면 2차 판 깔기·매집 아님 · CB 전환가 아래 리픽싱 위험 · 실패 패턴 아래로 · // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
 // v212 서버 부담 점검: 정기 분석이 언제 시작·끝났고 몇 분 걸렸는지 최근 20번 기록 (/api/health?db=1 · 이상치 점검에서 봄)
 async function runHist(st, err) {
   const h = (await getJSON('mp/runhist')) || [];
@@ -1811,6 +1819,7 @@ export async function manipRank(kind = 'all') {
   else if (kind === 'win') list = list.filter((r) => r.vd?.wp && r.vd.c !== 'r').sort((a, b) => b.vd.wp.lift - a.vd.wp.lift || (b.s || 0) - (a.s || 0)); // v224 🏆 이긴 자리 닮은 종목
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
+  if (kind !== 'down') list = [...list.filter((r) => !r.vd?.lp), ...list.filter((r) => r.vd?.lp)]; // v225 검증된 실패 패턴에 걸린 종목은 아래로 (순서는 그대로)
   return list.slice(0, 150);
 }
 // ───── 📝 서술형 정리 (규칙으로 문장 조립 · AI 아님 → 계산된 숫자만 씀) ─────
