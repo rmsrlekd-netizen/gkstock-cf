@@ -168,3 +168,8 @@
 - 자동 반영: simSummary가 bt avoid의 sure 항목을 `mp/avoidlearn {k:{항목:'none'|'pump'|'ok'}}` 저장 → perfSum이 `setAvoidLearn` → checklistOf에서 폭탄 'none'은 D등급 강제에서 빼고 작은 위험(i.al='none', '폭탄 해제(학습)' 표시), 'pump'는 폭탄 유지 + '튀기도 함'.
 - 🏆 탭 ⭐ 박스 아래 '🛡 피하기 검증' 박스.
 - 판정 화면: 🔴이면 '🏆 이긴 자리 닮음' 칩 숨김, '털기 후 상승 가능성' 칸은 '→ 지금은 해당 없음'(pex-off), conflictOf 설명은 '결론은 맨 위 판정 우선 · 바닥 사실일 뿐 오른다는 뜻 아님'으로.
+
+## v232 점검 지적 수정 (web v=225)
+- /api/health: 읽기 9개 Promise.all, D1 쓰기 시험은 10분에 1번(그 사이 `dbWrite.checked`) — 4~5초 → 즉시.
+- stratFind: 거래 80번↑인데 앞(<50)·뒤(<25) 기간이 모자라면 `short:1` → 화면 "기간이 짧아 아직 나눠서 시험 못 함 (앞 N·뒤 M)".
+- backtest 대기 화면(⏳ 3년치 채우는 중) 숫자 갱신 1시간 → 10분.

@@ -18,7 +18,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   if (restart || !st || st.v !== BT_V || (st.prep && !st.queue)) {
     // v230: 3년치 공시 깊은 채우기(backfill deep)가 끝나야 시작 — 그 전엔 예전 결과를 그대로 둠(화면엔 '준비 중' 표시)
     const bf = await getJSON('backfill/state').catch(() => null);
-    if (!restart && !bf?.deep?.done) { if (!st?.wait) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); else if (now - (st.wait.at || 0) > 3600e3) await setJSON('mp/bt/state', { ...st, wait: { ...st.wait, at: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); return { waiting: true, deep: bf?.deep?.day || null }; }
+    if (!restart && !bf?.deep?.done) { if (!st?.wait) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); else if (now - (st.wait.at || 0) > 600e3) await setJSON('mp/bt/state', { ...st, wait: { ...st.wait, at: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); return { waiting: true, deep: bf?.deep?.day || null }; }
     // 월별 공시 색인을 3년치로 다시 만들기 (한 번에 3개월씩, 깊은 채우기 뒤에 만든 것만 인정)
     const prep = st?.v === BT_V && st.prep ? st.prep : { since: now };
     const evm = await M._loadEvents(now, { maxBuild: 3, days: BT_DAYS + 180, rebuildBefore: bf?.deep?.doneAt || 0 });

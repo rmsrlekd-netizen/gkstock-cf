@@ -399,7 +399,7 @@ export function stratFind(T0, m = 'TT') {
   // ② 지금 쓸 규칙: 전체 기간 앞 2/3로 고르고 뒤 1/3로 확인(표 보여주기용) + rho(앞 순위↔뒤 결과 상관)
   const ds = [...new Set(L.map((t) => t.d))], cut = ds[Math.floor(ds.length * 2 / 3)];
   const tr = L.filter((t) => t.d < cut && t[m].xd < cut), te = L.filter((t) => t.d >= cut);
-  if (tr.length < 50 || te.length < 25) return { n: L.length, train: tr.length, test: te.length, need: 80, wf: W };
+  if (tr.length < 50 || te.length < 25) return { n: L.length, train: tr.length, test: te.length, short: 1, wf: W }; // v231 거래 수는 넘었지만 앞·뒤 기간으로 나누면 한쪽이 모자람
   const baseTr = avg(tr), baseTe = avg(te);
   const R = score(tr).map((x) => { const b = te.filter((t) => hit(t, x.idx)); return { ...x, nb: b.length, tb: avg(b), wa: null, wb: win(b), xb: xavg(b) }; });
   const Q = R.filter((x) => x.nb >= 10); let rho = null;

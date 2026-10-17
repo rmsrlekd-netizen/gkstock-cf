@@ -3681,6 +3681,7 @@
   function stratHTML(T) {
     if (!T) return '';
     if (T.need) return `<div class="st-box"><h5>⭐ 전략 자동 찾기</h5><p class="muted sm">거래가 ${T.need}번 넘게 쌓이면 시작해요 (지금 ${T.n || 0}번).</p></div>`;
+    if (T.short) return `<div class="st-box"><h5>⭐ 전략 자동 찾기</h5><p class="muted sm">거래는 ${fmtInt(T.n)}번이지만 기간이 짧아 아직 나눠서 시험할 수 없어요 — 앞 기간(배우기) ${fmtInt(T.train)}번 · 뒤 기간(시험) ${fmtInt(T.test)}번 (각각 50번·25번 넘어야 해요). 3년치 과거 재현이 끝나면 충분해져요.</p></div>`;
     const row = (x, i) => `<div class="st-row${x.ok ? ' ok' : ''}"><span class="st-i">${i + 1}</span><span class="st-n"><b>${esc(x.name)}</b><small>앞 기간 ${x.na}번 · 안 본 뒤 기간 ${x.nb}번</small></span>
       <span class="st-v"><em>앞 기간</em><b class="${dirCls(x.ta)}">${sgn(x.ta)}</b></span><span class="st-v"><em>안 본 기간</em><b class="${dirCls(x.tb)}">${sgn(x.tb)}</b><small>${x.wb != null ? `수익 ${x.wb}%` : ''}${x.xb != null ? ` · 시장 대비 ${sgn(x.xb)}` : ''}</small></span>
       <span class="st-ok">${x.ok ? '<span class="simv v-ok">✅ 통과</span>' : '<span class="simv v-n">안 본 기간에서 못 버팀</span>'}</span></div>`;

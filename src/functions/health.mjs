@@ -32,14 +32,11 @@ export default async (req) => {
     }
   }
   // 저장소(D1) 쓰기 점검: 무료 한도(하루 10만 행)를 넘으면 여기서 오류가 보임
+  // v231 빠르게: 쓰기 시험은 10분에 한 번만(그 사이엔 마지막 결과), 읽기는 한꺼번에 (예전엔 하나씩 차례로 읽어 4~5초)
+  const [ping, bf, aiLast, sec, dart, news, borrow, shvol, futc] = await Promise.all(['health/ping', 'backfill/state', 'ai/lastError', 'sec/feed', 'dart/feed', 'news/feed', 'borrow/status', 'shvol/status', 'kis/futcode'].map((k) => getJSON(k).catch(() => null)));
   let dbWrite;
-  try { await setJSON('health/ping', { at: Date.now() }); dbWrite = { ok: true }; }
-  catch (e) { dbWrite = { ok: false, error: String(e.message || e).slice(0, 300) }; }
-  const bf = await getJSON('backfill/state').catch(() => null);
-  const aiLast = await getJSON('ai/lastError');
-  const sec = await getJSON('sec/feed');
-  const dart = await getJSON('dart/feed');
-  const news = await getJSON('news/feed');
+  if (ping?.at && Date.now() - ping.at < 10 * 60e3) dbWrite = { ok: true, checked: Math.round((Date.now() - ping.at) / 1000) + '초 전' };
+  else { try { await setJSON('health/ping', { at: Date.now() }); dbWrite = { ok: true }; } catch (e) { dbWrite = { ok: false, error: String(e.message || e).slice(0, 300) }; } }
   const age = (t) => (t ? Math.round((Date.now() - Date.parse(t)) / 1000) + '초 전' : '없음');
   return json({
     ok: true,
@@ -59,8 +56,8 @@ export default async (req) => {
     secWatcher: { updated: age(sec?.updatedAt), items: sec?.items?.length || 0, errors: sec?.errors || [], form4WithDetail: (sec?.items || []).filter((x) => x.tx).length, withPressRelease: (sec?.items || []).filter((x) => x.pr).length, withKoreanAI: (sec?.items || []).filter((x) => x.ko).length, aiError: sec?.aiError || null },
     dartWatcher: { updated: age(dart?.updatedAt), items: dart?.items?.length || 0, errors: dart?.errors || [], withOfficialTime: (dart?.items || []).filter((x) => x.timeMin && x.timeMin !== 'na').length, withSummary: (dart?.items || []).filter((x) => x.summary?.title).length },
     news: { updated: age(news?.updatedAt), items: news?.items?.length || 0, pr: (news?.items || []).filter((x) => x.src === 'PR').length, news: (news?.items || []).filter((x) => x.src === 'NEWS').length, withKorean: (news?.items || []).filter((x) => x.titleKo).length, errors: news?.errors || [], aiError: news?.aiError || null },
-    shortData: { borrow: await getJSON('borrow/status').catch(() => null), finraDaily: await getJSON('shvol/status').catch(() => null) },
-    kospiFuturesCode: (await getJSON('kis/futcode').catch(() => null))?.codes || kospiFrontCode(),
+    shortData: { borrow, finraDaily: shvol },
+    kospiFuturesCode: futc?.codes || kospiFrontCode(),
   }, { cdnSeconds: 0, swr: 0 });
 };
 
