@@ -1676,7 +1676,7 @@ async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
   try { rank = (await getJSONStrict('mp/rank')) || {}; } catch (e) { console.warn('mp/rank 읽기 실패 — 랭킹은 이번에 안 고침', e.message); }
   const alerts = [];
-  const DK = { up: '📈 상승 가능성', down: '📉 하락 위험' };
+  const DK = { up: '🔺 상승 가능성', down: '🔽 하락 위험' };
   // v208: 공시 원문에서 읽은 CB·증자 발행 대상자, 투자조합 업무집행조합원·조합원 이름 → 같은 세력 연결 (이름 → 종목 목록)
   let pn = null; try { pn = (await getJSON('mp/pnames')) || {}; } catch {}
   const pxNames = (x) => { const out = new Map(); for (const p of x.px || []) for (const nm of [...(p.to || []), p.f5?.gp, ...(p.f5?.mem || [])]) { if (!nm || NOT_PARTY.test(nm) || nm.length < 2) continue; const k = partyKey(nm); if (k && k.length >= 3 && !out.has(k)) out.set(k, { nm, d: p.date, src: (p.to || []).includes(nm) ? '발행 대상자' : '투자조합' }); } return out; };

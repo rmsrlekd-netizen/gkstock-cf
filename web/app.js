@@ -3335,7 +3335,7 @@
     const box = $('#radarBody'), x = S.rpProf, j = S.rpMeta || {}; if (!box || !x) return;
     const d = x.dir || {}, cl = x.cl, rk = x.rbk, f = x.f || {}, a = x.ai && !x.ai.error ? x.ai : null;
     const P = mpParts(x);
-    const DIRB = { up: '<span class="mp-dirb up">📈 상승 가능성</span>', down: '<span class="mp-dirb down">📉 하락 위험</span>' };
+    const DIRB = { up: '<span class="mp-dirb up">▲ 상승 가능성</span>', down: '<span class="mp-dirb down">▼ 하락 위험</span>' };
     const RBS = { deadcat: '① 기술적 반등', dump: '② 털기 중 반등', second: '③ 2차 작전', wave2: '🔁 눌림 뒤 재상승', unclear: '판단 보류' };
     const nd = (d.dates || []).find((z) => !z.past);
     const tile = (label, val, sub, cls = '') => `<div class="rp-tile ${cls}"><em>${label}</em><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
@@ -3354,7 +3354,7 @@
       const lines = [[d.cost?.rep || d.cost?.low, '세력 평단', '#f59e0b'], [d.rr?.s, '손절', '#3b82f6'], [d.rr?.t, '1차 목표', '#ef4444']].filter((z) => z[0] > 0);
       const marks = (x.events || []).filter((e) => e.ms && MP_EV[e.kind]).slice(0, 25).map((e) => [ymd(e.ms), MP_EV[e.kind].replace(/\s.*$/, ''), ['conv', 'majsell', 'pledge', 'risk'].includes(e.kind) ? '#60a5fa' : '#f472b6']);
       return `<div class="rp-chart">${kchartHTML(x.code, { lines, marks })}<p class="muted sm">점선 = 추정 세력 평단·손절·1차 목표 · 분홍 점 = 판 깔기 공시 · 파랑 점 = 전환청구·지분 매도 같은 물량 공시</p></div>`; };
-    const TABS = [['price', '💰 가격·목표'], ['check', '✅ 체크리스트'], ['why', '📈📉 근거'], ['chart', '🕯 차트 신호'], ['docs', '📄 공시'], ['ai', '🤖 AI·기록']];
+    const TABS = [['price', '💰 가격·목표'], ['check', '✅ 체크리스트'], ['why', '<b class="up">▲</b><b class="down">▼</b> 근거'], ['chart', '🕯 차트 신호'], ['docs', '📄 공시'], ['ai', '🤖 AI·기록']];
     const tab = TABS.some(([t]) => t === S.rpTab) ? S.rpTab : 'price';
     const planBox = x.plan ? `<div class="pf-planbox"><h5>💼 버티기 계획 <small class="muted">세력이 일부러 밀어 손절을 받아내는 '흔들기'를 버티는 기준 · ⭐ 내 세력주 탭에서 계좌 금액을 넣으면 살 금액까지 계산</small></h5>${planHTML(x.plan)}</div>` : '';
     const body = { price: P.accLine + planBox + P.tgtBox, check: P.ckBox, why: P.dirBox, chart: radarChart(x, d) + ((P.pexBox + P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>'), docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
@@ -3457,7 +3457,7 @@
   }
   // v224 성과검증으로 찾은 패턴 칩 (과거 재현에서 앞·뒤 기간 둘 다 통과한 것만)
   const vdPat = (v) => [v?.wp && v.why !== 'wp' ? `<span class="vp vp-w" title="과거 재현: 이 조건일 때 이긴 자리 비율 ${v.wp.rate}%">🏆 이긴 자리 닮음 · ${esc(v.wp.ko)} ${v.wp.lift}배</span>` : '', v?.lp && v.why !== 'lp' ? `<span class="vp vp-l" title="과거 재현: 이 조건일 때 이긴 자리 비율 ${v.lp.rate}%">⚠ 실패 패턴 · ${esc(v.lp.ko)} ${v.lp.lift}배</span>` : ''].join('');
-  const RK_KINDS = [['all', '전체 (의심 순)'], ['pick', '🎯 내 매매 후보'], ['up', '📈 상승 가능성'], ['down', '📉 하락 위험'], ['rr', '⚖️ 손익비 순'], ['ck', '✅ 체크리스트 순'], ['pex', '🔁 털기 후 상승'], ['win', '🏆 이긴 자리 닮음']];
+  const RK_KINDS = [['all', '전체 (의심 순)'], ['pick', '🎯 내 매매 후보'], ['up', '<b class="up">▲</b> 상승 가능성'], ['down', '<b class="down">▼</b> 하락 위험'], ['rr', '⚖️ 손익비 순'], ['ck', '✅ 체크리스트 순'], ['pex', '🔁 털기 후 상승'], ['win', '🏆 이긴 자리 닮음']];
   const rkKindsHTML = () => `<div class="seg mp-kinds">${RK_KINDS.map(([k, l]) => `<button data-rk-kind="${k}" class="${(S.rkKind || 'all') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   // 작전 레이더 가격 실시간(15초): 화면에 보이는 종목만 시세를 받아 가격·등락률을 바로 바꿈
   async function radarLive() {
@@ -3513,7 +3513,7 @@
     const PH = { snap: '전 종목 시세 받는 중', events: '공시 패턴 찾는 중', bars: `일봉 분석 중 (${st.bars || ''})`, docs: '공시 원문에서 가격 확인 중', extra: '체크리스트 자료 수집 중', recheck: '랭킹 종목 일봉 재확인 중', ai: 'AI 분석 중' };
     const status = st.phase && st.phase !== 'done' ? `<span class="mp-run"><span class="spin"></span>${esc(st.date || '')} 정기 분석: ${esc(PH[st.phase] || st.phase)}</span>` : `<span class="muted sm">다음 정기 분석: 거래일 15:50 · 장중 새 공시 자동 반영${st.incrQ ? ` (대기 ${st.incrQ}종목)` : ''} · 가격은 15초마다 실시간</span>`;
     const won = (v) => (v == null ? '—' : `${fmtInt(v)}원`);
-    const DIRB = { up: '<span class="mp-dirb up">📈 상승 가능성</span>', down: '<span class="mp-dirb down">📉 하락 위험</span>' };
+    const DIRB = { up: '<span class="mp-dirb up">▲ 상승 가능성</span>', down: '<span class="mp-dirb down">▼ 하락 위험</span>' };
     const rows = S.mpRank.map((r, i) => { try {
       const mid = r.cr || (r.cl || r.ch ? ((r.cl || r.ch) + (r.ch || r.cl)) / 2 : r.va);
       const g = mid && r.c ? Math.round((r.c / mid - 1) * 100) : null;
@@ -3554,8 +3554,8 @@
       <li><b>의심 높음/중간/낮음</b>: AI가 여러 근거가 위 흐름과 얼마나 잘 맞는다고 봤는지 (불법이라는 뜻 아님)</li>
       <li><b>종합 점수</b>: 공시 점수 + 거래 점수. 정해진 만점은 없음(신호를 더해 가는 방식, 이론상 최대 약 77점). <b>4점 이상만 레이더에 올라오고, 10점 이상이면 신호가 많은 편, 20점 이상이면 매우 많은 편</b>. 높을수록 작전 흐름과 '닮은 신호가 많다'는 뜻 — 오른다/내린다는 뜻이 아님</li>
       <li><b>상승 근거 점수 · 하락 근거 점수</b>: 각각 <b>10점 만점</b> (근거가 아주 많아 10점을 넘으면 10점으로 표시). 상승 가능성·하락 위험 탭에서는 오른쪽 큰 숫자가 이 점수이고, 종합 점수(작전 패턴 신호 개수, 만점 없음)는 그 아래 작게 표시. 상승 가능성 탭은 '상승 근거 − 하락 근거'가 큰 순서. 60일 저점 대비 +50% 넘게 이미 올랐거나 띄우기·털기 단계면 상승 가능성에 넣지 않음</li>
-      <li><b>📈 상승 가능성</b>: 흐름상 아직 판 깔기·매집 단계이고 주가가 추정 평단 근처라 '띄우기 전'일 수 있는 종목 (규칙으로 자동 판정)</li>
-      <li><b>📉 하락 위험</b>: 이미 띄운 뒤이거나 전환청구·평단 대비 큰 차익 등 '털기' 신호가 있는 종목 (규칙으로 자동 판정)</li>
+      <li><b class="up">▲</b> <b>상승 가능성</b>: 흐름상 아직 판 깔기·매집 단계이고 주가가 추정 평단 근처라 '띄우기 전'일 수 있는 종목 (규칙으로 자동 판정)</li>
+      <li><b class="down">▼</b> <b>하락 위험</b>: 이미 띄운 뒤이거나 전환청구·평단 대비 큰 차익 등 '털기' 신호가 있는 종목 (규칙으로 자동 판정)</li>
       <li><b>🕸 같은 세력 연결 의심</b>: 같은 투자조합·인물(공시 제출인·새 최대주주) 이름이 다른 종목 공시에도 나옴. 동명이인·우연일 수 있어 공시 링크로 꼭 확인 (+2점씩, 최대 4점)</li>
       <li><b>⚠ 거래소 경보</b>: 투자주의·경고·위험 지정(최근 30일). 보통 이미 급등한 뒤 나오므로 하락 쪽 근거로도 씀</li>
       <li><b>보정</b>: 시가총액 하위 40% 소형주 +1점 · 상위 10% 대형주는 점수 ×0.6 · 건설·조선 등 공급계약이 일상인 업종은 공급계약 점수 제외 · 채권단 출자전환 증자는 제외</li>
@@ -3598,7 +3598,7 @@
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · +20%↑ ${r['big' + h]}% · −20%↓ ${r['loss' + h]}% · ${r['n' + h]}건</small></td>` : '<td class="muted">아직</td>');
     try { S.pfTab = load('gk_pftab') || 'sim'; } catch {}
     const pt = ['sim', 'day', 'win', 'inst', 'find'].includes(S.pfTab) ? S.pfTab : 'sim';
-    $('#mpBody').innerHTML = `<div class="pf-tabs">${[['sim', '📈 따라 샀다면'], ['day', '📅 판정일 기준 결과'], ['win', '🏆 이긴 자리'], ['inst', '🏛 기관식 검증'], ['find', '🔎 종목 검색']].map(([k, t]) => `<button data-pf-tab="${k}" class="${k === pt ? 'on' : ''}">${t}</button>`).join('')}</div>
+    $('#mpBody').innerHTML = `<div class="pf-tabs">${[['sim', '💰 따라 샀다면'], ['day', '📅 판정일 기준 결과'], ['win', '🏆 이긴 자리'], ['inst', '🏛 기관식 검증'], ['find', '🔎 종목 검색']].map(([k, t]) => `<button data-pf-tab="${k}" class="${k === pt ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="pf-pane" data-pf="sim" ${pt === 'sim' ? '' : 'hidden'}><div id="simBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="find" ${pt === 'find' ? '' : 'hidden'}><div class="sx"><div class="sx-head"><h4>🔎 성과검증 종목 검색</h4><small class="muted">레이더가 판정했던 종목의 따라 샀다면 기록·판정 기록·AI 해설만 따로</small></div>
         <form class="sf-form" data-sf-form><input class="sf-in" name="q" placeholder="종목 이름 또는 코드 (예: 대원전선, 006340)" autocomplete="off" value="${esc(S.sfQ || '')}"><button class="btn">검색</button></form><div id="sfBox"></div></div></div>
@@ -3621,7 +3621,7 @@
   const simMode = () => (SIM_SOLO.includes(S.simM) ? S.simM : (S.simB === 'S' ? 'S' : '') + (S.simM === 'U' ? 'U' : 'T'));
   const simBase = () => (S.simSrc === 'bt' ? 'bt' : S.simNow ? 'now' : 'live');
   const simSrcK = () => simBase() + (S.simX ? 'X' : ''); // v222: 시장 대비로 보기
-  const ML = { T: '한 번에 사서 · 1차 목표에서 팔기', U: '한 번에 사서 · 끝까지 들고 가기', ST: '3번 나눠 사서 · 1차 목표에서 팔기', SU: '3번 나눠 사서 · 끝까지 들고 가기', TR: '한 번에 사서 · 최고점에서 −15% 빠지면 팔기', TT: '⭐ 한 번에 사서 · 최고점 −15% 또는 20일 지나면 팔기 (추천)', TH: '한 번에 사서 · +30%에 절반, 나머지는 최고점 −15%', PL: '📉 눌림에 사서(−3% 지정가) · 1차 목표에서 팔기', PR: '📉 눌림에 사서(−3% 지정가) · 최고점 −15% 팔기' };
+  const ML = { T: '한 번에 사서 · 1차 목표에서 팔기', U: '한 번에 사서 · 끝까지 들고 가기', ST: '3번 나눠 사서 · 1차 목표에서 팔기', SU: '3번 나눠 사서 · 끝까지 들고 가기', TR: '한 번에 사서 · 최고점에서 −15% 빠지면 팔기', TT: '⭐ 한 번에 사서 · 최고점 −15% 또는 20일 지나면 팔기 (추천)', TH: '한 번에 사서 · +30%에 절반, 나머지는 최고점 −15%', PL: '눌림에 사서(−3% 지정가) · 1차 목표에서 팔기', PR: '눌림에 사서(−3% 지정가) · 최고점 −15% 팔기' };
   const VDC = { ok: 'v-ok', good: 'v-good', n: 'v-n', weak: 'v-weak', bad: 'v-bad', base: 'v-base' };
   const vdBadge = (v) => (v ? `<span class="simv ${VDC[v.k] || 'v-n'}">${esc(v.k === 'good' ? '좋아 보임' : v.k === 'weak' ? '나빠 보임' : v.k === 'base' ? '비교 기준' : v.t)}</span>` : '');
   const dots = (pct, n) => { const k = Math.round((pct || 0) / 10); return `<span class="sx-dots" title="${pct}%">${Array.from({ length: 10 }, (_, i) => `<i class="${i < k ? 'on' : ''}"></i>`).join('')}</span>`; };
@@ -3659,7 +3659,7 @@
   // v223 시장 국면별(진입 때 코스피·코스닥 20일 흐름 ±3%)
   function regHTML(reg) {
     if (!reg) return '';
-    const p = [['상승', '📈상승장'], ['보합', '➖보합장'], ['하락', '📉하락장']].map(([k, t]) => { const z = reg[k]; return z ? `<i>${t} <b class="${dirCls(z[1])}">${sgn(z[1])}</b><em>${z[0]}번</em></i>` : ''; }).filter(Boolean);
+    const p = [['상승', '<b class="up">▲</b>상승장'], ['보합', '➖보합장'], ['하락', '<b class="down">▼</b>하락장']].map(([k, t]) => { const z = reg[k]; return z ? `<i>${t} <b class="${dirCls(z[1])}">${sgn(z[1])}</b><em>${z[0]}번</em></i>` : ''; }).filter(Boolean);
     return p.length ? `<span class="sx-reg">${p.join('')}</span>` : '';
   }
   // v224 🏆 이긴 자리 공통점 — 깨끗하게 크게 오른 판정에 많았던 공시·차트 모양 (진 판정과 같이 세서 배수로)
@@ -3702,7 +3702,7 @@
     const sure = G.filter((x) => x.s !== 'all' && x[m]?.vd?.k === 'ok');
     const top = G.filter((x) => x.s !== 'all' && x[m]?.n).sort((a, b) => b[m].n - a[m].n)[0];
     const sum = !has ? '' : sure.length ? `✅ <b>${sure.map((x) => esc(x.ko)).join(', ')}</b>는 레이더 전체보다 확실히 나아요.` : `아직 확실한 신호는 없어요 — 우연인지 가리려면 신호마다 거래가 30번 넘게 쌓여야 해요${top ? ` (가장 많은 ${esc(top.ko)} ${top[m].n}번)` : ''}.`;
-    box.innerHTML = `<div class="sx"><div class="sx-head"><h4>📈 따라 샀다면</h4><small class="muted">${m === 'PL' || m === 'PR' ? '신호 뒤 5거래일 안에 판정일 종가 −3% 가격이 오면 그 가격에 샀다면(안 오면 안 삼)' : '신호가 뜬 다음 날 시가에 샀다면'} · 비용 0.5% 뺌 · 줄 아래 = 진입 때 시장 국면별</small></div>
+    box.innerHTML = `<div class="sx"><div class="sx-head"><h4>💰 따라 샀다면</h4><small class="muted">${m === 'PL' || m === 'PR' ? '신호 뒤 5거래일 안에 판정일 종가 −3% 가격이 오면 그 가격에 샀다면(안 오면 안 삼)' : '신호가 뜬 다음 날 시가에 샀다면'} · 비용 0.5% 뺌 · 줄 아래 = 진입 때 시장 국면별</small></div>
       ${simCtl(D, j)}
       ${has ? `<p class="sx-sum">${sum}</p><div class="sx-list">${list.map(line).join('')}</div>` : simEmpty(D, src)}
       ${(j.gap || []).filter((g) => g.d <= -5).length && src !== 'bt' ? `<p class="err sm">⚠ 실제 기록이 과거 재현보다 많이 나빠요 — 규칙이 과거에만 맞았을 수 있어요</p>` : ''}
@@ -3727,7 +3727,7 @@
         <span class="sx-big up">${sgn(x.mu)}<small>절반이 이만큼 이상 오름</small><small>평균 ${sgn(x.au)}</small></span>
         <span class="sx-mid"><span class="sx-pct"><b class="${x.up[1] >= 30 ? 'up' : ''}">${x.up[1]}%</b> 확률로 +20%↑</span>${dots(x.up[1])}<small>${x.n}번 중 ${n20}번 · +10%↑ ${x.up[0]}% · +30%↑ ${x.up[2]}%</small></span>
         <span class="sx-vd"><b class="down">${sgn(x.md)}</b><small>오르기 전 절반이 이만큼까지 빠짐</small></span><span class="pb-go">›</span></button>`; };
-    return `<div class="sx"><div class="sx-head"><h4>📈 따라 샀다면</h4><small class="muted">산 날(신호 다음 날 시가)부터 ${h}거래일 안에 최고 얼마까지 올랐나 — 손절·매도 상관없이</small></div>
+    return `<div class="sx"><div class="sx-head"><h4>💰 따라 샀다면</h4><small class="muted">산 날(신호 다음 날 시가)부터 ${h}거래일 안에 최고 얼마까지 올랐나 — 손절·매도 상관없이</small></div>
       ${simCtl(D, j)}
       ${has ? `<div class="sx-list">${list.map(line).join('')}</div>` : simEmpty(D, src)}
       <details class="sx-more"><summary>ⓘ 보는 법</summary><ul class="sx-ul"><li><b>큰 숫자</b> = 산 날부터 ${h}거래일 안에 가장 높이 오른 지점을 매수마다 하나씩 구해 줄 세웠을 때 딱 가운데 값 → '절반이 이만큼 이상 올랐다'는 뜻 (평균은 한두 종목이 크게 튀면 왜곡돼서 작게만 표시)</li><li><b>점 10칸</b> = +20% 넘게 오른 적이 있는 매수 비율</li><li><b>오르기 전 최저</b> = 그 최고점이 나오기 <b>전에</b> 가장 많이 빠졌던 폭 (올랐다가 내린 건 안 셈) · 이것도 가운데 값</li><li>줄을 누르면 +10%·+30%·+50%·+100% 찍은 비율과 종목별 기록이 나와요</li></ul></details></div>`;
@@ -3822,7 +3822,7 @@
       <div class="sf-pks">${pkTxt(t, 1, '20일')}${pkTxt(t, 2, '60일')}${pkTxt(t, 3, '120일')}<span class="muted sm">손절 ${fmtInt(t.sp)} · 목표 ${fmtInt(t.tp)}</span></div>${aiLine(t)}</div>`;
     const VK = { g: '🟢', y: '🟡', r: '🔴' };
     box.innerHTML = `<div class="sf-head">${logoHTML('KR', j.c, j.n, 'md')}<div><b>${esc(j.n)}</b> <small class="muted">${esc(j.c)}</small><br><button class="link" data-mp-go="${esc(j.c)}">작전 레이더 종목 페이지 열기 ›</button></div><span class="muted sm" style="margin-left:auto">결과 기준: ${esc(ML[m0])}</span></div>
-      <h5 class="sx-h5">📈 실제 기록 ${j.live.length}번 매수</h5>${j.live.length ? j.live.map(card).join('') : '<p class="muted sm">실제 기록 매수가 아직 없어요.</p>'}
+      <h5 class="sx-h5">💰 실제 기록 ${j.live.length}번 매수</h5>${j.live.length ? j.live.map(card).join('') : '<p class="muted sm">실제 기록 매수가 아직 없어요.</p>'}
       <h5 class="sx-h5">🧪 과거 재현 ${j.bt.length}번 매수 <small class="muted">지금 규칙으로 지난 8개월을 다시 판정한 것</small></h5>${j.bt.length ? j.bt.map(card).join('') : '<p class="muted sm">과거 재현 기록이 없어요.</p>'}
       ${j.judg?.length ? `<details class="sx-more"><summary>📅 레이더 판정 기록 ${j.judg.length}일 (최근 순)</summary><div class="sf-judg">${j.judg.map((x) => `<span class="sf-j${x.bad ? ' bad' : ''}"><b>${esc(x.d.slice(5))}</b> ${x.vd ? VK[x.vd] || '' : ''} ${esc(x.st || '')}${x.ck ? ' · ' + esc(x.ck) : ''}</span>`).join('')}</div></details>` : ''}`;
   }
@@ -3908,13 +3908,13 @@
       return `<button class="pb-row${isAll ? ' all' : ''}" data-pb-open="${esc(r.g)}" data-pb-src="${src}"><span class="pb-name">${esc(isAll ? '전체' : r.g.replace(/^[^:]+:/, ''))}<small>${v.n ? `${v.n}건${v.n < 30 ? ' · 적음' : ''}` : '결과 전'}</small></span><span class="pb-win">${pbWin(r, h)}</span><span class="pb-num"><em>최고</em><b class="${dirCls(v.up)}">${sgn(v.up)}</b></span><span class="pb-num"><em>최저</em><b class="${dirCls(v.dn)}">${sgn(v.dn)}</b></span><span class="pb-num"><em>${h}일째</em><b class="${dirCls(v.end)}">${sgn(v.end)}</b></span><span class="pb-num hide-m"><em>시장 대비</em><b class="${dirCls(v.mk)}">${sgn(v.mk)}</b></span><span class="pb-why hide-m">${why || '<span class="muted">—</span>'}</span><span class="pb-go">›</span></button>`; };
     box.innerHTML = `<div class="pb">
       ${pbCtl(h, cat)}
-      <div class="pb-legend muted sm"><b>막대</b> = 판정 다음 날 시가에 샀다면 ${h}거래일 안에 <b>오른 폭을 모두 더한 것 : 빠진 폭을 모두 더한 것</b> (몇 개가 성공했나가 아니라 얼마나 벌 수 있었나 vs 얼마나 잃을 수 있었나) · <b>손익비 1 : N</b> = 평균 최고 상승 ÷ 평균 최고 하락 · 손절·흔들기 기준 안 씀 · 최고/최저 = 평균 · 줄을 누르면 종목</div>
+      ${h >= 60 ? '<div class="pb-note warnish">⏱ 세력주는 판정 뒤 보통 2~4주(중간값 14거래일) 안에 고점을 찍어요 — 60·120일 숫자는 \'끝까지 들고 있었다면\'이라 참고만 하세요. 기본은 20일.</div>' : ''}<div class="pb-legend muted sm"><b>막대</b> = 판정 다음 날 시가에 샀다면 ${h}거래일 안에 <b>오른 폭을 모두 더한 것 : 빠진 폭을 모두 더한 것</b> (몇 개가 성공했나가 아니라 얼마나 벌 수 있었나 vs 얼마나 잃을 수 있었나) · <b>손익비 1 : N</b> = 평균 최고 상승 ÷ 평균 최고 하락 · 손절·흔들기 기준 안 씀 · 최고/최저 = 평균 · 줄을 누르면 종목</div>
       ${cat === '결론' ? pbVdNote(rows, h) : cat === '국면' ? '<div class="pb-legend muted sm">시장 국면 = 판정 전 20거래일 동안 코스피(코스닥 종목은 코스닥)가 +3%↑ 상승장 · −3%↓ 하락장 · 그 사이 보합장. 국면마다 통하는 신호가 다를 수 있어요.</div>' : ''}
       <div class="pb-list">${all ? line(all, true) : ''}${list.length ? list.map((r) => line(r)).join('') : '<p class="muted sm">이 분류엔 아직 결과가 없어요</p>'}</div></div>`;
   }
   function pbCtl(h, cat) {
     return `<div class="pb-ctl"><div class="pb-seg">${PB_H.map((x) => `<button data-pb-h="${x}" class="${x === h ? 'on' : ''}">${x}일</button>`).join('')}</div>
-        <div class="pb-seg">${PB_CATS.map(([c]) => `<button data-pb-cat="${c}" class="${c === cat ? 'on' : ''}">${c}</button>`).join('')}</div></div>`;
+        <div class="pb-seg">${PB_CATS.map(([c]) => `<button data-pb-cat="${c}" class="${c === cat ? 'on' : ''}">${c === '📈vs📉' ? '<b class="up">▲</b>상승 vs <b class="down">▼</b>하락' : c}</button>`).join('')}</div></div>`;
   }
   // v223 📈 vs 📉 (GK: 상승 가능성으로 표시한 종목 vs 하락 위험으로 표시한 종목의 실제 움직임 비교)
   const CMP_UP = '분류:상승 가능성', CMP_DN = '분류:하락 위험';
@@ -3923,7 +3923,7 @@
     const side = (r, k, t, good) => { const v = r ? pbVals(r, h) : {}; const rr = r?.['rr' + h];
       const w = rr == null ? null : Math.round((rr / (1 + rr)) * 100);
       return `<button class="pbc-side ${k}" data-pb-open="${esc(r?.g || '')}" data-pb-src="${src}" ${r ? '' : 'disabled'}>
-        <div class="pbc-t">${t}<small>${v.n ? `${v.n}건${v.n < 30 ? ' · 적음' : ''}` : '결과 전'}</small></div>
+        <div class="pbc-t"><span>${t}</span><small>${v.n ? `${v.n}건${v.n < 30 ? ' · 적음' : ''}` : '결과 전'}</small></div>
         <div class="pbc-big"><em>${h}일째 평균</em><b class="${dirCls(r?.['avg' + h])}">${sgn(r?.['avg' + h])}</b></div>
         <div class="pbc-big"><em>시장 대비</em><b class="${dirCls(v.mk)}">${sgn(v.mk)}</b></div>
         ${w == null ? '' : `<div class="pb-bar" title="오른 폭 합 : 빠진 폭 합"><i class="w" style="width:${w}%"></i><i class="l" style="width:${100 - w}%"></i></div><div class="pbc-wl"><span class="up">오른 폭 ${w}%</span> : <span class="down">빠진 폭 ${100 - w}%</span> · 손익비 1 : ${rr}</div>`}
@@ -3932,10 +3932,10 @@
     const multi = PB_H.map((x) => { const a = U?.['avg' + x], b = D?.['avg' + x]; const d = a != null && b != null && U['n' + x] && D['n' + x] ? Math.round((a - b) * 10) / 10 : null;
       return `<span class="pbc-hx${x === h ? ' on' : ''}"><em>${x}일</em><b class="${d == null ? 'muted' : d > 0 ? 'up' : 'down'}">${d == null ? '—' : (d > 0 ? '+' : '') + d + '%p'}</b></span>`; }).join('');
     return `<div class="pb pbc">
-      <div class="pb-legend muted sm">레이더가 <b class="up">📈 상승 가능성</b>으로 표시한 종목과 <b class="down">📉 하락 위험</b>으로 표시한 종목을, 판정 다음 날 시가에 샀다고 보고 ${h}거래일 동안 실제로 어떻게 움직였는지 나란히 비교 (수수료 포함 · 대형주·거래정지 제외). <b>분류가 맞으면 📈가 📉보다 확실히 좋아야</b> 해요.</div>
-      <div class="pbc-grid">${side(U, 'u', '📈 상승 가능성', '맞으면: 오른 폭이 더 크고 시장보다 좋아야')}${side(D, 'd', '📉 하락 위험', '맞으면: 빠진 폭이 더 크고 시장보다 나빠야')}</div>
-      <div class="pbc-diff"><div class="pbc-dt">📈 − 📉 (${h}일째 평균 차이)</div><div class="pbc-v" data-pbc-v="${src}"><span class="spin"></span> 확실한지 계산 중…</div>
-        <div class="pbc-hs"><small class="muted">기간별 차이</small>${multi}</div></div>
+      <div class="pb-legend muted sm">레이더가 <b class="up">▲</b> <b class="up">상승 가능성</b>으로 표시한 종목과 <b class="down">▼</b> <b class="down">하락 위험</b>으로 표시한 종목을, 판정 다음 날 시가에 샀다고 보고 ${h}거래일 동안 실제로 어떻게 움직였는지 나란히 비교 (수수료 포함 · 대형주·거래정지 제외). <b>분류가 맞으면 <b class="up">▲</b>상승 쪽이 <b class="down">▼</b>하락 쪽보다 시장 대비로 확실히 좋아야</b> 해요.</div>
+      <div class="pbc-grid">${side(U, 'u', '<b class="up">▲</b> 상승 가능성', '맞으면: 오른 폭이 더 크고 시장보다 좋아야')}${side(D, 'd', '<b class="down">▼</b> 하락 위험', '맞으면: 빠진 폭이 더 크고 시장보다 나빠야')}</div>
+      <div class="pbc-diff"><div class="pbc-dt"><b class="up">▲</b>상승 − <b class="down">▼</b>하락 (${h}일째 시장 대비 평균 차이)</div><div class="pbc-v" data-pbc-v="${src}"><span class="spin"></span> 확실한지 계산 중…</div>
+        <div class="pbc-hs"><small class="muted">기간별 차이(시장 하락분 포함)</small>${multi}</div></div>
       ${A ? `<p class="muted sm">참고: 레이더 전체 ${h}일째 평균 ${sgn(A['avg' + h])} · ${pbVals(A, h).n}건</p>` : ''}</div>`;
   }
   // 종목별 결과로 차이가 '운'인지 확인: 같은 주 판정끼리 묶어 다시 뽑기(붓스트랩) 90% 범위 + 앞 2/3 · 뒤 1/3 기간이 같은 방향인지
@@ -3962,16 +3962,19 @@
     if (!U || !D) { el.innerHTML = '<span class="muted sm">종목 결과를 못 불러왔어요</span>'; return; }
     const s = cmpStat(U, D, h, 'r'), m = cmpStat(U, D, h, 'x');
     if (!s) { el.innerHTML = '<span class="muted sm">아직 결과가 적어요 (양쪽 각 5건 이상 필요)</span>'; return; }
-    const same = s.e != null && s.l != null && Math.sign(s.e) === Math.sign(s.l);
-    const enough = s.nu >= 30 && s.nd >= 30;
-    const vd = s.lo > 0 && enough && same && s.e > 0 ? ['ok', '✅ 분류가 맞아요 — 📈가 📉보다 확실히 좋았어요']
-      : s.hi < 0 && enough && same && s.e < 0 ? ['bad', '❌ 거꾸로예요 — 📉로 표시한 종목이 오히려 더 좋았어요 (분류 규칙 점검 필요)']
-      : s.diff > 0 && s.lo > 0 ? ['soso', `좋아 보여요 — 다만 ${!enough ? '표본이 아직 적고(각 30건 필요)' : '앞·뒤 기간 방향이 달라'} 확정은 아직`]
-      : s.diff < 0 && s.hi < 0 ? ['warn', `나빠 보여요 — 📉가 더 좋았어요 (${!enough ? '표본 적음' : '앞·뒤 기간 확인 중'})`]
-      : ['mid', '아직 모름 — 차이가 운으로도 나올 만큼 작아요'];
-    el.innerHTML = `<div class="pbc-num"><b class="${dirCls(s.diff)}">${s.diff > 0 ? '+' : ''}${s.diff}%p</b><small>90% 범위 ${s.lo} ~ ${s.hi}%p</small></div>
+    // v228 GK: '분류가 맞다고 나오는데 시장 대비로는 비슷' → 판정은 시장 대비 차이로 (시장 하락 때 변동성 큰 쪽이 더 빠진 효과를 빼야 진짜 분류 실력)
+    const q = m || s, base = m ? '시장 대비' : '그냥';
+    const same = q.e != null && q.l != null && Math.sign(q.e) === Math.sign(q.l);
+    const enough = q.nu >= 30 && q.nd >= 30;
+    const U2 = '<b class="up">▲</b>상승', D2 = '<b class="down">▼</b>하락';
+    const vd = q.lo > 0 && enough && same && q.e > 0 ? ['ok', `✅ 분류가 맞아요 — ${U2} 쪽이 ${D2} 쪽보다 ${base} 확실히 좋았어요`]
+      : q.hi < 0 && enough && same && q.e < 0 ? ['bad', `❌ 거꾸로예요 — ${D2}으로 표시한 종목이 ${base} 오히려 더 좋았어요 (분류 규칙 점검 필요)`]
+      : q.diff > 0 && q.lo > 0 ? ['soso', `좋아 보여요 — 다만 ${!enough ? '표본이 아직 적고(각 30건 필요)' : '앞·뒤 기간 방향이 달라'} 확정은 아직`]
+      : q.diff < 0 && q.hi < 0 ? ['warn', `나빠 보여요 — ${D2} 쪽이 더 좋았어요 (${!enough ? '표본 적음' : '앞·뒤 기간 확인 중'})`]
+      : ['mid', `아직 모름 — ${base} 차이가 운으로도 나올 만큼 작아요 (분류가 방향을 못 가르고 있음)`];
+    el.innerHTML = `<div class="pbc-num"><b class="${dirCls(q.diff)}">${q.diff > 0 ? '+' : ''}${q.diff}%p</b><small>${base} · 90% 범위 ${q.lo} ~ ${q.hi}%p</small></div>
       <div class="pbc-vd ${vd[0]}">${vd[1]}</div>
-      <div class="muted sm">앞 2/3 기간 ${s.e == null ? '—' : (s.e > 0 ? '+' : '') + s.e + '%p'} · 뒤 1/3 기간 ${s.l == null ? '—' : (s.l > 0 ? '+' : '') + s.l + '%p'}${m ? ` · 시장 대비로 보면 ${m.diff > 0 ? '+' : ''}${m.diff}%p (범위 ${m.lo} ~ ${m.hi})` : ''} · 📈 ${s.nu}건 · 📉 ${s.nd}건</div>`;
+      <div class="muted sm">앞 2/3 기간 ${q.e == null ? '—' : (q.e > 0 ? '+' : '') + q.e + '%p'} · 뒤 1/3 기간 ${q.l == null ? '—' : (q.l > 0 ? '+' : '') + q.l + '%p'}${m ? ` · 참고: 시장 하락분을 안 빼면 ${s.diff > 0 ? '+' : ''}${s.diff}%p (범위 ${s.lo} ~ ${s.hi}) — 시장이 빠질 때 많이 흔들리는 쪽(${D2})이 더 빠진 효과가 섞여 있어요` : ''} · ${U2} ${s.nu}건 · ${D2} ${s.nd}건</div>`;
   }
   // v223 🟢 정직한 설명: 데이터로 '더 오르나' vs '덜 흔들리나'를 그때그때 계산해 한 줄로
   function pbVdNote(rows, h) {
@@ -4106,7 +4109,7 @@
     if (!$('#mpBody') || S.mpTab !== 'my' || seq !== S.mpSeq) return;
     if (!j.ok) { box.innerHTML = `<p class="err">${esc(j.error || '불러오지 못했어요')}</p>`; return; }
     const open = j.items.filter((i) => !i.closed), done = j.items.filter((i) => i.closed);
-    const DIRB = { up: '📈 상승 가능성', down: '📉 하락 위험' };
+    const DIRB = { up: '▲ 상승 가능성', down: '▼ 하락 위험' };
     const pf = j.pf || null, cfg = pf?.cfg || {};
     const row = (i) => `<li class="mp-row mp-my ${i.closed ? 'closed' : ''}"><div class="mp-top"><span class="f-rk">${i.closed ? '✔' : '⭐'}</span><span class="ca-co" data-mp-go="${esc(i.code)}" title="작전 레이더 종목 페이지 열기">${logoHTML('KR', i.code, i.name, 'sm')}<span><b>${esc(i.name)}</b><small>${esc(i.code)} · ${esc(rel(i.at))} 추가${i.closed ? ` · ${esc(rel(i.exitAt))} 정리` : ''}</small></span></span>
         <span class="mp-px"${!i.closed ? ` data-lq="${esc(i.code)}" data-entry="${i.entry || ''}"` : ''}>${i.cur != null ? fmtInt(i.cur) + '원' : '—'}<small class="${dirCls(i.pl)}">${i.pl != null ? (i.pl > 0 ? '+' : '') + i.pl + '%' : ''}</small></span>
@@ -4225,7 +4228,7 @@
     const net = (x.links || []).length ? `<div class="mp-net"><h5>🕸 같은 세력 연결 의심 <small>같은 공시 제출인·인수자 이름이 다른 종목에도 나옴 (동명이인·우연일 수 있음)</small></h5><ul>${x.links.map((l) => `<li><b>${esc(l.who)}</b> → ${l.others.map((o) => `<button class="link" data-open-co="KR|${esc(o.c)}|${esc(o.nm || '')}">${esc(o.nm || o.c)}</button> <small class="muted">${esc(o.d)} ${esc(MP_EV[o.k] || '')}</small>`).join(', ')}</li>`).join('')}</ul></div>` : '';
     const pn = penaltyBox(x);
     const meta = [x.ind ? `업종 ${esc(x.ind)}` : '', x.capPct != null ? `시가총액 순위 하위 ${Math.round(x.capPct * 100)}%` : '', x.warn ? `거래소 ${esc(x.warn.lv)}${x.warn.date ? ' ' + esc(x.warn.date) : ''}` : ''].filter(Boolean).join(' · ');
-    const dirBox = (meta ? `<p class="muted sm" style="margin:0 0 .4rem">${meta}</p>` : '') + pn + net + notes + `<div class="mp-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 근거 <small>확인된 사실·자동 계산 · ${d.upS || 0}/10점</small></h5>${d.up?.length ? `<ul>${reasons(d.up)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 근거 <small>확인된 사실·자동 계산 · ${d.downS || 0}/10점</small></h5>${d.down?.length ? `<ul>${reasons(d.down)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div></div>`;
+    const dirBox = (meta ? `<p class="muted sm" style="margin:0 0 .4rem">${meta}</p>` : '') + pn + net + notes + `<div class="mp-dir"><div class="mp-dcol up"><h5><b class="up">▲</b> 상승 쪽 근거 <small>확인된 사실·자동 계산 · ${d.upS || 0}/10점</small></h5>${d.up?.length ? `<ul>${reasons(d.up)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div><div class="mp-dcol down"><h5><b class="down">▼</b> 하락 쪽 근거 <small>확인된 사실·자동 계산 · ${d.downS || 0}/10점</small></h5>${d.down?.length ? `<ul>${reasons(d.down)}</ul>` : '<p class="muted sm">해당 없음</p>'}</div></div>`;
     const KN = { cost: ['원가', 'cost'], floor: ['지지', 'floor'], risk: ['위험선', 'risk'], res: ['매물대', 'res'] };
     const lvRow = (l) => `<li class="lv-${KN[l.kind]?.[1] || 'cost'}"><span class="mp-lvp">${fmtInt(l.p)}원</span><span class="mp-lvg">${l.gap == null ? '' : `${l.gap > 0 ? '+' : ''}${l.gap}%`}</span><span class="mp-lvt"><b>${esc(l.s)}</b> <span class="mp-chip">${KN[l.kind]?.[0] || ''}</span>${l.also?.length ? ` <small class="muted">(＝${esc(l.also.join(', '))})</small>` : ''}<br><small class="muted">${esc(l.t)}</small>${l.ref ? ` <a class="mp-src" href="/p/${esc(l.ref)}" target="_blank">공시</a>` : ''}</span></li>`;
     const lvs = d.levels || [];
@@ -4237,7 +4240,7 @@
       <div><h5>🗓 물량이 풀릴 수 있는 날 <small>CB는 원문의 전환청구기간을 읽고, 못 읽으면 발행 1년 뒤로 추정</small></h5>${d.dates?.length ? `<ul>${d.dates.map((z) => `<li class="${z.past ? 'muted' : ''}"><b>${esc(z.d)}</b> ${esc(z.t)}${z.real ? ' <span class="mp-chip vol">원문 확인</span>' : ''}${z.past ? ' (지남)' : ''} <a class="mp-src" href="/p/${esc(z.ref)}" target="_blank">공시</a></li>`).join('')}</ul>` : '<p class="muted sm">관련 공시(CB·3자배정·전환청구) 없음</p>'}</div></div>` : '';
     const UK = { summary: '요약', upWhy: '상승 쪽', downWhy: '하락 쪽', counter: '반대 근거', watch: '볼 신호', evidence: '의심 근거' };
     const aiBox = a ? `<div class="mp-ai"><b>🤖 AI 해석</b> <small class="muted">근거 번호가 확인된 문장은 그대로, 확인 안 된 문장은 아래 ⚠ 참고용으로 따로 보여줘요</small>${a.summary ? `<p class="mp-aisum">${hl(a.summary)}</p>` : a.oldSummary ? `<p>${hl(a.oldSummary)} <small class="mp-unv">⚠ 예전 분석 요약 — 지금 계산과 숫자가 다른 부분이 있어요</small></p>` : ''}
-      ${a.upWhy?.length || a.downWhy?.length ? `<div class="mp-dir ai-dir"><div class="mp-dcol up"><h5>📈 상승 쪽 해석</h5>${a.upWhy?.length ? `<ul>${a.upWhy.map(aiLine).join('')}</ul>` : '<p class="muted sm">없음</p>'}</div><div class="mp-dcol down"><h5>📉 하락 쪽 해석</h5>${a.downWhy?.length ? `<ul>${a.downWhy.map(aiLine).join('')}</ul>` : '<p class="muted sm">없음</p>'}</div></div>` : ''}
+      ${a.upWhy?.length || a.downWhy?.length ? `<div class="mp-dir ai-dir"><div class="mp-dcol up"><h5><b class="up">▲</b> 상승 쪽 해석</h5>${a.upWhy?.length ? `<ul>${a.upWhy.map(aiLine).join('')}</ul>` : '<p class="muted sm">없음</p>'}</div><div class="mp-dcol down"><h5><b class="down">▼</b> 하락 쪽 해석</h5>${a.downWhy?.length ? `<ul>${a.downWhy.map(aiLine).join('')}</ul>` : '<p class="muted sm">없음</p>'}</div></div>` : ''}
       ${a.evidence?.length ? `<h5>의심 근거 <small class="muted">(이전 방식 분석 · 근거 검증 전 — 다음 분석 때 새 방식으로 바뀜)</small></h5><ul>${li(a.evidence)}</ul>` : ''}${a.counter?.length ? `<h5>반대 근거 (정상일 가능성)</h5><ul>${a.counter.map((c) => (typeof c === 'string' ? `<li>${hl(c)}</li>` : aiLine(c))).join('')}</ul>` : ''}${a.watch?.length ? `<h5>앞으로 볼 신호</h5><ul>${li(a.watch)}</ul>` : ''}
       ${a.unv?.length ? `<h5>⚠ 근거 확인이 안 된 AI 문장 <small class="muted">(참고용 — 사실 목록에서 숫자·근거를 찾지 못했어요. 그대로 믿지 말고 원문 공시로 확인)</small></h5><ul class="mp-unvl">${a.unv.map((u) => `<li class="${u.k === 'upWhy' ? 'ai-u' : u.k === 'downWhy' ? 'ai-d' : ''}"><span class="mp-chip">${esc(UK[u.k] || u.k)}</span> ${hl(u.t)} <small class="muted">· ${esc(u.why)}</small></li>`).join('')}</ul>` : ''}
       ${a.facts?.length ? `<details class="mp-facts"><summary>AI에게 준 사실 목록 (${a.facts.length}개)</summary><ol>${a.facts.map((f) => `<li><b>${esc(f.id)}</b> ${esc(f.t)} <small class="muted">· ${esc(f.src)}</small></li>`).join('')}</ol></details>` : ''}</div>` : '';

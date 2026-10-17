@@ -2416,3 +2416,4 @@ body.pbm-open{overflow:hidden}
 .kc-box{position:relative;height:380px;border-radius:12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);overflow:hidden}
 @media (max-width:640px){.kc-box{height:300px}}
 .rp-chart{margin-bottom:.8rem}
+.pb-note.warnish{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)}

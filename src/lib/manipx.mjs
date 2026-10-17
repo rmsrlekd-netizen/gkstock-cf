@@ -464,7 +464,7 @@ export async function ruleCheck({ force = false, now = Date.now() } = {}) {
   try { // v222 매매 따라하기 판정 (실제 기록)
     const TS = await import('./tradesim.mjs'); const sm = (await TS.simSummary())?.live;
     if (sm?.groups?.length) {
-      lines.push('— 📈 따라 샀다면 (1차 목표 팔기, 전체 대비) —');
+      lines.push('— 💰 따라 샀다면 (1차 목표 팔기, 전체 대비) —');
       for (const g of sm.groups) { const v = g.T; if (!v) continue; lines.push(`${g.ko}: 거래당 ${v.avg > 0 ? '+' : ''}${v.avg}% · ${v.n}번 · ${g.s === 'all' ? '기준선' : `${v.vd?.t || ''}${v.vs != null ? ` (${v.vs > 0 ? '+' : ''}${v.vs}%p)` : ''}`}`); if (v.vd?.k === 'bad') warns.push(`${g.ko}가 전체보다 확실히 나쁨`); if (g.best && g.best.testN >= 20 && g.best.test > g.best.baseTest + 1) lines.push(`  ↳ 손절·목표를 '${g.best.name}'로 바꾸면 안 본 기간 ${g.best.test}% (지금 규칙 ${g.best.baseTest}%)`); }
       const sure = (sm.conds || []).filter((c) => c.vd?.k === 'ok' || c.vd?.k === 'bad');
       if (sure.length) lines.push('확실한 조건: ' + sure.slice(0, 6).map((c) => `${c.ko} ${c.v} ${c.diff > 0 ? '+' : ''}${c.diff}%p`).join(' · '));
