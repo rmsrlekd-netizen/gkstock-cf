@@ -2381,3 +2381,18 @@ body.pbm-open{overflow:hidden}
 .cap-grid{display:flex;flex-direction:column;gap:4px}.cap-r{display:grid;grid-template-columns:1.2fr .6fr 1fr 1fr .9fr;gap:8px;font-size:.82rem;padding:.35rem .5rem;border-radius:8px;background:rgba(255,255,255,.03)}
 @media (max-width:720px){.cap-r{grid-template-columns:1fr 1fr}}
 .lr-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media (max-width:720px){.lr-2{grid-template-columns:1fr}}
+/* v223 📈 vs 📉 비교 */
+.pbc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:.4rem 0}
+.pbc-side{display:flex;flex-direction:column;gap:6px;text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:.8rem .9rem;color:inherit;cursor:pointer;font:inherit}
+.pbc-side:hover{background:rgba(255,255,255,.06)}
+.pbc-side.u{border-color:rgba(239,68,68,.35)}.pbc-side.d{border-color:rgba(59,130,246,.35)}
+.pbc-t{font-weight:700;font-size:1rem;display:flex;justify-content:space-between;align-items:baseline;gap:6px}.pbc-t small{font-weight:400;color:var(--muted);font-size:.78rem}
+.pbc-big{display:flex;justify-content:space-between;align-items:baseline}.pbc-big em{font-style:normal;color:var(--muted);font-size:.8rem}.pbc-big b{font-size:1.25rem}
+.pbc-wl,.pbc-sm{font-size:.78rem}.pbc-side .pb-go{align-self:flex-end;color:var(--muted);font-size:.78rem}
+.pbc-diff{background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:14px;padding:.8rem .9rem;margin:.4rem 0;display:flex;flex-direction:column;gap:6px}
+.pbc-dt{font-weight:700}.pbc-num b{font-size:1.5rem;margin-right:8px}.pbc-num small{color:var(--muted)}
+.pbc-vd{font-weight:600;padding:.35rem .6rem;border-radius:8px;background:rgba(255,255,255,.05)}
+.pbc-vd.ok{background:rgba(34,197,94,.15);color:#4ade80}.pbc-vd.bad{background:rgba(239,68,68,.15);color:#f87171}.pbc-vd.warn{color:#fbbf24}
+.pbc-hs{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.pbc-hx{display:inline-flex;gap:4px;align-items:baseline;padding:.15rem .5rem;border-radius:8px;background:rgba(255,255,255,.04);font-size:.82rem}.pbc-hx.on{outline:1px solid rgba(99,102,241,.6)}.pbc-hx em{font-style:normal;color:var(--muted)}
+@media (max-width:640px){.pbc-grid{grid-template-columns:1fr}}
+.pbc-side .pb-bar{flex:none;width:100%;margin-top:2px}

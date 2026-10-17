@@ -3800,7 +3800,7 @@
     catch (e) { row.querySelector('td').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   });
   // ───── v221 성적표 보드: 기간·분류를 골라 한 화면에 · 그룹 누르면 종목 목록 창(닫기·뒤로 가기) ─────
-  const PB_CATS = [['결론', '한 줄 결론'], ['후보', '매매 후보 조건'], ['등급', '체크리스트'], ['단계', '단계'], ['분류', '분류'], ['손익비', '손익비'], ['기타', '']];
+  const PB_CATS = [['📈vs📉', null], ['결론', '한 줄 결론'],['후보', '매매 후보 조건'], ['등급', '체크리스트'], ['단계', '단계'], ['분류', '분류'], ['손익비', '손익비'], ['기타', '']];
   const PB_H = [5, 20, 60, 120];
   function pbVals(r, h) {
     return { n: r['pn' + h] || r['n' + h] || 0, up: r['up' + h], dn: r['dn' + h], end: r['mr' + h] ?? r['avg' + h], mk: r['ax' + h], hu: r['hu' + h] };
@@ -3815,6 +3815,7 @@
   function renderBoard(src) {
     const box = $(src === 'bt' ? '#pbBt' : '#pbPerf'); const rows = S.pbData?.[src]; if (!box || !rows) return;
     const h = S.pbH || 20, cat = S.pbCat || '결론';
+    if (cat === '📈vs📉') { box.innerHTML = pbCtl(h, cat) + pbCmpHTML(src, rows, h); pbCmpFill(src, h); return; }
     const pre = PB_CATS.find((c) => c[0] === cat)?.[1];
     const known = PB_CATS.map((c) => c[1]).filter(Boolean);
     const list = rows.filter((r) => r.g !== '전체' && (pre ? r.g.startsWith(pre + ':') : !known.some((k) => r.g.startsWith(k + ':'))));
@@ -3822,10 +3823,70 @@
     const line = (r, isAll) => { const v = pbVals(r, h); const why = [r.whyW?.[0] ? `<span class="up">↑${esc(WHY_KO[r.whyW[0][0]] || '')}</span>` : '', r.whyL?.[0] ? `<span class="down">↓${esc(WHY_KO[r.whyL[0][0]] || '')}</span>` : ''].filter(Boolean).join(' ');
       return `<button class="pb-row${isAll ? ' all' : ''}" data-pb-open="${esc(r.g)}" data-pb-src="${src}"><span class="pb-name">${esc(isAll ? '전체' : r.g.replace(/^[^:]+:/, ''))}<small>${v.n ? `${v.n}건${v.n < 30 ? ' · 적음' : ''}` : '결과 전'}</small></span><span class="pb-win">${pbWin(r, h)}</span><span class="pb-num"><em>최고</em><b class="${dirCls(v.up)}">${sgn(v.up)}</b></span><span class="pb-num"><em>최저</em><b class="${dirCls(v.dn)}">${sgn(v.dn)}</b></span><span class="pb-num"><em>${h}일째</em><b class="${dirCls(v.end)}">${sgn(v.end)}</b></span><span class="pb-num hide-m"><em>시장 대비</em><b class="${dirCls(v.mk)}">${sgn(v.mk)}</b></span><span class="pb-why hide-m">${why || '<span class="muted">—</span>'}</span><span class="pb-go">›</span></button>`; };
     box.innerHTML = `<div class="pb">
-      <div class="pb-ctl"><div class="pb-seg">${PB_H.map((x) => `<button data-pb-h="${x}" class="${x === h ? 'on' : ''}">${x}일</button>`).join('')}</div>
-        <div class="pb-seg">${PB_CATS.map(([c]) => `<button data-pb-cat="${c}" class="${c === cat ? 'on' : ''}">${c}</button>`).join('')}</div></div>
+      ${pbCtl(h, cat)}
       <div class="pb-legend muted sm"><b>막대</b> = 판정 다음 날 시가에 샀다면 ${h}거래일 안에 <b>오른 폭을 모두 더한 것 : 빠진 폭을 모두 더한 것</b> (몇 개가 성공했나가 아니라 얼마나 벌 수 있었나 vs 얼마나 잃을 수 있었나) · <b>손익비 1 : N</b> = 평균 최고 상승 ÷ 평균 최고 하락 · 손절·흔들기 기준 안 씀 · 최고/최저 = 평균 · 줄을 누르면 종목</div>
       <div class="pb-list">${all ? line(all, true) : ''}${list.length ? list.map((r) => line(r)).join('') : '<p class="muted sm">이 분류엔 아직 결과가 없어요</p>'}</div></div>`;
+  }
+  function pbCtl(h, cat) {
+    return `<div class="pb-ctl"><div class="pb-seg">${PB_H.map((x) => `<button data-pb-h="${x}" class="${x === h ? 'on' : ''}">${x}일</button>`).join('')}</div>
+        <div class="pb-seg">${PB_CATS.map(([c]) => `<button data-pb-cat="${c}" class="${c === cat ? 'on' : ''}">${c}</button>`).join('')}</div></div>`;
+  }
+  // v223 📈 vs 📉 (GK: 상승 가능성으로 표시한 종목 vs 하락 위험으로 표시한 종목의 실제 움직임 비교)
+  const CMP_UP = '분류:상승 가능성', CMP_DN = '분류:하락 위험';
+  function pbCmpHTML(src, rows, h) {
+    const U = rows.find((r) => r.g === CMP_UP), D = rows.find((r) => r.g === CMP_DN), A = rows.find((r) => r.g === '전체');
+    const side = (r, k, t, good) => { const v = r ? pbVals(r, h) : {}; const rr = r?.['rr' + h];
+      const w = rr == null ? null : Math.round((rr / (1 + rr)) * 100);
+      return `<button class="pbc-side ${k}" data-pb-open="${esc(r?.g || '')}" data-pb-src="${src}" ${r ? '' : 'disabled'}>
+        <div class="pbc-t">${t}<small>${v.n ? `${v.n}건${v.n < 30 ? ' · 적음' : ''}` : '결과 전'}</small></div>
+        <div class="pbc-big"><em>${h}일째 평균</em><b class="${dirCls(r?.['avg' + h])}">${sgn(r?.['avg' + h])}</b></div>
+        <div class="pbc-big"><em>시장 대비</em><b class="${dirCls(v.mk)}">${sgn(v.mk)}</b></div>
+        ${w == null ? '' : `<div class="pb-bar" title="오른 폭 합 : 빠진 폭 합"><i class="w" style="width:${w}%"></i><i class="l" style="width:${100 - w}%"></i></div><div class="pbc-wl"><span class="up">오른 폭 ${w}%</span> : <span class="down">빠진 폭 ${100 - w}%</span> · 손익비 1 : ${rr}</div>`}
+        <div class="pbc-sm">평균 최고 <b class="up">${sgn(v.up)}</b> · 평균 최저 <b class="down">${sgn(v.dn)}</b></div>
+        <div class="pbc-goal muted sm">${good}</div><span class="pb-go">종목 보기 ›</span></button>`; };
+    const multi = PB_H.map((x) => { const a = U?.['avg' + x], b = D?.['avg' + x]; const d = a != null && b != null && U['n' + x] && D['n' + x] ? Math.round((a - b) * 10) / 10 : null;
+      return `<span class="pbc-hx${x === h ? ' on' : ''}"><em>${x}일</em><b class="${d == null ? 'muted' : d > 0 ? 'up' : 'down'}">${d == null ? '—' : (d > 0 ? '+' : '') + d + '%p'}</b></span>`; }).join('');
+    return `<div class="pb pbc">
+      <div class="pb-legend muted sm">레이더가 <b class="up">📈 상승 가능성</b>으로 표시한 종목과 <b class="down">📉 하락 위험</b>으로 표시한 종목을, 판정 다음 날 시가에 샀다고 보고 ${h}거래일 동안 실제로 어떻게 움직였는지 나란히 비교 (수수료 포함 · 대형주·거래정지 제외). <b>분류가 맞으면 📈가 📉보다 확실히 좋아야</b> 해요.</div>
+      <div class="pbc-grid">${side(U, 'u', '📈 상승 가능성', '맞으면: 오른 폭이 더 크고 시장보다 좋아야')}${side(D, 'd', '📉 하락 위험', '맞으면: 빠진 폭이 더 크고 시장보다 나빠야')}</div>
+      <div class="pbc-diff"><div class="pbc-dt">📈 − 📉 (${h}일째 평균 차이)</div><div class="pbc-v" data-pbc-v="${src}"><span class="spin"></span> 확실한지 계산 중…</div>
+        <div class="pbc-hs"><small class="muted">기간별 차이</small>${multi}</div></div>
+      ${A ? `<p class="muted sm">참고: 레이더 전체 ${h}일째 평균 ${sgn(A['avg' + h])} · ${pbVals(A, h).n}건</p>` : ''}</div>`;
+  }
+  // 종목별 결과로 차이가 '운'인지 확인: 같은 주 판정끼리 묶어 다시 뽑기(붓스트랩) 90% 범위 + 앞 2/3 · 뒤 1/3 기간이 같은 방향인지
+  async function pbCmpRows(src, g) { const k = `${src}|${g}|all`; if (!pbRows.has(k)) { try { pbRows.set(k, (await mpGet(`mp=grows&all=1&src=${encodeURIComponent(src)}&g=${encodeURIComponent(g)}`)).rows || []); } catch { return null; } } return pbRows.get(k); }
+  function cmpStat(U, D, h, key) {
+    const val = (x) => x[key + h]; const u = U.filter((x) => val(x) != null), d = D.filter((x) => val(x) != null);
+    if (u.length < 5 || d.length < 5) return null;
+    const mean = (a) => a.reduce((s, x) => s + val(x), 0) / a.length;
+    const wk = (x) => Math.floor((Date.parse(x.d) / 864e5 + 3) / 7);
+    const grp = (a) => { const m = new Map(); for (const x of a) { const w = wk(x); if (!m.has(w)) m.set(w, []); m.get(w).push(x); } return [...m.values()]; };
+    const gu = grp(u), gd = grp(d); let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const pick = (G) => { const o = []; for (let i = 0; i < G.length; i++) o.push(...G[Math.floor(rnd() * G.length)]); return o; };
+    const bs = []; for (let i = 0; i < 1000; i++) { const a = pick(gu), b = pick(gd); if (a.length && b.length) bs.push(mean(a) - mean(b)); }
+    bs.sort((a, b) => a - b);
+    const all = [...u, ...d].map((x) => x.d).sort(), cut = all[Math.floor(all.length * 2 / 3)] || all[all.length - 1];
+    const half = (f) => { const a = u.filter(f), b = d.filter(f); return a.length >= 3 && b.length >= 3 ? mean(a) - mean(b) : null; };
+    const diff = mean(u) - mean(d), lo = bs[Math.floor(bs.length * 0.05)], hi = bs[Math.floor(bs.length * 0.95)];
+    const e = half((x) => x.d < cut), l = half((x) => x.d >= cut);
+    return { diff: Math.round(diff * 10) / 10, lo: Math.round(lo * 10) / 10, hi: Math.round(hi * 10) / 10, e: e == null ? null : Math.round(e * 10) / 10, l: l == null ? null : Math.round(l * 10) / 10, nu: u.length, nd: d.length };
+  }
+  async function pbCmpFill(src, h) {
+    const [U, D] = await Promise.all([pbCmpRows(src, CMP_UP), pbCmpRows(src, CMP_DN)]);
+    const el = document.querySelector(`[data-pbc-v="${src}"]`); if (!el || (S.pbH || 20) !== h || S.pbCat !== '📈vs📉') return;
+    if (!U || !D) { el.innerHTML = '<span class="muted sm">종목 결과를 못 불러왔어요</span>'; return; }
+    const s = cmpStat(U, D, h, 'r'), m = cmpStat(U, D, h, 'x');
+    if (!s) { el.innerHTML = '<span class="muted sm">아직 결과가 적어요 (양쪽 각 5건 이상 필요)</span>'; return; }
+    const same = s.e != null && s.l != null && Math.sign(s.e) === Math.sign(s.l);
+    const enough = s.nu >= 30 && s.nd >= 30;
+    const vd = s.lo > 0 && enough && same && s.e > 0 ? ['ok', '✅ 분류가 맞아요 — 📈가 📉보다 확실히 좋았어요']
+      : s.hi < 0 && enough && same && s.e < 0 ? ['bad', '❌ 거꾸로예요 — 📉로 표시한 종목이 오히려 더 좋았어요 (분류 규칙 점검 필요)']
+      : s.diff > 0 && s.lo > 0 ? ['soso', `좋아 보여요 — 다만 ${!enough ? '표본이 아직 적고(각 30건 필요)' : '앞·뒤 기간 방향이 달라'} 확정은 아직`]
+      : s.diff < 0 && s.hi < 0 ? ['warn', `나빠 보여요 — 📉가 더 좋았어요 (${!enough ? '표본 적음' : '앞·뒤 기간 확인 중'})`]
+      : ['mid', '아직 모름 — 차이가 운으로도 나올 만큼 작아요'];
+    el.innerHTML = `<div class="pbc-num"><b class="${dirCls(s.diff)}">${s.diff > 0 ? '+' : ''}${s.diff}%p</b><small>90% 범위 ${s.lo} ~ ${s.hi}%p</small></div>
+      <div class="pbc-vd ${vd[0]}">${vd[1]}</div>
+      <div class="muted sm">앞 2/3 기간 ${s.e == null ? '—' : (s.e > 0 ? '+' : '') + s.e + '%p'} · 뒤 1/3 기간 ${s.l == null ? '—' : (s.l > 0 ? '+' : '') + s.l + '%p'}${m ? ` · 시장 대비로 보면 ${m.diff > 0 ? '+' : ''}${m.diff}%p (범위 ${m.lo} ~ ${m.hi})` : ''} · 📈 ${s.nu}건 · 📉 ${s.nd}건</div>`;
   }
   // 종목 목록 창
   function pbModal(src, g, rows, sort) {
