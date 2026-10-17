@@ -2380,3 +2380,4 @@ body.pbm-open{overflow:hidden}
 .pb-wl small{display:block;font-size:.66rem;font-weight:600}
 .cap-grid{display:flex;flex-direction:column;gap:4px}.cap-r{display:grid;grid-template-columns:1.2fr .6fr 1fr 1fr .9fr;gap:8px;font-size:.82rem;padding:.35rem .5rem;border-radius:8px;background:rgba(255,255,255,.03)}
 @media (max-width:720px){.cap-r{grid-template-columns:1fr 1fr}}
+.lr-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media (max-width:720px){.lr-2{grid-template-columns:1fr}}

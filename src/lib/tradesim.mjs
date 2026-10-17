@@ -26,14 +26,16 @@ export const SIGS = [
   ['AB', '체크리스트 A·B등급'],
   ['acc', '매집·판 깔기 단계'],
   ['up', '상승 가능성 분류'],
+  ['hot', '🔥 띄우기·엑시트 후 (단타 구간)'],
   ['all', '레이더에 처음 오른 종목 전체'],
 ];
-const BIT = { g: 1, pk: 2, A: 4, AB: 8, acc: 16, up: 32, all: 128 };
+// v222: 'hot' = 레이더가 🔴로 빼던 띄우기·엑시트 후 — 과거 재현에서 손익비가 가장 높게 나와(1:2.1~2.6) 단타 구간으로 따로 검증 (🔴여도 사고, 판정 🔴 전환으로 팔지 않음)
+const BIT = { g: 1, pk: 2, A: 4, AB: 8, acc: 16, up: 32, all: 128, hot: 256 };
 const BAD = 64;
-export const WHY_X = { stop: '손절선', tgt: '목표가', view: '판정 🔴 전환', time: '60일 정리', halt: '거래정지' };
+export const WHY_X = { stop: '손절선', tgt: '목표가', view: '판정 🔴 전환', time: '60일 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
 const COST = 0.5, HOLD = 60, COOL = 10, NOFILL = 1.25;
 export const PK_H = [5, 20, 60, 120]; // 최고·최저 기록 기간(거래일)
-export const MODES = ['T', 'U', 'ST', 'SU']; // 한 번에 사기(목표 팔기·끝까지) · 3번 나눠 사기(목표 팔기·끝까지)
+export const MODES = ['T', 'U', 'ST', 'SU', 'TR', 'TH']; // 한 번에 사기(목표 팔기·끝까지) · 3번 나눠 사기(목표 팔기·끝까지) · v222 추적 매도(TR: 최고점 대비 −15% / TH: +30%에 절반·나머지 최고점 대비 −15%)
 export const GRID_S = [7, 10, 15, 'c'], GRID_T = [15, 30, 't', 0]; // 'c' = 세력 원가 손절선, 't' = 1차 목표가, 0 = 목표 없음
 const gridName = (gi) => { const s = GRID_S[gi >> 2], t = GRID_T[gi & 3]; return `손절 ${s === 'c' ? '세력 원가' : '−' + s + '%'} · ${t === 't' ? '1차 목표가' : t ? '+' + t + '%' : '목표 없이 끝까지'}`; };
 export const GI_T = 3 * 4 + 2, GI_U = 3 * 4 + 3; // 기본 두 방식의 칸 번호
@@ -46,15 +48,18 @@ export function flagsOf(r) {
   if (r.ck === 'A' || r.ck === 'B') f |= BIT.AB;
   if (r.st === '매집' || r.st === '판 깔기') f |= BIT.acc;
   if (r.dir === 'up') f |= BIT.up;
+  if (r.st === '띄우기' || r.st === '엑시트 후') f |= BIT.hot;
   if (r.vd === 'r' || (!r.vd && (r.ck === 'D' || ['털기', '엑시트 후', '거래정지'].includes(r.st)))) f |= BAD;
   return f;
 }
 /** 진입 당시 조건 (조건별 효과 분석용, 짧게) */
 export function attrsOf(r) {
   const b = (v, cuts, names) => { if (v == null || Number.isNaN(v)) return null; for (let i = 0; i < cuts.length; i++) if (v < cuts[i]) return names[i]; return names[cuts.length]; };
-  return { st: r.st || null, ck: r.ck || null, rr: b(r.rr, [2, 3], ['2 미만', '2~3', '3 이상']), gp: b(r.gp, [0, 15, 50], ['평단 아래', '평단 +0~15%', '평단 +15~50%', '평단 +50%↑']), dir: r.dir === 'up' ? '상승' : r.dir === 'down' ? '하락 위험' : '없음', cm: r.cm > 0 ? '있음' : '없음', px: r.pexl || null, vd: r.vd || null };
+  const ckv = {}; for (const [k, v] of Object.entries(r.ckv || {})) if (CK_KO[k]) ckv['c_' + k] = v ? '✓' : '✗'; // v222: 체크리스트 항목 하나하나의 효과
+  return { ...ckv, st: r.st || null, ck: r.ck || null, rr: b(r.rr, [2, 3], ['2 미만', '2~3', '3 이상']), gp: b(r.gp, [0, 15, 50], ['평단 아래', '평단 +0~15%', '평단 +15~50%', '평단 +50%↑']), dir: r.dir === 'up' ? '상승' : r.dir === 'down' ? '하락 위험' : '없음', cm: r.cm > 0 ? '있음' : '없음', px: r.pexl || null, vd: r.vd || null };
 }
-export const ATTR_KO = { lq: '하루 거래대금(20일 평균)', st: '단계', ck: '체크리스트 등급', rr: '손익비', gp: '평단 대비 위치', dir: '분류', cm: '매집봉 흔적', px: '털기 후 상승', vd: '한 줄 결론', mk: '진입 때 시장 흐름(20일)', eg: '진입 갭(다음 날 시가)' };
+const CK_KO = { money: '세력 자금 실제 투입', cost: '평단 근처', acc: '매집 흔적', unlock: '물량 해제 2~3개월 전', rr: '손익비 2↑', small: '소형주', float: '최대주주 지분 40%↑', story: '사업목적 추가', theme: '업종·테마 강세', insider: '내부자 매수', broker: '창구 쏠림', buzz: '기사·종토방 증가' };
+export const ATTR_KO = { ...Object.fromEntries(Object.entries(CK_KO).map(([k, v]) => ['c_' + k, '체크: ' + v])), p5: '판정 전 5일 상승률', vx: '판정일 거래량(20일 평균 대비)', lq: '하루 거래대금(20일 평균)', st: '단계', ck: '체크리스트 등급', rr: '손익비', gp: '평단 대비 위치', dir: '분류', cm: '매집봉 흔적', px: '털기 후 상승', vd: '한 줄 결론', mk: '진입 때 시장 흐름(20일)', eg: '진입 갭(다음 날 시가)' };
 const r1 = (x) => Math.round(x * 10) / 10;
 
 /**
@@ -78,12 +83,12 @@ export function simTrades(B, tl, opt = {}) {
       if (!(p.f & bit)) continue;
       const fresh = p.i - lastOn > COOL;
       lastOn = p.i;
-      if (!fresh || p.i <= busyTo || p.f & BAD) continue;
+      if (!fresh || p.i <= busyTo || (p.f & BAD && s !== 'hot')) continue;
       const ei = p.i + 1; if (!B[ei]) continue;
       const e = B[ei].o || B[ei].c;
       if (e >= B[p.i].c * NOFILL) { nf[s] = (nf[s] || 0) + 1; continue; } // 상한가 근처로 열려 실제로 못 삼
       const spc = p.sp > 0 && p.sp < e ? p.sp : e * 0.9, tpt = p.tp > e ? p.tp : e * 1.2;
-      const vb = badI.find((b) => b >= ei);
+      const vb = s === 'hot' ? null : badI.find((b) => b >= ei); // 단타 구간은 🔴 전환으로 팔지 않음(원래 🔴)
       const run = (spx, tpx) => {
         for (let k = ei; k < Math.min(B.length, ei + HOLD); k++) {
           const x = B[k];
@@ -125,6 +130,29 @@ export function simTrades(B, tl, opt = {}) {
         return { r: r1(r), R: Math.round((r / risk) * 100) / 100, h: x.k - ei + 1, w: x.w, xd: B[x.k].d, x: m == null ? null : r1(r - m), n3: Math.round(x.qty * x.avg) };
       };
       const ST = finS(runSplit(spc, tpt), spc), SU = finS(runSplit(spc, 0), spc);
+      // v222 추적 매도: 세력주는 짧게 크게 쏘고 되돌림(과거 재현: 20일 안 최고 +25%인데 20일째 −5%) → 최고점에서 일정 폭 빠지면 팖
+      //  TR: 산 뒤 최고가(고가) 대비 종가가 −15% 아래로 마감하면 다음 날 시가에 매도 · 손절선 · 60일
+      //  TH: +30% 닿으면 그 값에 절반 매도, 나머지는 TR과 같은 규칙
+      const runTrail = (half) => {
+        let hi = e, sold = 0, got = 0; // sold: 이미 판 비율, got: 그 판 돈(진입가 1 기준)
+        for (let k = ei; k < Math.min(B.length, ei + HOLD); k++) {
+          const x = B[k], o = x.o || x.c;
+          if (x.l <= spc) { const px = Math.min(o, spc); return { px, k, w: 'stop', sold, got }; }
+          if (half && !sold && x.h >= e * 1.3) { sold = 0.5; got = 0.5 * Math.max(o, e * 1.3) / e; }
+          hi = Math.max(hi, x.h);
+          if (x.c <= hi * 0.85 && B[k + 1]) return { px: B[k + 1].o || B[k + 1].c, k: k + 1, w: 'trail', sold, got };
+        }
+        const k = ei + HOLD - 1;
+        if (B[k]) return { px: B[k].c, k, w: 'time', sold, got };
+        if (stale) return { px: B[B.length - 1].c, k: B.length - 1, w: 'halt', sold, got };
+        return null;
+      };
+      const finTr = (x) => {
+        if (!settled(x)) return null;
+        const r = ((x.got + (1 - x.sold) * (x.px / e)) - 1) * 100 - COST, risk = Math.max(3, (1 - spc / e) * 100), m = mret(ei, x.k);
+        return { r: r1(r), R: Math.round((r / risk) * 100) / 100, h: x.k - ei + 1, w: x.w, xd: B[x.k].d, x: m == null ? null : r1(r - m) };
+      };
+      const TR = finTr(runTrail(false)), TH = finTr(runTrail(true));
       let lqv = 0, lqn = 0; for (let k = Math.max(0, p.i - 19); k <= p.i; k++) { lqv += B[k].c * B[k].v; lqn++; }
       const lq = lqn ? Math.round(lqv / lqn / 1e7) / 10 : null; // 억 원
       // 손절·목표 16개 조합 (진행 중이면 null)
@@ -144,9 +172,11 @@ export function simTrades(B, tl, opt = {}) {
       let mf = -1e9, ma = 1e9;
       for (let k = ei; k < Math.min(B.length, ei + HOLD); k++) { mf = Math.max(mf, B[k].h); ma = Math.min(ma, B[k].l); }
       const m20 = p.i >= 20 ? mret(p.i - 19, p.i) : null;
-      const a = { ...(p.a || {}), lq: lq == null ? null : lq < 5 ? '5억 미만' : lq < 20 ? '5~20억' : lq < 100 ? '20~100억' : '100억↑', mk: m20 == null ? null : m20 >= 3 ? '상승' : m20 <= -3 ? '하락' : '보합', eg: (() => { const v = (e / B[p.i].c - 1) * 100; return v < -3 ? '−3% 아래' : v < 3 ? '±3%' : v < 10 ? '+3~10%' : '+10%↑'; })() };
-      out.push({ s, d: p.d, e: Math.round(e * 100) / 100, sp: Math.round(spc), tp: Math.round(tpt), T, U, ST, SU, rv: p.rv ?? null, lq, pk, g, mf: r1((mf / e - 1) * 100), ma: r1((ma / e - 1) * 100), a });
-      const ends = [T, U, ST, SU].map((z) => (z ? ix(z.xd) : B.length + 999));
+      const p5 = p.i >= 5 ? (B[p.i].c / B[p.i - 5].c - 1) * 100 : null; let v20 = 0; for (let k = Math.max(0, p.i - 20); k < p.i; k++) v20 += B[k].v; v20 /= Math.max(1, Math.min(20, p.i));
+      const vx = v20 ? B[p.i].v / v20 : null;
+      const a = { ...(p.a || {}), p5: p5 == null ? null : p5 < -5 ? '−5% 아래' : p5 < 5 ? '±5%' : p5 < 20 ? '+5~20%' : '+20%↑', vx: vx == null ? null : vx < 1.5 ? '평소 수준' : vx < 3 ? '1.5~3배' : vx < 6 ? '3~6배' : '6배↑', lq: lq == null ? null : lq < 5 ? '5억 미만' : lq < 20 ? '5~20억' : lq < 100 ? '20~100억' : '100억↑', mk: m20 == null ? null : m20 >= 3 ? '상승' : m20 <= -3 ? '하락' : '보합', eg: (() => { const v = (e / B[p.i].c - 1) * 100; return v < -3 ? '−3% 아래' : v < 3 ? '±3%' : v < 10 ? '+3~10%' : '+10%↑'; })() };
+      out.push({ s, d: p.d, e: Math.round(e * 100) / 100, sp: Math.round(spc), tp: Math.round(tpt), T, U, ST, SU, TR, TH, rv: p.rv ?? null, lq, pk, g, mf: r1((mf / e - 1) * 100), ma: r1((ma / e - 1) * 100), a });
+      const ends = [T, U, ST, SU, TR, TH].map((z) => (z ? ix(z.xd) : B.length + 999));
       busyTo = Math.max(...ends);
     }
   }
@@ -248,6 +278,30 @@ function peakStats(trades) {
   });
   return out;
 }
+/** v222 🧠 데이터로 다시 배운 기준 (워크포워드): 앞 2/3 기간 거래로 '조건마다 성적이 평균보다 얼마나 좋은지'를 배우고(표본 적으면 0 쪽으로 당김),
+ *  그 점수로 뒤 1/3(안 본 기간) 거래를 줄 세워 위 1/3 vs 아래 1/3 성적을 비교 → 통하면 이 점수로 🟢를 바꿀 근거가 됨 */
+export function learnScore(trades, m = 'T') {
+  const L = trades.filter((t) => t.s === 'all' && t[m] && t.a).map((t) => ({ d: t.d, xd: t[m].xd, r: t[m].r, a: t.a, c: t.c }));
+  if (L.length < 40) return { n: L.length, need: 40 };
+  const ds = [...new Set(L.map((t) => t.d))].sort(), cut = ds[Math.floor(ds.length * 2 / 3)];
+  const tr = L.filter((t) => t.d < cut && t.xd < cut), te = L.filter((t) => t.d >= cut);
+  if (tr.length < 25 || te.length < 15) return { n: L.length, train: tr.length, test: te.length, need: 40 };
+  const mu = mean(tr.map((t) => t.r)), K = 20, W = {};
+  for (const k of Object.keys(ATTR_KO)) { if (k === 'vd' || k === 'ck') continue; const g = {}; for (const t of tr) { const v = t.a[k]; if (v == null) continue; (g[v] = g[v] || []).push(t.r); }
+    for (const [v, rs] of Object.entries(g)) if (rs.length >= 5) (W[k] = W[k] || {})[v] = ((mean(rs) - mu) * rs.length) / (rs.length + K); }
+  const sc = (t) => Object.entries(W).reduce((a, [k, m2]) => a + (m2[t.a[k]] ?? 0), 0);
+  const S = te.map((t) => ({ ...t, sc: sc(t) })).sort((a, b) => b.sc - a.sc), n3 = Math.max(1, Math.floor(S.length / 3));
+  const top = S.slice(0, n3), bot = S.slice(-n3);
+  const rnd = rng(11), bt = bootMeans(top.map((t) => ({ d: t.d, v: t.r })), rnd, 400), bb = bootMeans(bot.map((t) => ({ d: t.d, v: t.r })), rnd, 400);
+  const diff = r1(mean(top.map((t) => t.r)) - mean(bot.map((t) => t.r)));
+  const rk = rankOf(S.map((t) => t.sc)), rr2 = rankOf(S.map((t) => t.r)), ic = corr(rk, rr2);
+  let vd = { k: 'n', t: '아직 모름' };
+  if (bt && bb) { const ds2 = bt.map((v, i) => v - bb[i]); vd = verdictOfDiff(ds2, S.length, null, false); if (vd.k === 'ok' && S.length < 60) vd = { ...vd, k: 'good', t: '좋아 보임', why: '안 본 기간 거래 60번 미만' }; }
+  const flat = Object.entries(W).flatMap(([k, m2]) => Object.entries(m2).map(([v, w]) => ({ ko: ATTR_KO[k], v, w: r1(w) }))).sort((a, b) => b.w - a.w);
+  return { n: L.length, train: tr.length, test: te.length, cut, topAvg: r1(mean(top.map((t) => t.r))), botAvg: r1(mean(bot.map((t) => t.r))), allTest: r1(mean(te.map((t) => t.r))), diff, ic: ic == null ? null : Math.round(ic * 1000) / 1000, vd, plus: flat.filter((x) => x.w > 0.5).slice(0, 8), minus: flat.filter((x) => x.w < -0.5).slice(-8).reverse() };
+}
+/** 시장 대비로 바꾼 거래 (각 방식의 수익률 r을 같은 기간 시장 대비 x로) */
+export const toExcess = (T0) => T0.map((t) => { const o = { ...t }; for (const m of MODES) if (t[m]) o[m] = t[m].x == null ? null : { ...t[m], r: t[m].x }; return o; });
 export function simStats(trades, nf = {}, seed = 7) {
   const rnd = rng(seed);
   const dates = [...new Set(trades.map((t) => t.d))].sort();
@@ -361,13 +415,13 @@ export function icStats(pts, nDates) {
 // 저장용 짧은 모양 ↔ 원래 모양
 const pz = (z) => (z ? [z.r, z.R, z.h, z.w, z.xd, z.x] : 0);
 const uz = (z) => (z ? { r: z[0], R: z[1], h: z[2], w: z[3], xd: z[4], x: z[5] ?? null } : null);
-export const pack = (c, n, t) => [c, n || '', t.s, t.d, t.e, t.sp, t.tp, pz(t.T), pz(t.U), t.g || [], t.mf, t.ma, t.a || {}, pz(t.ST), pz(t.SU), t.rv ?? null, t.lq ?? null, t.pk || []];
-export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp: a[5], tp: a[6], T: uz(a[7]), U: uz(a[8]), g: a[9] || [], mf: a[10], ma: a[11], a: a[12] || {}, ST: uz(a[13]), SU: uz(a[14]), rv: a[15] ?? null, lq: a[16] ?? null, pk: a[17] || [] });
+export const pack = (c, n, t) => [c, n || '', t.s, t.d, t.e, t.sp, t.tp, pz(t.T), pz(t.U), t.g || [], t.mf, t.ma, t.a || {}, pz(t.ST), pz(t.SU), t.rv ?? null, t.lq ?? null, t.pk || [], pz(t.TR), pz(t.TH)];
+export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp: a[5], tp: a[6], T: uz(a[7]), U: uz(a[8]), g: a[9] || [], mf: a[10], ma: a[11], a: a[12] || {}, ST: uz(a[13]), SU: uz(a[14]), rv: a[15] ?? null, lq: a[16] ?? null, pk: a[17] || [], TR: uz(a[18]), TH: uz(a[19]) });
 
 // ───── 실제 성적표(매일 판정 기록)로 계산 ─────
 //  mp/sim/tl {dates:[], codes:{코드:{n, m(시장), p:[[날짜번호, 신호비트, 목표가, 손절선, 조건]]}}}
 //  mp/sim/tr {codes:{코드:{chk, need, open, nf, t:[pack…]}}} · mp/sim/sum 통계 캐시
-const SIM_V = 6; // v222: 거래량 0 정지 감자 보정 → 다시 계산
+const SIM_V = 7; // v222: 거래량 0 정지 감자 보정 → 다시 계산
 export async function simStep({ maxDates = 2, maxCodes = 12, budgetMs = 30000 } = {}) {
   const { getJSON, setJSON } = await import('./store.mjs');
   const t0 = Date.now();
@@ -543,13 +597,13 @@ ${facts.join('\n')}`;
   if (done || g) await setJSON(`mp/sim/aicnt/${kst}`, cnt);
   return done || g ? { done, g, left: Math.max(0, pick.length - done) } : null;
 }
-const SIM_WHY_KO = { stop: '손절선', tgt: '1차 목표가', view: '판정 🔴 전환', time: '60일 정리', halt: '거래정지' };
+const SIM_WHY_KO = { stop: '손절선', tgt: '1차 목표가', view: '판정 🔴 전환', time: '60일 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
 const nfSum = (L) => { const o = {}; for (const z of L) for (const [k, v] of Object.entries(z || {})) o[k] = (o[k] || 0) + v; return o; };
 export async function simSummary() {
   const { getJSON, setJSON } = await import('./store.mjs');
   const [tl, tr, bt, bfw, cache] = await Promise.all([getJSON('mp/sim/tl'), getJSON('mp/sim/tr'), getJSON('mp/bt/trades'), getJSON('mp/bt/fw'), getJSON('mp/sim/sum')]);
   const { RULE_V } = await import('./manip.mjs');
-  const key = `${SIM_V}|${RULE_V}|${tr?.at || 0}|${bt?.at || 0}|${bfw?.at || 0}|cap${CAP_MAX}`;
+  const key = `${SIM_V}|${RULE_V}|${tr?.at || 0}|${bt?.at || 0}|${bfw?.at || 0}|cap${CAP_MAX}|x2`;
   if (cache?.key === key) return cache.out;
   const cm = await capMap();
   const L0 = Object.values(tr?.codes || {}).flatMap((z) => (z.t || []).map(unpack)), BT0 = (bt?.t || []).map(unpack);
@@ -568,6 +622,10 @@ export async function simSummary() {
   };
   // 지금 규칙만 보기의 점수 검증: 그 규칙으로 판정한 날만
   { const okD = new Set(); for (const z of Object.values(tl?.codes || {})) for (const p of z.p) if (p[5] === RULE_V) okD.add(p[0]); out.now.ic = icStats(ptsL.filter((p) => okD.has(p.di))); out.now.days = okD.size; }
+  // v222 시장 대비 버전 + 🧠 다시 배운 기준
+  out.liveX = { ...simStats(toExcess(L), {}), days: out.live.days }; out.btX = { ...simStats(toExcess(BT), {}) }; out.nowX = { ...simStats(toExcess(now), {}) };
+  out.live.learn = learnScore(L); out.bt.learn = learnScore(BT); out.now.learn = learnScore(now);
+  out.liveX.learn = learnScore(toExcess(L)); out.btX.learn = learnScore(toExcess(BT));
   // v222 📏 시가총액별 성적 (세력주를 몇 억까지로 볼지 데이터로 정하기): 거르기 전 모든 거래('레이더 전체' 신호)를 그날 시총 구간별로
   const capStudy = (T0) => CAP_B.map(([lo, hi, ko]) => {
     const g = T0.filter((t) => t.s === 'all' && t.T && (() => { const c = capAt(cm, t.c, t.e); return c != null && c >= lo && c < hi; })());
