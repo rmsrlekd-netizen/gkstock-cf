@@ -9,6 +9,7 @@ import { getJSON, setJSON, sqlDB, getJSONStrict, delKeys, listKeys } from './sto
 import { fetchWithTimeout, BROWSER_UA } from './util.mjs';
 import { isTradingDay } from './schedule.mjs';
 import { buildPartyIndex, linksOf, radarAlert, BIG as NOT_PARTY, partyKey } from './manipx.mjs';
+import { attrsOf as tsAttrs } from './tradesim.mjs';
 
 const n0 = (v) => { if (v == null || v === '') return null; const x = Number(String(v).replace(/[,\s]/g, '')); return Number.isFinite(x) ? x : null; };
 const kst = (ms = Date.now()) => { const d = new Date(ms + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), m: d.getUTCHours() * 60 + d.getUTCMinutes(), wd: d.getUTCDay() }; };
@@ -1590,7 +1591,22 @@ function chipsOf(x) {
   const cb = (x.events || []).filter((e) => e.kind === 'cb').sort((a, b) => b.ms - a.ms);
   return { by, sig, cbn: cb.length || null, cbd: cb[0] ? new Date(cb[0].ms + 9 * 3600e3).toISOString().slice(0, 10) : null };
 }
-export function rankRow(x) {
+// v224 성과검증(🏆 이긴 자리 공통점)과 같은 모양의 조건 — 과거 재현(backtest)과 똑같이 계산해야 패턴이 맞음
+export function patAttrs(x, rk) {
+  const Tms = Date.now(), f = x.f || {};
+  return tsAttrs({ st: x.stage, dir: (x.dir || {}).dir, ck: x.cl?.grade, rr: x.dir?.rr?.v ?? null, gp: rk?.gap ?? null, cm: rk?.cm || 0, pexl: rk?.pex?.lv || null,
+    ckv: Object.fromEntries((x.cl?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])),
+    ev: [...new Set((x.events || []).filter((e) => e.ms > Tms - 60 * DAY).map((e) => e.kind).filter(Boolean))], lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length });
+}
+// 패턴이 이 종목 조건과 맞는지 (공시 '없음'은 그 공시가 없을 때 맞음)
+export function matchPat(pa, P) {
+  if (!pa || !P) return { wp: null, lp: null };
+  const hit = (q) => q.c.every(([k, v]) => (k.startsWith('e_') ? (v === '없음' ? !pa[k] : pa[k] === v) : pa[k] === v));
+  const wp = (P.good || []).filter(hit).sort((a, b) => b.lift - a.lift)[0] || null, lp = (P.bad || []).filter(hit).sort((a, b) => a.lift - b.lift)[0] || null;
+  return { wp, lp };
+}
+export function rankRow(x) { const r = rankRow0(x); try { r.pa = patAttrs(x, r); } catch {} return r; }
+function rankRow0(x) {
   const a = x.ai && !x.ai.error ? x.ai : null;
   const d = x.dir || direction(x);
   const nd = (d.dates || []).find((z) => !z.past);
@@ -1604,7 +1620,7 @@ export function rankRow(x) {
   return { ...chipsOf(x), cf, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, bm: cl?.bombs?.length || 0, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 // 판단 규칙 버전 — 규칙을 바꾸면 +1. 이전 규칙으로 저장된 카드는 다음 저장 1번만 '단계·분류 변화' 알림을 안 보냄 (규칙 변경 때문에 생긴 변화라 알림 폭주 방지)
-export const RULE_V = 208;
+export const RULE_V = 209; // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
 // v212 서버 부담 점검: 정기 분석이 언제 시작·끝났고 몇 분 걸렸는지 최근 20번 기록 (/api/health?db=1 · 이상치 점검에서 봄)
 async function runHist(st, err) {
   const h = (await getJSON('mp/runhist')) || [];
@@ -1614,18 +1630,24 @@ async function runHist(st, err) {
   await setJSON('mp/runhist', h.slice(0, 20));
 }
 // v212 한 줄 결론: 🟢 매수 검토(매매 후보 조건 모두 통과) · 🟡 지켜보기 · 🔴 피하기(폭탄 신호·D등급·하락 위험·털기/엑시트 후/거래정지)
-export function verdictOf(r) {
+// v224 GK: '성과검증한 걸 토대로 검색 기준 자체를 바꿔라' — 과거 재현에서 앞·뒤 기간 둘 다 통과한 패턴만 판정에 반영
+//  실패 패턴(이긴 비율이 전체의 0.8배↓, 두 기간 모두)에 걸리면 🟢 → 🟡 · 이긴 자리 패턴(1.2배↑, 두 기간 모두, 약한 쪽 기간도 1.5배↑)이면 부족한 조건 2개 이하의 🟡 → 🟢
+//  🔴(폭탄·D등급·하락 위험·털기 등 위험)은 패턴으로 풀지 않음 · 과거 재현(backtest)은 pat 없이 부름(자기 결과로 자기를 채점하지 않게)
+export function verdictOf(r, pat = null) {
   if (!r) return null;
+  const { wp, lp } = pat ? matchPat(r.pa, pat) : { wp: null, lp: null };
+  const tag = (v) => (pat ? { ...v, wp: wp ? { ko: wp.ko, lift: wp.lift, rate: wp.rate } : null, lp: lp ? { ko: lp.ko, lift: lp.lift, rate: lp.rate } : null } : v);
   const red = [];
   if ((r.bm || 0) > 0) red.push('폭탄 신호');
   if (r.ckg === 'D') red.push('체크 D등급');
   if (r.d === 'down') red.push('하락 위험 분류');
   if (['털기', '엑시트 후', '거래정지'].includes(r.st)) red.push(`단계 ${r.st}`);
   if (r.st === '띄우기' && (r.gap ?? 0) > 50) red.push(`띄우기 중 평단 +${r.gap}%`);
-  if (red.length) return { c: 'r', t: red.slice(0, 2).join(' · ') };
+  if (red.length) return tag({ c: 'r', t: red.slice(0, 2).join(' · ') });
   const f = pickFails(r);
-  if (!f.length) return { c: 'g', t: '매매 후보 조건 모두 통과' };
-  return { c: 'y', t: f.length === 1 ? `부족: ${f[0]}` : `부족 ${f.length}개: ${f.slice(0, 2).join(' · ')}` };
+  if (!f.length) return tag(lp ? { c: 'y', t: `과거 실패 패턴: ${lp.ko} (이긴 비율 ${lp.lift}배)`, why: 'lp' } : { c: 'g', t: '매매 후보 조건 모두 통과' });
+  if (wp && !lp && f.length <= 2 && Math.min(wp.la ?? 0, wp.lz ?? 0) >= 1.5) return tag({ c: 'g', t: `과거 이긴 자리 패턴: ${wp.ko} (${wp.lift}배)`, why: 'wp' });
+  return tag({ c: 'y', t: f.length === 1 ? `부족: ${f[0]}` : `부족 ${f.length}개: ${f.slice(0, 2).join(' · ')}` });
 }
 async function saveProfiles(list, reason, opt = {}) {
   let rank = null;
@@ -1768,7 +1790,8 @@ export async function manipRank(kind = 'all') {
   for (const r of list) if (r.rr?.v > 20) r.rr = { ...r.rr, v: 20, big: true }; // 예전 줄의 비현실적 손익비는 1:20+로
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
-  for (const r of list) { const v = verdictOf(r); if (v) r.vd = v; } // v212 한 줄 결론 (경보·벌점 반영 뒤 읽을 때 계산 → 예전 줄에도 바로)
+  let WP = null; try { WP = await getJSON('mp/winpat'); } catch {}
+  for (const r of list) { const v = verdictOf(r, WP); if (v) r.vd = v; } // v212 한 줄 결론 (경보·벌점 반영 뒤 읽을 때 계산 → 예전 줄에도 바로)
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
   else if (kind === 'pex') list = list.filter((r) => r.pex).sort((a, b) => (b.pex.net - a.pex.net) || (b.pex.su - a.pex.su));
   else if (kind === 'ck') list = list.filter((r) => r.ckg && r.d !== 'down').sort((a, b) => ((b.cnp || 0) - 2 * (b.cnr || 0)) - ((a.cnp || 0) - 2 * (a.cnr || 0)) || (b.us || 0) - (a.us || 0));
@@ -1776,7 +1799,7 @@ export async function manipRank(kind = 'all') {
   else if (kind === 'pick') {
     const sum = await perfSum();
     for (const r of list) { r.pf = pickFails(r); r.pat = patScore(r, sum); }
-    const ok = list.filter((r) => !r.pf.length), near = list.filter((r) => r.pf.length === 1 && r.d === 'up');
+    const ok = list.filter((r) => r.vd?.c === 'g'), near = list.filter((r) => r.vd?.c !== 'g' && r.pf.length === 1 && r.d === 'up'); // v224: 🟢(검증된 패턴 반영)과 같은 기준
     const on = !!ok[0]?.pat?.on || !!near[0]?.pat?.on;
     const key = (r) => (on && r.pat ? r.pat.est * 10 : 0) + ({ A: 2, B: 1 }[r.ckg] || 0) * 5 + Math.min(r.rr?.v || 0, 10);
     ok.sort((a, b) => key(b) - key(a)); near.sort((a, b) => key(b) - key(a));
@@ -1785,6 +1808,7 @@ export async function manipRank(kind = 'all') {
     out.pat = { on, n: sum?.map?.['전체']?.n20 || 0, need: PAT_MIN, base: sum?.map?.['전체']?.win20 ?? null, ok: ok.length };
     return out;
   }
+  else if (kind === 'win') list = list.filter((r) => r.vd?.wp && r.vd.c !== 'r').sort((a, b) => b.vd.wp.lift - a.vd.wp.lift || (b.s || 0) - (a.s || 0)); // v224 🏆 이긴 자리 닮은 종목
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
   return list.slice(0, 150);
@@ -1939,7 +1963,7 @@ export async function manipProfile(code) {
       p.rbk = p.f?.rb ? reboundOf(p) : p.rbk || null; // 규칙 계산이라 열 때마다 지금 기준으로 (v202 눌림 뒤 재상승)
       p.pex = postExitOf(p);
       p.story = narrativeOf(p);
-      try { p.vd = verdictOf(rankRow(p)); } catch {} // v212 한 줄 결론
+      try { let WP = null; try { WP = await getJSON('mp/winpat'); } catch {} p.vd = verdictOf(rankRow(p), WP); } catch {} // v212 한 줄 결론 · v224 검증된 패턴
       try { p.plan = await (await import('./manipck.mjs')).myPlanOf(p); } catch {}
       // 랭킹 줄도 지금 계산과 맞춤 (체크 등급·분류·손익비가 페이지와 다르게 보이던 문제)
       try {

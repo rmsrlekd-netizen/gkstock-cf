@@ -61,13 +61,15 @@ export function pathStats(B, i, opt = {}) {
   const ixRet = (from, to) => { if (!opt.ix) return null; let m = 1, n = 0; for (let k = from; k <= to; k++) { const p = opt.ix[B[k].d]?.[opt.mkt === 'P' ? 'P' : 'Q']; if (p != null) { m *= 1 + p / 100; n++; } } return n ? (m - 1) * 100 : null; };
   for (const h of H) {
     const e = i + h; if (!B[e]) continue;
-    let hi = -Infinity, lo = Infinity;
-    for (let k = i + 1; k <= e; k++) { hi = Math.max(hi, B[k].h ?? B[k].c); lo = Math.min(lo, B[k].l ?? B[k].c); }
+    let hi = -Infinity, lo = Infinity, hk = i + 1;
+    for (let k = i + 1; k <= e; k++) { const hh = B[k].h ?? B[k].c; if (hh > hi) { hi = hh; hk = k; } lo = Math.min(lo, B[k].l ?? B[k].c); }
+    if (h >= 20) out['pd' + h] = hk - i; // v223: 판정 뒤 그 기간 안 최고점(엑시트 추정)까지 걸린 거래일
     const r = (B[e].c / entry - 1) * 100 - COST;
     out['r' + h] = Math.round(r * 10) / 10;
     out['u' + h] = Math.round((hi / entry - 1) * 1000) / 10; out['d' + h] = Math.round((lo / entry - 1) * 1000) / 10;
     const ir = ixRet(i + 1, e); if (ir != null) out['x' + h] = Math.round((r - ir) * 10) / 10;
   }
+  { const m = i >= 20 ? ixRet(i - 19, i) : null; if (m != null) out.m20 = Math.round(m * 10) / 10; } // v223: 판정 전 20거래일 시장 흐름 (국면)
   const touch = (up, dn) => { for (let k = i + 1; k < Math.min(B.length, i + 61); k++) { const H1 = B[k].h ?? B[k].c, L1 = B[k].l ?? B[k].c; if (L1 <= dn) return { r: 'l', k }; if (H1 >= up) return { r: 'w', k }; } return null; };
   const stopped = B.length < i + 61 && opt.now && Date.parse(B[B.length - 1].d) < opt.now - 10 * DAY; // 60일 전에 거래가 끊김
   const t1 = touch(entry * (1 + FT_UP / 100), entry * (1 + FT_DN / 100));
@@ -81,7 +83,7 @@ const PV = 4; // v222 성적표 계산 버전 (감자·액면분할 보정 · 3:
 export async function perfRowOf(x, rv = null) {
   const row = { n: x.name || null, mk: x.mkt || null, rv, cap: x.mcap ? Math.round(x.mcap > 1e7 ? x.mcap / 1e8 : x.mcap) : null, c0: x.close ?? null, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
   // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
-  try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; row.vd = M.verdictOf(rk)?.c || null; row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
+  try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; let WP = null; try { WP = await getJSON('mp/winpat'); } catch {} const vdx = M.verdictOf(rk, WP); row.vd = vdx?.c || null; if (vdx?.why) row.vw = vdx.why; /* v224 실제로 보여준 판정 그대로 기록 */ row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; } catch {}
   return row;
 }
 /** v222 매매 따라하기용: 그날 목록의 판정 줄을 (결과 칸 없이) 바로 전부 만들어 둠 → 판정이 바뀐 날을 놓치지 않게 */
@@ -157,6 +159,7 @@ export function perfGroupKeys(row) {
   if (row.pk != null) k.push('매매 후보 조건:' + (row.pk ? '충족' : '미충족'));
   if (row.vd) k.push('한 줄 결론:' + ({ g: '🟢 매수 검토', y: '🟡 지켜보기', r: '🔴 피하기' }[row.vd]));
   if (row.pexl) k.push('털기 후 상승:' + row.pexl);
+  if (row.m20 != null) k.push('시장 국면:' + (row.m20 >= 3 ? '상승장' : row.m20 <= -3 ? '하락장' : '보합장')); // v223: 판정 전 20일 시장 ±3%
   if (row.cm != null) k.push('매집봉:' + (row.cm > 0 ? '있음' : '없음'));
   for (const [kk, v] of Object.entries(row.ckv || {})) k.push(`ck:${kk}:${v}`); // 체크리스트 항목별 (중요도 자동 조정용)
   return k;
@@ -170,6 +173,7 @@ export function perfAdd(groups, g, row) {
   if (row.gp != null) { o.gpn = (o.gpn || 0) + 1; o.gps = (o.gps || 0) + row.gp; }
   if (row.wy?.length) { const W = (o.wy ||= {}); for (const k of row.wy) W[k] = (W[k] || 0) + 1; }
   for (const h of [20, 60, 120]) for (const [K, f] of [['R', 'r'], ['U', 'u'], ['X', 'x']]) { const v = row[f + h]; if (v != null) { const a = (o[K + h] ||= []); if (a.length < 4000) a.push(v); } } // 중앙값용
+  for (const h of [20, 60, 120]) { const v = row['pd' + h]; if (v != null) { const a = (o['P' + h] ||= []); if (a.length < 4000) a.push(v); } } // v223: 고점까지 걸린 날
   for (const h of H) if (row['x' + h] != null) { o['xn' + h] = (o['xn' + h] || 0) + 1; o['xs' + h] = (o['xs' + h] || 0) + row['x' + h]; }
   for (const h of H) { const v = row['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) { o['sw' + h] = (o['sw' + h] || 0) + v; } else { o['sl' + h] = (o['sl' + h] || 0) + v; } if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; if (v >= 20) o['b' + h] = (o['b' + h] || 0) + 1; if (v <= -20) o['l' + h] = (o['l' + h] || 0) + 1; }
 }
@@ -182,6 +186,7 @@ export function perfOut(groups) {
     if (o.gpn) r.gap = Math.round((o.gps / o.gpn) * 10) / 10;
     if (o.wy) { const top = (pre, n) => Object.entries(o.wy).filter(([k]) => k.startsWith(pre)).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, c]) => [k, n ? Math.round((c / n) * 100) : 0]); r.whyW = top('s:', o.ftw || 0); r.whyL = top('f:', o.ftl || 0); }
     const med = (a) => { if (!a?.length) return null; const b = [...a].sort((x, y) => x - y), m = b.length >> 1; return Math.round((b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2) * 10) / 10; };
+    for (const h of [20, 60, 120]) if (o['P' + h]?.length) { r['md' + h] = med(o['P' + h]); r['ad' + h] = Math.round(o['P' + h].reduce((a, b) => a + b, 0) / o['P' + h].length); r['qd' + h] = (() => { const b = [...o['P' + h]].sort((x, y) => x - y); return [b[Math.floor(b.length / 4)], b[Math.floor(b.length * 3 / 4)]]; })(); }
     for (const h of [20, 60, 120]) { r['mr' + h] = med(o['R' + h]); r['mu' + h] = med(o['U' + h]); r['mx' + h] = med(o['X' + h]); }
     for (const h of H) if (o['xn' + h]) r['ax' + h] = Math.round((o['xs' + h] / o['xn' + h]) * 10) / 10;
     for (const h of H) if (o['n' + h]) { r['n' + h] = o['n' + h]; r['avg' + h] = Math.round((o['s' + h] / o['n' + h]) * 10) / 10; r['win' + h] = Math.round(((o['w' + h] || 0) / o['n' + h]) * 100); r['big' + h] = Math.round(((o['b' + h] || 0) / o['n' + h]) * 100); r['loss' + h] = Math.round(((o['l' + h] || 0) / o['n' + h]) * 100); const nw = o['w' + h] || 0, nl = o['n' + h] - nw; r['aw' + h] = nw ? Math.round(((o['sw' + h] || 0) / nw) * 10) / 10 : null; r['al' + h] = nl ? Math.round(((o['sl' + h] || 0) / nl) * 10) / 10 : null; r['pf' + h] = o['sl' + h] ? Math.round(((o['sw' + h] || 0) / -o['sl' + h]) * 100) / 100 : (o['sw' + h] ? 99 : null); } // v222: 결과 기준 — 오른 비율·평균 수익/손실·번 돈÷잃은 돈

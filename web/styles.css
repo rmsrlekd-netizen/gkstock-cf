@@ -2396,3 +2396,18 @@ body.pbm-open{overflow:hidden}
 .pbc-hs{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.pbc-hx{display:inline-flex;gap:4px;align-items:baseline;padding:.15rem .5rem;border-radius:8px;background:rgba(255,255,255,.04);font-size:.82rem}.pbc-hx.on{outline:1px solid rgba(99,102,241,.6)}.pbc-hx em{font-style:normal;color:var(--muted)}
 @media (max-width:640px){.pbc-grid{grid-template-columns:1fr}}
 .pbc-side .pb-bar{flex:none;width:100%;margin-top:2px}
+/* v223 국면·기간·🟢 설명 */
+.sx-reg{display:flex;flex-wrap:wrap;gap:6px;margin-top:3px}.sx-reg i{font-style:normal;font-size:.72rem;color:var(--muted);background:rgba(255,255,255,.04);border-radius:6px;padding:1px 5px}.sx-reg i b{margin:0 2px}.sx-reg em{font-style:normal;opacity:.7}
+.pb-note{margin:.2rem 0 .6rem;padding:.55rem .75rem;border-radius:10px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);font-size:.88rem;line-height:1.55}
+.pbd{display:flex;flex-direction:column;gap:6px}
+.pbd-row{display:grid;grid-template-columns:minmax(90px,1fr) minmax(140px,2.4fr) minmax(90px,1fr) minmax(90px,1fr);gap:10px;align-items:center;text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:.6rem .8rem;color:inherit;cursor:pointer;font:inherit}
+.pbd-row:hover{background:rgba(255,255,255,.06)}.pbd-n{font-weight:600;display:flex;flex-direction:column}.pbd-n small{font-weight:400;color:var(--muted);font-size:.75rem}
+.pbd-bar{position:relative;height:10px;border-radius:99px;background:rgba(255,255,255,.06)}.pbd-bar i{position:absolute;top:0;bottom:0;background:rgba(251,146,60,.45);border-radius:99px}.pbd-bar b{position:absolute;top:-3px;width:3px;height:16px;background:#fb923c;border-radius:2px;transform:translateX(-1px)}
+.pbd-v{display:flex;flex-direction:column;font-size:.85rem}.pbd-v b{font-size:1.05rem}.pbd-v small{color:var(--muted);font-size:.72rem}
+@media (max-width:640px){.pbd-row{grid-template-columns:1fr 1fr}.pbd-bar{grid-column:1/-1;order:3}}
+/* v224 🏆 이긴 자리 */
+.wn-row{background:rgba(255,255,255,.03);border:1px solid rgba(239,68,68,.22);border-radius:12px;padding:.6rem .8rem;margin:.35rem 0;display:flex;flex-direction:column;gap:4px}
+.wn-row.bad{border-color:rgba(59,130,246,.25)}.wn-t{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.wn-t b{font-size:.95rem}
+.wn-n{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.wn-big{font-size:1.35rem;font-weight:700}.wn-n small{color:var(--muted);font-size:.78rem}
+.wn-ex{display:flex;flex-wrap:wrap;gap:6px;font-size:.8rem}.wn-ex .ca-co{cursor:pointer;background:rgba(255,255,255,.05);border-radius:6px;padding:1px 6px}
+.vp{display:inline-block;margin:.25rem .35rem 0 0;font-size:.75rem;padding:1px 7px;border-radius:999px}.vp-w{background:rgba(239,68,68,.14);color:#fca5a5}.vp-l{background:rgba(59,130,246,.16);color:#93c5fd}
