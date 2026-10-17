@@ -98,7 +98,7 @@ async function evRows(d, from, to) {
   return r.results || [];
 }
 async function loadEvents(now, opt = {}) {
-  const since = now - 180 * DAY;
+  const since = now - (opt.days || 180) * DAY; // v230 과거 재현은 3년치
   const out = {};
   const add = (r) => {
     const text = `${r.f || ''} ${r.t || ''}`;
@@ -116,6 +116,7 @@ async function loadEvents(now, opt = {}) {
       const key = `mp/evc/${ym}`;
       let sh = await getJSON(key).catch(() => null);
       if (sh && sh.v !== EVC_V) sh = null;
+      if (sh && opt.rebuildBefore && (sh.at || 0) < opt.rebuildBefore && b < now - 2 * DAY) sh = null; // v230 깊은 채우기 뒤엔 예전 달 색인을 다시 만듦
       const past = b < now - 2 * DAY; // 끝난 지 이틀 지난 달은 더 안 바뀜
       if (!sh || !sh.done) {
         if (!sh && built >= (opt.maxBuild ?? 1)) { pending++; continue; } // 이번엔 여기까지 (다음 실행 때 이어서)
@@ -196,8 +197,8 @@ async function snapshot() {
 }
 
 // ───── ③ 일봉 (300거래일 ≈ 1년 2개월 · 지난 급등 사이클과 그 전 매집 구간까지 보려고) ─────
-async function bars(code) {
-  const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${code}&timeframe=day&count=300&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 9000);
+async function bars(code, count = 300) {
+  const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${code}&timeframe=day&count=${count}&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 9000);
   if (!r.ok) throw new Error('일봉 HTTP ' + r.status);
   const xml = await r.text();
   // 거래정지·단일가 날은 시가·고가·저가가 0으로 올 때가 있음 → 종가로 채움 (0이면 '60일 저점 대비 +Infinity%' 같은 오류)
@@ -2013,8 +2014,8 @@ export async function manipProfile(code) {
 }
 
 // ───── 장중 자동 갱신: 새 공시가 나오면 그 종목을 전체 공시·거래량과 함께 다시 판단 ─────
-async function eventsOf(code, now) {
-  const since = now - 180 * DAY;
+async function eventsOf(code, now, opt = {}) {
+  const since = now - (opt.days || 180) * DAY; // v230 과거 재현은 3년치
   const out = [];
   const add = (r) => { const k = evKind(`${r.f || ''} ${r.t || ''}`, r.p); if (k) out.push({ ms: r.ms, kind: k, title: String(r.f || r.t || '').slice(0, 80), sum: [r.st, r.ss].filter(Boolean).join(' · ').slice(0, 140), id: r.id, party: r.p || null }); };
   const d = await sqlDB().catch(() => null);

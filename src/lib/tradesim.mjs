@@ -34,8 +34,9 @@ const BAD = 64;
 export const WHY_X = { stop: '손절선', tgt: '목표가', view: '판정 🔴 전환', time: '기간 끝 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
 const COST = 0.5, HOLD = 60, COOL = 10, NOFILL = 1.25;
 export const PK_H = [5, 20, 60, 120]; // 최고·최저 기록 기간(거래일)
-export const MODES = ['T', 'U', 'ST', 'SU', 'TR', 'TH', 'PL', 'PR', 'TT']; // v227 TT: 최고점 −15% 또는 20거래일 지나면 팔기 (과거 재현: 고점까지 중간값 14거래일) // v223 PL·PR: 눌림 진입(판정 뒤 5거래일 안 판정일 종가 −3% 지정가, 안 오면 안 삼) → PL 1차 목표 팔기 · PR 최고점 −15% 팔기
-export const PULL = 0.97, PULL_D = 5; // 한 번에 사기(목표 팔기·끝까지) · 3번 나눠 사기(목표 팔기·끝까지) · v222 추적 매도(TR: 최고점 대비 −15% / TH: +30%에 절반·나머지 최고점 대비 −15%)
+export const MODES = ['T', 'U', 'ST', 'SU', 'TR', 'TH', 'PL', 'PR', 'TT', 'BK']; // v230 BK: 돌파 확인 뒤 진입(판정 뒤 10거래일 안에 20일 고가를 거래량 1.5배↑로 넘긴 다음 날 시가) + TT 매도 · // v227 TT: 최고점 −15% 또는 20거래일 지나면 팔기 (과거 재현: 고점까지 중간값 14거래일) // v223 PL·PR: 눌림 진입(판정 뒤 5거래일 안 판정일 종가 −3% 지정가, 안 오면 안 삼) → PL 1차 목표 팔기 · PR 최고점 −15% 팔기
+export const BK_D = 10, BK_VX = 1.5; // v230 돌파 확인: 판정 뒤 10거래일 · 거래량 1.5배
+const PULL = 0.97, PULL_D = 5; // 한 번에 사기(목표 팔기·끝까지) · 3번 나눠 사기(목표 팔기·끝까지) · v222 추적 매도(TR: 최고점 대비 −15% / TH: +30%에 절반·나머지 최고점 대비 −15%)
 export const GRID_S = [7, 10, 15, 'c'], GRID_T = [15, 30, 't', 0]; // 'c' = 세력 원가 손절선, 't' = 1차 목표가, 0 = 목표 없음
 const gridName = (gi) => { const s = GRID_S[gi >> 2], t = GRID_T[gi & 3]; return `손절 ${s === 'c' ? '세력 원가' : '−' + s + '%'} · ${t === 't' ? '1차 목표가' : t ? '+' + t + '%' : '목표 없이 끝까지'}`; };
 export const GI_T = 3 * 4 + 2, GI_U = 3 * 4 + 3; // 기본 두 방식의 칸 번호
@@ -175,6 +176,23 @@ export function simTrades(B, tl, opt = {}) {
             const r = (x.px / ep - 1) * 100 - COST, risk = Math.max(3, (1 - sp2 / ep) * 100), m = mret(ek, x.k);
             return { r: r1(r), R: Math.round((r / risk) * 100) / 100, h: x.k - ek + 1, w: x.w, xd: B[x.k].d, x: m == null ? null : r1(r - m) }; };
           PL = finP(runP(false)); PR = finP(runP(true)); } }
+      // v230 돌파 확인 진입(BK): 판정 뒤 10거래일 안에 '종가가 직전 20일 최고가 위 + 거래량이 20일 평균 1.5배↑'인 날이 오면 그 다음 날 시가에 삼 → 최고점 −15% 또는 20거래일에 팖. 안 오면 못 산 것(nfB)
+      let BK = null, nfB = 0;
+      { let ek = -1, ep = 0;
+        for (let k = p.i + 1; k <= p.i + BK_D && k + 1 < B.length; k++) { let hh = 0, vv = 0, vn = 0; for (let j = Math.max(0, k - 20); j < k; j++) { hh = Math.max(hh, B[j].h); vv += B[j].v; vn++; }
+          if (vn >= 10 && B[k].c > hh && B[k].v >= (vv / vn) * BK_VX) { const o = B[k + 1].o || B[k + 1].c; if (o >= B[k].c * NOFILL) { nf[s + ':bk'] = (nf[s + ':bk'] || 0) + 1; nfB = 1; break; } ek = k + 1; ep = o; break; } }
+        if (ek < 0) { if (!nfB && (B[p.i + BK_D + 1] || opt.final || stale)) nfB = 1; }
+        else {
+          const sp3 = p.sp > 0 && p.sp < ep ? Math.max(p.sp, ep * 0.9) : ep * 0.9;
+          const runB = () => { let hi = ep;
+            for (let k = ek; k < Math.min(B.length, ek + 20); k++) { const x = B[k], o = k === ek ? ep : x.o || x.c;
+              if (x.l <= sp3) return { px: Math.min(o, sp3), k, w: 'stop' };
+              hi = Math.max(hi, x.h); if (x.c <= hi * 0.85 && B[k + 1]) return { px: B[k + 1].o || B[k + 1].c, k: k + 1, w: 'trail' }; }
+            const k = ek + 19; if (B[k]) return { px: B[k].c, k, w: 'time' };
+            if (stale) return { px: B[B.length - 1].c, k: B.length - 1, w: 'halt' }; return null; };
+          const x = runB();
+          if (x && (opt.final || x.k <= lastI)) { const r = (x.px / ep - 1) * 100 - COST, risk = Math.max(3, (1 - sp3 / ep) * 100), m = mret(ek, x.k);
+            BK = { r: r1(r), R: Math.round((r / risk) * 100) / 100, h: x.k - ek + 1, w: x.w, xd: B[x.k].d, x: m == null ? null : r1(r - m), ed: B[ek].d, bp: r1((ep / e - 1) * 100) }; } } }
       let lqv = 0, lqn = 0; for (let k = Math.max(0, p.i - 19); k <= p.i; k++) { lqv += B[k].c * B[k].v; lqn++; }
       const lq = lqn ? Math.round(lqv / lqn / 1e7) / 10 : null; // 억 원
       // 손절·목표 16개 조합 (진행 중이면 null)
@@ -197,8 +215,8 @@ export function simTrades(B, tl, opt = {}) {
       const p5 = p.i >= 5 ? (B[p.i].c / B[p.i - 5].c - 1) * 100 : null; let v20 = 0; for (let k = Math.max(0, p.i - 20); k < p.i; k++) v20 += B[k].v; v20 /= Math.max(1, Math.min(20, p.i));
       const vx = v20 ? B[p.i].v / v20 : null;
       const a = { ...(p.a || {}), p5: p5 == null ? null : p5 < -5 ? '−5% 아래' : p5 < 5 ? '±5%' : p5 < 20 ? '+5~20%' : '+20%↑', vx: vx == null ? null : vx < 1.5 ? '평소 수준' : vx < 3 ? '1.5~3배' : vx < 6 ? '3~6배' : '6배↑', lq: lq == null ? null : lq < 5 ? '5억 미만' : lq < 20 ? '5~20억' : lq < 100 ? '20~100억' : '100억↑', mk: m20 == null ? null : m20 >= 3 ? '상승' : m20 <= -3 ? '하락' : '보합', eg: (() => { const v = (e / B[p.i].c - 1) * 100; return v < -3 ? '−3% 아래' : v < 3 ? '±3%' : v < 10 ? '+3~10%' : '+10%↑'; })() };
-      out.push({ s, d: p.d, e: Math.round(e * 100) / 100, sp: Math.round(spc), tp: Math.round(tpt), T, U, ST, SU, TR, TH, PL, PR, TT, nfP, rv: p.rv ?? null, lq, pk, g, mf: r1((mf / e - 1) * 100), ma: r1((ma / e - 1) * 100), a });
-      const ends = [T, U, ST, SU, TR, TH, PL, PR, TT].map((z, zi) => (z ? ix(z.xd) : (zi === 6 || zi === 7) && nfP ? -1 : B.length + 999)); // 눌림을 못 산 건 막지 않음
+      out.push({ s, d: p.d, e: Math.round(e * 100) / 100, sp: Math.round(spc), tp: Math.round(tpt), T, U, ST, SU, TR, TH, PL, PR, TT, BK, nfP, nfB, rv: p.rv ?? null, lq, pk, g, mf: r1((mf / e - 1) * 100), ma: r1((ma / e - 1) * 100), a });
+      const ends = [T, U, ST, SU, TR, TH, PL, PR, TT, BK].map((z, zi) => (z ? ix(z.xd) : ((zi === 6 || zi === 7) && nfP) || (zi === 9 && nfB) ? -1 : B.length + 999)); // 눌림을 못 산 건 막지 않음
       busyTo = Math.max(...ends);
     }
   }
@@ -353,25 +371,43 @@ export function stratFind(T0, m = 'TT') {
   const seen = new Set(), L = [];
   for (const t of T0) { if (!(t.s === 'all') || !t[m] || !t.a) continue; const k = t.c + '|' + t.d; if (seen.has(k)) continue; seen.add(k); L.push(t); }
   if (L.length < 80) return { n: L.length, need: 80 };
-  const ds = [...new Set(L.map((t) => t.d))].sort(), cut = ds[Math.floor(ds.length * 2 / 3)];
-  const tr = L.filter((t) => t.d < cut && t[m].xd < cut), te = L.filter((t) => t.d >= cut);
-  if (tr.length < 50 || te.length < 25) return { n: L.length, train: tr.length, test: te.length, need: 80 };
-  const avg = (a) => (a.length ? r1(mean(a.map((t) => t[m].r))) : null), win = (a) => (a.length ? Math.round((a.filter((t) => t[m].r > 0).length / a.length) * 100) : null);
-  const baseTr = avg(tr), baseTe = avg(te);
+  L.sort((p, q) => (p.d < q.d ? -1 : 1));
+  const avg = (a) => (a.length ? r1(mean(a.map((t) => t[m].r))) : null), win = (a) => (a.length ? Math.round((a.filter((t) => t[m].r > 0).length / a.length) * 100) : null), xavg = (a) => { const v = a.map((t) => t[m].x).filter((x) => x != null); return v.length ? r1(mean(v)) : null; };
   const C = STRAT_C, rules = [];
-  const test = (idx) => { const f = (t) => idx.every((i) => stratHit(t, C[i])); const a = tr.filter(f), b = te.filter(f); return { a, b }; };
   for (let i = 0; i < C.length; i++) { rules.push([i]); for (let j = i + 1; j < C.length; j++) { if (C[i][0] === C[j][0]) continue; rules.push([i, j]); for (let k = j + 1; k < C.length; k++) { if (C[k][0] === C[i][0] || C[k][0] === C[j][0]) continue; rules.push([i, j, k]); } } }
-  const R = [];
-  for (const idx of rules) { const { a, b } = test(idx); if (a.length < 25) continue; const ma = mean(a.map((t) => t[m].r)); R.push({ idx, na: a.length, nb: b.length, sa: (ma - baseTr) * a.length / (a.length + 20), ta: r1(ma), tb: b.length ? r1(mean(b.map((t) => t[m].r))) : null, wa: win(a), wb: win(b), xb: b.length ? r1(mean(b.map((t) => t[m].x ?? 0))) : null }); }
-  R.sort((x, y) => y.sa - x.sa || x.idx.length - y.idx.length);
-  { const sg = new Set(); const K = []; for (const x of R) { const k = [x.na, x.nb, x.ta, x.tb].join('|'); if (sg.has(k)) continue; sg.add(k); K.push(x); } R.length = 0; R.push(...K); } // 조건을 더해도 같은 거래면 짧은 규칙만
-  // 찾기 자체가 믿을 만한가: 앞 기간 점수 순위와 뒤 기간 결과 순위의 상관 (뒤 기간 10건↑ 규칙만)
+  const hit = (t, idx) => idx.every((i) => stratHit(t, C[i]));
+  const name = (idx) => idx.map((i) => C[i][2]).join(' + ');
+  // 규칙 점수: (평균 − 전체 평균) × n/(n+20) — 표본 적은 규칙은 깎음. 25건↑만
+  const score = (tr) => { const bt = tr.length ? mean(tr.map((t) => t[m].r)) : 0; const R = [];
+    for (const idx of rules) { const a = tr.filter((t) => hit(t, idx)); if (a.length < 25) continue; const ma = mean(a.map((t) => t[m].r)); R.push({ idx, na: a.length, sa: (ma - bt) * a.length / (a.length + 20), ta: r1(ma) }); }
+    R.sort((x, y) => y.sa - x.sa || x.idx.length - y.idx.length);
+    const sg = new Set(), K = []; for (const x of R) { const k = [x.na, x.ta].join('|'); if (sg.has(k)) continue; sg.add(k); K.push(x); } return K; }; // 조건을 더해도 같은 거래면 짧은 규칙만
+  // ① 굴려가며 검증(walk-forward): 매달 '그 전까지'로 규칙을 고르고 '그 달'에 시험 → 고르는 방식 자체가 돈이 됐는지 (뒤 기간 선택 편향 없음)
+  const months = [...new Set(L.map((t) => t.d.slice(0, 7)))].sort();
+  const wf = { pick: [], tr: [], base: [] };
+  for (const mo of months) {
+    const tr = L.filter((t) => t.d < mo && t[m].xd < mo), te = L.filter((t) => t.d.slice(0, 7) === mo);
+    if (tr.length < 50 || !te.length) continue;
+    const K = score(tr); const top = K[0]; if (!top || top.sa <= 0) { wf.pick.push({ mo, name: null, n: 0 }); wf.base.push(...te); continue; }
+    const got = te.filter((t) => hit(t, top.idx)); wf.pick.push({ mo, name: name(top.idx), n: got.length, r: avg(got), b: avg(te) }); wf.tr.push(...got); wf.base.push(...te);
+  }
+  const W = { months: wf.pick.length, n: wf.tr.length, avg: avg(wf.tr), x: xavg(wf.tr), win: win(wf.tr), bn: wf.base.length, bavg: avg(wf.base), bx: xavg(wf.base), bwin: win(wf.base), pick: wf.pick.slice(-12) };
+  W.ok = W.n >= 30 && W.avg != null && W.avg > 0 && W.avg > (W.bavg ?? 0) && (W.x == null || W.x > 0);
+  // ② 지금 쓸 규칙: 전체 기간 앞 2/3로 고르고 뒤 1/3로 확인(표 보여주기용) + rho(앞 순위↔뒤 결과 상관)
+  const ds = [...new Set(L.map((t) => t.d))], cut = ds[Math.floor(ds.length * 2 / 3)];
+  const tr = L.filter((t) => t.d < cut && t[m].xd < cut), te = L.filter((t) => t.d >= cut);
+  if (tr.length < 50 || te.length < 25) return { n: L.length, train: tr.length, test: te.length, need: 80, wf: W };
+  const baseTr = avg(tr), baseTe = avg(te);
+  const R = score(tr).map((x) => { const b = te.filter((t) => hit(t, x.idx)); return { ...x, nb: b.length, tb: avg(b), wa: null, wb: win(b), xb: xavg(b) }; });
   const Q = R.filter((x) => x.nb >= 10); let rho = null;
   if (Q.length >= 10) { const rk = (arr, key) => { const o = [...arr].sort((p, q) => q[key] - p[key]); const m2 = new Map(o.map((x, i) => [x, i])); return arr.map((x) => m2.get(x)); }; const ra = rk(Q, 'sa'), rb = rk(Q, 'tb'), n = Q.length; let d2 = 0; for (let i = 0; i < n; i++) d2 += (ra[i] - rb[i]) ** 2; rho = Math.round((1 - (6 * d2) / (n * (n * n - 1))) * 100) / 100; }
-  const name = (idx) => idx.map((i) => C[i][2]).join(' + ');
-  const top = R.slice(0, 8).map((x) => ({ ...x, name: name(x.idx), ok: x.nb >= 10 && x.tb > 0 && x.tb > baseTe, ex: te.filter((t) => x.idx.every((i) => stratHit(t, C[i]))).sort((p, q) => q[m].r - p[m].r).slice(0, 3).map((t) => [t.n || t.c, t.c, t[m].r, t.d]) }));
-  const cand = top.find((x) => x.ok) || null; const best = cand && rho != null && rho >= 0.2 ? cand : null; // 찾기 믿음도(rho) 낮으면 통과해도 랭킹엔 안 씀 — 우연 통과 막기
-  return { n: L.length, m, cut, train: tr.length, test: te.length, baseTr, baseTe, wBaseTe: win(te), tried: R.length, rho, top, cand: cand && !best ? cand.name : null, best: best ? { idx: best.idx, name: best.name, c: best.idx.map((i) => C[i]), ta: best.ta, tb: best.tb, wb: best.wb, nb: best.nb, xb: best.xb } : null };
+  const top = R.slice(0, 8).map((x) => ({ ...x, name: name(x.idx), ok: x.nb >= 10 && x.tb > 0 && x.tb > baseTe, ex: te.filter((t) => hit(t, x.idx)).sort((p, q) => q[m].r - p[m].r).slice(0, 3).map((t) => [t.n || t.c, t.c, t[m].r, t.d]) }));
+  // ③ ⭐로 쓰는 규칙 = 지금까지 전체로 고른 1등. 조건: 굴려가며 검증이 통과(W.ok) + 앞/뒤 확인에서 그 규칙이 통과 + rho ≥ 0.2
+  const nowK = score(L.filter((t) => t[m].xd <= ds[ds.length - 1]))[0] || null; const nowR = nowK ? R.find((x) => x.idx.join() === nowK.idx.join()) || null : null;
+  const cand = nowK ? { idx: nowK.idx, name: name(nowK.idx), c: nowK.idx.map((i) => C[i]), ta: nowK.ta, na: nowK.na, tb: nowR?.tb ?? null, wb: nowR?.wb ?? null, nb: nowR?.nb ?? 0, xb: nowR?.xb ?? null } : null;
+  const why = !cand ? '고른 규칙 없음' : !W.ok ? '굴려가며 검증에서 레이더 전체를 못 이김' : !(nowR && nowR.nb >= 10 && nowR.tb > 0 && nowR.tb > baseTe) ? '뒤 1/3 기간에서 못 버팀' : !(rho != null && rho >= 0.2) ? `찾기 믿음도(rho ${rho ?? '-'}) 0.2 미만` : null;
+  const best = cand && !why ? cand : null;
+  return { n: L.length, m, cut, from: ds[0], to: ds[ds.length - 1], train: tr.length, test: te.length, baseTr, baseTe, wBaseTe: win(te), tried: R.length, rho, top, wf: W, cand: cand && !best ? cand.name : null, why, best };
 }
 export function winPatOf(W) {
   if (!W || W.need) return null;
@@ -416,6 +452,7 @@ export function simStats(trades, nf = {}, seed = 7) {
       const b = basic(L); if (!b) return null;
       // v223 시장 국면별(진입 때 시장 20일 흐름 ±3%): 상승장·보합장·하락장 따로
       b.reg = Object.fromEntries(['상승', '보합', '하락'].map((k) => { const v = L.filter((x) => x.mk === k).map((x) => x.r); return [k, v.length ? [v.length, r1(mean(v)), Math.round((v.filter((y) => y > 0).length / v.length) * 100)] : null]; }));
+      if (m === 'BK') { const nfn = tr.filter((t) => t.nfB).length; b.nfn = nfn; b.nfp = Math.round((nfn / Math.max(1, nfn + L.length)) * 100); }
       if (m === 'PL' || m === 'PR') { const nfn = tr.filter((t) => t.nfP).length; b.nfn = nfn; b.nfp = Math.round((nfn / Math.max(1, nfn + L.length)) * 100); } // 눌림이 안 와서 못 산 비율
       const bm = bootMeans(L.map((x) => ({ d: x.d, v: x.r })), rnd);
       if (bm) { b.lo = r1(pct(bm, 0.05)); b.hi = r1(pct(bm, 0.95)); }
@@ -519,13 +556,16 @@ export function icStats(pts, nDates) {
 // 저장용 짧은 모양 ↔ 원래 모양
 const pz = (z) => (z ? [z.r, z.R, z.h, z.w, z.xd, z.x] : 0);
 const uz = (z) => (z ? { r: z[0], R: z[1], h: z[2], w: z[3], xd: z[4], x: z[5] ?? null } : null);
-export const pack = (c, n, t) => [c, n || '', t.s, t.d, t.e, t.sp, t.tp, pz(t.T), pz(t.U), t.g || [], t.mf, t.ma, t.a || {}, pz(t.ST), pz(t.SU), t.rv ?? null, t.lq ?? null, t.pk || [], pz(t.TR), pz(t.TH), t.nfP ? 'nf' : pz(t.PL), t.nfP ? 'nf' : pz(t.PR), pz(t.TT)];
-export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp: a[5], tp: a[6], T: uz(a[7]), U: uz(a[8]), g: a[9] || [], mf: a[10], ma: a[11], a: a[12] || {}, ST: uz(a[13]), SU: uz(a[14]), rv: a[15] ?? null, lq: a[16] ?? null, pk: a[17] || [], TR: uz(a[18]), TH: uz(a[19]), PL: a[20] === 'nf' ? null : uz(a[20]), PR: a[21] === 'nf' ? null : uz(a[21]), nfP: a[20] === 'nf' ? 1 : 0, TT: uz(a[22]) });
+// v230 조각 저장 읽기 (예전 한 덩어리 형식도 읽힘)
+export async function loadBtTrades() { const { partsLoad } = await import('./btstore.mjs'); const x = await partsLoad('mp/bt/trades'); return x ? { ...x, t: x.list } : null; }
+export async function loadBtFw() { const { partsLoad } = await import('./btstore.mjs'); const x = await partsLoad('mp/bt/fw'); return x ? { ...x, r: x.list } : null; }
+export const pack = (c, n, t) => [c, n || '', t.s, t.d, t.e, t.sp, t.tp, pz(t.T), pz(t.U), t.g || [], t.mf, t.ma, t.a || {}, pz(t.ST), pz(t.SU), t.rv ?? null, t.lq ?? null, t.pk || [], pz(t.TR), pz(t.TH), t.nfP ? 'nf' : pz(t.PL), t.nfP ? 'nf' : pz(t.PR), pz(t.TT), t.nfB ? 'nf' : pz(t.BK)];
+export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp: a[5], tp: a[6], T: uz(a[7]), U: uz(a[8]), g: a[9] || [], mf: a[10], ma: a[11], a: a[12] || {}, ST: uz(a[13]), SU: uz(a[14]), rv: a[15] ?? null, lq: a[16] ?? null, pk: a[17] || [], TR: uz(a[18]), TH: uz(a[19]), PL: a[20] === 'nf' ? null : uz(a[20]), PR: a[21] === 'nf' ? null : uz(a[21]), nfP: a[20] === 'nf' ? 1 : 0, TT: uz(a[22]), BK: a[23] === 'nf' ? null : uz(a[23]), nfB: a[23] === 'nf' ? 1 : 0 });
 
 // ───── 실제 성적표(매일 판정 기록)로 계산 ─────
 //  mp/sim/tl {dates:[], codes:{코드:{n, m(시장), p:[[날짜번호, 신호비트, 목표가, 손절선, 조건]]}}}
 //  mp/sim/tr {codes:{코드:{chk, need, open, nf, t:[pack…]}}} · mp/sim/sum 통계 캐시
-const SIM_V = 9; // v227 TT(20일 매도) 추가 · // v223: 눌림 진입(PL·PR) 추가 ·  v222: 거래량 0 정지 감자 보정 → 다시 계산
+const SIM_V = 10; // v230 BK(돌파 확인 진입) 추가 · // v227 TT(20일 매도) 추가 · // v223: 눌림 진입(PL·PR) 추가 ·  v222: 거래량 0 정지 감자 보정 → 다시 계산
 export async function simStep({ maxDates = 2, maxCodes = 12, budgetMs = 30000 } = {}) {
   const { getJSON, setJSON } = await import('./store.mjs');
   const t0 = Date.now();
@@ -572,7 +612,7 @@ export async function simStep({ maxDates = 2, maxCodes = 12, budgetMs = 30000 } 
       const list = z.p.map(([di, f, tp, sp, a, rv]) => ({ di, d: tl.dates[di], f, tp, sp, a, rv }));
       const R = simTrades(B, list, { last, now: Date.now(), ix: ixd, mkt: z.m });
       const fw = fwdOf(B, list, { ix: ixd, mkt: z.m });
-      tr.codes[c] = { chk: kst, need: 0, open: R.trades.some((t) => MODES.some((m) => !t[m] && !(t.nfP && (m === 'PL' || m === 'PR'))) || (t.pk || []).some((x) => !x)) || fw.some((x) => x.includes(null)) ? 1 : 0, nf: R.nf, t: R.trades.map((t) => pack(c, z.n, t)), fw };
+      tr.codes[c] = { chk: kst, need: 0, open: R.trades.some((t) => MODES.some((m) => !t[m] && !(t.nfP && (m === 'PL' || m === 'PR')) && !(t.nfB && m === 'BK')) || (t.pk || []).some((x) => !x)) || fw.some((x) => x.includes(null)) ? 1 : 0, nf: R.nf, t: R.trades.map((t) => pack(c, z.n, t)), fw };
       done++;
     }));
   }
@@ -627,7 +667,7 @@ export async function simAiStep({ max = 4, budgetMs = 30000, dayCap = 150 } = {}
   const t0 = Date.now(), kst = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
   const cnt = (await getJSON(`mp/sim/aicnt/${kst}`)) || { n: 0 };
   if (cnt.n >= dayCap) return null;
-  const [tr, bt] = await Promise.all([getJSON('mp/sim/tr'), getJSON('mp/bt/trades')]);
+  const [tr, bt] = await Promise.all([getJSON('mp/sim/tr'), loadBtTrades()]);
   const cache = (await getJSON('mp/sim/ai')) || { m: {} };
   const pick = [];
   const seen = new Set();
@@ -705,7 +745,7 @@ const SIM_WHY_KO = { stop: '손절선', tgt: '1차 목표가', view: '판정 �
 const nfSum = (L) => { const o = {}; for (const z of L) for (const [k, v] of Object.entries(z || {})) o[k] = (o[k] || 0) + v; return o; };
 export async function simSummary() {
   const { getJSON, setJSON } = await import('./store.mjs');
-  const [tl, tr, bt, bfw, cache] = await Promise.all([getJSON('mp/sim/tl'), getJSON('mp/sim/tr'), getJSON('mp/bt/trades'), getJSON('mp/bt/fw'), getJSON('mp/sim/sum')]);
+  const [tl, tr, bt, bfw, cache] = await Promise.all([getJSON('mp/sim/tl'), getJSON('mp/sim/tr'), loadBtTrades(), loadBtFw(), getJSON('mp/sim/sum')]);
   const { RULE_V } = await import('./manip.mjs');
   const key = `${SIM_V}|${RULE_V}|${tr?.at || 0}|${bt?.at || 0}|${bfw?.at || 0}|cap${CAP_MAX}|x2`;
   if (cache?.key === key) return cache.out;
@@ -750,7 +790,7 @@ export async function simSummary() {
 /** 신호별 거래 목록 (src: live|now|bt) + 거래별 AI 해설 + 신호 AI 정리 */
 export async function simRows(src, s, limit = 500) {
   const { getJSON } = await import('./store.mjs');
-  let L = src === 'bt' ? ((await getJSON('mp/bt/trades'))?.t || []).map(unpack) : Object.values((await getJSON('mp/sim/tr'))?.codes || {}).flatMap((z) => (z.t || []).map(unpack));
+  let L = src === 'bt' ? ((await loadBtTrades())?.t || []).map(unpack) : Object.values((await getJSON('mp/sim/tr'))?.codes || {}).flatMap((z) => (z.t || []).map(unpack));
   if (src === 'now') { const { RULE_V } = await import('./manip.mjs'); L = L.filter((t) => t.rv === RULE_V); }
   { const cm = await capMap(); L = L.filter((t) => !tooBig(cm, t.c, t.e)); }
   const [ai, gai] = await Promise.all([getJSON('mp/sim/ai'), getJSON('mp/sim/gai')]);
@@ -762,7 +802,7 @@ export async function simRows(src, s, limit = 500) {
 /** v222 🔎 성과검증 종목 검색: 이름·코드로 그 종목의 따라 샀다면 기록(실제·과거 재현)·판정 기록·AI 해설 */
 export async function simStock(q) {
   const { getJSON } = await import('./store.mjs');
-  const [tl, tr, bt, ai] = await Promise.all([getJSON('mp/sim/tl'), getJSON('mp/sim/tr'), getJSON('mp/bt/trades'), getJSON('mp/sim/ai')]);
+  const [tl, tr, bt, ai] = await Promise.all([getJSON('mp/sim/tl'), getJSON('mp/sim/tr'), loadBtTrades(), getJSON('mp/sim/ai')]);
   const names = new Map();
   for (const [c, z] of Object.entries(tl?.codes || {})) names.set(c, z.n || names.get(c) || c);
   const btBy = new Map();

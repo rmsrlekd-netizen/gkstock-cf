@@ -207,6 +207,7 @@ export default {
     const jobs = [];
     if (busy('sec', now) || min % 10 === 0) jobs.push(secWatch({ backfillMs: min % 2 === 0 ? 12000 : 0 }));
     if (busy('dart', now) || min % 10 === 1) jobs.push(dartWatch({ backfillMs: min % 2 === 1 ? 12000 : 0 }));
+    else if (min % 2 === 1) jobs.push(import('./lib/backfill.mjs').then((b) => b.backfillStep('dart', { budgetMs: 12000 })).then((n) => { if (n) console.log('deep-backfill', n); }).catch((e) => console.warn('deep-backfill', e.message))); // v230 한가한 시간에도 과거 공시 깊은 채우기(3년)는 2분마다 12초씩
     // 보도자료: 매분 가장 빠른 전체 목록, 5분마다 주제·업종별 목록까지 (한가한 시간엔 5분에 한 번)
     // 미국 동부 평일 6:00~20:00에는 PR Newswire 웹 목록(100건)을 매분 직접 확인
     // PR Newswire 웹 목록 직접 확인: 미국 동부 평일 6:00~20:00 매분 (RSS는 최신 20건뿐이라 몰릴 때 놓침)

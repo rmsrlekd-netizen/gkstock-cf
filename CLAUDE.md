@@ -154,3 +154,10 @@
 - 통과(ok) = 뒤 10건↑ & 평균>0 & 전체보다 높음. **rho(앞 순위↔뒤 결과 상관) ≥ 0.2일 때만 best** → `mp/strat` 저장, 아니면 `cand`로 표시만(랭킹 미사용).
 - manip `stratMatch(pa,S)` → rank `r.star`, kind 'star' (⭐ 전략 종목), 🔴 제외. UI: 🏆 탭 위 ⭐ 박스, 랭킹 칩 `.vp-s`.
 - 돈 보장 아님: 표본 작으면 우연 통과 가능 — 사용자에게 항상 그렇게 설명.
+
+## v230 3년치 과거 재현 + 돌파 확인 진입 + 굴려가며 검증 (web v=223)
+- backfill `deep`(KR만): 보통 채우기 끝난 뒤 3년 전(DEEP_DAYS 1100)까지 DART 목록을 하루씩 거슬러 감, `evKind` 맞는 공시만 저장(행 1/4). 하루 호출 6천·행 6만 한도. 한가한 시간에도 worker가 홀수 분마다 12초(`deep-backfill`). 상태 `backfill/state.deep {day, limit, rows, done, doneAt}`.
+- backtest BT_V 20: `deep.done` 전엔 예전 결과 유지 + `state.wait`(화면 ⏳). 끝나면 `prep`(월별 공시 색인 `mp/evc/*`를 3년치로 3개월씩 다시 만듦, `rebuildBefore=deep.doneAt`) → 1500종목·80날짜(10거래일 간격)·일봉 1000봉(`_bars(code,1000)`)·공시 `_eventsOf(code, now, {days:1280})`.
+- `btstore.mjs` 조각 저장: `mp/bt/{rows,trades,fw}` = meta{v,parts,n,nf} + `/pN`. 읽기는 `partsLoad`(예전 한 덩어리도 읽힘), tradesim `loadBtTrades/loadBtFw`.
+- tradesim SIM_V 10: 모드 `BK`(pack[23], nfB='nf') — 판정 뒤 10거래일 안 종가>직전 20일 고가 & 거래량≥20일 평균 1.5배 → 다음 날 시가 매수, 손절 max(판정 손절, −10%), 최고점 −15%/20일 매도.
+- `stratFind`: ① walk-forward(`wf`: 매달 그 전까지로 1등 규칙 → 그 달 시험, 합산 vs 전체, `ok`) ② 앞 2/3·뒤 1/3 표 + rho ③ best = 전체 기간 1등 규칙이 wf.ok & 뒤 1/3 통과 & rho≥0.2 일 때만 (`why`에 탈락 이유). 생존 편향(상폐 제외) 화면에 명시.

@@ -5,31 +5,38 @@
 //  · 한계: AI 판단·바깥 자료(지분·신용·거래원·재무)는 그날 기준으로 재현 못 함 → 체크리스트 일부 '?', 원문 가격은 이미 읽어 둔 것만 씀,
 //          시가총액 순위는 모름(소형주·대형주 항목 빠짐) · 공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임
 import { getJSON, setJSON } from './store.mjs';
+import { partsReset, partsAppend, partsLoad } from './btstore.mjs';
 
 const DAY = 86400e3;
-const BT_V = 19; // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
+const BT_V = 20; // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
 const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
-const STEP = 10, BACK = 16; // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
+const STEP = 10, BACK = 80, BT_DAYS = 1100; // v230: 10거래일 간격 최대 80개 날짜(약 3년 3개월) · 공시는 3년+180일 (v219: 16개 ≈ 8개월) // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
 export async function btStep({ restart = false, now = Date.now(), max = PER_RUN } = {}) {
   let st = (await getJSON('mp/bt/state')) || null;
   const M = await import('./manip.mjs');
-  if (restart || !st || st.v !== BT_V) {
-    const evm = await M._loadEvents(now, { maxBuild: 0 });
+  if (restart || !st || st.v !== BT_V || (st.prep && !st.queue)) {
+    // v230: 3년치 공시 깊은 채우기(backfill deep)가 끝나야 시작 — 그 전엔 예전 결과를 그대로 둠(화면엔 '준비 중' 표시)
+    const bf = await getJSON('backfill/state').catch(() => null);
+    if (!restart && !bf?.deep?.done) { if (!st?.wait) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); else if (now - (st.wait.at || 0) > 3600e3) await setJSON('mp/bt/state', { ...st, wait: { ...st.wait, at: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); return { waiting: true, deep: bf?.deep?.day || null }; }
+    // 월별 공시 색인을 3년치로 다시 만들기 (한 번에 3개월씩, 깊은 채우기 뒤에 만든 것만 인정)
+    const prep = st?.v === BT_V && st.prep ? st.prep : { since: now };
+    const evm = await M._loadEvents(now, { maxBuild: 3, days: BT_DAYS + 180, rebuildBefore: bf?.deep?.doneAt || 0 });
+    if (evm.__pending > 0) { await setJSON('mp/bt/state', { v: BT_V, prep: { ...prep, pending: evm.__pending, at: now }, wait: null }); return { prep: true, pending: evm.__pending }; }
     const SET = new Set(['mna', 'rights3', 'cb', 'fund5', 'refix']);
     // v222: 레이더 랭킹·내 세력주 종목부터 계산 (예전엔 코드 순서라 351320 같은 뒤쪽 코드는 몇 시간 뒤에야 나옴)
     const rk = (await getJSON('mp/rank')) || {}, my = (await getJSON('mp/my')) || {};
     const pri = new Set([...(Array.isArray(my.items) ? my.items.map((i) => i.code) : []), ...Object.keys(rk)]);
     const TSc = await import('./tradesim.mjs'); const cm0 = await TSc.capMap(); // v222: 지금 시총 8조↑(그날 2조 미만이었을 가능성 낮음)은 처음부터 뺌, 나머지는 판정일 시총으로 거름
-    const codes = Object.entries(evm).filter(([c, evs]) => !((TSc.capAt(cm0, c, null) ?? 0) >= 80000) && evs.some((e) => SET.has(e.kind))).map(([c]) => c).sort((a, b) => (pri.has(a) ? 0 : 1) - (pri.has(b) ? 0 : 1) || (a < b ? -1 : 1)).slice(0, 700);
+    const codes = Object.entries(evm).filter(([c, evs]) => !((TSc.capAt(cm0, c, null) ?? 0) >= 80000) && evs.some((e) => SET.has(e.kind))).map(([c]) => c).sort((a, b) => (pri.has(a) ? 0 : 1) - (pri.has(b) ? 0 : 1) || (a < b ? -1 : 1)).slice(0, 1500); // v230: 700 → 1500 종목
     st = { v: BT_V, queue: codes, pos: 0, started: now, samples: 0, kept: 0, groups: {}, done: false };
     await setJSON('mp/bt/state', st);
-    await setJSON('mp/bt/rows', { v: BT_V, rows: [] }); // 종목별 판정 목록 (그룹 눌러서 보기용)
-    await setJSON('mp/bt/trades', { v: BT_V, t: [] }); // v222 매매 따라하기 거래
-    await setJSON('mp/bt/fw', { v: BT_V, r: [] }); // v222 점수 검증용 (판정 숫자 + 그 뒤 시장 대비 수익률)
+    await partsReset('mp/bt/rows', BT_V); // 종목별 판정 목록 (그룹 눌러서 보기용)
+    await partsReset('mp/bt/trades', BT_V, { nf: {}, deep: bf?.deep ? { from: bf.deep.limit, rows: bf.deep.rows } : null }); // v222 매매 따라하기 거래
+    await partsReset('mp/bt/fw', BT_V); // v222 점수 검증용 (판정 숫자 + 그 뒤 시장 대비 수익률)
     if (!codes.length) return { started: true, n: 0 };
   }
-  if (st.done) return null;
+  if (st.done || st.wait || st.prep && !st.queue) return null;
   const { perfGroupKeys, perfAdd, pathStats, outcomeWhy } = await import('./manipx.mjs');
   const ixd = await M.indexDaily().catch(() => ({}));
   const idx = (await getJSON('mp/idx')) || [];
@@ -40,9 +47,9 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   const TS = await import('./tradesim.mjs');
   for (const code of part) {
     try {
-      const B = await M._bars(code);
+      const B = await M._bars(code, 1000); // v230 약 4년치 일봉
       if (!B || B.length < 120) continue;
-      const evAll = await M._eventsOf(code, now);
+      const evAll = await M._eventsOf(code, now, { days: BT_DAYS + 180 });
       const px = [];
       for (const e of M.docPick(evAll, 10)) { const p = await M._docPrice(e, { cacheOnly: true }).catch(() => null); const row = p ? M._pxRow(p, e) : null; if (row) px.push(row); }
       const mkt = snap[code]?.[1] || 'Q';
@@ -84,9 +91,9 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
       { const R = TS.simTrades(B, tlist, { final: true, now, ix: ixd, mkt }); for (const t of R.trades) newTr.push(TS.pack(code, snap[code]?.[0] || code, t)); for (const [k, v] of Object.entries(R.nf)) newNf[k] = (newNf[k] || 0) + v; } // v222 매매 따라하기 (과거 재현은 10거래일 간격 판정)
     } catch (e) { console.warn('bt', code, e.message); }
   }
-  if (newFw.length) { const F = (await getJSON('mp/bt/fw')) || { v: BT_V, r: [] }; F.r = [...(F.r || []), ...newFw].slice(-20000); F.at = Date.now(); await setJSON('mp/bt/fw', F).catch(() => {}); }
-  if (newTr.length || Object.keys(newNf).length) { const R = (await getJSON('mp/bt/trades')) || { v: BT_V, t: [] }; R.t = [...(R.t || []), ...newTr].slice(-8000); R.nf = R.nf || {}; for (const [k, v] of Object.entries(newNf)) R.nf[k] = (R.nf[k] || 0) + v; R.at = Date.now(); await setJSON('mp/bt/trades', R).catch(() => {}); }
-  if (newRows.length) { const R = (await getJSON('mp/bt/rows')) || { v: BT_V, rows: [] }; R.rows = [...(R.rows || []), ...newRows].slice(-6000); await setJSON('mp/bt/rows', R).catch(() => {}); }
+  if (newFw.length) await partsAppend('mp/bt/fw', newFw, { per: 5000, maxParts: 24, v: BT_V }).catch((e) => console.warn('bt fw', e.message));
+  if (newTr.length || Object.keys(newNf).length) await partsAppend('mp/bt/trades', newTr, { per: 1500, maxParts: 30, nf: newNf, v: BT_V }).catch((e) => console.warn('bt tr', e.message));
+  if (newRows.length) await partsAppend('mp/bt/rows', newRows, { per: 1500, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt rows', e.message));
   st.pos += part.length; st.at = Date.now();
   if (st.pos >= st.queue.length) { st.done = true; st.doneAt = Date.now(); }
   await setJSON('mp/bt/state', st);
@@ -97,12 +104,12 @@ export async function btSummary() {
   const st = await getJSON('mp/bt/state');
   if (!st) return { none: true };
   const { perfOut } = await import('./manipx.mjs');
-  return { pos: st.pos, of: st.queue?.length || 0, done: !!st.done, started: st.started, doneAt: st.doneAt || null, samples: st.samples, kept: st.kept, groups: perfOut(st.groups || {}) };
+  return { pos: st.pos, of: st.queue?.length || 0, done: !!st.done, started: st.started, doneAt: st.doneAt || null, samples: st.samples, kept: st.kept, groups: perfOut(st.groups || {}), v: st.v, cur: BT_V, wait: st.wait || null, prep: st.prep && !st.queue ? st.prep : null };
 }
 
 /** 그룹(예: '한 줄 결론:🟢 매수 검토')에 들어간 종목별 판정과 결과 */
 export async function btRows(g, limit = 400) {
   const { perfGroupKeys } = await import('./manipx.mjs');
-  const R = (await getJSON('mp/bt/rows')) || { rows: [] };
+  const R = { rows: (await partsLoad('mp/bt/rows'))?.list || [] };
   return (await import('./tradesim.mjs')).fixNames((R.rows || []).filter((r) => perfGroupKeys(r).includes(g)).slice(-limit)); // v222: 코드만 있던 이름 채움
 }

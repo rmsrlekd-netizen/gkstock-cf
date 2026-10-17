@@ -3617,11 +3617,11 @@
   //  위: 한 줄 요약 · 버튼 3개(보기 / 기록 종류 / 방식) · 줄마다 숫자 1개 크게 + 10칸 점 + 판정 칩 · 나머지는 줄을 눌러 상세
   const SIM_WHY = { stop: '손절선', tgt: '목표가', view: '판정 🔴 전환', time: '기간 끝 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
   try { S.simSrc = load('gk_simsrc') || 'live'; S.simM = load('gk_simm') || 'TT'; /* v227 기본 = 20일 안 정리 */ S.simB = load('gk_simb') || ''; S.simV = load('gk_simv') || 'trade'; S.pkH = +(load('gk_pkh') || 20); S.simNow = !!load('gk_simnow'); S.simX = !!load('gk_simx'); } catch {}
-  const SIM_SOLO = ['TR', 'TH', 'PL', 'PR', 'TT']; // 나눠 사기와 섞지 않는 방식
+  const SIM_SOLO = ['TR', 'TH', 'PL', 'PR', 'TT', 'BK']; // 나눠 사기와 섞지 않는 방식
   const simMode = () => (SIM_SOLO.includes(S.simM) ? S.simM : (S.simB === 'S' ? 'S' : '') + (S.simM === 'U' ? 'U' : 'T'));
   const simBase = () => (S.simSrc === 'bt' ? 'bt' : S.simNow ? 'now' : 'live');
   const simSrcK = () => simBase() + (S.simX ? 'X' : ''); // v222: 시장 대비로 보기
-  const ML = { T: '한 번에 사서 · 1차 목표에서 팔기', U: '한 번에 사서 · 끝까지 들고 가기', ST: '3번 나눠 사서 · 1차 목표에서 팔기', SU: '3번 나눠 사서 · 끝까지 들고 가기', TR: '한 번에 사서 · 최고점에서 −15% 빠지면 팔기', TT: '⭐ 한 번에 사서 · 최고점 −15% 또는 20일 지나면 팔기 (추천)', TH: '한 번에 사서 · +30%에 절반, 나머지는 최고점 −15%', PL: '눌림에 사서(−3% 지정가) · 1차 목표에서 팔기', PR: '눌림에 사서(−3% 지정가) · 최고점 −15% 팔기' };
+  const ML = { T: '한 번에 사서 · 1차 목표에서 팔기', U: '한 번에 사서 · 끝까지 들고 가기', ST: '3번 나눠 사서 · 1차 목표에서 팔기', SU: '3번 나눠 사서 · 끝까지 들고 가기', TR: '한 번에 사서 · 최고점에서 −15% 빠지면 팔기', TT: '⭐ 한 번에 사서 · 최고점 −15% 또는 20일 지나면 팔기 (추천)', TH: '한 번에 사서 · +30%에 절반, 나머지는 최고점 −15%', PL: '눌림에 사서(−3% 지정가) · 1차 목표에서 팔기', PR: '눌림에 사서(−3% 지정가) · 최고점 −15% 팔기', BK: '돌파 확인 뒤 사서(20일 고가 돌파+거래량) · 최고점 −15% 또는 20일' };
   const VDC = { ok: 'v-ok', good: 'v-good', n: 'v-n', weak: 'v-weak', bad: 'v-bad', base: 'v-base' };
   const vdBadge = (v) => (v ? `<span class="simv ${VDC[v.k] || 'v-n'}">${esc(v.k === 'good' ? '좋아 보임' : v.k === 'weak' ? '나빠 보임' : v.k === 'base' ? '비교 기준' : v.t)}</span>` : '');
   const dots = (pct, n) => { const k = Math.round((pct || 0) / 10); return `<span class="sx-dots" title="${pct}%">${Array.from({ length: 10 }, (_, i) => `<i class="${i < k ? 'on' : ''}"></i>`).join('')}</span>`; };
@@ -3670,9 +3670,13 @@
     const row = (x, i) => `<div class="st-row${x.ok ? ' ok' : ''}"><span class="st-i">${i + 1}</span><span class="st-n"><b>${esc(x.name)}</b><small>앞 기간 ${x.na}번 · 안 본 뒤 기간 ${x.nb}번</small></span>
       <span class="st-v"><em>앞 기간</em><b class="${dirCls(x.ta)}">${sgn(x.ta)}</b></span><span class="st-v"><em>안 본 기간</em><b class="${dirCls(x.tb)}">${sgn(x.tb)}</b><small>${x.wb != null ? `수익 ${x.wb}%` : ''}${x.xb != null ? ` · 시장 대비 ${sgn(x.xb)}` : ''}</small></span>
       <span class="st-ok">${x.ok ? '<span class="simv v-ok">✅ 통과</span>' : '<span class="simv v-n">안 본 기간에서 못 버팀</span>'}</span></div>`;
-    const b = T.best;
-    return `<div class="st-box"><h5>⭐ 전략 자동 찾기 <small class="muted">사기 전에 알 수 있는 조건 1~3개 조합 ${fmtInt(T.tried)}개를 앞 기간(~${esc(T.cut)})으로 고르고 안 본 뒤 기간에서 확인 · 매도 = 최고점 −15% 또는 20거래일 · 비용 포함</small></h5>
-      <p class="sx-sum">${b ? `✅ <b>${esc(b.name)}</b> — 안 본 기간 한 번 평균 <b class="${dirCls(b.tb)}">${sgn(b.tb)}</b> (수익 ${b.wb}% · ${b.nb}번) vs 레이더 전체 ${sgn(T.baseTe)}. 랭킹 '⭐ 전략 종목' 탭에 이 조건과 맞는 종목이 떠요.` : T.cand ? `⚠️ '${esc(T.cand)}'가 안 본 기간도 통과했지만, 찾기 믿음도(상관 ${T.rho})가 0.2 미만이라 우연일 가능성이 커서 랭킹엔 안 써요. 거래가 더 쌓이면 다시 판단해요.` : `아직 안 본 기간까지 버틴 전략이 없어요 (레이더 전체 안 본 기간 ${sgn(T.baseTe)}).`}
+    const b = T.best, W = T.wf;
+    const wfHTML = W ? `<div class="st-wf"><b>① 굴려가며 검증</b> <small class="muted">매달 '그 전까지'로 1등 규칙을 고르고 '그 달'에만 시험 — 고르는 방식 자체가 돈이 됐는지 (${W.months}달)</small><br>
+      ${W.n ? `고른 규칙대로: 한 번 평균 <b class="${dirCls(W.avg)}">${sgn(W.avg)}</b> (수익 ${W.win}% · ${W.n}번${W.x != null ? ` · 시장 대비 ${sgn(W.x)}` : ''}) vs 레이더 전체 ${sgn(W.bavg)} (${W.bn}번${W.bx != null ? ` · 시장 대비 ${sgn(W.bx)}` : ''}) → ${W.ok ? '<span class="simv v-ok">✅ 통과</span>' : '<span class="simv v-n">못 이김</span>'}` : '아직 시험한 달이 없어요'}
+      ${W.pick?.length ? `<details class="st-pk"><summary class="muted sm">달마다 고른 규칙 보기</summary>${W.pick.map((x) => `<div class="st-pkr"><span>${esc(x.mo)}</span><span>${x.name ? esc(x.name) : '<i class="muted">고를 만한 규칙 없음</i>'}</span><span>${x.n ? `${x.n}번 ${sgn(x.r)} (전체 ${sgn(x.b)})` : '—'}</span></div>`).join('')}</details>` : ''}</div>` : '';
+    return `<div class="st-box"><h5>⭐ 전략 자동 찾기 <small class="muted">사기 전에 알 수 있는 조건 1~3개 조합 ${fmtInt(T.tried)}개 · ${esc(T.from || '')}~${esc(T.to || '')} · ③ 표는 앞 기간(~${esc(T.cut)})으로 고르고 안 본 뒤 기간에서 확인 · 매도 = 최고점 −15% 또는 20거래일 · 비용 포함</small></h5>
+      ${wfHTML}
+      <p class="sx-sum"><b>② 지금 쓸 규칙</b> ${b ? `✅ <b>${esc(b.name)}</b> — 안 본 기간 한 번 평균 <b class="${dirCls(b.tb)}">${sgn(b.tb)}</b> (수익 ${b.wb}% · ${b.nb}번) vs 레이더 전체 ${sgn(T.baseTe)}. 랭킹 '⭐ 전략 종목' 탭에 이 조건과 맞는 종목이 떠요.` : T.cand ? `⚠️ 지금 1등 규칙은 '${esc(T.cand)}'지만 ⭐로는 안 써요 — ${esc(T.why || '')}. 거래가 더 쌓이면 다시 판단해요.` : `고를 만한 규칙이 없어요 (레이더 전체 안 본 기간 ${sgn(T.baseTe)}).`}
       <br><small class="muted">찾기 믿음도: 앞 기간 순위와 뒤 기간 결과의 상관 ${T.rho ?? '-'} — 0.3↑이면 '잘 찾는 중', 0 근처면 '앞 기간 좋았던 게 뒤에서도 좋다는 보장 없음'(이럴 땐 통과 전략도 조심)</small></p>
       <div class="st-list">${T.top.map(row).join('')}</div></div>`;
   }
@@ -3707,7 +3711,7 @@
     const line = (x) => { const v = x[m], isB = x.s === 'all';
       if (!v) return `<button class="sx-row" data-sim-open="${x.s}"><span class="sx-n">${esc(x.ko)}<small>${x.open ? `진행 중 ${x.open}번` : '아직 없음'}</small></span><span class="sx-big muted">—</span><span class="sx-mid muted sm">끝난 거래가 아직 없어요</span><span></span><span class="pb-go">›</span></button>`;
       const wins = Math.round((v.win / 100) * v.n);
-      return `<button class="sx-row${isB ? ' base' : ''}" data-sim-open="${x.s}"><span class="sx-n">${esc(isB ? '레이더 전체 (비교 기준)' : x.ko)}<small>${v.n}번 거래${x.open ? ` · 진행 중 ${x.open}` : ''}${v.nfn ? ` · 눌림 안 와서 못 삼 ${v.nfp}%` : ''}</small>${regHTML(v.reg)}</span>
+      return `<button class="sx-row${isB ? ' base' : ''}" data-sim-open="${x.s}"><span class="sx-n">${esc(isB ? '레이더 전체 (비교 기준)' : x.ko)}<small>${v.n}번 거래${x.open ? ` · 진행 중 ${x.open}` : ''}${v.nfn ? ` · ${m === 'BK' ? '돌파 안 와서' : '눌림 안 와서'} 못 삼 ${v.nfp}%` : ''}</small>${regHTML(v.reg)}</span>
         <span class="sx-big ${dirCls(v.avg)}">${sgn(v.avg)}<small>한 번 사고팔 때 평균</small></span>
         <span class="sx-mid"><span class="sx-pct"><b class="${v.win >= 50 ? 'up' : 'down'}">${v.win}%</b> 수익 확률</span>${dots(v.win)}<small>${v.n}번 중 ${wins}번 수익</small></span>
         <span class="sx-vd">${isB ? '<span class="simv v-base">비교 기준</span>' : vdBadge(v.vd)}${!isB && v.vs != null ? `<small>전체보다 <b class="${dirCls(v.vs)}">${v.vs > 0 ? '+' : ''}${v.vs}%p</b></small>` : ''}</span><span class="pb-go">›</span></button>`; };
@@ -3715,7 +3719,7 @@
     const sure = G.filter((x) => x.s !== 'all' && x[m]?.vd?.k === 'ok');
     const top = G.filter((x) => x.s !== 'all' && x[m]?.n).sort((a, b) => b[m].n - a[m].n)[0];
     const sum = !has ? '' : sure.length ? `✅ <b>${sure.map((x) => esc(x.ko)).join(', ')}</b>는 레이더 전체보다 확실히 나아요.` : `아직 확실한 신호는 없어요 — 우연인지 가리려면 신호마다 거래가 30번 넘게 쌓여야 해요${top ? ` (가장 많은 ${esc(top.ko)} ${top[m].n}번)` : ''}.`;
-    box.innerHTML = `<div class="sx"><div class="sx-head"><h4>💰 따라 샀다면</h4><small class="muted">${m === 'PL' || m === 'PR' ? '신호 뒤 5거래일 안에 판정일 종가 −3% 가격이 오면 그 가격에 샀다면(안 오면 안 삼)' : '신호가 뜬 다음 날 시가에 샀다면'} · 비용 0.5% 뺌 · 줄 아래 = 진입 때 시장 국면별</small></div>
+    box.innerHTML = `<div class="sx"><div class="sx-head"><h4>💰 따라 샀다면</h4><small class="muted">${m === 'PL' || m === 'PR' ? '신호 뒤 5거래일 안에 판정일 종가 −3% 가격이 오면 그 가격에 샀다면(안 오면 안 삼)' : m === 'BK' ? '신호 뒤 10거래일 안에 종가가 직전 20일 최고가를 넘고 거래량이 20일 평균 1.5배↑인 날이 오면 그 다음 날 시가에 샀다면(안 오면 안 삼)' : '신호가 뜬 다음 날 시가에 샀다면'} · 비용 0.5% 뺌 · 줄 아래 = 진입 때 시장 국면별</small></div>
       ${simCtl(D, j)}
       ${has ? `<p class="sx-sum">${sum}</p><div class="sx-list">${list.map(line).join('')}</div>` : simEmpty(D, src)}
       ${(j.gap || []).filter((g) => g.d <= -5).length && src !== 'bt' ? `<p class="err sm">⚠ 실제 기록이 과거 재현보다 많이 나빠요 — 규칙이 과거에만 맞았을 수 있어요</p>` : ''}
@@ -4054,8 +4058,10 @@
     const ord = ['전체', '한 줄 결론:🟢 매수 검토', '한 줄 결론:🟡 지켜보기', '한 줄 결론:🔴 피하기', '매매 후보 조건:충족', '매매 후보 조건:미충족', '체크리스트:A등급', '체크리스트:B등급', '체크리스트:C등급', '체크리스트:D등급', '분류:상승 가능성', '분류:하락 위험', '분류:분류 없음', '시장 국면:상승장', '시장 국면:보합장', '시장 국면:하락장', '단계:판 깔기', '단계:매집', '단계:띄우기', '단계:털기', '단계:엑시트 후', '단계:관찰', '손익비:3 이상', '손익비:2~3', '손익비:2 미만'];
     const rows = (j.groups || []).filter((r) => ord.includes(r.g)).sort((a, c) => ord.indexOf(a.g) - ord.indexOf(c.g));
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · ${r['n' + h]}건${r['n' + h] < 30 ? ' (적음)' : ''}</small></td>` : '<td class="muted">—</td>');
-    b.innerHTML = `<h4 style="margin:1rem 0 .3rem">🧪 과거 재현(백테스트) <small class="muted">참고용 · 지난 약 8개월 동안 '그날 지금 규칙이었다면' 판정 → 실제 5·20·60거래일 뒤 결과 · ${j.done ? `완료 (${esc(rel(j.doneAt))})` : `계산 중 ${fmtInt(j.pos)}/${fmtInt(j.of)}종목`} · 판정 ${fmtInt(j.kept)}건</small> <button class="btn sm" data-bt-run>처음부터 다시</button></h4>
-      <p class="muted sm">한계: AI 판단·지분·신용·거래원·재무 같은 바깥 자료는 그날 기준으로 재현 못 해서 빠져요 · 시가총액 순위 모름 · 공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임 · 대상은 최근 6개월 판 깔기 공시가 있던 종목</p>
+    const v230 = j.v >= 20; // v230: 3년치
+    const prepNote = j.wait ? `<p class="note">⏳ <b>3년치 과거 공시를 채우는 중</b> — 지금 ${esc(j.wait.deep?.day || '시작 전')}까지 (${esc(j.wait.deep?.limit || '3년 전')}까지 받으면 끝) · 저장 ${fmtInt(j.wait.deep?.rows || 0)}건. 다 채우면 과거 재현을 3년치로 처음부터 다시 계산해요 (1~2일). 그동안은 아래 예전(약 8개월) 결과를 그대로 보여줘요.</p>` : j.prep ? `<p class="note">⏳ <b>3년치 공시 색인 만드는 중</b> — 남은 달 ${fmtInt(j.prep.pending || 0)}개 (3분마다 3개월씩). 끝나면 과거 재현이 시작돼요.</p>` : '';
+    b.innerHTML = `<h4 style="margin:1rem 0 .3rem">🧪 과거 재현(백테스트) <small class="muted">참고용 · 지난 ${v230 ? '약 3년' : '약 8개월'} 동안 '그날 지금 규칙이었다면' 판정 → 실제 5·20·60거래일 뒤 결과 · ${j.done ? `완료 (${esc(rel(j.doneAt))})` : j.wait || j.prep ? '준비 중' : `계산 중 ${fmtInt(j.pos)}/${fmtInt(j.of)}종목`} · 판정 ${fmtInt(j.kept)}건</small> <button class="btn sm" data-bt-run>처음부터 다시</button></h4>${prepNote}
+      <p class="muted sm">한계: AI 판단·지분·신용·거래원·재무 같은 바깥 자료는 그날 기준으로 재현 못 해서 빠져요 · 시가총액 순위 모름 · ${v230 ? '3년 전 공시는 레이더가 보는 종류만 저장해 요약이 없고, 그 사이 상장폐지된 종목은 빠져서(생존 편향) 실제보다 조금 좋게 보일 수 있어요' : '공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임'} · 대상은 ${v230 ? '3년' : '최근 6개월'} 안 판 깔기 공시가 있던 종목</p>
       ${rows.length ? '<div id="pbBt"></div>' : '<p class="muted sm">아직 결과 없음</p>'}`;
     if (rows.length) { S.pbData = S.pbData || {}; S.pbData.bt = rows; renderBoard('bt'); }
   }

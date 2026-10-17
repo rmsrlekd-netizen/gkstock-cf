@@ -2424,3 +2424,7 @@ body.pbm-open{overflow:hidden}
 .st-v{display:flex;flex-direction:column;font-size:.85rem}.st-v em{font-style:normal;color:var(--muted);font-size:.7rem}.st-v small{color:var(--muted);font-size:.7rem}
 .vp-s{background:rgba(250,204,21,.15);color:#fde047}
 @media (max-width:640px){.st-row{grid-template-columns:22px 1fr 1fr}.st-n{grid-column:2/-1}.st-ok{grid-column:2/-1}}
+/* v230 */
+.st-wf{padding:.5rem .6rem;margin:.3rem 0 .5rem;border-radius:10px;background:rgba(255,255,255,.04);font-size:.88rem}
+.st-pkr{display:grid;grid-template-columns:70px 1fr auto;gap:8px;font-size:.78rem;padding:.2rem 0;border-top:1px solid rgba(255,255,255,.05)}
+.st-pk summary{cursor:pointer;margin-top:.3rem}
