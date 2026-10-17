@@ -2417,3 +2417,10 @@ body.pbm-open{overflow:hidden}
 @media (max-width:640px){.kc-box{height:300px}}
 .rp-chart{margin-bottom:.8rem}
 .pb-note.warnish{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)}
+/* v229 ⭐ 전략 */
+.st-box{background:rgba(250,204,21,.05);border:1px solid rgba(250,204,21,.25);border-radius:14px;padding:.8rem .9rem;margin:.4rem 0 1rem}
+.st-row{display:grid;grid-template-columns:22px minmax(160px,2.4fr) repeat(2,minmax(80px,1fr)) minmax(110px,1fr);gap:8px;align-items:center;padding:.45rem .2rem;border-top:1px solid rgba(255,255,255,.06)}
+.st-row.ok{background:rgba(34,197,94,.06)}.st-i{color:var(--muted);font-size:.8rem}.st-n{display:flex;flex-direction:column}.st-n small{color:var(--muted);font-size:.72rem}
+.st-v{display:flex;flex-direction:column;font-size:.85rem}.st-v em{font-style:normal;color:var(--muted);font-size:.7rem}.st-v small{color:var(--muted);font-size:.7rem}
+.vp-s{background:rgba(250,204,21,.15);color:#fde047}
+@media (max-width:640px){.st-row{grid-template-columns:22px 1fr 1fr}.st-n{grid-column:2/-1}.st-ok{grid-column:2/-1}}

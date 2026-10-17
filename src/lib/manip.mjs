@@ -1624,7 +1624,12 @@ export function matchPat(pa, P) {
   const wp = (P.good || []).filter(hit).sort((a, b) => b.lift - a.lift)[0] || null, lp = (P.bad || []).filter(hit).sort((a, b) => a.lift - b.lift)[0] || null;
   return { wp, lp };
 }
-export function rankRow(x) { const r = rankRow0(x); try { r.pa = patAttrs(x, r); } catch {} return r; }
+export function rankRow(x) { const r = rankRow0(x); try { r.pa = patAttrs(x, r); const m = x.f?.m20; if (m != null) r.pa.mk = m >= 3 ? '상승' : m <= -3 ? '하락' : '보합'; } catch {} return r; }
+// v229 ⭐ 자동으로 찾은 전략(mp/strat, 과거 재현 앞 기간에서 고르고 뒤 기간에서 통과한 것만)과 맞는지
+export function stratMatch(pa, S) {
+  if (!pa || !S?.c?.length) return false;
+  return S.c.every(([k, v]) => (k === 'mkNot' ? pa.mk && pa.mk !== v : k === 'noIns' ? !pa.e_insider_s && !pa.e_insider : pa[k] === v));
+}
 function rankRow0(x) {
   const a = x.ai && !x.ai.error ? x.ai : null;
   const d = x.dir || direction(x);
@@ -1815,8 +1820,8 @@ export async function manipRank(kind = 'all') {
   for (const r of list) if (r.rr?.v > 20) r.rr = { ...r.rr, v: 20, big: true }; // 예전 줄의 비현실적 손익비는 1:20+로
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
-  let WP = null; try { WP = await getJSON('mp/winpat'); } catch {}
-  for (const r of list) { const v = verdictOf(r, WP); if (v) r.vd = v; } // v212 한 줄 결론 (경보·벌점 반영 뒤 읽을 때 계산 → 예전 줄에도 바로)
+  let WP = null, ST = null; try { [WP, ST] = await Promise.all([getJSON('mp/winpat'), getJSON('mp/strat')]); } catch {}
+  for (const r of list) { const v = verdictOf(r, WP); if (v) r.vd = v; if (ST && !ST.none && r.vd?.c !== 'r' && stratMatch(r.pa, ST)) r.star = { name: ST.name, tb: ST.tb, wb: ST.wb, nb: ST.nb }; } // v212 · v229 ⭐ 한 줄 결론 (경보·벌점 반영 뒤 읽을 때 계산 → 예전 줄에도 바로)
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
   else if (kind === 'pex') list = list.filter((r) => r.pex).sort((a, b) => (b.pex.net - a.pex.net) || (b.pex.su - a.pex.su));
   else if (kind === 'ck') list = list.filter((r) => r.ckg && r.d !== 'down').sort((a, b) => ((b.cnp || 0) - 2 * (b.cnr || 0)) - ((a.cnp || 0) - 2 * (a.cnr || 0)) || (b.us || 0) - (a.us || 0));
@@ -1833,6 +1838,7 @@ export async function manipRank(kind = 'all') {
     out.pat = { on, n: sum?.map?.['전체']?.n20 || 0, need: PAT_MIN, base: sum?.map?.['전체']?.win20 ?? null, ok: ok.length };
     return out;
   }
+  else if (kind === 'star') list = list.filter((r) => r.star).sort((a, b) => (b.vd?.c === 'g') - (a.vd?.c === 'g') || (b.s || 0) - (a.s || 0)); // v229 ⭐ 전략 종목
   else if (kind === 'win') list = list.filter((r) => r.vd?.wp && r.vd.c !== 'r').sort((a, b) => b.vd.wp.lift - a.vd.wp.lift || (b.s || 0) - (a.s || 0)); // v224 🏆 이긴 자리 닮은 종목
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);

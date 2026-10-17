@@ -148,3 +148,9 @@
 
 ## 앞으로 할 일 (메모)
 - 플레이스토어 앱: PWABuilder(TWA), 패키지 `com.gkstock.radar`, Cloudflare 변수 `ANDROID_CERT_SHA256`. 개발자 계정은 GK가 나중에 개인/조직 결정.
+
+## v229 ⭐ 전략 자동 찾기 (web v=222)
+- tradesim `stratFind`: 'all' 거래(TT 매도)에서 사기 전에 알 수 있는 조건(STRAT_C) 1~3개 조합을 앞 2/3 기간으로 점수((평균−전체)·n/(n+20), 25건↑), 뒤 1/3(안 본 기간)으로 확인. 같은 거래 묶음 규칙은 짧은 것만.
+- 통과(ok) = 뒤 10건↑ & 평균>0 & 전체보다 높음. **rho(앞 순위↔뒤 결과 상관) ≥ 0.2일 때만 best** → `mp/strat` 저장, 아니면 `cand`로 표시만(랭킹 미사용).
+- manip `stratMatch(pa,S)` → rank `r.star`, kind 'star' (⭐ 전략 종목), 🔴 제외. UI: 🏆 탭 위 ⭐ 박스, 랭킹 칩 `.vp-s`.
+- 돈 보장 아님: 표본 작으면 우연 통과 가능 — 사용자에게 항상 그렇게 설명.

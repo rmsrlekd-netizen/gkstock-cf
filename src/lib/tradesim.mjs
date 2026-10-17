@@ -338,6 +338,41 @@ export function winStudy(T0) {
 }
 // v224 레이더 판정에 쓸 '검증된' 패턴만 (앞·뒤 기간 둘 다 통과) — 지금 레이더에서 계산할 수 없는 조건(판정 뒤 정해지는 5일 상승률·거래량 배수·거래대금)은 뺌
 const LIVE_NO = new Set(['p5', 'vx', 'lq', 'mk', 'eg', 'vd']);
+// v229 ⭐ 전략 자동 찾기 (GK: '확실히 돈 되는 걸 만들어내라') — 지금 레이더에서도 알 수 있는 조건(사기 전에 아는 것)만 1~3개 묶은 규칙 수백 개를
+//  앞 2/3 기간으로 고르고(돈 = TT 매도 '최고점 −15% 또는 20일' 한 번 평균, 표본 적으면 n/(n+20)로 줄임) → 안 본 뒤 1/3 기간에서 그대로 확인.
+//  뒤 기간에서도 레이더 전체보다 낫고 + 이면 ✅. 고른 규칙들의 앞·뒤 순위가 같이 가는지(상관)로 '찾기 자체가 믿을 만한지'도 표시. 미래 자료 안 씀(진입 갭·판정 뒤 수익 등 제외)
+export const STRAT_C = [
+  ['mk', '상승', '시장 상승장'], ['mk', '보합', '시장 보합장'], ['mkNot', '하락', '시장 하락장 아님'],
+  ['st', '매집', '단계 매집'], ['st', '판 깔기', '단계 판 깔기'], ['st', '띄우기', '단계 띄우기'], ['st', '관찰', '단계 관찰'],
+  ['gp', '평단 아래', '평단 아래'], ['gp', '평단 +0~15%', '평단 +0~15%'], ['c_acc', '✓', '매집 흔적 있음'], ['c_cost', '✓', '평단 근처 ✓'],
+  ['lo', '+10% 안', '60일 저점 근처(+10% 안)'], ['lo', '+10~30%', '60일 저점 대비 +10~30%'], ['bx', '30% 안(좁음)', '좁은 박스(60일 폭 30% 안)'],
+  ['dir', '상승', '상승 분류'], ['cm', '있음', '매집봉 있음'], ['rr', '3 이상', '손익비 3↑'], ['noIns', '1', '임원 매도 공시 없음'],
+];
+const stratHit = (t, [k, v]) => (k === 'mkNot' ? t.a?.mk && t.a.mk !== v : k === 'noIns' ? !t.a?.e_insider_s && !t.a?.e_insider : t.a?.[k] === v);
+export function stratFind(T0, m = 'TT') {
+  const seen = new Set(), L = [];
+  for (const t of T0) { if (!(t.s === 'all') || !t[m] || !t.a) continue; const k = t.c + '|' + t.d; if (seen.has(k)) continue; seen.add(k); L.push(t); }
+  if (L.length < 80) return { n: L.length, need: 80 };
+  const ds = [...new Set(L.map((t) => t.d))].sort(), cut = ds[Math.floor(ds.length * 2 / 3)];
+  const tr = L.filter((t) => t.d < cut && t[m].xd < cut), te = L.filter((t) => t.d >= cut);
+  if (tr.length < 50 || te.length < 25) return { n: L.length, train: tr.length, test: te.length, need: 80 };
+  const avg = (a) => (a.length ? r1(mean(a.map((t) => t[m].r))) : null), win = (a) => (a.length ? Math.round((a.filter((t) => t[m].r > 0).length / a.length) * 100) : null);
+  const baseTr = avg(tr), baseTe = avg(te);
+  const C = STRAT_C, rules = [];
+  const test = (idx) => { const f = (t) => idx.every((i) => stratHit(t, C[i])); const a = tr.filter(f), b = te.filter(f); return { a, b }; };
+  for (let i = 0; i < C.length; i++) { rules.push([i]); for (let j = i + 1; j < C.length; j++) { if (C[i][0] === C[j][0]) continue; rules.push([i, j]); for (let k = j + 1; k < C.length; k++) { if (C[k][0] === C[i][0] || C[k][0] === C[j][0]) continue; rules.push([i, j, k]); } } }
+  const R = [];
+  for (const idx of rules) { const { a, b } = test(idx); if (a.length < 25) continue; const ma = mean(a.map((t) => t[m].r)); R.push({ idx, na: a.length, nb: b.length, sa: (ma - baseTr) * a.length / (a.length + 20), ta: r1(ma), tb: b.length ? r1(mean(b.map((t) => t[m].r))) : null, wa: win(a), wb: win(b), xb: b.length ? r1(mean(b.map((t) => t[m].x ?? 0))) : null }); }
+  R.sort((x, y) => y.sa - x.sa || x.idx.length - y.idx.length);
+  { const sg = new Set(); const K = []; for (const x of R) { const k = [x.na, x.nb, x.ta, x.tb].join('|'); if (sg.has(k)) continue; sg.add(k); K.push(x); } R.length = 0; R.push(...K); } // 조건을 더해도 같은 거래면 짧은 규칙만
+  // 찾기 자체가 믿을 만한가: 앞 기간 점수 순위와 뒤 기간 결과 순위의 상관 (뒤 기간 10건↑ 규칙만)
+  const Q = R.filter((x) => x.nb >= 10); let rho = null;
+  if (Q.length >= 10) { const rk = (arr, key) => { const o = [...arr].sort((p, q) => q[key] - p[key]); const m2 = new Map(o.map((x, i) => [x, i])); return arr.map((x) => m2.get(x)); }; const ra = rk(Q, 'sa'), rb = rk(Q, 'tb'), n = Q.length; let d2 = 0; for (let i = 0; i < n; i++) d2 += (ra[i] - rb[i]) ** 2; rho = Math.round((1 - (6 * d2) / (n * (n * n - 1))) * 100) / 100; }
+  const name = (idx) => idx.map((i) => C[i][2]).join(' + ');
+  const top = R.slice(0, 8).map((x) => ({ ...x, name: name(x.idx), ok: x.nb >= 10 && x.tb > 0 && x.tb > baseTe, ex: te.filter((t) => x.idx.every((i) => stratHit(t, C[i]))).sort((p, q) => q[m].r - p[m].r).slice(0, 3).map((t) => [t.n || t.c, t.c, t[m].r, t.d]) }));
+  const cand = top.find((x) => x.ok) || null; const best = cand && rho != null && rho >= 0.2 ? cand : null; // 찾기 믿음도(rho) 낮으면 통과해도 랭킹엔 안 씀 — 우연 통과 막기
+  return { n: L.length, m, cut, train: tr.length, test: te.length, baseTr, baseTe, wBaseTe: win(te), tried: R.length, rho, top, cand: cand && !best ? cand.name : null, best: best ? { idx: best.idx, name: best.name, c: best.idx.map((i) => C[i]), ta: best.ta, tb: best.tb, wb: best.wb, nb: best.nb, xb: best.xb } : null };
+}
 export function winPatOf(W) {
   if (!W || W.need) return null;
   const okK = (k) => !LIVE_NO.has(k); const okV = (x) => !(x.k.startsWith('e_') && x.v === '없음'); // '어떤 공시가 없음'은 너무 넓어 판정엔 안 씀(화면엔 보임)
@@ -704,6 +739,8 @@ export async function simSummary() {
   });
   out.live.capStudy = capStudy(L0); out.bt.capStudy = capStudy(BT0); out.capMax = CAP_MAX;
   out.live.win = winStudy(L); out.bt.win = winStudy(BT); out.now.win = out.live.win; // v224 🏆 이긴 자리 공통점
+  out.bt.strat = stratFind(BT); out.live.strat = stratFind(L); out.now.strat = out.live.strat; // v229 ⭐ 전략 자동 찾기
+  if (out.bt.strat?.best) await setJSON('mp/strat', { ...out.bt.strat.best, at: Date.now(), baseTe: out.bt.strat.baseTe, rho: out.bt.strat.rho }).catch(() => {}); else await setJSON('mp/strat', { none: 1, at: Date.now() }).catch(() => {});
   { const wp = winPatOf(out.bt.win); if (wp) await setJSON('mp/winpat', { ...wp, at: Date.now(), src: 'bt' }).catch(() => {}); } // 레이더 판정(🟢·🟡)이 읽어 감
   // 실제 vs 과거 재현 차이 (실제가 훨씬 나쁘면 '과거에만 맞춘 규칙' 신호)
   out.gap = out.live.groups.map((g) => { const a = g.T, b2 = out.bt.groups.find((x) => x.s === g.s)?.T; return a && b2 && a.n >= 20 && b2.n >= 20 ? { s: g.s, ko: g.ko, live: a.avg, bt: b2.avg, d: r1(a.avg - b2.avg) } : null; }).filter(Boolean);
