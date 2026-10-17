@@ -6,11 +6,12 @@
 //          시가총액 순위는 모름(소형주·대형주 항목 빠짐) · 공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임
 import { getJSON, setJSON } from './store.mjs';
 import { partsReset, partsAppend, partsLoad } from './btstore.mjs';
+import { CASE_CODES, motiveOf, bigRuns, saveCase } from './caselab.mjs';
 
 const DAY = 86400e3;
-const BT_V = 20; // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
+const BT_V = 21; // v233 4년·적발 사례·대세상승·공시 속뜻 · // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
 const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
-const STEP = 10, BACK = 80, BT_DAYS = 1100; // v230: 10거래일 간격 최대 80개 날짜(약 3년 3개월) · 공시는 3년+180일 (v219: 16개 ≈ 8개월) // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
+const STEP = 10, BACK = 95, BT_DAYS = 1460; // v233: 4년(적발 사례 2022~23 포함) · // v230: 10거래일 간격 최대 80개 날짜(약 3년 3개월) · 공시는 3년+180일 (v219: 16개 ≈ 8개월) // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
 export async function btStep({ restart = false, now = Date.now(), max = PER_RUN } = {}) {
   let st = (await getJSON('mp/bt/state')) || null;
@@ -29,11 +30,13 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
     const pri = new Set([...(Array.isArray(my.items) ? my.items.map((i) => i.code) : []), ...Object.keys(rk)]);
     const TSc = await import('./tradesim.mjs'); const cm0 = await TSc.capMap(); // v222: 지금 시총 8조↑(그날 2조 미만이었을 가능성 낮음)은 처음부터 뺌, 나머지는 판정일 시총으로 거름
     const codes = Object.entries(evm).filter(([c, evs]) => !((TSc.capAt(cm0, c, null) ?? 0) >= 80000) && evs.some((e) => SET.has(e.kind))).map(([c]) => c).sort((a, b) => (pri.has(a) ? 0 : 1) - (pri.has(b) ? 0 : 1) || (a < b ? -1 : 1)).slice(0, 1500); // v230: 700 → 1500 종목
+    { const cs = new Set(CASE_CODES); codes.splice(0, codes.length, ...CASE_CODES, ...codes.filter((c) => !cs.has(c))); } // v233 적발 사례 종목은 공시 흔적이 없어도 맨 먼저 (정답지 채점)
     st = { v: BT_V, queue: codes, pos: 0, started: now, samples: 0, kept: 0, groups: {}, done: false };
     await setJSON('mp/bt/state', st);
     await partsReset('mp/bt/rows', BT_V); // 종목별 판정 목록 (그룹 눌러서 보기용)
     await partsReset('mp/bt/trades', BT_V, { nf: {}, deep: bf?.deep ? { from: bf.deep.limit, rows: bf.deep.rows } : null }); // v222 매매 따라하기 거래
     await partsReset('mp/bt/fw', BT_V); // v222 점수 검증용 (판정 숫자 + 그 뒤 시장 대비 수익률)
+    await partsReset('mp/bt/big', BT_V); await partsReset('mp/bt/bigb', BT_V); // v233 대세상승 해부
     if (!codes.length) return { started: true, n: 0 };
   }
   if (st.done || st.wait || st.prep && !st.queue) return null;
@@ -43,7 +46,8 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows || {} : {};
   const TSm = await import('./tradesim.mjs'); const cmap = await TSm.capMap(); const capP = cmap.pct || {}; // 시가총액 순위(근사) → 소형주 항목·대형주 감점 재현 · 판정일 시총으로 세력주만
   const part = st.queue.slice(st.pos, st.pos + max);
-  const newRows = [], newTr = [], newNf = {}, newFw = [];
+  const newRows = [], newTr = [], newNf = {}, newFw = [], newBig = [], newBase = [];
+  const CS = new Set(CASE_CODES);
   const TS = await import('./tradesim.mjs');
   for (const code of part) {
     try {
@@ -56,7 +60,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
       const n = B.length;
       const pts = [];
       for (let k = BACK - 1; k >= 0; k--) { const i = n - 1 - 20 - k * STEP; if (i >= 60) pts.push(i); }
-      let prev = null; const tlist = [];
+      let prev = null; const tlist = []; const isCase = CS.has(code), cpts = [];
       for (const i of pts) {
         const d = B[i].d, Tms = Date.parse(d + 'T15:40:00+09:00');
         const f = M.barFeatures(B.slice(0, i + 1), { now: Tms });
@@ -66,6 +70,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
         const s = M.eventScore(evs, Tms);
         const score = Math.round((s.score + (f.score || 0)) * 10) / 10;
         st.samples++;
+        if (isCase) cpts.push({ d, s: score, c: f.close });
         if (score < 4) continue; // 그날 레이더에 오를 만한 종목만
         if (TSm.tooBig(cmap, code, f.close)) continue; // v222: 그날 시가총액 2조↑은 세력주 아님
         const x = { code, name: snap[code]?.[0] || code, mkt, close: f.close, pct: null, f, by: s.by, score, events: M.keepEv(evs), px: px.filter((p) => p.date <= d), capPct: capP[code] ?? null, links: [], xnotes: [], sig: [] };
@@ -75,8 +80,9 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
         x.rbk = M.reboundOf(x, Tms); x.pex = M.postExitOf(x, Tms);
         const rk = M.rankRow(x);
         { const rr0 = { st: x.stage, dir: x.dir?.dir, ck: x.cl?.grade, pk: M.pickFails(rk).length ? 0 : 1, vd: M.verdictOf(rk)?.c, rr: x.dir?.rr?.v ?? null, gp: rk.gap ?? null, cm: rk.cm || 0, pexl: rk.pex?.lv || null, ckv: Object.fromEntries((x.cl?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])),
-            ev: M.evKinds60(evs, x.px, Tms), lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length, rd: M.redKeys(x.cl) }; // v231 rd · v224 🏆 이긴 자리 공통점용: 최근 60일 공시 종류·차트 모양
+            mv: motiveOf(evs, { B, Tms }), ev: M.evKinds60(evs, x.px, Tms), lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length, rd: M.redKeys(x.cl) }; // v231 rd · v224 🏆 이긴 자리 공통점용: 최근 60일 공시 종류·차트 모양
           tlist.push({ d, f: TS.flagsOf(rr0), tp: x.dir?.rr?.t || 0, sp: x.dir?.rr?.s || 0, a: TS.attrsOf(rr0), v: { s: score, ws: x.cl?.ws ?? null, rr: rr0.rr, gp: rr0.gp } }); }
+        if (isCase && cpts.length) Object.assign(cpts[cpts.length - 1], { st: x.stage, vd: M.verdictOf(rk)?.c || null, ck: x.cl?.grade || null, dir: x.dir?.dir || null, mv: motiveOf(evs, { B, Tms }) });
         if (x.stage === '거래정지') continue; // v222: 거래정지 중엔 실제로 살 수 없음 → 판정일 기준 결과에서 뺌 (따라 샀다면에선 '🔴' 판정으로만 씀)
         // 같은 종목·같은 단계가 30일 안에 이어지면 처음 1번만 (성적표 집계와 같은 기준)
         if (prev && prev.st === x.stage && Tms - prev.ms <= 30 * DAY) continue;
@@ -89,8 +95,12 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
       }
       { const L2 = tlist.map((p) => ({ ...p, di: TS.dOrd(p.d) })); const V = new Map(L2.map((p) => [p.di, p.v])); for (const r of TS.fwdOf(B, L2, { ix: ixd, mkt })) { const v = V.get(r[0]) || {}; newFw.push([r[0], v.s ?? null, v.ws ?? null, v.rr ?? null, v.gp ?? null, r[1], r[2], r[3], code]); } }
       { const R = TS.simTrades(B, tlist, { final: true, now, ix: ixd, mkt }); for (const t of R.trades) newTr.push(TS.pack(code, snap[code]?.[0] || code, t)); for (const [k, v] of Object.entries(R.nf)) newNf[k] = (newNf[k] || 0) + v; } // v222 매매 따라하기 (과거 재현은 10거래일 간격 판정)
+      { const nm = snap[code]?.[0] || code; const BR = bigRuns(B, evAll); for (const r of BR.runs) newBig.push({ c: code, n: nm, ...r }); for (const k of BR.base) newBase.push(k); // v233 대세상승 해부
+        if (isCase) { const evMs = evAll.map((e) => e.ms).filter(Boolean); await saveCase(code, { pts: cpts, runs: BR.runs, evFrom: evMs.length ? new Date(Math.min(...evMs) + 9 * 3600e3).toISOString().slice(0, 10) : null, from: B[0]?.d || null }); } }
     } catch (e) { console.warn('bt', code, e.message); }
   }
+  if (newBig.length) await partsAppend('mp/bt/big', newBig, { per: 800, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt big', e.message));
+  if (newBase.length) await partsAppend('mp/bt/bigb', newBase, { per: 4000, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt bigb', e.message));
   if (newFw.length) await partsAppend('mp/bt/fw', newFw, { per: 5000, maxParts: 24, v: BT_V }).catch((e) => console.warn('bt fw', e.message));
   if (newTr.length || Object.keys(newNf).length) await partsAppend('mp/bt/trades', newTr, { per: 1500, maxParts: 30, nf: newNf, v: BT_V }).catch((e) => console.warn('bt tr', e.message));
   if (newRows.length) await partsAppend('mp/bt/rows', newRows, { per: 1500, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt rows', e.message));

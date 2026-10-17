@@ -3357,7 +3357,7 @@
     const TABS = [['price', '💰 가격·목표'], ['check', '✅ 체크리스트'], ['why', '<b class="up">▲</b><b class="down">▼</b> 근거'], ['chart', '🕯 차트 신호'], ['docs', '📄 공시'], ['ai', '🤖 AI·기록']];
     const tab = TABS.some(([t]) => t === S.rpTab) ? S.rpTab : 'price';
     const planBox = x.plan ? `<div class="pf-planbox"><h5>💼 버티기 계획 <small class="muted">세력이 일부러 밀어 손절을 받아내는 '흔들기'를 버티는 기준 · ⭐ 내 세력주 탭에서 계좌 금액을 넣으면 살 금액까지 계산</small></h5>${planHTML(x.plan)}</div>` : '';
-    const body = { price: P.accLine + planBox + P.tgtBox, check: P.ckBox, why: P.dirBox, chart: radarChart(x, d) + ((P.pexBox + P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>'), docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
+    const body = { price: P.accLine + planBox + P.tgtBox, check: P.ckBox, why: (P.mvBox || '') + P.dirBox, chart: radarChart(x, d) + ((P.pexBox + P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>'), docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
     box.innerHTML = `<div class="rp">
       <div class="rp-nav"><button class="btn sm" data-rp-back>← 작전 레이더</button><span class="muted sm">${x.at ? esc(rel(x.at)) + ' 분석' : ''}${j.cached ? ' · 저장된 결과' : ''}${x.migrated ? ' · 새 계산 방식으로 방금 갱신' : ''}</span></div>
       <div class="rp-head">
@@ -3597,11 +3597,12 @@
     const ckRows = Object.keys(CKK).map((k) => { const a = ckG[`ck:${k}:1`], b = ckG[`ck:${k}:0`]; if (!a?.n20 && !b?.n20) return ''; const d = a?.n20 && b?.n20 ? a.win20 - b.win20 : null; return `<tr><td class="t"><b>${esc(CKK[k])}</b></td><td>${a?.n20 ? `${a.win20}% <small>${a.n20}건</small>` : '—'}</td><td>${b?.n20 ? `${b.win20}% <small>${b.n20}건</small>` : '—'}</td><td>${d == null ? '—' : `<b class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : ''}${d}%p</b>${a.n20 >= 30 && b.n20 >= 30 ? ' <small>중요도에 반영</small>' : ' <small>30건씩 쌓이면 반영</small>'}`}</td></tr>`; }).join('');
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · +20%↑ ${r['big' + h]}% · −20%↓ ${r['loss' + h]}% · ${r['n' + h]}건</small></td>` : '<td class="muted">아직</td>');
     try { S.pfTab = load('gk_pftab') || 'sim'; } catch {}
-    const pt = ['sim', 'day', 'win', 'inst', 'find'].includes(S.pfTab) ? S.pfTab : 'sim';
-    $('#mpBody').innerHTML = `<div class="pf-tabs">${[['sim', '💰 따라 샀다면'], ['day', '📅 판정일 기준 결과'], ['win', '🏆 이긴 자리'], ['inst', '🏛 기관식 검증'], ['find', '🔎 종목 검색']].map(([k, t]) => `<button data-pf-tab="${k}" class="${k === pt ? 'on' : ''}">${t}</button>`).join('')}</div>
+    const pt = ['sim', 'day', 'win', 'inst', 'lab', 'find'].includes(S.pfTab) ? S.pfTab : 'sim';
+    $('#mpBody').innerHTML = `<div class="pf-tabs">${[['sim', '💰 따라 샀다면'], ['day', '📅 판정일 기준 결과'], ['win', '🏆 이긴 자리'], ['inst', '🏛 기관식 검증'], ['lab', '🔬 연구실'], ['find', '🔎 종목 검색']].map(([k, t]) => `<button data-pf-tab="${k}" class="${k === pt ? 'on' : ''}">${t}</button>`).join('')}</div>
       <div class="pf-pane" data-pf="sim" ${pt === 'sim' ? '' : 'hidden'}><div id="simBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="find" ${pt === 'find' ? '' : 'hidden'}><div class="sx"><div class="sx-head"><h4>🔎 성과검증 종목 검색</h4><small class="muted">레이더가 판정했던 종목의 따라 샀다면 기록·판정 기록·AI 해설만 따로</small></div>
         <form class="sf-form" data-sf-form><input class="sf-in" name="q" placeholder="종목 이름 또는 코드 (예: 대원전선, 006340)" autocomplete="off" value="${esc(S.sfQ || '')}"><button class="btn">검색</button></form><div id="sfBox"></div></div></div>
+      <div class="pf-pane" data-pf="lab" ${pt === 'lab' ? '' : 'hidden'}><div id="labBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="win" ${pt === 'win' ? '' : 'hidden'}><div id="winBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="inst" ${pt === 'inst' ? '' : 'hidden'}><div id="instBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="day" ${pt === 'day' ? '' : 'hidden'}><p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
@@ -3714,8 +3715,45 @@
       <h5>⚠ 진 자리에 많았던 것 (이기는 비율이 낮음)</h5>${W.bad.map((x) => row(x, true, `${esc(x.ko)}: ${esc(dv(x.ko, x.v))}`)).join('') || '<p class="muted sm">아직 없음</p>'}
       <p class="muted sm">앞 기간 = ~${esc(W.cut)} 이전 판정, 뒤 기간 = 그 뒤. 이긴 자리 예시 종목을 누르면 그 종목 레이더 페이지로 가요. 여기서 ✓가 나온 조합을 '언제 사느냐' 규칙 후보로 쓰고, 다시 안 본 기간으로 확인한 뒤에만 🟢 기준에 넣어요.</p></div>`;
   }
+  // v233 🔬 연구실 — ① 적발 사례 정답지 ② 대세상승(+100%↑) 해부 ③ 공시의 속뜻 사전 (관리자 전용 · 공개 금지)
+  async function renderLab(force) {
+    const box = $('#labBox'); if (!box) return;
+    if (S.labData && !force) return labPaint();
+    let j; try { j = await mpGet('mp=lab', 60000); } catch (e) { box.innerHTML = `<p class="muted sm">연구실 자료를 못 불러옴: ${esc(e.message)}</p>`; return; }
+    S.labData = j; labPaint();
+  }
+  function labPaint() {
+    const box = $('#labBox'), j = S.labData; if (!box || !j) return;
+    const C = j.cases || {}, G = j.big || {}, VD = { g: '🟢', y: '🟡', r: '🔴' };
+    const crow = (x) => `<div class="lb-row ${x.caught ? 'ok' : x.none ? 'na' : 'miss'}"><span class="lb-n"><b>${esc(x.n)}</b><small>${esc(x.c)} · ${esc(x.from)}~${esc(x.to)} · ${esc(x.st)}</small><small class="muted">${esc(x.type)}</small></span>
+      <span class="lb-r">${x.caught ? `<b class="up">✅ 잡음</b><small>${esc(x.first.d)} 처음 · 고점 ${x.lead}일 전${x.early ? ' (띄우기 시작 전)' : ''}<br>단계 ${esc(x.first.st || '-')} · 결론 ${VD[x.first.vd] || '-'} · 체크 ${esc(x.first.ck || '-')}</small>` : x.none ? `<b class="muted">계산 전</b><small>${esc(x.why)}</small>` : `<b class="down">놓침</b><small>${esc(x.why)}${x.maxS != null ? ` · 최고 점수 ${x.maxS}` : ''}</small>`}</span>
+      <span class="lb-g">${x.caught ? `<b class="${x.gain >= 0 ? 'up' : 'down'}">${x.gain >= 0 ? '+' : ''}${x.gain}%</b><small>처음 잡은 날 → 고점</small>` : ''}</span></div>`;
+    const lift = (x) => `<div class="lb-row"><span class="lb-n"><b>${esc(x.ko)}</b><small>대세상승 ${x.pR}% · 평범한 날 ${x.pB}%</small></span><span class="lb-g"><b class="${x.lift >= 1.5 ? 'up' : x.lift <= 0.7 ? 'down' : ''}">${x.lift}배</b><small>${x.nR}번</small></span></div>`;
+    const evk = { cb: 'CB', rights3: '3자배정', rights: '유상증자', mna: '경영권', fund5: '투자조합', refix: '전환가 조정', conv: '전환청구', paid: '납입', rename: '상호 변경', purpose: '사업목적', contract: '공급계약', invest: '투자', inquiry: '조회공시', pledge: '담보', majsell: '대주주 매도', ceo: '대표 변경', cbbuy: 'CB 되사기', tsell: '자사주 처분', bonus: '무상증자', capred: '감자' };
+    const ex = (r) => `<details class="lb-ex"><summary><b>${esc(r.n || r.c)}</b> <span class="up">+${r.g}%</span> <small class="muted">${esc(r.d0)} 바닥 ${fmtInt(r.p0)}원 → ${esc(r.dP)} ${fmtInt(r.pP)}원 · ${r.days}거래일 · 고점 뒤 ${r.post}%</small></summary>
+      <p class="sm"><b>오르기 전 180일 공시</b>: ${r.pre?.length ? r.pre.map((p) => `${esc(p[0])} ${esc(evk[p[1]] || p[1])}`).join(' → ') : '없음 (공시 없이 오름)'}</p>
+      <p class="sm"><b>오르는 동안</b>: ${r.dur?.length ? r.dur.map((p) => `${esc(p[0])} ${esc(evk[p[1]] || p[1])}`).join(' → ') : '공시 없음'}</p>
+      ${r.after?.length ? `<p class="sm"><b>고점 뒤 60일</b>: ${r.after.map((p) => `${esc(p[0])} ${esc(evk[p[1]] || p[1])}`).join(' → ')} <span class="muted">(물량 출회 흔적)</span></p>` : ''}
+      <p class="sm muted">그때 보였던 흔적: ${(r.k || []).map((k) => esc(featKo(k))).join(' · ') || '—'}</p><button class="link" data-mp-go="${esc(r.c)}">레이더 페이지 ›</button></details>`;
+    const mvDict = Object.entries(j.mv || {}).map(([k, v]) => `<div class="lb-mv"><b>${v.side === '세력' ? '🎭' : '🏛'} ${esc(v.ko)}</b><small>${esc(v.t)}</small></div>`).join('');
+    box.innerHTML = `<div class="sx"><div class="sx-head"><h4>🔬 연구실</h4><small class="muted">관리자 전용 · 사건 종목명은 언론·검찰·증선위가 공개한 것만 · 공개 화면에 '작전주'로 쓰지 않음 <button class="btn sm" data-lab-re>새로고침</button></small></div>
+      <div class="st-box lb-box"><h5>① 적발 사례 정답지 <small class="muted">실제로 적발·기소된 사건 ${C.n}개를 과거 재현에 넣어, 레이더가 '그때 그날까지의 공시·차트'만으로 언제·어느 단계로 잡았는지 채점</small></h5>
+        <p class="sx-sum">${C.done ? `채점 ${C.done}건 중 <b>${C.caught}건 잡음</b>${C.lead != null ? ` · 처음 잡은 날 → 고점 중간 <b>${C.lead}일</b>` : ''}${C.gain != null ? ` · 그때 샀다면 고점까지 중간 <b class="up">+${C.gain}%</b>` : ''}<br><small class="muted">레이더가 원래 노리는 유형(CB·3자배정·M&A 흔적) ${C.radarType}건 중 ${C.radarCaught}건 · 처음 잡을 때 결론 ${Object.entries(C.vdAt || {}).map(([k, v]) => `${VD[k] || k} ${v}`).join(' ') || '-'} · 단계 ${Object.entries(C.stAt || {}).map(([k, v]) => `${esc(k)} ${v}`).join(' ') || '-'}</small>` : '아직 채점 전 — 4년치 공시 채우기와 과거 재현이 이 종목들을 지나가면 채워져요 (사건 종목은 맨 먼저 계산).'}</p>
+        <div class="lb-list">${(C.list || []).map(crow).join('')}</div>
+        <p class="muted sm">놓친 이유가 '공시 흔적이 거의 없는 유형'이면 통정매매·장기 시세조종(라덕연·하한가 사태)처럼 공시를 안 남기는 작전이라, 공시 레이더로는 구조적으로 못 잡는 영역이에요. 이런 건 차트(장기 저변동 우상향·거래량)로 따로 찾아야 해요.</p></div>
+      <div class="st-box lb-box"><h5>② 대세상승 해부 <small class="muted">바닥에서 120거래일 안에 2배↑ 간 구간 — 그 바닥 날 '보였던 흔적'이 평범한 날보다 몇 배 자주 있었나 (그날까지 자료만)</small></h5>
+        ${G.need || !G.nR ? `<p class="muted sm">대세상승 ${G.nR || 0}번 · 비교용 평범한 날 ${G.nB || 0}번 — 15번·100번 넘으면 나와요 (4년치 과거 재현이 돌면 채워져요).</p>` : `<p class="sx-sum">대세상승 <b>${fmtInt(G.nR)}번</b> (비교 ${fmtInt(G.nB)}일) · 보통 <b class="up">+${G.gain}%</b> · 바닥→고점 <b>${G.days}거래일</b> · 고점 뒤 60일 안 <b class="down">${G.post}%</b><br><small class="muted">배수 = 대세상승 바닥 날에 그 흔적이 있던 비율 ÷ 평범한 날 비율. 1.5배↑면 '대세상승 앞에 자주 보임'. 원인이라는 증거는 아니고, 같이 나타난 패턴이에요.</small></p>
+          <h6 class="av-h">대세상승 앞에 자주 보인 흔적</h6><div class="lb-list">${G.one.filter((x) => x.lift >= 1).slice(0, 15).map(lift).join('')}</div>
+          ${G.pairs?.length ? `<h6 class="av-h">두 개가 같이 있을 때</h6><div class="lb-list">${G.pairs.map(lift).join('')}</div>` : ''}
+          ${G.low?.length ? `<h6 class="av-h">대세상승 앞에 오히려 드물었던 것</h6><div class="lb-list">${G.low.map(lift).join('')}</div>` : ''}
+          ${G.seq?.length ? `<h6 class="av-h">가장 흔한 순서 (오르기 전 처음 나온 공시 두 종류)</h6><p class="sm">${G.seq.map(([s, n]) => `${esc(s)} <b>${n}번</b>`).join(' · ')}</p>` : ''}
+          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}</div>
+      <div class="st-box lb-box"><h5>③ 공시의 속뜻 사전 <small class="muted">같은 CB·3자배정도 '왜 했나'로 뜻이 달라요 — 🎭 세력 시각(싸게 받고·재료 깔고·띄워서 판다) · 🏛 기관 시각(희석·지배구조·자금 압박). 종목 페이지와 ⭐ 전략 찾기·🏆 이긴 자리에 자동으로 들어가요</small></h5><div class="lb-mvs">${mvDict}</div></div></div>`;
+  }
+  const featKo = (k) => { const [a, b] = String(k).split(':'); const MVK = Object.fromEntries(Object.entries(S.labData?.mv || {}).map(([x, v]) => [x, v.ko])); if (a === 'ev') return '공시 ' + ({ cb: 'CB', rights3: '3자배정', rights: '유상증자', mna: '경영권', fund5: '투자조합', refix: '전환가 조정', conv: '전환청구', paid: '납입', rename: '상호 변경', purpose: '사업목적', contract: '공급계약', invest: '투자', inquiry: '조회공시', pledge: '담보', majsell: '대주주 매도', ceo: '대표 변경', cbbuy: 'CB 되사기' }[b] || b); if (a === 'mv') return '속뜻 ' + (MVK[b] || b); return { dd70: '1년 고점 −70%↓', dd50: '1년 고점 −50~70%', dd30: '1년 고점 −30~50%', dd0: '1년 고점 −30% 안', dry: '거래량 마름', box: '60일 박스' }[b] || k; };
+  document.addEventListener('click', (ev) => { if (ev.target.closest?.('[data-lab-re]')) renderLab(true); });
   function renderSim() {
-    renderInst(); renderWin();
+    renderInst(); renderWin(); if (S.pfTab === 'lab') renderLab();
     const box = $('#simBox'), j = S.simData; if (!box || !j) return;
     const src = simSrcK(), D = j[src] || {};
     if (S.simV === 'peak') { box.innerHTML = peakHTML(j[simBase()] || {}, simBase(), j); return; }
@@ -3794,7 +3832,7 @@
       <div class="pbm-head"><div><b>${esc(x.ko || s)}</b> <small class="muted">${h}거래일 안 최고·최저 · 많이 오른 순</small></div><button class="pbm-x" data-pbm-close aria-label="닫기">✕</button></div>
       <div class="pbm-list">${reach}<h5 class="sx-h5">종목별 ${L.length}번${rows.length - L.length ? ` <small class="muted">(${h}일 안 지난 ${rows.length - L.length}번 제외)</small>` : ''}</h5>${L.length ? L.map((t) => { const [u, d, dd, pd] = t.pk[hi]; return `<div class="sx-tr"><div class="sx-tr1">${coName(t)}<span class="sx-res"><b class="up">${sgn(u)}</b><small>${esc(pd)} · ${dd}일째 최고</small></span><span class="sx-res"><b class="down">${sgn(d)}</b><small>오르기 전 최저</small></span></div><small class="muted">${esc(t.d)} 신호 → 다음 날 ${fmtInt(t.e)}원에 삼</small>${aiLine(t)}</div>`; }).join('') : '<p class="muted sm">아직 기록이 없어요</p>'}</div></div>`);
   }
-  document.addEventListener('click', (ev) => { const b = ev.target.closest?.('[data-pf-tab]'); if (!b) return; S.pfTab = b.dataset.pfTab; save('gk_pftab', S.pfTab); document.querySelectorAll('[data-pf-tab]').forEach((x) => x.classList.toggle('on', x === b)); document.querySelectorAll('.pf-pane').forEach((x) => { x.hidden = x.dataset.pf !== S.pfTab; }); });
+  document.addEventListener('click', (ev) => { const b = ev.target.closest?.('[data-pf-tab]'); if (!b) return; S.pfTab = b.dataset.pfTab; save('gk_pftab', S.pfTab); document.querySelectorAll('[data-pf-tab]').forEach((x) => x.classList.toggle('on', x === b)); document.querySelectorAll('.pf-pane').forEach((x) => { x.hidden = x.dataset.pf !== S.pfTab; }); if (S.pfTab === 'lab') renderLab(); });
   // 🏛 기관식 검증 탭: 헤지펀드·운용사가 백테스트를 믿을지 판단할 때 보는 것들을 한 화면에
   // 🧠 데이터로 다시 배운 기준 (앞 기간에서 배우고 안 본 뒤 기간에서 확인)
   function learnHTML(L) {
@@ -4282,7 +4320,8 @@
         ${x.log?.length ? `<h5>자동 수정 기록</h5><ul class="mp-logl">${x.log.slice(0, 8).map((l) => `<li><span>${esc(fmtDT(new Date(l.at)).md)} ${esc(fmtDT(new Date(l.at)).hm)}</span> ${esc(l.msg)}</li>`).join('')}</ul>` : ''}
         ${x.hist?.length > 1 ? `<h5>레이더 등장 기록</h5><p class="muted sm">${x.hist.map((h) => `${esc(md(h.d))} ${esc(h.st)}(${h.s})`).join(' · ')}</p>` : ''}</div>
       <div><h5>근거 공시 (최근 180일)</h5><ul class="mp-ev">${(x.events || []).map((e) => `<li><span>${esc(new Date(e.ms + 9 * 3600e3).toISOString().slice(2, 10))}</span><em>${esc(MP_EV[e.kind] || e.kind)}</em><a href="/p/${esc(e.id)}" target="_blank">${esc(e.title)}</a>${e.sum ? `<small>${esc(e.sum)}</small>` : ''}</li>`).join('') || '<li class="muted">없음 (거래 패턴만)</li>'}</ul></div></div>`;
-    return { pexBox, myBtn, rbBox, ckBox, cycLine, accLine, markBox, wf, dirBox, tgtBox, aiBox, grid };
+    const mvBox = x.mvL?.length ? `<div class="mp-mv"><h5>🧠 공시의 속뜻 <small class="muted">이 종목 최근 1년 공시를 세력·기관 눈으로 읽으면 (규칙 계산, AI 아님 · 의심 신호일 뿐 증거 아님)</small></h5>${x.mvL.map((m) => `<div class="mp-mvi ${m.side === '세력' ? 's' : 'i'}"><b>${m.side === '세력' ? '🎭 세력 시각' : '🏛 기관 시각'} · ${esc(m.ko)}</b><small>${esc(m.t)}</small></div>`).join('')}</div>` : '';
+    return { pexBox, myBtn, rbBox, ckBox, cycLine, accLine, markBox, wf, dirBox, tgtBox, aiBox, grid, mvBox };
   }
   document.addEventListener('click', (e) => {
     let b;

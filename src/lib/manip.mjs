@@ -10,6 +10,7 @@ import { fetchWithTimeout, BROWSER_UA } from './util.mjs';
 import { isTradingDay } from './schedule.mjs';
 import { buildPartyIndex, linksOf, radarAlert, BIG as NOT_PARTY, partyKey } from './manipx.mjs';
 import { attrsOf as tsAttrs } from './tradesim.mjs';
+import { motiveOf, motiveList } from './caselab.mjs';
 
 const n0 = (v) => { if (v == null || v === '') return null; const x = Number(String(v).replace(/[,\s]/g, '')); return Number.isFinite(x) ? x : null; };
 const kst = (ms = Date.now()) => { const d = new Date(ms + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), m: d.getUTCHours() * 60 + d.getUTCMinutes(), wd: d.getUTCDay() }; };
@@ -1619,7 +1620,7 @@ export function patAttrs(x, rk) {
   const Tms = Date.now(), f = x.f || {};
   return tsAttrs({ st: x.stage, dir: (x.dir || {}).dir, ck: x.cl?.grade, rr: x.dir?.rr?.v ?? null, gp: rk?.gap ?? null, cm: rk?.cm || 0, pexl: rk?.pex?.lv || null,
     ckv: Object.fromEntries((x.cl?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])),
-    ev: evKinds60(x.events, x.px, Tms), lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length, rd: redKeys(x.cl) });
+    ev: evKinds60(x.events, x.px, Tms), lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length, rd: redKeys(x.cl), mv: x.mv || motiveOf(x.events, { Tms }) });
 }
 // v231 그날 걸린 위험 항목(폭탄·작은 위험) — 🔴·D가 정말 피할 만했는지 항목별로 따로 재려고
 export const redKeys = (cl) => (cl?.red || []).filter((i) => i.ok === true && !i.common).map((i) => i.k);
@@ -1634,7 +1635,7 @@ export function rankRow(x) { const r = rankRow0(x); try { r.pa = patAttrs(x, r);
 // v229 ⭐ 자동으로 찾은 전략(mp/strat, 과거 재현 앞 기간에서 고르고 뒤 기간에서 통과한 것만)과 맞는지
 export function stratMatch(pa, S) {
   if (!pa || !S?.c?.length) return false;
-  return S.c.every(([k, v]) => (k === 'mkNot' ? pa.mk && pa.mk !== v : k === 'noIns' ? !pa.e_insider_s && !pa.e_insider : pa[k] === v));
+  return S.c.every(([k, v]) => (k === 'mkNot' ? pa.mk && pa.mk !== v : k === 'noIns' ? !pa.e_insider_s && !pa.e_insider : k === 'noConv' ? !pa.e_mv_convPump && !pa.e_mv_majSell : pa[k] === v));
 }
 function rankRow0(x) {
   const a = x.ai && !x.ai.error ? x.ai : null;
@@ -2017,6 +2018,7 @@ export async function manipProfile(code) {
       } catch (e) { console.warn('rank 줄 맞춤 실패', e.message); }
     } catch (e) { console.warn('manipProfile', e.message); }
   }
+  if (p) { try { p.mvL = motiveList(p.mv || motiveOf(p.events, { Tms: Date.now() })); } catch {} } // v233 공시의 속뜻 (화면용 설명)
   return p;
 }
 
@@ -2043,7 +2045,7 @@ async function analyzeOne(job, { snap = {}, snapD = null, ctx = null, now = Date
   const code = job.c;
   const evs = await eventsOf(code, now);
   const s = eventScore(evs, now);
-  let f = null; try { f = barFeatures(await bars(code)); } catch {}
+  let f = null, B0 = null; try { B0 = await bars(code); f = barFeatures(B0); } catch {}
   const prev = (await getJSON(`mp/prof/${code}`)) || null;
   const r = snap[code] || [];
   if (f) applyMarks(f, evs, await indexDaily().catch(() => ({})), snap[code]?.[1] || job.mkt || (await getJSON(`mp/prof/${code}`))?.mkt || 'Q');
@@ -2060,6 +2062,7 @@ async function analyzeOne(job, { snap = {}, snapD = null, ctx = null, now = Date
   }
   const s2 = eventScore(evs, now); x.es = s2.score; x.by = s2.by; x.score = Math.round((s2.score + x.vs + (x.xs || 0)) * (x.mult || 1) * 10) / 10; x.stage = stageOf(s2.by, f, x.events);
   x.dir = direction(x, now);
+  try { x.mv = motiveOf(evs, { B: B0, Tms: now }); } catch {} // v233 공시의 속뜻 (과거 재현과 같은 계산)
   if (!light) { try { const { enrich } = await import('./manipck.mjs'); await enrich(x, { fresh: !!forceAi }); } catch {} } // 체크리스트 바깥 자료 (가벼운 갱신 땐 생략 → 이전 자료 이어 씀)
   x.dir = direction(x, now);
   // 공시가 바뀌었고 점수가 의미 있으면 AI 다시 (검색은 항상)

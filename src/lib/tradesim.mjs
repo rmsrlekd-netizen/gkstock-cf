@@ -58,7 +58,8 @@ export function attrsOf(r) {
   const b = (v, cuts, names) => { if (v == null || Number.isNaN(v)) return null; for (let i = 0; i < cuts.length; i++) if (v < cuts[i]) return names[i]; return names[cuts.length]; };
   const ckv = {}; for (const [k, v] of Object.entries(r.ckv || {})) if (CK_KO[k]) ckv['c_' + k] = v ? '✓' : '✗'; // v222: 체크리스트 항목 하나하나의 효과
   const evA = {}; for (const k of r.ev || []) evA['e_' + k] = '있음';
-  for (const k of r.rd || []) evA['r_' + k] = '걸림'; // v231 위험 항목 // v224: 최근 60일에 나온 공시 종류
+  for (const k of r.rd || []) evA['r_' + k] = '걸림'; // v231 위험 항목
+  for (const k of r.mv || []) evA['e_mv_' + k] = '있음'; // v233 공시의 속뜻(무자본 M&A 구조·전환가 낮추기 등) // v224: 최근 60일에 나온 공시 종류
   const chA = { lo: b(r.lo60, [10, 30, 60], ['+10% 안', '+10~30%', '+30~60%', '+60%↑']), bx: b(r.bx, [30, 60], ['30% 안(좁음)', '30~60%', '60%↑(넓음)']), cy: r.cy == null ? null : r.cy ? '있음' : '없음', p1: r.p1 == null ? null : r.p1 ? '있음' : '없음', mb: r.mk2 == null ? null : r.mk2 >= 2 ? '2개↑' : r.mk2 ? '1개' : '없음' };
   return { ...ckv, ...evA, ...(r.ev ? chA : {}), st: r.st || null, ck: r.ck || null, rr: b(r.rr, [2, 3], ['2 미만', '2~3', '3 이상']), gp: b(r.gp, [0, 15, 50], ['평단 아래', '평단 +0~15%', '평단 +15~50%', '평단 +50%↑']), dir: r.dir === 'up' ? '상승' : r.dir === 'down' ? '하락 위험' : '없음', cm: r.cm > 0 ? '있음' : '없음', px: r.pexl || null, vd: r.vd || null };
 }
@@ -340,7 +341,7 @@ export function winStudy(T0) {
   const hasEv = (t) => Object.keys(t.a).some((k) => ['lo', 'bx', 'cy'].includes(k)); // 새 기준(v224)으로 계산된 판정만 공시 '없음'을 셈
   const valOf = (t, k) => (k.startsWith('e_') ? (t.a[k] || (hasEv(t) ? '없음' : null)) : t.a[k]);
   const keys = [...Object.keys(ATTR_KO).filter((k) => !['mk', 'eg', 'vd'].includes(k)), ...evKeys]; // 한 줄 결론(vd)은 이 결과로 바뀌므로 뺌(순환) // 진입 때 시장·진입 갭은 '자리'가 아니라 사는 때라 뺌
-  const koOf = (k) => (k.startsWith('e_') ? '공시: ' + (KIND_KO[k.slice(2)] || k.slice(2)) : ATTR_KO[k]);
+  const koOf = (k) => (k.startsWith('e_mv_') ? '속뜻: ' + (KIND_KO[k.slice(2)] || k.slice(5)) : k.startsWith('e_') ? '공시: ' + (KIND_KO[k.slice(2)] || k.slice(2)) : ATTR_KO[k]);
   const stat = (f) => { const g = L.filter(f); if (g.length < 30) return null; const w = g.filter(win); const a = g.filter((t) => t.d < cut), z = g.filter((t) => t.d >= cut);
     const la = a.length >= 10 && r0a ? a.filter(win).length / a.length / r0a : null, lz = z.length >= 8 && r0z ? z.filter(win).length / z.length / r0z : null;
     return { n: g.length, w: w.length, rate: Math.round((w.length / g.length) * 100), lift: Math.round((w.length / g.length / p0) * 100) / 100, la: la == null ? null : Math.round(la * 100) / 100, lz: lz == null ? null : Math.round(lz * 100) / 100,
@@ -368,8 +369,10 @@ export const STRAT_C = [
   ['gp', '평단 아래', '평단 아래'], ['gp', '평단 +0~15%', '평단 +0~15%'], ['c_acc', '✓', '매집 흔적 있음'], ['c_cost', '✓', '평단 근처 ✓'],
   ['lo', '+10% 안', '60일 저점 근처(+10% 안)'], ['lo', '+10~30%', '60일 저점 대비 +10~30%'], ['bx', '30% 안(좁음)', '좁은 박스(60일 폭 30% 안)'],
   ['dir', '상승', '상승 분류'], ['cm', '있음', '매집봉 있음'], ['rr', '3 이상', '손익비 3↑'], ['noIns', '1', '임원 매도 공시 없음'],
+  // v233 공시의 속뜻
+  ['e_mv_mnaFund', '있음', '무자본 M&A 구조'], ['e_mv_goodNews', '있음', '조달 뒤 호재 몰림'], ['e_mv_paidUp', '있음', '납입 뒤 급등'], ['e_mv_themeFund', '있음', '테마 갈아타기+자금조달'], ['noConv', '1', '띄운 뒤 전환·대주주 매도 없음'],
 ];
-const stratHit = (t, [k, v]) => (k === 'mkNot' ? t.a?.mk && t.a.mk !== v : k === 'noIns' ? !t.a?.e_insider_s && !t.a?.e_insider : t.a?.[k] === v);
+const stratHit = (t, [k, v]) => (k === 'mkNot' ? t.a?.mk && t.a.mk !== v : k === 'noIns' ? !t.a?.e_insider_s && !t.a?.e_insider : k === 'noConv' ? !t.a?.e_mv_convPump && !t.a?.e_mv_majSell : t.a?.[k] === v);
 export function stratFind(T0, m = 'TT') {
   const seen = new Set(), L = [];
   for (const t of T0) { if (!(t.s === 'all') || !t[m] || !t.a) continue; const k = t.c + '|' + t.d; if (seen.has(k)) continue; seen.add(k); L.push(t); }
@@ -378,11 +381,15 @@ export function stratFind(T0, m = 'TT') {
   const avg = (a) => (a.length ? r1(mean(a.map((t) => t[m].r))) : null), win = (a) => (a.length ? Math.round((a.filter((t) => t[m].r > 0).length / a.length) * 100) : null), xavg = (a) => { const v = a.map((t) => t[m].x).filter((x) => x != null); return v.length ? r1(mean(v)) : null; };
   const C = STRAT_C, rules = [];
   for (let i = 0; i < C.length; i++) { rules.push([i]); for (let j = i + 1; j < C.length; j++) { if (C[i][0] === C[j][0]) continue; rules.push([i, j]); for (let k = j + 1; k < C.length; k++) { if (C[k][0] === C[i][0] || C[k][0] === C[j][0]) continue; rules.push([i, j, k]); } } }
-  const hit = (t, idx) => idx.every((i) => stratHit(t, C[i]));
+  // v233 빠르게: 조건마다 맞는 거래 표시(한 번만) → 규칙마다 맞는 거래 번호 목록(한 번만) → 달·기간별로는 그 목록만 훑음
+  const CM = C.map((c) => Uint8Array.from(L, (t) => (stratHit(t, c) ? 1 : 0)));
+  const IX = new Map(); const pos = new Map(L.map((t, i) => [t, i]));
+  const idxOf = (idx) => { const key = idx.join(','); let v = IX.get(key); if (!v) { v = []; for (let q = 0; q < L.length; q++) { let ok = 1; for (const i of idx) if (!CM[i][q]) { ok = 0; break; } if (ok) v.push(q); } IX.set(key, v); } return v; };
+  const hit = (t, idx) => { const q = pos.get(t); return q == null ? idx.every((i) => stratHit(t, C[i])) : idx.every((i) => CM[i][q]); };
   const name = (idx) => idx.map((i) => C[i][2]).join(' + ');
   // 규칙 점수: (평균 − 전체 평균) × n/(n+20) — 표본 적은 규칙은 깎음. 25건↑만
-  const score = (tr) => { const bt = tr.length ? mean(tr.map((t) => t[m].r)) : 0; const R = [];
-    for (const idx of rules) { const a = tr.filter((t) => hit(t, idx)); if (a.length < 25) continue; const ma = mean(a.map((t) => t[m].r)); R.push({ idx, na: a.length, sa: (ma - bt) * a.length / (a.length + 20), ta: r1(ma) }); }
+  const score = (tr) => { const bt = tr.length ? mean(tr.map((t) => t[m].r)) : 0; const R = []; const inTr = new Uint8Array(L.length); for (const t of tr) { const q = pos.get(t); if (q != null) inTr[q] = 1; }
+    for (const idx of rules) { const a = []; for (const q of idxOf(idx)) if (inTr[q]) a.push(L[q]); if (a.length < 25) continue; const ma = mean(a.map((t) => t[m].r)); R.push({ idx, na: a.length, sa: (ma - bt) * a.length / (a.length + 20) * (1 - 0.12 * (idx.length - 1)), ta: r1(ma) }); } // v233 조건이 많을수록 우연히 맞기 쉬움 → 조건 하나 늘 때마다 12% 깎음
     R.sort((x, y) => y.sa - x.sa || x.idx.length - y.idx.length);
     const sg = new Set(), K = []; for (const x of R) { const k = [x.na, x.ta].join('|'); if (sg.has(k)) continue; sg.add(k); K.push(x); } return K; }; // 조건을 더해도 같은 거래면 짧은 규칙만
   // ① 굴려가며 검증(walk-forward): 매달 '그 전까지'로 규칙을 고르고 '그 달'에 시험 → 고르는 방식 자체가 돈이 됐는지 (뒤 기간 선택 편향 없음)
@@ -690,7 +697,7 @@ export async function simFollow({ max = 6, budgetMs = 25000 } = {}) {
 //  · 이유를 사실로 설명 못 하면(공시도 없고 시장도 조용) 'NONE' → 표시 안 함 · 하루 최대 150건 · `mp/sim/ai`
 //  · 신호별 'AI 정리'는 7일마다(또는 거래가 30% 늘면) 1번: 통계 숫자 + 거래 해설에서 모은 공시 종류 → 3~4문장 `mp/sim/gai`
 const AI_SIGS = ['g', 'pk', 'AB', 'acc'];
-const KIND_KO = { insider_b: '임원·주요주주 장내 매수', insider_s: '임원·주요주주 장내 매도', mna: '경영권 변경', rights3: '3자배정 증자', rights: '유상증자', cb: 'CB·BW 발행', conv: '전환청구', refix: '전환가 조정', fund5: '투자조합 지분', sell: '대주주 매도', pledge: '주식 담보', fail: '철회·납입 연기', risk: '위험 공시', paid: '납입 완료', insider: '임원·주요주주 매매', tsell: '자사주 처분', bonus: '무상증자', supply: '공급계약', ceo: '대표 변경', rename: '상호 변경', agm: '주총 안건', halt: '거래정지', lock: '보호예수' };
+const KIND_KO = { insider_b: '임원·주요주주 장내 매수', insider_s: '임원·주요주주 장내 매도', mna: '경영권 변경', rights3: '3자배정 증자', rights: '유상증자', cb: 'CB·BW 발행', conv: '전환청구', refix: '전환가 조정', fund5: '투자조합 지분', sell: '대주주 매도', pledge: '주식 담보', fail: '철회·납입 연기', risk: '위험 공시', paid: '납입 완료', insider: '임원·주요주주 매매', tsell: '자사주 처분', bonus: '무상증자', supply: '공급계약', ceo: '대표 변경', rename: '상호 변경', agm: '주총 안건', halt: '거래정지', lock: '보호예수' , mv_mnaFund: '무자본 M&A 구조', mv_cbRefix: '전환가 낮추기', mv_cbMany: 'CB 남발', mv_r3Many: '3자배정 쪼개기', mv_themeFund: '테마 갈아타기+자금조달', mv_goodNews: '조달 뒤 호재 몰림', mv_paidUp: '납입 뒤 급등', mv_convPump: '띄운 뒤 전환', mv_cbBuy: 'CB 되사기', mv_ceoChurn: '대표 잦은 교체', mv_pledge: '대주주 주식 담보', mv_majSell: '대주주 지분 감소', mv_dilute: '희석 과다', mv_inquiry: '거래소 조회공시', mv_risk: '감사·횡령·관리 위험' };
 export async function simAiStep({ max = 4, budgetMs = 30000, dayCap = 150 } = {}) {
   const { getJSON, setJSON } = await import('./store.mjs');
   const { claude, hasAI } = await import('./ai.mjs');
