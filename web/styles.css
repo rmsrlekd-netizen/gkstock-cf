@@ -2411,3 +2411,8 @@ body.pbm-open{overflow:hidden}
 .wn-n{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.wn-big{font-size:1.35rem;font-weight:700}.wn-n small{color:var(--muted);font-size:.78rem}
 .wn-ex{display:flex;flex-wrap:wrap;gap:6px;font-size:.8rem}.wn-ex .ca-co{cursor:pointer;background:rgba(255,255,255,.05);border-radius:6px;padding:1px 6px}
 .vp{display:inline-block;margin:.25rem .35rem 0 0;font-size:.75rem;padding:1px 7px;border-radius:999px}.vp-w{background:rgba(239,68,68,.14);color:#fca5a5}.vp-l{background:rgba(59,130,246,.16);color:#93c5fd}
+/* v226 움직이는 일봉 차트 */
+.kchart{margin-top:.6rem}.kc-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}.kc-tip{font-size:.78rem;min-height:1.1em}
+.kc-box{position:relative;height:380px;border-radius:12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);overflow:hidden}
+@media (max-width:640px){.kc-box{height:300px}}
+.rp-chart{margin-bottom:.8rem}

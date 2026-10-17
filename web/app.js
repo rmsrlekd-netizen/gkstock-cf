@@ -2424,8 +2424,56 @@
     const pre = ex.includes('NASDAQ') ? 'NASDAQ:' : ex.includes('NYSE') ? 'NYSE:' : ex.includes('CBOE') ? 'CBOE:' : '';
     return pre + String(t).replace('-', '.');
   }
+  // v226 움직이는 국장 일봉 차트 (GK: 네이버처럼 끌고·확대) — /api/candles(네이버 일봉, 감자·분할 보정) + lightweight-charts. 못 불러오면 예전 네이버 그림으로
+  const KC_IMG = (t) => `<div style="background:#fff;border-radius:12px;overflow:hidden"><img src="https://ssl.pstatic.net/imgfinance/chart/item/candle/day/${esc(t)}.png?t=${(Date.now() / 6e4) | 0}" alt="일봉 차트" style="width:100%;display:block" referrerpolicy="no-referrer"></div>`;
+  function kchartHTML(t, opt = {}) {
+    const j = (v) => esc(JSON.stringify(v || []));
+    return `<div class="kchart" data-kchart="${esc(t)}" data-kl="${j(opt.lines)}" data-km="${j(opt.marks)}"><div class="kc-bar"><div class="pb-seg">${[[66, '3개월'], [130, '6개월'], [250, '1년'], [0, '전체']].map(([n, l]) => `<button data-kc-n="${n}" class="${n === 130 ? 'on' : ''}">${l}</button>`).join('')}</div><span class="kc-tip muted sm">끌어서 이동 · 휠/두 손가락으로 확대</span></div><div class="kc-box"><div class="loading"><span class="spin"></span>차트 불러오는 중…</div></div></div>`;
+  }
+  let LWC = null;
+  const lwcLoad = () => (window.LightweightCharts ? Promise.resolve(window.LightweightCharts) : (LWC ||= new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js'; sc.onload = () => ok(window.LightweightCharts); sc.onerror = () => { LWC = null; no(new Error('차트 라이브러리')); }; document.head.appendChild(sc); })));
+  async function kchartMount(el) {
+    el.dataset.on = '1';
+    const code = el.dataset.kchart, box = el.querySelector('.kc-box');
+    let j, L;
+    try { [j, L] = await Promise.all([getJSON(`/api/candles?code=${encodeURIComponent(code)}`, { timeout: 15000 }), lwcLoad()]); if (!j?.b?.length) throw new Error('일봉 없음'); }
+    catch { box.innerHTML = KC_IMG(code); el.querySelector('.kc-bar')?.remove(); return; }
+    if (!el.isConnected) return;
+    box.innerHTML = '';
+    const B = j.b.map(([d, o, h, l, c, v]) => ({ time: d, open: o, high: h, low: l, close: c, v }));
+    const css = getComputedStyle(document.documentElement), txt = css.getPropertyValue('--muted').trim() || '#94a3b8';
+    const ch = L.createChart(box, { autoSize: true, layout: { background: { type: 'solid', color: 'transparent' }, textColor: txt, fontSize: 11 }, grid: { vertLines: { color: 'rgba(148,163,184,.08)' }, horzLines: { color: 'rgba(148,163,184,.08)' } },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.25 } }, timeScale: { borderVisible: false, rightOffset: 3 }, crosshair: { mode: 0 }, localization: { locale: 'ko-KR', priceFormatter: (p) => Math.round(p).toLocaleString('ko-KR') },
+      handleScroll: { vertTouchDrag: false } });
+    const cs = ch.addCandlestickSeries({ upColor: '#ef4444', downColor: '#3b82f6', borderUpColor: '#ef4444', borderDownColor: '#3b82f6', wickUpColor: '#ef4444', wickDownColor: '#3b82f6' });
+    cs.setData(B);
+    const vs = ch.addHistogramSeries({ priceScaleId: 'v', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
+    ch.priceScale('v').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    vs.setData(B.map((x) => ({ time: x.time, value: x.v, color: x.close >= x.open ? 'rgba(239,68,68,.45)' : 'rgba(59,130,246,.45)' })));
+    for (const [n, col] of [[5, '#22c55e'], [20, '#ef4444'], [60, '#f59e0b'], [120, '#a855f7']]) {
+      if (B.length < n) continue; let sum = 0; const out = [];
+      B.forEach((x, i) => { sum += x.close; if (i >= n) sum -= B[i - n].close; if (i >= n - 1) out.push({ time: x.time, value: sum / n }); });
+      ch.addLineSeries({ color: col, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }).setData(out);
+    }
+    let lines = [], marks = []; try { lines = JSON.parse(el.dataset.kl || '[]'); marks = JSON.parse(el.dataset.km || '[]'); } catch {}
+    for (const [p, t, col] of lines) if (p > 0) cs.createPriceLine({ price: p, color: col || '#f59e0b', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: t });
+    let hi = B[0], lo = B[0]; for (const x of B) { if (x.high > hi.high) hi = x; if (x.low < lo.low) lo = x; }
+    const days = new Set(B.map((x) => x.time));
+    const mk = [{ time: hi.time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: `최고 ${Math.round(hi.high).toLocaleString('ko-KR')}` }, { time: lo.time, position: 'belowBar', color: '#3b82f6', shape: 'arrowUp', text: `최저 ${Math.round(lo.low).toLocaleString('ko-KR')}` },
+      ...marks.filter(([d]) => days.has(d)).map(([d, t, col]) => ({ time: d, position: 'aboveBar', color: col || '#a78bfa', shape: 'circle', text: t }))];
+    mk.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0)); cs.setMarkers(mk);
+    const tip = el.querySelector('.kc-tip'), byT = new Map(B.map((x, i) => [x.time, i]));
+    ch.subscribeCrosshairMove((pm) => { const i = pm?.time ? byT.get(typeof pm.time === 'string' ? pm.time : `${pm.time.year}-${String(pm.time.month).padStart(2, '0')}-${String(pm.time.day).padStart(2, '0')}`) : null;
+      if (i == null) { tip.textContent = '끌어서 이동 · 휠/두 손가락으로 확대'; return; }
+      const x = B[i], pv = B[i - 1]?.close, f = (v) => Math.round(v).toLocaleString('ko-KR'), pc = pv ? ((x.close / pv - 1) * 100) : null;
+      tip.innerHTML = `${x.time} · 시 ${f(x.open)} 고 ${f(x.high)} 저 ${f(x.low)} 종 <b class="${pc > 0 ? 'up' : pc < 0 ? 'down' : ''}">${f(x.close)}${pc != null ? ` (${pc > 0 ? '+' : ''}${pc.toFixed(2)}%)` : ''}</b> · 거래량 ${f(x.v)}`; });
+    const show = (n) => { if (!n || n >= B.length) ch.timeScale().fitContent(); else ch.timeScale().setVisibleLogicalRange({ from: B.length - n, to: B.length + 2 }); };
+    show(130);
+    el.querySelectorAll('[data-kc-n]').forEach((b) => b.addEventListener('click', () => { el.querySelectorAll('[data-kc-n]').forEach((z) => z.classList.toggle('on', z === b)); show(+b.dataset.kcN); }));
+  }
+  new MutationObserver(() => { for (const el of document.querySelectorAll('.kchart:not([data-on])')) kchartMount(el); }).observe(document.body, { childList: true, subtree: true });
   function chartHTML(m, t, ex) {
-    if (m === 'KR') return `<div style="background:#fff;border-radius:12px;overflow:hidden;margin-top:.6rem"><img src="https://ssl.pstatic.net/imgfinance/chart/item/candle/day/${esc(t)}.png?t=${(Date.now() / 6e4) | 0}" alt="일봉 차트" style="width:100%;display:block" referrerpolicy="no-referrer"></div>`;
+    if (m === 'KR') return kchartHTML(t);
     const url = `https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol(t, ex))}&interval=D&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=12153a&theme=dark&style=1&timezone=Asia%2FSeoul&withdateranges=1&locale=kr`;
     return `<div class="chart"><iframe src="${url}" loading="lazy" title="차트"></iframe></div>`;
   }
@@ -3301,10 +3349,15 @@
       x.pex ? tile('털기 후 상승 가능성', esc(x.pex.lv), `근거 ${x.pex.su} vs ${x.pex.sd}${rk ? ' · ' + RBS[rk.type] : ''}`, 'pex-' + ({ 높음: 'h', 중간: 'm', 낮음: 'l' }[x.pex.lv])) : tile('반등 성격', rk ? RBS[rk.type] : '—', rk ? `바닥 대비 +${rk.rb.up}%` : '하락 뒤 반등 아님', rk ? 'rb-' + rk.type : ''),
       tile('투자경고 요건까지', f.wf?.min ? (f.wf.min.pct <= 0 ? '이미 도달' : f.wf.min.pct > 30 ? '아직 멂' : `+${f.wf.min.pct}%`) : '—', f.wf?.min ? `${f.wf.min.pct > 30 ? `내일 +${f.wf.min.pct}% 더 올라야 ` : ''}${esc(f.wf.min.lbl)} 요건 (근사)` : '', f.wf?.min && f.wf.min.pct <= 15 ? 'warn' : ''),
     ].join('');
+    // v226 레이더 차트: 평단·손절·1차 목표 가로선 + 공시 날짜 점 (과거 흐름과 비교)
+    const radarChart = (x, d) => { const ymd = (ms) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
+      const lines = [[d.cost?.rep || d.cost?.low, '세력 평단', '#f59e0b'], [d.rr?.s, '손절', '#3b82f6'], [d.rr?.t, '1차 목표', '#ef4444']].filter((z) => z[0] > 0);
+      const marks = (x.events || []).filter((e) => e.ms && MP_EV[e.kind]).slice(0, 25).map((e) => [ymd(e.ms), MP_EV[e.kind].replace(/\s.*$/, ''), ['conv', 'majsell', 'pledge', 'risk'].includes(e.kind) ? '#60a5fa' : '#f472b6']);
+      return `<div class="rp-chart">${kchartHTML(x.code, { lines, marks })}<p class="muted sm">점선 = 추정 세력 평단·손절·1차 목표 · 분홍 점 = 판 깔기 공시 · 파랑 점 = 전환청구·지분 매도 같은 물량 공시</p></div>`; };
     const TABS = [['price', '💰 가격·목표'], ['check', '✅ 체크리스트'], ['why', '📈📉 근거'], ['chart', '🕯 차트 신호'], ['docs', '📄 공시'], ['ai', '🤖 AI·기록']];
     const tab = TABS.some(([t]) => t === S.rpTab) ? S.rpTab : 'price';
     const planBox = x.plan ? `<div class="pf-planbox"><h5>💼 버티기 계획 <small class="muted">세력이 일부러 밀어 손절을 받아내는 '흔들기'를 버티는 기준 · ⭐ 내 세력주 탭에서 계좌 금액을 넣으면 살 금액까지 계산</small></h5>${planHTML(x.plan)}</div>` : '';
-    const body = { price: P.accLine + planBox + P.tgtBox, check: P.ckBox, why: P.dirBox, chart: (P.pexBox + P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>', docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
+    const body = { price: P.accLine + planBox + P.tgtBox, check: P.ckBox, why: P.dirBox, chart: radarChart(x, d) + ((P.pexBox + P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>'), docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
     box.innerHTML = `<div class="rp">
       <div class="rp-nav"><button class="btn sm" data-rp-back>← 작전 레이더</button><span class="muted sm">${x.at ? esc(rel(x.at)) + ' 분석' : ''}${j.cached ? ' · 저장된 결과' : ''}${x.migrated ? ' · 새 계산 방식으로 방금 갱신' : ''}</span></div>
       <div class="rp-head">
