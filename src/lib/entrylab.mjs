@@ -109,28 +109,43 @@ function cell(L, ex) { const v = L.map((t) => t.R[ex]).filter((x) => x != null);
 const failOf = (L) => { const a = L.filter((t) => t.fail !== 0); return a.length ? Math.round((a.filter((t) => t.fail === 1).length / a.length) * 100) : null; };
 
 /** 자리 × 파는 법 표 + 앞 기간에서 고른 최선의 파는 법을 뒤 기간에서 확인 */
-export function entryStudy(rows) {
-  const L = rows.map(ROW);
-  const N = L.length; if (N < 200) return { n: N, need: 200 };
-  const ds = [...new Set(L.map((t) => t.d))].sort(), cut = ds[Math.floor(ds.length / 2)];
-  const A = L.filter((t) => t.d < cut), Z = L.filter((t) => t.d >= cut);
-  const base = L.filter((t) => t.s === 'rnd'), baseA = A.filter((t) => t.s === 'rnd'), baseZ = Z.filter((t) => t.s === 'rnd');
-  const out = [];
+/** v242 메모리 적게: 사건 줄을 한 번에 다 펼치지 않고 조각마다 더해 가며 통계 (20만 줄도 Workers 128MB 안)
+ *  feed(cb): 줄 묶음(배열)을 차례로 cb에 넘기는 함수 — 두 번 부름(① 날짜 중간값 ② 더하기) */
+const HB = 0.5, HLO = -200, HN = 1001; // 0.5%p 칸 −200~+300%
+const hAdd = (h, v) => { let i = Math.round((v - HLO) / HB); if (i < 0) i = 0; if (i >= HN) i = HN - 1; h[i]++; };
+const hMed = (h, n) => { if (!n) return null; let c = 0; const t = Math.floor(n / 2) + 1; for (let i = 0; i < HN; i++) { c += h[i]; if (c >= t) return r1(HLO + i * HB); } return null; };
+const mkC = () => ({ n: 0, sum: 0, win: 0, big: 0, h: new Uint32Array(HN) });
+const cAdd = (c, v) => { if (v == null || !isFinite(v)) return; c.n++; c.sum += v; if (v > 0) c.win++; if (v <= -15) c.big++; hAdd(c.h, v); };
+const cOut = (c) => (c && c.n ? { n: c.n, avg: r1(c.sum / c.n), med: hMed(c.h, c.n), win: Math.round((c.win / c.n) * 100), big: Math.round((c.big / c.n) * 100) } : null);
+const CTX = { mk상승: (t) => t[4] === '상승', mk보합: (t) => t[4] === '보합', mk하락: (t) => t[4] === '하락', pk있음: (t) => t[5] === 1, pk없음: (t) => t[5] === 0, mna: (t) => t[6] === 1, gap하락: (t) => t[3] <= -3, gap보합: (t) => t[3] > -3 && t[3] < 3, gap상승: (t) => t[3] >= 3 };
+const CTX_K = Object.keys(CTX);
+export async function entryStudyFeed(feed) {
+  const dc = new Map(); let N = 0;
+  await feed((rows) => { for (const t of rows) { dc.set(t[1], (dc.get(t[1]) || 0) + 1); N++; } });
+  if (N < 200) return { n: N, need: 200 };
+  const ds = [...dc.keys()].sort(); const cut = ds[Math.floor(ds.length / 2)];
+  const S = {}; const get = (s) => (S[s] ||= { n: 0, A: {}, Z: {}, G: {}, f1: 0, fN: 0, mf: new Uint32Array(HN), mn: new Uint32Array(HN), xs: 0, xn: 0, ctx: {} });
+  await feed((rows) => { for (const t of rows) { const g = get(t[2]); g.n++; const half = t[1] < cut ? g.A : g.Z;
+    for (let j = 0; j < EX_KEYS.length; j++) { const k = EX_KEYS[j], v = t[10 + j]; cAdd(g.G[k] ||= mkC(), v); cAdd(half[k] ||= mkC(), v); }
+    if (t[7] === 1) g.f1++; if (t[7] !== 0) g.fN++; if (t[8] != null) hAdd(g.mf, t[8]); if (t[9] != null) hAdd(g.mn, t[9]); const x = t[10 + EX_KEYS.length]; if (x != null && isFinite(x)) { g.xs += x; g.xn++; }
+    for (const cn of CTX_K) if (CTX[cn](t)) { const z = (g.ctx[cn] ||= { f1: 0, fN: 0, c: {} }); if (t[7] === 1) z.f1++; if (t[7] !== 0) z.fN++; for (let j = 0; j < EX_KEYS.length; j++) cAdd(z.c[EX_KEYS[j]] ||= mkC(), t[10 + j]); } } });
+  const fOf = (f1, fN) => (fN ? Math.round((f1 / fN) * 100) : null);
+  const B = S.rnd || get('rnd'); const out = [];
   for (const s of Object.keys(SETUPS)) {
-    const G = L.filter((t) => t.s === s); if (G.length < 20) { out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: G.length, thin: true }); continue; }
-    const GA = A.filter((t) => t.s === s), GZ = Z.filter((t) => t.s === s);
-    const grid = Object.fromEntries(EX_KEYS.map((k) => [k, cell(G, k)]));
-    // 앞 기간에서 고른 파는 법 (기준선 대비 평균이 가장 좋은 것) → 뒤 기간에서 확인
-    let best = null; for (const k of EX_KEYS) { const a = cell(GA, k), b = cell(baseA, k); if (!a || a.n < 15 || !b) continue; const edge = a.avg - b.avg; if (!best || edge > best.edgeA) best = { k, edgeA: r1(edge), a }; }
+    const g = S[s]; if (!g || g.n < 20) { out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: g?.n || 0, thin: true }); continue; }
+    const grid = Object.fromEntries(EX_KEYS.map((k) => [k, cOut(g.G[k])]));
+    let best = null; for (const k of EX_KEYS) { const a = cOut(g.A[k]), b = cOut(B.A[k]); if (!a || a.n < 15 || !b) continue; const edge = a.avg - b.avg; if (!best || edge > best.edgeA) best = { k, edgeA: r1(edge), a }; }
     let verify = null;
-    if (best) { const z = cell(GZ, best.k), zb = cell(baseZ, best.k); if (z && zb) verify = { k: best.k, ko: EXITS[best.k].ko, a: best.a, z, zb: zb.avg, edgeZ: r1(z.avg - zb.avg), ok: z.n >= 15 && best.a.n >= 15 && z.avg > 0 && z.avg > zb.avg && best.edgeA > 0 }; }
-    const ctx = (f) => { const g = G.filter(f); const ex = verify?.k || 'tr15'; const c = cell(g, ex); return c && c.n >= 10 ? { ...c, fail: failOf(g) } : null; };
-    out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: G.length, fail: failOf(G), mf: r1(med(G.map((t) => t.mf))), mn: r1(med(G.map((t) => t.mn))), x: (() => { const v = G.map((t) => t.x).filter((x) => x != null); return v.length ? r1(mean(v)) : null; })(), grid, best: verify,
-      by: { mk상승: ctx((t) => t.mk === '상승'), mk보합: ctx((t) => t.mk === '보합'), mk하락: ctx((t) => t.mk === '하락'), pk있음: ctx((t) => t.pk === 1), pk없음: ctx((t) => t.pk === 0), mna: ctx((t) => t.mna === 1), gap하락: ctx((t) => t.gap <= -3), gap보합: ctx((t) => t.gap > -3 && t.gap < 3), gap상승: ctx((t) => t.gap >= 3) } });
+    if (best) { const z = cOut(g.Z[best.k]), zb = cOut(B.Z[best.k]); if (z && zb) verify = { k: best.k, ko: EXITS[best.k].ko, a: best.a, z, zb: zb.avg, edgeZ: r1(z.avg - zb.avg), ok: z.n >= 15 && best.a.n >= 15 && z.avg > 0 && z.avg > zb.avg && best.edgeA > 0 }; }
+    const ex = verify?.k || 'tr15';
+    const by = Object.fromEntries(CTX_K.map((cn) => { const z = g.ctx[cn]; const c = z ? cOut(z.c[ex]) : null; return [cn, c && c.n >= 10 ? { ...c, fail: fOf(z.f1, z.fN) } : null]; }));
+    out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: g.n, fail: fOf(g.f1, g.fN), mf: hMed(g.mf, g.n), mn: hMed(g.mn, g.n), x: g.xn ? r1(g.xs / g.xn) : null, grid, best: verify, by });
   }
   const rk = out.filter((x) => x.best).sort((a, b) => (b.best.ok - a.best.ok) || (b.best.edgeZ - a.best.edgeZ));
-  return { n: N, cut, from: ds[0], to: ds[ds.length - 1], base: { n: base.length, fail: failOf(base), grid: Object.fromEntries(EX_KEYS.map((k) => [k, cell(base, k)])) }, list: [...rk, ...out.filter((x) => !x.best)], exits: EXITS };
+  return { n: N, cut, from: ds[0], to: ds[ds.length - 1], base: { n: B.n, fail: fOf(B.f1, B.fN), grid: Object.fromEntries(EX_KEYS.map((k) => [k, cOut(B.G[k])])) }, list: [...rk, ...out.filter((x) => !x.best)], exits: EXITS };
 }
+/** 예전 방식(줄 배열 하나) — 테스트용 */
+export function entryStudy(rows) { return entryStudyFeed(async (cb) => cb(rows)); }
 
 /** 지금(마지막 3거래일) 뜬 자리 — 실시간 분석용 */
 export function entryNow(B, days = 3) {
@@ -140,10 +155,10 @@ export function entryNow(B, days = 3) {
   return out;
 }
 /** 학습 결과(검증된 자리) 저장·읽기 */
-export async function saveEntLearn(st) {
+export async function saveEntLearn(st, src = 'bt') {
   if (!st?.list) return;
   const m = {}; for (const x of st.list) if (x.best) m[x.s] = { ok: x.best.ok, ex: x.best.k, exKo: x.best.ko, avg: x.best.z.avg, win: x.best.z.win, n: x.best.z.n, base: x.best.zb, fail: x.fail, mk: { 상승: x.by?.mk상승?.avg ?? null, 보합: x.by?.mk보합?.avg ?? null, 하락: x.by?.mk하락?.avg ?? null } };
-  await setJSON('mp/entlearn', { at: Date.now(), n: st.n, m }).catch(() => {});
+  await setJSON('mp/entlearn', { at: Date.now(), n: st.n, m, src }).catch(() => {});
 }
 export async function loadEntLearn() { return (await getJSON('mp/entlearn').catch(() => null)) || null; }
 /** 종목에 붙일 설명: 지금 뜬 자리 + 과거 성적 */
@@ -151,18 +166,56 @@ export function entryView(ent, EL) {
   return (ent || []).filter((e) => e.s !== 'rnd').map((e) => { const m = EL?.m?.[e.s]; return { ...e, ko: SETUPS[e.s]?.ko || e.s, t: SETUPS[e.s]?.t || '', st: m ? { ok: m.ok, ex: m.exKo, avg: m.avg, win: m.win, n: m.n, base: m.base, fail: m.fail, mk: m.mk } : null }; });
 }
 
-/** 과거 재현의 자리 사건 전부로 통계 (6시간 캐시 · 사건 수가 같으면 그대로) */
+/** 자리 사건 통계 (6시간 캐시 · 사건 수가 같으면 그대로)
+ *  v242: 4년치 공시 과거 재현(mp/bt/ent)이 끝나기 전엔 '차트만 먼저'(mp/bt/entp, entPreStep) 결과를 씀 — 자리는 일봉만으로 정해지니 공시를 기다릴 필요 없음 */
 export async function entSummary({ force = false } = {}) {
-  const { partsLoad } = await import('./btstore.mjs');
-  const meta = await getJSON('mp/bt/ent').catch(() => null);
-  const cache = await getJSON('mp/entsum').catch(() => null);
-  if (!force && cache && cache.n === (meta?.n || 0) && Date.now() - cache.at < 6 * 3600e3) return cache.data;
-  const R = await partsLoad('mp/bt/ent');
-  const data = entryStudy(R?.list || []);
-  data.v = R?.v || null;
-  await setJSON('mp/entsum', { at: Date.now(), n: meta?.n || 0, data }).catch(() => {});
-  if (data.list) await saveEntLearn(data);
-  return data;
+    const [metaB, metaP, bt, pre, cache] = await Promise.all(['mp/bt/ent', 'mp/bt/entp', 'mp/bt/state', 'mp/entpre', 'mp/entsum'].map((k) => getJSON(k).catch(() => null)));
+  const useB = !!(bt?.done && !bt.wait && !bt.prep && metaB?.v === bt.v && (metaB?.n || 0) >= 200);
+  const src = useB ? 'bt' : 'pre', base = useB ? 'mp/bt/ent' : 'mp/bt/entp', meta = useB ? metaB : metaP;
+  const prog = pre ? { pos: pre.pos || 0, of: pre.queue?.length || 0, done: !!pre.done, n: metaP?.n || 0 } : null;
+  if (!force && cache && cache.src === src && cache.n === (meta?.n || 0) && Date.now() - cache.at < 6 * 3600e3) return { ...cache.data, pre: prog };
+  const parts = meta?.parts ?? 0;
+  const data = await entryStudyFeed(async (cb) => { if (meta && meta.parts == null) { cb(meta.t || meta.rows || meta.r || []); return; } for (let i = 0; i < parts; i++) cb((await getJSON(`${base}/p${i}`).catch(() => null)) || []); });
+  data.v = meta?.v || null; data.src = src;
+  await setJSON('mp/entsum', { at: Date.now(), n: meta?.n || 0, src, data }).catch(() => {});
+  if (data.list) await saveEntLearn(data, src);
+  return { ...data, pre: prog };
+}
+
+/** v242 🎯 차트만 먼저 — 시총 2조 미만 국장 종목 일봉 4년치로 자리 사건만 계산 (공시 조건 없음)
+ *  3분 크론, 한 번에 16종목(4개씩 동시) · DB 느리면 쉼 · 레이더 정기 분석 중엔 쉼 */
+export const PRE_V = 1;
+export async function entPreStep({ per = 16 } = {}) {
+  const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 800) return { skip: 'db slow' };
+  const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return { skip: 'radar busy' };
+  let st = await getJSON('mp/entpre').catch(() => null);
+  const { partsReset, partsAppend } = await import('./btstore.mjs');
+  if (!st || st.v !== PRE_V) {
+    const idx = (await getJSON('mp/idx').catch(() => null)) || [];
+    let snap = null; for (const d of idx.slice(0, 5)) { snap = (await getJSON(`mp/snap/${d}`).catch(() => null))?.rows; if (snap) break; }
+    if (!snap) return { skip: 'no snap' };
+    const rank = (await getJSON('mp/rank').catch(() => null)) || {};
+    const h = (c) => { let x = 7; for (const ch of c) x = (x * 31 + ch.charCodeAt(0)) % 1000003; return x; };
+    const q = Object.entries(snap).filter(([c, r]) => { const v = r?.[6]; const eok = v > 1e7 ? v / 1e8 : v; return /^\d{6}$/.test(c) && !/스팩|SPAC/i.test(r?.[0] || '') && eok > 0 && eok < 20000; })
+      .map(([c, r]) => [c, r[1] === 'P' ? 'P' : 'Q']).sort((a, b) => (rank[a[0]] ? 0 : 1) - (rank[b[0]] ? 0 : 1) || h(a[0]) - h(b[0])).slice(0, 1500);
+    st = { v: PRE_V, queue: q, pos: 0, done: false, started: Date.now(), n: 0 };
+    await partsReset('mp/bt/entp', PRE_V); await setJSON('mp/entpre', st);
+    return { started: q.length };
+  }
+  if (st.done) return null;
+  const { _bars, indexDaily } = await import('./manip.mjs');
+  const ix = await indexDaily().catch(() => ({}));
+  const part = st.queue.slice(st.pos, st.pos + per), rows = [];
+  for (let i = 0; i < part.length; i += 4) {
+    const res = await Promise.all(part.slice(i, i + 4).map(([c, mkt]) => _bars(c, 1000).then((B) => entryEvents(B, { code: c, ix, mkt })).catch(() => [])));
+    for (const L of res) for (const r of L) { r[5] = null; r[6] = null; rows.push(r); } // 공시 조건은 모름 (판 깔기·무자본 M&A 칸 비움)
+  }
+  if (rows.length) await partsAppend('mp/bt/entp', rows, { per: 4000, maxParts: 80, v: PRE_V }).catch((e) => console.warn('entp', e.message));
+  st.pos += part.length; st.n = (st.n || 0) + rows.length; st.at = Date.now();
+  if (st.pos >= st.queue.length) { st.done = true; st.doneAt = Date.now(); }
+  await setJSON('mp/entpre', st);
+  if (st.done) { try { await entSummary({ force: true }); } catch (e) { console.warn('entp sum', e.message); } }
+  return { pos: st.pos, of: st.queue.length, rows: rows.length };
 }
 
 /** v239 지금 들어가는 자리 훑기 — 랭킹 종목 일봉을 3분에 10개씩 받아 최근 3거래일 자리를 `mp/entnow`에 (DB 쓰기는 한 번에 1건)

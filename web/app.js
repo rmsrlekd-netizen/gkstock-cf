@@ -3736,7 +3736,9 @@
   async function renderEnt(force) {
     const box = $('#entBox'); if (!box) return;
     let j; try { j = await mpGet('mp=ent' + (force ? '&force=1' : ''), 90000); } catch (e) { box.innerHTML = `<p class="muted sm">타점 연구를 못 불러옴: ${esc(e.message)}</p>`; return; }
-    if (j.need || !j.list) { box.innerHTML = `<div class="sx"><div class="sx-head"><h4>🎯 타점 연구</h4></div><p class="sx-empty">아직 자리 사건이 ${fmtInt(j.n || 0)}개예요 — 4년치 과거 재현이 돌면서 채워져요 (200개 넘으면 표가 나와요). 들어가는 자리 10가지 × 파는 법 9가지를 모두 시험해요.</p></div>`; return; }
+    const P = j.pre, preTxt = P && !P.done && P.of ? `<br><small class="muted">📊 차트만 먼저 계산 중: ${fmtInt(P.pos)} / ${fmtInt(P.of)}종목 · 사건 ${fmtInt(P.n)}개 (3분에 16종목 — 끝나면 표가 바뀌어요)</small>` : '';
+    if (j.need || !j.list) { box.innerHTML = `<div class="sx"><div class="sx-head"><h4>🎯 타점 연구</h4></div><p class="sx-empty">아직 자리 사건이 ${fmtInt(j.n || 0)}개예요 — 차트(일봉 4년치)로 먼저 계산하고 있어요 (200개 넘으면 표가 나와요). 들어가는 자리 10가지 × 파는 법 9가지를 모두 시험해요.${preTxt}</p></div>`; return; }
+    const srcTxt = j.src === 'pre' ? `<p class="sm" style="margin:6px 0">📊 <b>차트만 먼저 계산한 결과</b> — 시총 2조 미만 국장 종목 일봉 4년치. 자리는 일봉만으로 정해져서 공시를 기다리지 않았어요. 단, '판 깔기 공시 있음·무자본 M&A' 같은 공시 조건별 성적은 4년치 공시가 다 차고 과거 재현이 끝나면 나와요. 지금 상장된 종목만이라 상장폐지된 종목은 빠져 있어요(결과가 조금 좋게 나올 수 있음).</p>${preTxt}` : '';
     const B = j.base, EX = j.exits || {};
     const g = (c) => (c ? `<b class="${dirCls(c.avg)}">${sgn(c.avg)}</b><small>승률 ${c.win}% · ${fmtInt(c.n)}번${c.big ? ` · −15%↓ ${c.big}%` : ''}</small>` : '<small class="muted">—</small>');
     const ctxS = (x) => { const b = x.by || {}; const f = (k, l) => (b[k] ? `${l} ${sgn(b[k].avg)}(${b[k].n})` : null); return [f('mk상승', '상승장'), f('mk보합', '보합장'), f('mk하락', '하락장'), f('pk있음', '판 깔기 공시 있음'), f('pk없음', '공시 없음'), f('mna', '무자본 M&A 구조'), f('gap하락', '시가 −3%↓'), f('gap상승', '시가 +3%↑')].filter(Boolean).join(' · '); };
@@ -3747,8 +3749,8 @@
       <p class="muted sm">${esc(x.t)}</p><p class="sm">${ctxS(x) || ''}</p>
       <div class="en-grid">${Object.keys(EX).map((k) => `<div class="en-c${x.best?.k === k ? ' on' : ''}"><em>${esc(EX[k].ko)}</em>${g(x.grid?.[k])}</div>`).join('')}</div></details>`;
     box.innerHTML = `<div class="sx"><div class="sx-head"><h4>🎯 타점 연구</h4><small class="muted">어떤 종목이든 '들어가는 자리'가 뜬 다음 날 시가에 샀다면 · 파는 법 9가지 · 비용 0.5% · ${esc(j.from || '')}~${esc(j.to || '')} · 사건 ${fmtInt(j.n)}개 <button class="btn sm" data-ent-re>다시 계산</button></small></div>
-      <p class="sx-sum">자리마다 <b>앞 기간(~${esc(j.cut)})</b>에서 가장 좋았던 파는 법을 고르고, <b>안 본 뒤 기간</b>에서 '아무 날이나 산 것'(같은 파는 법)보다 나았는지 확인해요. ✅만 랭킹 '🎯 지금 좋은 타점'과 종목 페이지에 써요.<br><small class="muted">비교 기준(아무 날이나): 최고점 −15%/20일 ${B?.grid?.tr15 ? sgn(B.grid.tr15.avg) : '-'} · 실패 ${B?.fail ?? '-'}% · ${fmtInt(B?.n || 0)}번. 줄을 누르면 파는 법 9가지 전부와 시장 국면·공시별 성적.</small></p>
-      <div class="en-list">${j.list.map(row).join('')}</div></div>`;
+      <p class="sx-sum">자리마다 <b>앞 기간(~${esc(j.cut)})</b>에서 가장 좋았던 파는 법을 고르고, <b>안 본 뒤 기간</b>에서 '아무 날이나 산 것'(같은 파는 법)보다 나았는지 확인해요. ✅는 랭킹 '🎯 지금 들어가는 자리' 맨 위와 종목 페이지에 표시돼요.<br><small class="muted">비교 기준(아무 날이나): 최고점 −15%/20일 ${B?.grid?.tr15 ? sgn(B.grid.tr15.avg) : '-'} · 실패 ${B?.fail ?? '-'}% · ${fmtInt(B?.n || 0)}번. 줄을 누르면 파는 법 9가지 전부와 시장 국면·공시별 성적.</small></p>
+      ${srcTxt}<div class="en-list">${j.list.map(row).join('')}</div></div>`;
   }
   document.addEventListener('click', (ev) => { if (ev.target.closest?.('[data-ent-re]')) renderEnt(true); });
   // v233 🔬 연구실 — ① 적발 사례 정답지 ② 대세상승(+100%↑) 해부 ③ 공시의 속뜻 사전 (관리자 전용 · 공개 금지)
