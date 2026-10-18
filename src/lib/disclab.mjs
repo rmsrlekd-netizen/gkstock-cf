@@ -32,6 +32,10 @@ export function discStudy(rows) {
   const ds = R.map((r) => r[1]).sort(); const cut = ds[Math.floor(ds.length / 2)];
   const rate = (L) => { const w = L.filter((r) => r[3] === 'w').length, l = L.filter((r) => r[3] === 'l').length; return { n: L.length, w: Math.round((w / L.length) * 100), l: Math.round((l / L.length) * 100) }; };
   const base = rate(R), baseA = rate(R.filter((r) => r[1] < cut)), baseZ = rate(R.filter((r) => r[1] >= cut));
+  const wk = (d) => Math.floor(Date.parse(d) / (7 * DAY));
+  // 같은 주에 판정된 종목은 시장 따라 같이 움직임 → 주 단위로 묶은 표준오차로 '전체보다 정말 높은가' t값 (조합을 많이 보므로 3 이상만 '확실함')
+  const tOf = (L, key, p0) => { const G = new Map(); for (const r of L) { const z = G.get(wk(r[1])) || [0, 0]; z[0]++; if (r[3] === key) z[1]++; G.set(wk(r[1]), z); } const n = L.length, p = L.filter((r) => r[3] === key).length / n; let v = 0; for (const [, [m, k]] of G) v += (k - m * p) ** 2; const g = G.size; if (g < 2) return null; const se = Math.sqrt((v * g) / (g - 1)) / n; return se > 0 ? r1((p - p0 / 100) / se) : null; };
+  const cov = Math.round((R.filter((r) => r[2].some((k) => k.startsWith('c:'))).length / N) * 100);
   const idx = new Map(); R.forEach((r, i) => { for (const k of r[2]) { const a = idx.get(k) || []; a.push(i); idx.set(k, a); } });
   const q = (a, f) => { if (a.length < 5) return null; const b = [...a].sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * f))]; };
   const judge = (ids) => {
@@ -46,17 +50,68 @@ export function discStudy(rows) {
     // 진입 자리: 그날 차트 자리가 떠 있던 경우의 '크게 감' 비율 (15번↑)
     const es = {}; for (const r of L) for (const s of r[8] || []) (es[s] ||= []).push(r);
     const ent = Object.entries(es).filter(([, a]) => a.length >= 15).map(([s, a]) => ({ s, ...rate(a) })).sort((x, y) => y.w - x.w).slice(0, 3);
-    return { ...all, lift, fl, a, z, good: la >= 1.2 && lz >= 1.2 && all.w > base.w, bad: fa >= 1.2 && fz >= 1.2 && all.l > base.l, chart, ent, failDays: q(L.filter((r) => r[3] === 'l').map((r) => r[5]).filter((v) => v != null), 0.5) };
+    const good = la >= 1.2 && lz >= 1.2 && all.w > base.w, bad = fa >= 1.2 && fz >= 1.2 && all.l > base.l; const tw = tOf(L, 'w', base.w), tl = tOf(L, 'l', base.l);
+    return { ...all, lift, fl, a, z, good, bad, tw, tl, sure: good ? (tw != null && tw >= 3) : bad ? (tl != null && tl >= 3) : false, chart, ent, failDays: q(L.filter((r) => r[3] === 'l').map((r) => r[5]).filter((v) => v != null), 0.5) };
   };
   const one = []; for (const [k, ids] of idx) { const j = judge(ids); if (j) one.push({ k, ko: kko(k), ...j }); }
   one.sort((a, b) => b.lift - a.lift);
   const cand = one.filter((x) => x.lift >= 1.1).slice(0, 25).map((x) => x.k), pairs = [];
   for (let i = 0; i < cand.length; i++) for (let j = i + 1; j < cand.length; j++) { const s2 = new Set(idx.get(cand[j])); const ids = idx.get(cand[i]).filter((x) => s2.has(x)); const r = judge(ids); if (r && r.good) pairs.push({ k: cand[i] + '+' + cand[j], ko: kko(cand[i]) + ' + ' + kko(cand[j]), ...r }); }
-  pairs.sort((a, b) => b.lift - a.lift);
-  return { n: N, cut, base, good: one.filter((x) => x.good), bad: one.filter((x) => x.bad).sort((a, b) => b.fl - a.fl), pairs: pairs.slice(0, 12), all: one.slice(0, 60), ko: DF_KO };
+  pairs.sort((a, b) => (b.sure ? 1 : 0) - (a.sure ? 1 : 0) || b.lift - a.lift);
+  return { n: N, cut, base, cov, good: one.filter((x) => x.good), bad: one.filter((x) => x.bad).sort((a, b) => b.fl - a.fl), pairs: pairs.slice(0, 12), all: one.slice(0, 60), ko: DF_KO };
 }
 export async function discReport() {
   const { partsLoad } = await import('./btstore.mjs');
   const R = await partsLoad('mp/bt/disc');
   return { ...discStudy(R?.list || []), v: R?.v || null };
+}
+
+/** v248 💰 세력 원가 원문 미리 받기 (GK: '세력 원가 정보가 일부 종목에만 있는 문제는 중요')
+ *  과거 재현은 원문을 캐시에서만 읽음 → 4년치 CB·3자배정·유상증자·경영권·5% 공시 원문 가격을 미리 받아 둠
+ *  3분 크론 · 한 번 45초·2개씩 · 하루 6,000건 · DB 느리면/정기 분석 중이면 쉼 · 1바퀴(지금 있는 공시) → 깊은 채우기 끝나면 2바퀴(옛 공시)
+ *  종목: 지금 시총 2조 미만(스팩 제외) + 랭킹 먼저 */
+const CF_V = 1, CF_KINDS = ['cb', 'refix', 'rights3', 'rights', 'mna', 'fund5'];
+export async function costFillStep({ budgetMs = 30000, par = 2, dayMax = 6000 } = {}) {
+  const { getJSON, setJSON } = await import('./store.mjs');
+  const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 500) return { skip: 'db slow' };
+  { const ep = await getJSON('mp/entpre').catch(() => null); if (ep && !ep.done) return { skip: 'entpre running' }; } // v249: 차트만 먼저가 끝난 뒤에 (동시에 돌면 DB 부담)
+  const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return { skip: 'radar busy' };
+  let st = await getJSON('mp/costfill').catch(() => null);
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  if (!st || st.v !== CF_V) {
+    const idx = (await getJSON('mp/idx').catch(() => null)) || [];
+    let snap = null; for (const d of idx.slice(0, 5)) { snap = (await getJSON(`mp/snap/${d}`).catch(() => null))?.rows; if (snap) break; }
+    if (!snap) return { skip: 'no snap' };
+    const rank = (await getJSON('mp/rank').catch(() => null)) || {};
+    const q = Object.entries(snap).filter(([c, r]) => { const v = r?.[6]; const eok = v > 1e7 ? v / 1e8 : v; return /^\d{6}$/.test(c) && !/스팩|SPAC/i.test(r?.[0] || '') && eok > 0 && eok < 20000; }).map(([c]) => c).sort((a, b) => (rank[a] ? 0 : 1) - (rank[b] ? 0 : 1) || (a < b ? -1 : 1));
+    st = { v: CF_V, queue: q, pos: 0, round: 1, got: 0, had: 0, fail: 0, day: today, dn: 0, started: Date.now() };
+    await setJSON('mp/costfill', st); return { started: q.length };
+  }
+  if (st.day !== today) { st.day = today; st.dn = 0; }
+  if (st.pos >= st.queue.length) {
+    const bf = await getJSON('backfill/state').catch(() => null);
+    if (st.round === 1 && bf?.deep?.done) { st.round = 2; st.pos = 0; await setJSON('mp/costfill', st); return { round: 2 }; }
+    if (!st.done && st.round === 2) { st.done = true; st.doneAt = Date.now(); await setJSON('mp/costfill', st); }
+    return null;
+  }
+  if (st.dn >= dayMax) return { skip: 'day max' };
+  const M = await import('./manip.mjs');
+  const now = Date.now(); let n = 0, codes = 0;
+  while (st.pos < st.queue.length && Date.now() - t0 < budgetMs && st.dn < dayMax && codes++ < 15) { // 한 번에 15종목까지 (DB 부담)
+    const code = st.queue[st.pos];
+    const evs = (await M._eventsOf(code, now, { days: 1640 }).catch(() => [])).filter((e) => CF_KINDS.includes(e.kind) && e.id);
+    const need = [];
+    for (const e of evs) { const c = await getJSON(`mp/px/${e.id}`).catch(() => null); if (c) st.had++; else need.push(e); }
+    let i = 0, cut = false;
+    for (; i < need.length; i += par) {
+      if (Date.now() - t0 > budgetMs || st.dn >= dayMax) { cut = true; break; }
+      const res = await Promise.all(need.slice(i, i + par).map((e) => M._docPrice(e).then((p) => (p ? 1 : 0)).catch(() => 0)));
+      for (const ok of res) { st.dn++; n++; if (ok) st.got++; else st.fail++; }
+    }
+    if (cut) break; // 다음 차례에 같은 종목부터 (받은 건 캐시라 건너뜀)
+    st.pos++;
+  }
+  st.at = Date.now();
+  await setJSON('mp/costfill', st);
+  return { pos: st.pos, of: st.queue.length, round: st.round, docs: n, got: st.got, fail: st.fail };
 }

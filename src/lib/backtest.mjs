@@ -10,7 +10,7 @@ import { CASE_CODES, motiveOf, bigRuns, saveCase } from './caselab.mjs';
 import { entryEvents } from './entrylab.mjs';
 
 const DAY = 86400e3;
-const BT_V = 27; // v237 🎯 타점 연구 · // v234 급락 가드 · v233 4년·적발 사례·대세상승·공시 속뜻 · // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
+const BT_V = 28; // v237 🎯 타점 연구 · // v234 급락 가드 · v233 4년·적발 사례·대세상승·공시 속뜻 · // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
 const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
 const STEP = 10, BACK = 95, BT_DAYS = 1460; // v233: 4년(적발 사례 2022~23 포함) · // v230: 10거래일 간격 최대 80개 날짜(약 3년 3개월) · 공시는 3년+180일 (v219: 16개 ≈ 8개월) // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
@@ -20,6 +20,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   if (restart || !st || st.v !== BT_V || (st.prep && !st.queue)) {
     // v230: 3년치 공시 깊은 채우기(backfill deep)가 끝나야 시작 — 그 전엔 예전 결과를 그대로 둠(화면엔 '준비 중' 표시)
     const bf = await getJSON('backfill/state').catch(() => null);
+    { /* v248 세력 원가 원문 미리 받기(costFillStep)가 옛 공시까지 끝날 때까지 기다림 — 깊은 채우기 끝난 뒤 최대 12시간 */ const cf = bf?.deep?.done && !restart ? await getJSON('mp/costfill').catch(() => null) : null; if (cf && !cf.done && now - (bf.deep.doneAt || now) < 12 * 3600e3) { if (!st?.wait?.cf || now - (st.wait.at || 0) > 600e3) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: st?.wait?.since || now, at: now, cf: { pos: cf.pos, of: cf.queue?.length || 0, round: cf.round, got: cf.got } } }); return { waiting: 'costfill', pos: cf.pos }; } }
     if (!restart && !bf?.deep?.done) { if (!st?.wait) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); else if (now - (st.wait.at || 0) > 600e3) await setJSON('mp/bt/state', { ...st, wait: { ...st.wait, at: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); return { waiting: true, deep: bf?.deep?.day || null }; }
     // 월별 공시 색인을 3년치로 다시 만들기 (한 번에 3개월씩, 깊은 채우기 뒤에 만든 것만 인정)
     const prep = st?.v === BT_V && st.prep ? st.prep : { since: now };
@@ -58,7 +59,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
       if (!B || B.length < 120) continue;
       const evAll = await M._eventsOf(code, now, { days: BT_DAYS + 180 });
       const px = [];
-      for (const e of M.docPick(evAll, 10)) { const p = await M._docPrice(e, { cacheOnly: true }).catch(() => null); const row = p ? M._pxRow(p, e) : null; if (row) px.push(row); }
+      for (const e of M.docPick(evAll, 20)) { const p = await M._docPrice(e, { cacheOnly: true }).catch(() => null); const row = p ? M._pxRow(p, e) : null; if (row) px.push(row); }
       const mkt = snap[code]?.[1] || 'Q';
       const n = B.length;
       const pts = [];

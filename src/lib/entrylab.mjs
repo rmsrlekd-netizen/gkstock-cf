@@ -247,6 +247,9 @@ export async function entSummary({ force = false } = {}) {
   const src = useB ? 'bt' : 'pre', base = useB ? 'mp/bt/ent' : 'mp/bt/entp', meta = useB ? metaB : metaP;
   const prog = pre ? { pos: pre.pos || 0, of: pre.queue?.length || 0, done: !!pre.done, n: metaP?.n || 0 } : null;
   if (!force && cache && cache.src === src && cache.n === (meta?.n || 0) && Date.now() - cache.at < 6 * 3600e3) return { ...cache.data, pre: prog };
+  // v249: 차트만 먼저가 도는 중엔 사건 수가 3분마다 바뀌어 화면을 열 때마다 전체(수십 조각)를 다시 읽어 DB가 멈춤 → 계산 중엔 30분에 1번만 다시 계산
+  if (!force && cache && cache.data?.list && src === 'pre' && prog && !prog.done && Date.now() - cache.at < 30 * 60e3) return { ...cache.data, pre: prog, stale: 1 };
+  { const lk = await getJSON('mp/entsumlock').catch(() => null); if (!force && lk && Date.now() - lk.at < 120e3 && cache?.data) return { ...cache.data, pre: prog, stale: 1 }; await setJSON('mp/entsumlock', { at: Date.now() }).catch(() => {}); } // 동시에 여러 번 계산 금지
   const parts = meta?.parts ?? 0;
   const data = await entryStudyFeed(async (cb) => { if (meta && meta.parts == null) { cb(meta.t || meta.rows || meta.r || []); return; } for (let i = 0; i < parts; i++) cb((await getJSON(`${base}/p${i}`).catch(() => null)) || []); });
   data.v = meta?.v || null; data.src = src;
@@ -258,8 +261,8 @@ export async function entSummary({ force = false } = {}) {
 /** v242 🎯 차트만 먼저 — 시총 2조 미만 국장 종목 일봉 4년치로 자리 사건만 계산 (공시 조건 없음)
  *  3분 크론, 한 번에 16종목(4개씩 동시) · DB 느리면 쉼 · 레이더 정기 분석 중엔 쉼 */
 export const PRE_V = 4; // v243 신고가 뒤 눌림 3가지 + 파는 법 lv5 → 처음부터 다시
-export async function entPreStep({ per = 16 } = {}) {
-  const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 800) return { skip: 'db slow' };
+export async function entPreStep({ per = 10 } = {}) {
+  const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 500) return { skip: 'db slow' };
   const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return { skip: 'radar busy' };
   let st = await getJSON('mp/entpre').catch(() => null);
   const { partsReset, partsAppend } = await import('./btstore.mjs');
@@ -283,7 +286,7 @@ export async function entPreStep({ per = 16 } = {}) {
     const res = await Promise.all(part.slice(i, i + 4).map(([c, mkt]) => _bars(c, 1000).then((B) => entryEvents(B, { code: c, ix, mkt })).catch(() => [])));
     for (const L of res) for (const r of L) { r[5] = null; r[6] = null; rows.push(r); } // 공시 조건은 모름 (판 깔기·무자본 M&A 칸 비움)
   }
-  if (rows.length) await partsAppend('mp/bt/entp', rows, { per: 4000, maxParts: 80, v: PRE_V }).catch((e) => console.warn('entp', e.message));
+  if (rows.length) await partsAppend('mp/bt/entp', rows, { per: 2000, maxParts: 160, v: PRE_V }).catch((e) => console.warn('entp', e.message));
   st.pos += part.length; st.n = (st.n || 0) + rows.length; st.at = Date.now();
   if (st.pos >= st.queue.length) { st.done = true; st.doneAt = Date.now(); }
   await setJSON('mp/entpre', st);
