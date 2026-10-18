@@ -88,6 +88,8 @@ export function exitsFrom(B, i, P = prep(B), opt = {}) {
   return { e, R, fail, mf, mn, xk: t15[1], gap: r1((e / B[i].c - 1) * 100) };
 }
 
+/** v245 사는 날 알 수 있는 위치·유동성: [60일 저점 대비 %, 20일 평균 거래대금(억)] */
+function posLiq(B, i) { const lo = minL(B, i - 59, i); let t = 0, n = 0; for (let k = Math.max(0, i - 19); k <= i; k++) { t += (B[k].v || 0) * B[k].c; n++; } return [lo > 0 ? r1((B[i].c / lo - 1) * 100) : null, n ? r1(t / n / 1e8) : null]; }
 /** v243 신고가 뒤 눌림 (GK: '신고가는 위 매물 때문에 조정 한 번 받고 반등을 노리는 게 낫지 않나') — 상태가 있어 setupsAt과 따로
  *  신고가 날 j, 예전 고점 L = 그 전 60일 최고가 → j+1~j+10 안 저가 ≤ L×1.03이면 nhpl(그 가격 지정가), 안 오면 nhpx(못 삼)
  *  닿은 뒤 5거래일 안 종가 > 전날 고가 & 양봉 & 종가 ≥ L이면 nhpc(다음 날 시가), 그 전에 종가 < L×0.95면 무효 */
@@ -123,7 +125,8 @@ export function entryEvents(B, { code, evs = [], ix = null, mkt = 'Q', motiveOf 
     const pk = evs.some((e) => e.ms <= Tms && e.ms > Tms - 180 * 864e5 && ['cb', 'rights3', 'mna', 'fund5'].includes(e.kind)) ? 1 : 0;
     let mna = 0; if (motiveOf && pk) { try { mna = motiveOf(evs, { B, Tms }).includes('mnaFund') ? 1 : 0; } catch {} }
     const xm = mret(i + 1, X.xk); const xr = xm == null ? null : r1(X.R.tr15 - xm);
-    for (const s of fresh) out.push([code, B[i].d, s, X.gap, mreg, pk, mna, X.fail, X.mf, X.mn, ...EX_KEYS.map((k) => (k === 'lv5' && s !== 'nh60' ? null : X.R[k])), xr]);
+    const ctx2 = posLiq(B, i);
+    for (const s of fresh) out.push([code, B[i].d, s, X.gap, mreg, pk, mna, X.fail, X.mf, X.mn, ...EX_KEYS.map((k) => (k === 'lv5' && s !== 'nh60' ? null : X.R[k])), xr, ...ctx2]);
   }
   // v243 신고가 뒤 눌림 3가지 (같은 신고가 날의 바로 사기(nh60)와 비교)
   for (const w of nhWin(B)) {
@@ -134,7 +137,7 @@ export function entryEvents(B, { code, evs = [], ix = null, mkt = 'Q', motiveOf 
     const pk = evs.some((e) => e.ms <= Tms && e.ms > Tms - 180 * 864e5 && ['cb', 'rights3', 'mna', 'fund5'].includes(e.kind)) ? 1 : 0;
     let mna = 0; if (motiveOf && pk) { try { mna = motiveOf(evs, { B, Tms }).includes('mnaFund') ? 1 : 0; } catch {} }
     const xm = mret((w.k0 ?? i + 1), X.xk); const xr = xm == null ? null : r1(X.R.tr15 - xm);
-    out.push([code, B[i].d, w.s, X.gap, mreg, pk, mna, X.fail, X.mf, X.mn, ...EX_KEYS.map((k) => X.R[k]), xr]);
+    out.push([code, B[i].d, w.s, X.gap, mreg, pk, mna, X.fail, X.mf, X.mn, ...EX_KEYS.map((k) => X.R[k]), xr, ...posLiq(B, i)]);
   }
   return out;
 }
@@ -151,36 +154,54 @@ const failOf = (L) => { const a = L.filter((t) => t.fail !== 0); return a.length
 const HB = 0.5, HLO = -200, HN = 1001; // 0.5%p 칸 −200~+300%
 const hAdd = (h, v) => { let i = Math.round((v - HLO) / HB); if (i < 0) i = 0; if (i >= HN) i = HN - 1; h[i]++; };
 const hMed = (h, n) => { if (!n) return null; let c = 0; const t = Math.floor(n / 2) + 1; for (let i = 0; i < HN; i++) { c += h[i]; if (c >= t) return r1(HLO + i * HB); } return null; };
-const mkC = () => ({ n: 0, sum: 0, win: 0, big: 0, h: new Uint32Array(HN) });
-const cAdd = (c, v) => { if (v == null || !isFinite(v)) return; c.n++; c.sum += v; if (v > 0) c.win++; if (v <= -15) c.big++; hAdd(c.h, v); };
-const cOut = (c) => (c && c.n ? { n: c.n, avg: r1(c.sum / c.n), med: hMed(c.h, c.n), win: Math.round((c.win / c.n) * 100), big: Math.round((c.big / c.n) * 100) } : null);
-const CTX = { mk상승: (t) => t[4] === '상승', mk보합: (t) => t[4] === '보합', mk하락: (t) => t[4] === '하락', pk있음: (t) => t[5] === 1, pk없음: (t) => t[5] === 0, mna: (t) => t[6] === 1, gap하락: (t) => t[3] <= -3, gap보합: (t) => t[3] > -3 && t[3] < 3, gap상승: (t) => t[3] >= 3 };
+const mkC = (hist = true) => ({ n: 0, sum: 0, ss: 0, win: 0, sw: 0, sl: 0, big: 0, h: hist ? new Uint32Array(HN) : null });
+const cAdd = (c, v, wk = null) => { if (v == null || !isFinite(v)) return; c.n++; c.sum += v; c.ss += v * v; if (v > 0) { c.win++; c.sw += v; } else c.sl += v; if (v <= -15) c.big++; if (c.h) hAdd(c.h, v); if (wk != null) { const W = (c.W ||= new Map()); const z = W.get(wk) || [0, 0]; z[0]++; z[1] += v; W.set(wk, z); } };
+const cOut = (c) => (c && c.n ? { n: c.n, avg: r1(c.sum / c.n), med: c.h ? hMed(c.h, c.n) : null, win: Math.round((c.win / c.n) * 100), big: Math.round((c.big / c.n) * 100), aw: c.win ? r1(c.sw / c.win) : null, al: c.n - c.win ? r1(c.sl / (c.n - c.win)) : null } : null);
+/** 같은 주에 산 거래는 같이 움직임(시장) → 주 단위로 묶은 표준오차 (그냥 계산하면 '확실함'이 너무 쉽게 나옴) */
+const cSE = (c) => { if (!c?.W || c.n < 2) return null; const m = c.sum / c.n; let v = 0, G = 0; for (const [, [n, sm]] of c.W) { v += (sm - n * m) ** 2; G++; } return G > 1 ? Math.sqrt((v * G) / (G - 1)) / c.n : null; };
+const wkOf = (d) => Math.floor(Date.parse(d) / (7 * 864e5));
+const CTX = { mk상승: (t) => t[4] === '상승', mk보합: (t) => t[4] === '보합', mk하락: (t) => t[4] === '하락', pk있음: (t) => t[5] === 1, pk없음: (t) => t[5] === 0, mna: (t) => t[6] === 1, gap하락: (t) => t[3] <= -3, gap보합: (t) => t[3] > -3 && t[3] < 3, gap상승: (t) => t[3] >= 3,
+  pos낮음: (t) => t[XI + 1] != null && t[XI + 1] < 30, pos중간: (t) => t[XI + 1] != null && t[XI + 1] >= 30 && t[XI + 1] < 80, pos높음: (t) => t[XI + 1] != null && t[XI + 1] >= 80,
+  liq작음: (t) => t[XI + 2] != null && t[XI + 2] < 5, liq중간: (t) => t[XI + 2] != null && t[XI + 2] >= 5 && t[XI + 2] < 30, liq큼: (t) => t[XI + 2] != null && t[XI + 2] >= 30,
+  상승장_갭보합: (t) => t[4] === '상승' && t[3] > -3 && t[3] < 3, 하락장아님: (t) => t[4] != null && t[4] !== '하락', 위치80미만: (t) => t[XI + 1] != null && t[XI + 1] < 80 };
+export const CTX_KO = { mk상승: '시장 상승장(20일 +3%↑)일 때만', mk보합: '시장 보합일 때만', mk하락: '시장 하락장일 때만', pk있음: '판 깔기 공시 있을 때만', pk없음: '판 깔기 공시 없을 때만', mna: '무자본 M&A 구조일 때만', gap하락: '다음 날 시가가 −3%↓로 열릴 때만', gap보합: '다음 날 시가가 ±3% 안일 때만', gap상승: '다음 날 시가가 +3%↑로 열릴 때만',
+  pos낮음: '60일 저점 대비 +30% 안(아직 덜 오름)일 때만', pos중간: '60일 저점 대비 +30~80%일 때만', pos높음: '60일 저점 대비 +80%↑(많이 오름)일 때만', liq작음: '하루 거래대금 5억 미만일 때만', liq중간: '하루 거래대금 5~30억일 때만', liq큼: '하루 거래대금 30억↑일 때만', 상승장_갭보합: '상승장 + 시가 ±3% 안일 때만', 하락장아님: '하락장이 아닐 때만', 위치80미만: '60일 저점 대비 +80% 안(너무 안 오름)일 때만' };
 const CTX_K = Object.keys(CTX);
+const XI = 10 + EX_KEYS.length; // 줄의 시장 대비(xr) 자리 · 그 뒤 pos(60일 저점 대비 %)·liq(20일 평균 거래대금 억)
 export async function entryStudyFeed(feed) {
   const dc = new Map(); let N = 0;
   await feed((rows) => { for (const t of rows) { dc.set(t[1], (dc.get(t[1]) || 0) + 1); N++; } });
   if (N < 200) return { n: N, need: 200 };
   const ds = [...dc.keys()].sort(); const cut = ds[Math.floor(ds.length / 2)];
   const S = {}; const get = (s) => (S[s] ||= { n: 0, A: {}, Z: {}, G: {}, f1: 0, fN: 0, mf: new Uint32Array(HN), mn: new Uint32Array(HN), xs: 0, xn: 0, ctx: {} });
-  await feed((rows) => { for (const t of rows) { const g = get(t[2]); g.n++; const half = t[1] < cut ? g.A : g.Z;
-    for (let j = 0; j < EX_KEYS.length; j++) { const k = EX_KEYS[j], v = t[10 + j]; cAdd(g.G[k] ||= mkC(), v); cAdd(half[k] ||= mkC(), v); }
-    if (t[7] === 1) g.f1++; if (t[7] !== 0) g.fN++; if (t[8] != null) hAdd(g.mf, t[8]); if (t[9] != null) hAdd(g.mn, t[9]); const x = t[10 + EX_KEYS.length]; if (x != null && isFinite(x)) { g.xs += x; g.xn++; }
-    for (const cn of CTX_K) if (CTX[cn](t)) { const z = (g.ctx[cn] ||= { f1: 0, fN: 0, c: {} }); if (t[7] === 1) z.f1++; if (t[7] !== 0) z.fN++; for (let j = 0; j < EX_KEYS.length; j++) cAdd(z.c[EX_KEYS[j]] ||= mkC(), t[10 + j]); } } });
+  await feed((rows) => { for (const t of rows) { if (t[2] === 'nhpx') { const g0 = get('nhpx'); g0.n++; for (let j = 0; j < EX_KEYS.length; j++) cAdd(g0.G[EX_KEYS[j]] ||= mkC(false), t[10 + j]); continue; }
+    const g = get(t[2]); g.n++; const isA = t[1] < cut, half = isA ? g.A : g.Z, wk = isA ? null : wkOf(t[1]);
+    for (let j = 0; j < EX_KEYS.length; j++) { const k = EX_KEYS[j], v = t[10 + j]; cAdd(g.G[k] ||= mkC(), v); cAdd(half[k] ||= mkC(), v, wk); }
+    if (t[7] === 1) g.f1++; if (t[7] !== 0) g.fN++; if (t[8] != null) hAdd(g.mf, t[8]); if (t[9] != null) hAdd(g.mn, t[9]); const x = t[XI]; if (x != null && isFinite(x)) { g.xs += x; g.xn++; }
+    for (const cn of CTX_K) if (CTX[cn](t)) { const z = (g.ctx[cn] ||= { f1: 0, fN: 0, c: {}, A: {}, Z: {} }); if (t[7] === 1) z.f1++; if (t[7] !== 0) z.fN++; for (let j = 0; j < EX_KEYS.length; j++) { const k = EX_KEYS[j]; cAdd(z.c[k] ||= mkC(false), t[10 + j]); cAdd((isA ? z.A : z.Z)[k] ||= mkC(false), t[10 + j]); } } } });
   const fOf = (f1, fN) => (fN ? Math.round((f1 / fN) * 100) : null);
   const B = S.rnd || get('rnd'); const out = [];
   for (const s of Object.keys(SETUPS)) {
     if (SETUPS[s].live) continue;
-    const g = S[s]; if (!g || g.n < 20) { out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: g?.n || 0, thin: true }); continue; }
+    const g = S[s];
+    if (SETUPS[s].ref) { out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: g?.n || 0, ref: 1, grid: g ? Object.fromEntries(EX_KEYS.map((k) => [k, cOut(g.G[k])])) : {} }); continue; } // 결과를 알고 고른 줄 — 성적 비교·학습에 안 씀
+    if (!g || g.n < 20) { out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: g?.n || 0, thin: true }); continue; }
     const grid = Object.fromEntries(EX_KEYS.map((k) => [k, cOut(g.G[k])]));
     let best = null; for (const k of EX_KEYS) { const a = cOut(g.A[k]), b = cOut(B.A[k === 'lv5' ? 'tr15' : k]); if (!a || a.n < 15 || !b) continue; const edge = a.avg - b.avg; if (!best || edge > best.edgeA) best = { k, edgeA: r1(edge), a }; }
     let verify = null;
-    if (best) { const z = cOut(g.Z[best.k]), zb = cOut(B.Z[best.k === 'lv5' ? 'tr15' : best.k]); if (z && zb) verify = { k: best.k, ko: EXITS[best.k].ko, a: best.a, z, zb: zb.avg, edgeZ: r1(z.avg - zb.avg), ok: z.n >= 15 && best.a.n >= 15 && z.avg > 0 && z.avg > zb.avg + (SETUPS[s].lim ? 1 : 0) && best.edgeA > (SETUPS[s].lim ? 1 : 0) }; /* 지정가 자리는 체결을 좋게 가정할 수 있어 1%p 더 이겨야 ✅ (가짜 무작위 일봉 시험에서 +0.3~0.8%p 거품 확인) */ }
+    if (best) { const bk = best.k === 'lv5' ? 'tr15' : best.k, z = cOut(g.Z[best.k]), zb = cOut(B.Z[bk]); if (z && zb) { const se1 = cSE(g.Z[best.k]), se2 = cSE(B.Z[bk]); const tz = se1 != null && se2 != null && (se1 || se2) ? r1((z.avg - zb.avg) / Math.sqrt(se1 * se1 + se2 * se2)) : null;
+      const ok = z.n >= 15 && best.a.n >= 15 && z.avg > 0 && z.avg > zb.avg + (SETUPS[s].lim ? 1 : 0) && best.edgeA > (SETUPS[s].lim ? 1 : 0); /* 지정가 자리는 체결을 좋게 가정할 수 있어 1%p 더 이겨야 ✅ */
+      verify = { k: best.k, ko: EXITS[best.k].ko, a: best.a, z, zb: zb.avg, edgeZ: r1(z.avg - zb.avg), tz, ok, sure: ok && tz != null && tz >= 2 }; } }
     const ex = verify?.k || 'tr15';
     const by = Object.fromEntries(CTX_K.map((cn) => { const z = g.ctx[cn]; const c = z ? cOut(z.c[ex]) : null; return [cn, c && c.n >= 10 ? { ...c, fail: fOf(z.f1, z.fN) } : null]; }));
-    out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: g.n, fail: fOf(g.f1, g.fN), mf: hMed(g.mf, g.n), mn: hMed(g.mn, g.n), x: g.xn ? r1(g.xs / g.xn) : null, grid, best: verify, by });
+    // 🔧 더 좋게: 조건을 붙이면 앞 기간·안 본 뒤 기간 둘 다 평균 +1%p↑ (승률도 안 떨어짐) — 여러 조건을 동시에 보므로 '참고'
+    const A0 = cOut(g.A[ex]), Z0 = cOut(g.Z[ex]); const better = [];
+    if (A0 && Z0) for (const cn of CTX_K) { const z = g.ctx[cn]; if (!z) continue; const a = cOut(z.A[ex]), b = cOut(z.Z[ex]); if (!a || !b || a.n < 30 || b.n < 30) continue; if (a.avg >= A0.avg + 1 && b.avg >= Z0.avg + 1 && b.win >= Z0.win) better.push({ k: cn, ko: CTX_KO[cn] || cn, a, z: b, keep: Math.round((b.n / Z0.n) * 100), up: r1(b.avg - Z0.avg) }); }
+    better.sort((x, y) => y.up - x.up);
+    out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: g.n, fail: fOf(g.f1, g.fN), mf: hMed(g.mf, g.n), mn: hMed(g.mn, g.n), x: g.xn ? r1(g.xs / g.xn) : null, grid, best: verify, by, better: better.slice(0, 3) });
   }
-  const rk = out.filter((x) => x.best).sort((a, b) => (b.best.ok - a.best.ok) || (b.best.edgeZ - a.best.edgeZ));
-  return { n: N, cut, from: ds[0], to: ds[ds.length - 1], base: { n: B.n, fail: fOf(B.f1, B.fN), grid: Object.fromEntries(EX_KEYS.map((k) => [k, cOut(B.G[k])])) }, list: [...rk, ...out.filter((x) => !x.best)], exits: EXITS };
+  const rk = out.filter((x) => x.best).sort((a, b) => (b.best.ok - a.best.ok) || ((b.best.sure ? 1 : 0) - (a.best.sure ? 1 : 0)) || (b.best.edgeZ - a.best.edgeZ));
+  return { n: N, cut, from: ds[0], to: ds[ds.length - 1], base: { n: B.n, fail: fOf(B.f1, B.fN), grid: Object.fromEntries(EX_KEYS.map((k) => [k, cOut(B.G[k])])) }, list: [...rk, ...out.filter((x) => !x.best)], exits: EXITS, ctxKo: CTX_KO };
 }
 /** 예전 방식(줄 배열 하나) — 테스트용 */
 export function entryStudy(rows) { return entryStudyFeed(async (cb) => cb(rows)); }
@@ -203,13 +224,13 @@ export function entryNow(B, days = 3) {
 /** 학습 결과(검증된 자리) 저장·읽기 */
 export async function saveEntLearn(st, src = 'bt') {
   if (!st?.list) return;
-  const m = {}; for (const x of st.list) if (x.best && !SETUPS[x.s]?.ref) m[x.s] = { ok: x.best.ok, ex: x.best.k, exKo: x.best.ko, avg: x.best.z.avg, win: x.best.z.win, n: x.best.z.n, base: x.best.zb, fail: x.fail, mk: { 상승: x.by?.mk상승?.avg ?? null, 보합: x.by?.mk보합?.avg ?? null, 하락: x.by?.mk하락?.avg ?? null } };
+  const m = {}; for (const x of st.list) if (x.best && !SETUPS[x.s]?.ref) m[x.s] = { ok: x.best.ok, sure: !!x.best.sure, tz: x.best.tz ?? null, aw: x.best.z.aw, al: x.best.z.al, ex: x.best.k, exKo: x.best.ko, avg: x.best.z.avg, win: x.best.z.win, n: x.best.z.n, base: x.best.zb, fail: x.fail, mk: { 상승: x.by?.mk상승?.avg ?? null, 보합: x.by?.mk보합?.avg ?? null, 하락: x.by?.mk하락?.avg ?? null } };
   await setJSON('mp/entlearn', { at: Date.now(), n: st.n, m, src }).catch(() => {});
 }
 export async function loadEntLearn() { return (await getJSON('mp/entlearn').catch(() => null)) || null; }
 /** 종목에 붙일 설명: 지금 뜬 자리 + 과거 성적 */
 export function entryView(ent, EL) {
-  return (ent || []).filter((e) => e.s !== 'rnd').map((e) => { const m = EL?.m?.[e.s === 'nhpw' ? 'nhpl' : e.s]; return { ...e, ko: SETUPS[e.s]?.ko || e.s, t: SETUPS[e.s]?.t || '', st: m ? { ok: m.ok, ex: m.exKo, avg: m.avg, win: m.win, n: m.n, base: m.base, fail: m.fail, mk: m.mk } : null }; });
+  return (ent || []).filter((e) => e.s !== 'rnd').map((e) => { const m = EL?.m?.[e.s === 'nhpw' ? 'nhpl' : e.s]; return { ...e, ko: SETUPS[e.s]?.ko || e.s, t: SETUPS[e.s]?.t || '', st: m ? { ok: m.ok, sure: !!m.sure, aw: m.aw ?? null, al: m.al ?? null, ex: m.exKo, avg: m.avg, win: m.win, n: m.n, base: m.base, fail: m.fail, mk: m.mk } : null }; });
 }
 
 /** 자리 사건 통계 (6시간 캐시 · 사건 수가 같으면 그대로)
@@ -230,7 +251,7 @@ export async function entSummary({ force = false } = {}) {
 
 /** v242 🎯 차트만 먼저 — 시총 2조 미만 국장 종목 일봉 4년치로 자리 사건만 계산 (공시 조건 없음)
  *  3분 크론, 한 번에 16종목(4개씩 동시) · DB 느리면 쉼 · 레이더 정기 분석 중엔 쉼 */
-export const PRE_V = 2; // v243 신고가 뒤 눌림 3가지 + 파는 법 lv5 → 처음부터 다시
+export const PRE_V = 3; // v243 신고가 뒤 눌림 3가지 + 파는 법 lv5 → 처음부터 다시
 export async function entPreStep({ per = 16 } = {}) {
   const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 800) return { skip: 'db slow' };
   const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return { skip: 'radar busy' };
