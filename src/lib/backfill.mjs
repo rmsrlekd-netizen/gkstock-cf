@@ -108,7 +108,7 @@ async function dartDay(key, ymd, page) {
 /** 과거 채우기 한 단계 (수집기 실행 뒤 남는 시간에 조금씩). which: 'sec' | 'dart' */
 // Cloudflare D1 무료 한도: 하루 10만 행 쓰기 (한국시간 오전 9시 초기화)
 // 과거 채우기는 하루 이 만큼만 씀 → 실시간 수집이 쓸 몫을 남겨둠. 유료(Workers Paid)면 BACKFILL_DAILY_ROWS를 크게 (예: 2000000)
-const DEEP_DAYS = 1500, /* v233: 4년(2022 적발 사례까지) */ DEEP_CALLS = 6000, DEEP_DAILY_ROWS = 60000; // v230 깊은 채우기: 3년 · DART 하루 호출 6천 · 하루 6만 행까지
+const DEEP_DAYS = 1500, /* v233: 4년(2022 적발 사례까지) */ DEEP_CALLS = 12000, DEEP_DAILY_ROWS = 200000; // v236 실측: 하루 약 11쪽·160행 → 4년치 약 1.2만 호출·18만 행 — 예전 한도(6천·6만)면 3일, 지금 한도면 약 하루 (DART 하루 한도 2만 안) // v230 깊은 채우기: 3년 · DART 하루 호출 6천 · 하루 6만 행까지
 const DAILY_ROWS = () => Math.max(0, Number(process.env.BACKFILL_DAILY_ROWS) || 25000);
 const utcDay = () => new Date().toISOString().slice(0, 10);
 

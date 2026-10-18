@@ -3703,7 +3703,7 @@
     const seg = `<div class="sx-ctl"><div class="pb-seg">${[['live', '실제 기록'], ['bt', '과거 재현']].map(([k, t]) => `<button data-sim-src="${k}" class="${k === src ? 'on' : ''}">${t}</button>`).join('')}</div></div>`;
     const head = `<div class="sx-head"><h4>🏆 이긴 자리 공통점</h4><small class="muted">판정 다음 날 샀다면 <b>60거래일 안에 +30%↑</b> 갔고 그 전에 −10% 넘게 안 빠진 판정 = '이긴 자리'. 조건마다 이긴 자리 비율을 전체와 비교 (진 판정도 같이 세야 착시가 없어요)</small></div>`;
     if (!W || W.need) { box.innerHTML = `<div class="sx">${head}${seg}<p class="sx-empty">판정이 ${W?.need || 60}번 넘게 쌓이면 나와요 (지금 ${W?.n || 0}번)${src === 'bt' ? ' — 과거 재현을 새 기준으로 다시 계산 중이면 몇 시간 뒤에 채워져요' : ''}.</p></div>`; return; }
-    const dv = (ko, v) => (ko === '한 줄 결론' ? { g: '🟢 매수 검토', y: '🟡 지켜보기', r: '🔴 피하기' }[v] || v : v);
+    const dv = (ko, v) => (ko === '한 줄 결론' ? { g: '🟢 매수 검토', y: '🟡 지켜보기', r: '🔴 피하기' }[v] || v : v === '✗' ? '아님' : v === '✓' ? '있음' : v); // v236 '체크: 평단 근처: ✗' → '평단 근처: 아님'
     const okB = (x, bad) => (bad ? x.okBad : x.ok) ? `<span class="simv ${bad ? 'v-bad' : 'v-ok'}">✓ 앞·뒤 기간 둘 다</span>` : `<span class="simv v-n">한쪽 기간만</span>`;
     const ex = (x) => (x.ex || []).map((e) => `<span class="ca-co" data-mp-go="${esc(e[1])}">${esc(e[0])} <b class="up">+${e[2]}%</b></span>`).join(' ');
     const row = (x, bad, name) => `<div class="wn-row${bad ? ' bad' : ''}"><div class="wn-t"><b>${name}</b>${okB(x, bad)}</div>

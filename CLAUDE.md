@@ -193,3 +193,4 @@
 
 ## v235 깊은 채우기 진짜 원인 (10/18 11:27 실측, health)
 - dartBackfill.at은 계속 갱신(채우기 함수는 돎)인데 deepTry가 한 번도 없음 = 깊은 채우기 `if` 조건 탈락. 원인: 1분 크론의 다른 작업이 CPU를 오래 써서 상태를 읽고 돌아왔을 땐 `until`(함수 시작 +12초)이 이미 지남 — 예: 02:25 크론의 저장 시각이 :49초. → 깊은 채우기는 자기 시작 시각부터 `dUntil`(최소 8초)로 따로 잼. **함수 시작 때 잡은 시간 예산을 await 뒤에 쓰지 말 것**(Workers는 다른 작업이 CPU를 잡으면 한참 뒤에 돌아옴).
+- ⚠ v230~v235: `src/lib/backfill.mjs`가 ZIP 목록(scratchpad list.txt)에 빠져 깊은 채우기가 한 번도 배포 안 됨. **ZIP 만들기 전에 바뀐 파일이 목록에 다 있는지 확인**: `find src web public relay -newer <지난 ZIP> | 목록에 없는 것`.
