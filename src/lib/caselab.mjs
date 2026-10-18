@@ -80,7 +80,7 @@ function featAt(B, i, evs) {
 export const FEAT_KO = (k) => { const [a, b] = k.split(':'); if (a === 'ev') return '180일 안 공시: ' + (EVK_KO[b] || b); if (a === 'mv') return '속뜻: ' + (MV_KO[b] || b); return { dd70: '1년 고점 대비 −70%↓', dd50: '1년 고점 대비 −50~70%', dd30: '1년 고점 대비 −30~50%', dd0: '1년 고점 대비 −30% 안', dry: '거래량 마름(20일 ≤ 120일 평균의 절반)', box: '60일 박스(폭 35% 안)' }[b] || k; };
 
 /** 한 종목의 대세상승 구간들 + 비교용 평범한 날 */
-export function bigRuns(B, evs, { min = 2.0, win = 120 } = {}) {
+export function bigRuns(B, evs, { min = 2.0, win = 120, px = null } = {}) {
   const runs = [], base = [];
   if (!B || B.length < 200) return { runs, base };
   const n = B.length; let i = 60;
@@ -95,13 +95,36 @@ export function bigRuns(B, evs, { min = 2.0, win = 120 } = {}) {
       const pre = evs.filter((e) => e.ms <= T0 && e.ms > T0 - 180 * DAY && EVK.includes(e.kind)).sort((a, b) => a.ms - b.ms).slice(-8).map((e) => [ymd(e.ms), e.kind, String(e.title || '').slice(0, 50)]);
       const dur = evs.filter((e) => e.ms > T0 && e.ms <= TP && EVK.includes(e.kind)).sort((a, b) => a.ms - b.ms).slice(0, 8).map((e) => [ymd(e.ms), e.kind, String(e.title || '').slice(0, 50)]);
       const after = evs.filter((e) => e.ms > TP && e.ms <= TP + 60 * DAY && ['conv', 'majsell', 'tsell', 'cb', 'rights3'].includes(e.kind)).map((e) => [ymd(e.ms), e.kind]).slice(0, 5);
-      runs.push({ d0: B[i].d, p0: B[i].c, dP: B[hk].d, pP: hi, g: Math.round((hi / B[i].c - 1) * 100), days: hk - i, post: Math.round((lo / hi - 1) * 100), k: featAt(B, i, evs), pre, dur, after, i });
+      runs.push({ d0: B[i].d, p0: B[i].c, dP: B[hk].d, pP: hi, g: Math.round((hi / B[i].c - 1) * 100), days: hk - i, post: Math.round((lo / hi - 1) * 100), k: featAt(B, i, evs), pre, dur, after, ex: px ? exitAnat(B, i, hk, hi, evs, px) : null, i });
       starts.push(i); i = hk + 1; continue;
     }
     i++;
   }
   for (let j = 250; j < n - win; j += 20) { if (starts.some((s) => j > s - 30 && j <= s + 5)) continue; base.push(featAt(B, j, evs)); }
   return { runs: runs.map(({ i: _, ...r }) => r), base };
+}
+/** v246 🏁 엑시트 해부 (GK: 세력주의 꽃은 엑시트 — 공시 근거 목표가·엑시트 신호가 실제 고점과 맞았나)
+ *  고점이 세력 원가(그 고점 전 공시의 CB 전환가·3자배정 발행가·인수 단가)의 몇 배였나, 고점과 전환청구·대주주 매도·보호예수 해제가 며칠 차이였나 (+ = 고점 뒤) */
+const COSTK = { cb: 'cb', refix: 'cb', rights3: 'r3', mna: 'mna', fund5: 'f5' };
+export function exitAnat(B, i, hk, hi, evs, px) {
+  const dP = B[hk].d, T0 = Date.parse(B[i].d + 'T15:40:00+09:00') - 365 * DAY, TP = Date.parse(dP + 'T15:40:00+09:00');
+  const out = {}; const last = {};
+  for (const p of px || []) { const k = COSTK[p.kind]; if (!k || !(p.p > 0) || !p.date || p.date > dP) continue; const ms = Date.parse(p.date); if (ms < T0) continue; if (!last[k] || p.date > last[k].date) last[k] = p; }
+  for (const [k, p] of Object.entries(last)) { const r = hi / p.p; if (r > 0.3 && r < 30) out['r_' + k] = Math.round(r * 100) / 100; }
+  const near = (kinds) => { let best = null; for (const e of evs) { if (!kinds.includes(e.kind) || e.ms < Date.parse(B[i].d)) continue; const d = Math.round((e.ms - TP) / DAY); if (d > 90) continue; if (best == null || Math.abs(d) < Math.abs(best)) best = d; } return best; };
+  const c = near(['conv']); if (c != null) out.conv = c;
+  const sl = near(['majsell', 'tsell']); if (sl != null) out.sell = sl;
+  let ul = null; for (const p of px || []) { const u = p.lock?.until; if (!u || !p.date || p.date > dP) continue; const d = Math.round((Date.parse(u) - TP) / DAY); if (d < -180 || d > 180) continue; if (ul == null || Math.abs(d) < Math.abs(ul)) ul = d; } if (ul != null) out.unl = ul;
+  const nb = evs.filter((e) => e.ms <= TP && e.ms > TP - 10 * DAY && !['conv', 'majsell', 'tsell', 'insider', 'paid'].includes(e.kind)).map((e) => e.kind); if (nb.length) out.news = [...new Set(nb)].slice(0, 3);
+  return out;
+}
+export function exitStudy(runs) {
+  const R = runs.filter((r) => r.ex); const n = R.length; if (n < 10) return { n, need: true };
+  const q = (a) => { if (a.length < 5) return null; const b = [...a].sort((x, y) => x - y); const at = (f) => b[Math.min(b.length - 1, Math.floor(b.length * f))]; return { n: a.length, q1: at(0.25), med: at(0.5), q3: at(0.75) }; };
+  const ratio = Object.fromEntries(['cb', 'r3', 'mna', 'f5'].map((k) => [k, q(R.map((r) => r.ex['r_' + k]).filter((v) => v != null))]));
+  const tim = (k, w) => { const a = R.map((r) => r.ex[k]).filter((v) => v != null); if (a.length < 5) return null; return { n: a.length, med: q(a)?.med ?? null, near: Math.round((a.filter((v) => Math.abs(v) <= w).length / n) * 100), after: Math.round((a.filter((v) => v > 0 && v <= w).length / a.length) * 100) }; };
+  const nc = {}; for (const r of R) for (const k of r.ex.news || []) nc[k] = (nc[k] || 0) + 1;
+  return { n, ratio, conv: tim('conv', 10), sell: tim('sell', 10), unl: tim('unl', 20), news: Object.entries(nc).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, c]) => [k, Math.round((c / n) * 100)]) };
 }
 /** 대세상승 vs 평범한 날: 흔적별 '몇 배 더 자주'(lift) + 2개 조합 */
 export function bigStudy(R, Bs) {
@@ -179,7 +202,7 @@ export async function bigReport() {
   const { partsLoad } = await import('./btstore.mjs');
   const [R, Bs] = await Promise.all([partsLoad('mp/bt/big'), partsLoad('mp/bt/bigb')]);
   const runs = R?.list || [], base = Bs?.list || [];
-  return { ...bigStudy(runs, base), v: R?.v || null };
+  return { ...bigStudy(runs, base), exit: exitStudy(runs), v: R?.v || null };
 }
 export async function labSummary() {
   const [cases, big] = await Promise.all([caseReport(), bigReport()]);

@@ -3721,8 +3721,8 @@
   // v237 🎯 타점 연구 — 들어가는 자리 × 파는 법
   const ENT_KO = { brk: '20일 고가 돌파', nh60: '60일 신고가', pull: '급등 뒤 20일선 눌림', boxbig: '박스 뒤 장대양봉', dry1: '거래량 마름 뒤 첫 양봉', accbar: '매집봉', gap: '갭 상승 유지', crash: '급락 뒤 첫 반등', ma20x: '20일선 회복', uplim: '상한가 다음 날', nhpl: '신고가 뒤 눌림(지정가)', nhpc: '신고가 뒤 눌림 확인', nhpw: '신고가 뒤 눌림 기다리는 중', nhpx: '눌림 안 옴', rnd: '아무 날이나' };
   // v240 종목 페이지 맨 위 '🎯 지금 이 자리' — 무엇이 떴고, 사면 언제·어떻게 파는지를 가격으로
-  const EX_PLAN = { s7t15: (c) => `손절 ${fmtInt(c * 0.93)}원(−7%) · 익절 ${fmtInt(c * 1.15)}원(+15%) · 20거래일 지나면 정리`, s10t30: (c) => `손절 ${fmtInt(c * 0.9)}원(−10%) · 익절 ${fmtInt(c * 1.3)}원(+30%) · 40거래일 지나면 정리`, tr15: (c) => `산 뒤 최고가에서 −15% 떨어지면 다음 날 매도 (지금 기준 ${fmtInt(c * 0.85)}원) · 20거래일 지나면 정리`, tr10: (c) => `산 뒤 최고가에서 −10% 떨어지면 다음 날 매도 (지금 기준 ${fmtInt(c * 0.9)}원) · 20거래일 지나면 정리`, ma5: () => '종가가 5일선 아래로 내려가면 다음 날 매도 · 최대 20거래일', half: (c) => `${fmtInt(c * 1.2)}원(+20%)에서 절반 매도, 나머지는 최고가 −10%에 매도`, h5: () => '5거래일째 종가에 매도', h10: () => '10거래일째 종가에 매도', h20: () => '20거래일째 종가에 매도', lv5: (c, e) => e?.lv ? `예전 고점 ${fmtInt(e.lv)}원의 −5%(${fmtInt(e.lv * 0.95)}원) 아래로 빠지면 손절 · 아니면 최고가 −15% 또는 20거래일` : '돌파 가격 −5% 아래면 손절 · 아니면 최고가 −15% 또는 20거래일' };
-  const EX_KO2 = { s7t15: '손절 −7% · 목표 +15%', s10t30: '손절 −10% · 목표 +30%', tr15: '최고점 −15% 또는 20일', tr10: '최고점 −10% 또는 20일', ma5: '5일선 깨면 팔기', half: '+20%에 절반, 나머지 −10% 추적', h5: '5일 들고 팔기', h10: '10일 들고 팔기', h20: '20일 들고 팔기', lv5: '돌파 가격 −5% 손절 · 최고점 −15%' };
+  const EX_PLAN = { s7t15: (c) => `손절 ${fmtInt(c * 0.93)}원(−7%) · 익절 ${fmtInt(c * 1.15)}원(+15%) · 20거래일 지나면 정리`, s10t30: (c) => `손절 ${fmtInt(c * 0.9)}원(−10%) · 익절 ${fmtInt(c * 1.3)}원(+30%) · 40거래일 지나면 정리`, tr15: (c) => `산 뒤 최고가에서 −15% 떨어지면 다음 날 매도 (지금 기준 ${fmtInt(c * 0.85)}원) · 20거래일 지나면 정리`, tr10: (c) => `산 뒤 최고가에서 −10% 떨어지면 다음 날 매도 (지금 기준 ${fmtInt(c * 0.9)}원) · 20거래일 지나면 정리`, ma5: () => '종가가 5일선 아래로 내려가면 다음 날 매도 · 최대 20거래일', half: (c) => `${fmtInt(c * 1.2)}원(+20%)에서 절반 매도, 나머지는 최고가 −10%에 매도`, h5: () => '5거래일째 종가에 매도', h10: () => '10거래일째 종가에 매도', h20: () => '20거래일째 종가에 매도', evx: () => '전환청구·최대주주 장내매도·자사주 처분 공시가 나오거나 보호예수가 풀리는 날 매도 · 최고가 −20%면 먼저 매도 · 최대 120거래일', lv5: (c, e) => e?.lv ? `예전 고점 ${fmtInt(e.lv)}원의 −5%(${fmtInt(e.lv * 0.95)}원) 아래로 빠지면 손절 · 아니면 최고가 −15% 또는 20거래일` : '돌파 가격 −5% 아래면 손절 · 아니면 최고가 −15% 또는 20거래일' };
+  const EX_KO2 = { s7t15: '손절 −7% · 목표 +15%', s10t30: '손절 −10% · 목표 +30%', tr15: '최고점 −15% 또는 20일', tr10: '최고점 −10% 또는 20일', ma5: '5일선 깨면 팔기', half: '+20%에 절반, 나머지 −10% 추적', h5: '5일 들고 팔기', h10: '10일 들고 팔기', h20: '20일 들고 팔기', lv5: '돌파 가격 −5% 손절 · 최고점 −15%', evx: '세력 매도 신호까지 들고 가기' };
   function entNowHTML(L, x) {
     if (!L?.length) return '';
     const c = x?.close || 0, red = x?.vd?.c === 'r';
@@ -3797,8 +3797,21 @@
           ${G.pairs?.length ? `<h6 class="av-h">두 개가 같이 있을 때</h6><div class="lb-list">${G.pairs.map(lift).join('')}</div>` : ''}
           ${G.low?.length ? `<h6 class="av-h">대세상승 앞에 오히려 드물었던 것</h6><div class="lb-list">${G.low.map(lift).join('')}</div>` : ''}
           ${G.seq?.length ? `<h6 class="av-h">가장 흔한 순서 (오르기 전 처음 나온 공시 두 종류)</h6><p class="sm">${G.seq.map(([s, n]) => `${esc(s)} <b>${n}번</b>`).join(' · ')}</p>` : ''}
-          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}</div>
+          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}${exitAnatHTML(G.exit)}</div>
       <div class="st-box lb-box"><h5>③ 공시의 속뜻 사전 <small class="muted">같은 CB·3자배정도 '왜 했나'로 뜻이 달라요 — 🎭 세력 시각(싸게 받고·재료 깔고·띄워서 판다) · 🏛 기관 시각(희석·지배구조·자금 압박). 종목 페이지와 ⭐ 전략 찾기·🏆 이긴 자리에 자동으로 들어가요</small></h5><div class="lb-mvs">${mvDict}</div></div></div>`;
+  }
+  // v246 🏁 엑시트 해부: 실제 고점이 세력 원가의 몇 배였나 · 고점과 엑시트 신호 공시 사이 며칠
+  function exitAnatHTML(X) {
+    if (!X) return '';
+    if (X.need) return `<h6 class="av-h">🏁 엑시트 해부</h6><p class="muted sm">원가 공시가 있는 대세상승이 ${X.n || 0}번 — 10번 넘으면 나와요 (4년치 과거 재현이 돌면 채워져요).</p>`;
+    const KO = { cb: 'CB 전환가', r3: '3자배정 발행가', mna: '경영권 인수 단가', f5: '5% 신고자 매수가' };
+    const rr = Object.entries(X.ratio || {}).filter(([, v]) => v).map(([k, v]) => `<div class="ex-r"><em>${KO[k]} 대비 고점</em><b>보통 ${v.med}배</b><small>가운데 절반 ${v.q1}~${v.q3}배 · ${fmtInt(v.n)}번</small></div>`).join('');
+    const tm = (v, name, w) => (v ? `<div class="ex-r"><em>${name}</em><b>${v.near}%</b><small>고점 ±${w}일 안에 나옴 · 보통 고점 ${v.med > 0 ? v.med + '일 뒤' : v.med < 0 ? -v.med + '일 전' : '그날'} · ${fmtInt(v.n)}번</small></div>` : '');
+    return `<h6 class="av-h">🏁 엑시트 해부 — 세력은 어디서 팔았나 <small class="muted">(대세상승 ${fmtInt(X.n)}번 · 고점 전 공시 원문 가격 기준)</small></h6>
+      <div class="ex-g">${rr || '<p class="muted sm">원문 가격이 있는 원가 공시가 아직 적어요.</p>'}</div>
+      <div class="ex-g">${tm(X.conv, '전환청구 공시', 10)}${tm(X.sell, '대주주 매도·자사주 처분', 10)}${tm(X.unl, '보호예수 해제일', 20)}</div>
+      ${X.news?.length ? `<p class="sm">고점 전 10일 안에 자주 나온 공시: ${X.news.map(([k, p]) => `${esc(featKo('ev:' + k).replace(/^공시 /, ''))} ${p}%`).join(' · ')}</p>` : ''}
+      <p class="muted sm">이 배수는 미리 정한 규칙이 아니라 실제 고점을 잰 결과예요. 4년치가 다 돌면 종목 페이지 목표가 옆에 '과거 비슷한 종목은 원가의 N배에서 고점'으로 붙일 수 있어요.</p>`;
   }
   const featKo = (k) => { const [a, b] = String(k).split(':'); const MVK = Object.fromEntries(Object.entries(S.labData?.mv || {}).map(([x, v]) => [x, v.ko])); if (a === 'ev') return '공시 ' + ({ cb: 'CB', rights3: '3자배정', rights: '유상증자', mna: '경영권', fund5: '투자조합', refix: '전환가 조정', conv: '전환청구', paid: '납입', rename: '상호 변경', purpose: '사업목적', contract: '공급계약', invest: '투자', inquiry: '조회공시', pledge: '담보', majsell: '대주주 매도', ceo: '대표 변경', cbbuy: 'CB 되사기' }[b] || b); if (a === 'mv') return '속뜻 ' + (MVK[b] || b); return { dd70: '1년 고점 −70%↓', dd50: '1년 고점 −50~70%', dd30: '1년 고점 −30~50%', dd0: '1년 고점 −30% 안', dry: '거래량 마름', box: '60일 박스' }[b] || k; };
   document.addEventListener('click', (ev) => { if (ev.target.closest?.('[data-lab-re]')) renderLab(true); });

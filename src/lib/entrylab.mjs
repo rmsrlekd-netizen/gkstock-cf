@@ -34,6 +34,7 @@ export const EXITS = {
   h5: { ko: '5일 들고 팔기', t: '5거래일째 종가' },
   h10: { ko: '10일 들고 팔기', t: '10거래일째 종가' },
   h20: { ko: '20일 들고 팔기', t: '20거래일째 종가' },
+  evx: { ko: '세력 매도 신호까지 들고 가기', t: '전환청구·최대주주 장내매도·자사주 처분 공시가 나오면(또는 보호예수가 풀리는 날) 다음 날 시가에 팔기 · 최고점 −20%면 먼저 팔기 · 최대 120거래일 (공시가 있는 과거 재현에서만)' },
   lv5: { ko: '돌파 가격 −5% 손절 · 최고점 −15%', t: '예전 고점(돌파한 가격) −5% 아래로 빠지면 손절, 아니면 최고가 −15% 또는 20일 (60일 신고가·눌림 자리 전용)' },
 };
 const EX_KEYS = Object.keys(EXITS);
@@ -82,6 +83,10 @@ export function exitsFrom(B, i, P = prep(B), opt = {}) {
   { let out = null; for (let k = k0 + 1; k < k0 + 20; k++) if (P.ma5[k] && B[k].c < P.ma5[k] && B[k + 1]) { out = ret(B[k + 1].o || B[k + 1].c); break; } R.ma5 = out ?? ret(B[k0 + 19].c); }
   { let hi = e, half = false, got = 0, res = null; for (let k = k0; k < k0 + 30; k++) { const x = B[k], o = x.o || x.c; if (!half && x.h >= e * 1.2) { half = true; got = 0.5 * Math.max(o, e * 1.2) / e; } hi = Math.max(hi, x.h); if (x.c <= hi * 0.9 && B[k + 1]) { const px = (B[k + 1].o || B[k + 1].c) / e; res = r1(((half ? got + 0.5 * px : px) - 1) * 100 - COST); break; } } if (res == null) { const px = B[k0 + 29].c / e; res = r1(((half ? got + 0.5 * px : px) - 1) * 100 - COST); } R.half = res; }
   R.h5 = ret(B[k0 + 4].c); R.h10 = ret(B[k0 + 9].c); R.h20 = ret(B[k0 + 19].c);
+  R.evx = opt.ev ? (() => { const { sig, unl } = opt.ev; const T = (k) => Date.parse(B[k].d + 'T15:40:00+09:00'); const t0 = T(k0 - 1); let hi = e;
+    for (let k = k0; k < Math.min(B.length, k0 + 120); k++) { const x = B[k]; if (unl.some((u) => u > t0 && Date.parse(B[k].d + 'T00:00:00+09:00') >= u)) return ret(x.o || x.c); hi = Math.max(hi, x.h); const tk = T(k), tp = T(k - 1);
+      if ((x.c <= hi * 0.8 || sig.some((m) => m > tp && m <= tk)) && B[k + 1]) return ret(B[k + 1].o || B[k + 1].c); }
+    return B[k0 + 119] ? ret(B[k0 + 119].c) : null; })() : null;
   R.lv5 = opt.lv ? (() => { const sp = opt.lv * 0.95; let hi = e; for (let k = k0; k < k0 + 20; k++) { const x = B[k], o = x.o || x.c; if (x.l <= sp) return ret(Math.min(o, sp)); hi = Math.max(hi, x.h); if (x.c <= hi * 0.85 && B[k + 1]) return ret(B[k + 1].o || B[k + 1].c); } return ret(B[k0 + 19].c); })() : null;
   let fail = 0; for (let k = k0; k < k0 + 20; k++) { const dn = B[k].l <= e * 0.9, upp = B[k].h >= e * 1.1; if (dn) { fail = 1; break; } if (upp) { fail = -1; break; } } // 같은 날이면 손절 먼저
   const mf = r1((maxH(B, k0, k0 + 19) / e - 1) * 100), mn = r1((minL(B, k0, k0 + 19) / e - 1) * 100);
@@ -110,16 +115,17 @@ function nhWin(B, from = 120) {
 }
 
 /** 한 종목의 자리 사건 전부 (과거 재현용) — 같은 자리는 5거래일 안 한 번만 · rnd는 10거래일마다 */
-export function entryEvents(B, { code, evs = [], ix = null, mkt = 'Q', motiveOf = null } = {}) {
+export function entryEvents(B, { code, evs = [], ix = null, mkt = 'Q', motiveOf = null, px = null } = {}) {
   if (!B || B.length < 180) return [];
   const P = prep(B), out = [], last = {};
+  const EV = px ? { sig: evs.filter((e) => ['conv', 'majsell', 'tsell'].includes(e.kind)).map((e) => e.ms).sort((a, b) => a - b), unl: (px || []).map((p) => p.lock?.until).filter(Boolean).map((u) => Date.parse(u + 'T00:00:00+09:00')) } : null; // v246 공시 근거 엑시트 (과거 재현에서만)
   const mk = mkt === 'P' ? 'P' : 'Q';
   const mret = (a, b) => { if (!ix) return null; let m = 1, n = 0; for (let k = a; k <= b; k++) { const p = ix[B[k]?.d]?.[mk]; if (p != null) { m *= 1 + p / 100; n++; } } return n ? (m - 1) * 100 : null; };
   for (let i = 120; i < P.n - NEED - 1; i++) {
     const S = setupsAt(B, i, P); if (i % 20 === 0) S.push('rnd');
     const fresh = S.filter((s) => !(last[s] != null && i - last[s] <= 5)); for (const s of S) last[s] = i;
     if (!fresh.length) continue;
-    const X = exitsFrom(B, i, P, fresh.includes('nh60') ? { lv: maxH(B, i - 60, i - 1) } : {}); if (!X) continue;
+    const X = exitsFrom(B, i, P, { ...(fresh.includes('nh60') ? { lv: maxH(B, i - 60, i - 1) } : {}), ev: EV }); if (!X) continue;
     const Tms = Date.parse(B[i].d + 'T15:40:00+09:00');
     const m20 = mret(i - 19, i), mreg = m20 == null ? null : m20 >= 3 ? '상승' : m20 <= -3 ? '하락' : '보합';
     const pk = evs.some((e) => e.ms <= Tms && e.ms > Tms - 180 * 864e5 && ['cb', 'rights3', 'mna', 'fund5'].includes(e.kind)) ? 1 : 0;
@@ -131,7 +137,7 @@ export function entryEvents(B, { code, evs = [], ix = null, mkt = 'Q', motiveOf 
   // v243 신고가 뒤 눌림 3가지 (같은 신고가 날의 바로 사기(nh60)와 비교)
   for (const w of nhWin(B)) {
     if (w.wait || w.i < 120 || w.i >= P.n - NEED - 1) continue;
-    const X = exitsFrom(B, w.i, P, w.s === 'nhpl' ? { k0: w.k0, e: w.e, lim: true, lv: w.L } : { lv: w.L }); if (!X) continue;
+    const X = exitsFrom(B, w.i, P, w.s === 'nhpl' ? { k0: w.k0, e: w.e, lim: true, lv: w.L, ev: EV } : { lv: w.L, ev: EV }); if (!X) continue;
     const i = w.i, Tms = Date.parse(B[i].d + 'T15:40:00+09:00');
     const m20 = mret(i - 19, i), mreg = m20 == null ? null : m20 >= 3 ? '상승' : m20 <= -3 ? '하락' : '보합';
     const pk = evs.some((e) => e.ms <= Tms && e.ms > Tms - 180 * 864e5 && ['cb', 'rights3', 'mna', 'fund5'].includes(e.kind)) ? 1 : 0;
@@ -251,7 +257,7 @@ export async function entSummary({ force = false } = {}) {
 
 /** v242 🎯 차트만 먼저 — 시총 2조 미만 국장 종목 일봉 4년치로 자리 사건만 계산 (공시 조건 없음)
  *  3분 크론, 한 번에 16종목(4개씩 동시) · DB 느리면 쉼 · 레이더 정기 분석 중엔 쉼 */
-export const PRE_V = 3; // v243 신고가 뒤 눌림 3가지 + 파는 법 lv5 → 처음부터 다시
+export const PRE_V = 4; // v243 신고가 뒤 눌림 3가지 + 파는 법 lv5 → 처음부터 다시
 export async function entPreStep({ per = 16 } = {}) {
   const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 800) return { skip: 'db slow' };
   const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return { skip: 'radar busy' };
