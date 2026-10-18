@@ -108,6 +108,7 @@ async function dartDay(key, ymd, page) {
 /** 과거 채우기 한 단계 (수집기 실행 뒤 남는 시간에 조금씩). which: 'sec' | 'dart' */
 // Cloudflare D1 무료 한도: 하루 10만 행 쓰기 (한국시간 오전 9시 초기화)
 // 과거 채우기는 하루 이 만큼만 씀 → 실시간 수집이 쓸 몫을 남겨둠. 유료(Workers Paid)면 BACKFILL_DAILY_ROWS를 크게 (예: 2000000)
+const DEEP_DAYS = 1500, /* v233: 4년(2022 적발 사례까지) */ DEEP_CALLS = 6000, DEEP_DAILY_ROWS = 60000; // v230 깊은 채우기: 3년 · DART 하루 호출 6천 · 하루 6만 행까지
 const DAILY_ROWS = () => Math.max(0, Number(process.env.BACKFILL_DAILY_ROWS) || 25000);
 const utcDay = () => new Date().toISOString().slice(0, 10);
 
@@ -162,6 +163,28 @@ export async function backfillStep(which, { budgetMs = 20000 } = {}) {
       else s.page++;
     }
     st.dart = { ...s, at: Date.now() };
+    // v230 깊은 채우기: 보통 채우기가 끝난 뒤, 작전 레이더 과거 재현용으로 3년 전까지 더 거슬러 올라감 — 레이더가 보는 종류(evKind)의 공시만 저장(행 수 1/4 정도)
+    // v235 실측(10/18 11:25): 1분 크론에서 같이 도는 다른 작업이 CPU를 오래 써서, 상태를 읽고 돌아왔을 땐 이미 시간 예산(until)이 지나 깊은 채우기 블록에 한 번도 못 들어감 → 깊은 채우기는 자기 시작 시각부터 따로 시간을 잼
+    const dUntil = Date.now() + Math.max(8000, budgetMs - 2000);
+    if (s.done) try { // v234 깊은 채우기 오류도 상태에 남김 (예전엔 오류가 나면 상태가 저장 안 돼 '시작 전'으로만 보였음)
+      st.deepTry = { at: Date.now(), n: (st.deepTry?.n || 0) + 1 };
+      await setJSON('backfill/state', st).catch(() => {}); // 시도 기록 먼저 (끊겨도 '돌고는 있다'가 보이게)
+      const { evKind } = await import('./manip.mjs');
+      const dp = st.deep || { day: [shiftDay(limitDay, -1), s.day].sort()[0], page: 1, limit: kstDate(-DEEP_DAYS), rows: 0, calls: {}, started: Date.now() };
+      if (dp.limit > kstDate(-DEEP_DAYS)) { dp.limit = kstDate(-DEEP_DAYS); if (dp.done) { dp.done = false; dp.doneAt = null; } } // 기간을 늘리면 이어서 더 과거로
+      if (!dp.done && s.day && dp.day > s.day) { dp.day = s.day; dp.page = 1; } // v234 보통 채우기가 이미 받은 날은 건너뜀 (예전엔 겹친 19일치를 다시 받아 저장 0건으로 보였음)
+      const cd = utcDay(); dp.calls = dp.calls?.day === cd ? dp.calls : { day: cd, n: 0 };
+      while (!dp.done && Date.now() < dUntil - 2000 && dp.calls.n < DEEP_CALLS && st.quota.rows < DAILY_ROWS() + DEEP_DAILY_ROWS) {
+        if (dp.day < dp.limit) { dp.done = true; dp.doneAt = Date.now(); break; }
+        let r; try { r = await dartDay(key, dp.day.replace(/-/g, ''), dp.page); dp.calls.n++; } catch (e) { dp.err = `${dp.day}: ${e.message}`; break; }
+        const keep = r.list.filter((x) => (x.corp_cls === 'Y' || x.corp_cls === 'K') && x.stock_code && evKind((x.report_nm || '').replace(/\s+/g, ' ')));
+        if (keep.length) { const n = await archiveItems(keep.map(dartItem), { mode: 'ignore' }); saved += n; dp.rows += n; count(); }
+        if (!r.list.length || dp.page >= (r.totalPage || 1) || dp.page >= 60) { dp.log = `${dp.day}: ${dp.page}쪽 완료`; dp.day = shiftDay(dp.day, -1); dp.page = 1; }
+        else dp.page++;
+        if (dp.calls.n % 3 === 0) { st.deep = { ...dp, at: Date.now() }; await setJSON('backfill/state', st).catch(() => {}); } // v234 3번마다 중간 저장 (1분 크론이 시간·CPU 한도로 끊겨도 진행이 남게)
+      }
+      st.deep = { ...dp, at: Date.now() }; st.deepErr = null;
+    } catch (e) { st.deepErr = { at: Date.now(), msg: String(e?.message || e).slice(0, 300) }; console.warn('deep-backfill', e?.message); }
   }
   await setJSON('backfill/state', st).catch(() => {});
   return saved;
