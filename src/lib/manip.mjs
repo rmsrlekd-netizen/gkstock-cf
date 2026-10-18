@@ -2185,7 +2185,7 @@ export async function manipAux() {
     // v234 판단 규칙이 바뀌면(RULE_V) 랭킹 종목을 3분에 3종목씩 새 규칙으로 다시 계산 — 정기 분석(다음 거래일 15:50)까지 예전 판정이 랭킹·🎯에 남던 문제 (실측 10/18 퀀텀레일: 종목 페이지는 '엑시트 후·🔴'인데 랭킹 줄은 하루 전 '판 깔기·▲'로 🎯 3위)
     try {
       const sw = (await getJSON('mp/rvsweep')) || {}; if (sw.rv !== RULE_V) { sw.rv = RULE_V; sw.done = []; sw.at = Date.now(); }
-      const doneS = new Set(sw.done || []); const todo = Object.entries(rank).filter(([c]) => !doneS.has(c)).sort((a, b) => (b[1].s || 0) - (a[1].s || 0)).slice(0, 3);
+      const doneS = new Set(sw.done || []); const t0 = Date.now(); await getJSON('health/ping').catch(() => null); const slow = Date.now() - t0 > 1500; const todo = slow ? [] : Object.entries(rank).filter(([c]) => !doneS.has(c)).sort((a, b) => (b[1].s || 0) - (a[1].s || 0)).slice(0, 1); // v238 3분에 1종목 · DB 느리면 쉼
       for (const [c] of todo) { doneS.add(c); try { await migrateProf(c, `판단 규칙 v${RULE_V}로 다시 계산`); } catch {} }
       if (todo.length) { sw.done = [...doneS]; sw.upd = Date.now(); await setJSON('mp/rvsweep', sw).catch(() => {}); out.rvsweep = { done: sw.done.length, of: Object.keys(rank).length }; }
     } catch (e) { out.rvsweepErr = String(e.message || e).slice(0, 80); }

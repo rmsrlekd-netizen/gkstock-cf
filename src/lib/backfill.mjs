@@ -174,7 +174,8 @@ export async function backfillStep(which, { budgetMs = 20000 } = {}) {
       if (dp.limit > kstDate(-DEEP_DAYS)) { dp.limit = kstDate(-DEEP_DAYS); if (dp.done) { dp.done = false; dp.doneAt = null; } } // 기간을 늘리면 이어서 더 과거로
       if (!dp.done && s.day && dp.day > s.day) { dp.day = s.day; dp.page = 1; } // v234 보통 채우기가 이미 받은 날은 건너뜀 (예전엔 겹친 19일치를 다시 받아 저장 0건으로 보였음)
       const cd = utcDay(); dp.calls = dp.calls?.day === cd ? dp.calls : { day: cd, n: 0 };
-      while (!dp.done && Date.now() < dUntil - 2000 && dp.calls.n < DEEP_CALLS && st.quota.rows < DAILY_ROWS() + DEEP_DAILY_ROWS) {
+      let runCalls = 0; // v238 한 번에 DART 5쪽까지만 (DB 쓰기 부담 줄이기)
+      while (!dp.done && runCalls++ < 5 && Date.now() < dUntil - 2000 && dp.calls.n < DEEP_CALLS && st.quota.rows < DAILY_ROWS() + DEEP_DAILY_ROWS) {
         if (dp.day < dp.limit) { dp.done = true; dp.doneAt = Date.now(); break; }
         let r; try { r = await dartDay(key, dp.day.replace(/-/g, ''), dp.page); dp.calls.n++; } catch (e) { dp.err = `${dp.day}: ${e.message}`; break; }
         const keep = r.list.filter((x) => (x.corp_cls === 'Y' || x.corp_cls === 'K') && x.stock_code && evKind((x.report_nm || '').replace(/\s+/g, ' ')));
