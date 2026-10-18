@@ -11,6 +11,7 @@ import { isTradingDay } from './schedule.mjs';
 import { buildPartyIndex, linksOf, radarAlert, BIG as NOT_PARTY, partyKey } from './manipx.mjs';
 import { attrsOf as tsAttrs } from './tradesim.mjs';
 import { motiveOf, motiveList } from './caselab.mjs';
+import { entryNow } from './entrylab.mjs';
 
 const n0 = (v) => { if (v == null || v === '') return null; const x = Number(String(v).replace(/[,\s]/g, '')); return Number.isFinite(x) ? x : null; };
 const kst = (ms = Date.now()) => { const d = new Date(ms + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), m: d.getUTCHours() * 60 + d.getUTCMinutes(), wd: d.getUTCDay() }; };
@@ -330,7 +331,7 @@ export function barFeatures(B, opt = {}) {
   const preTop = accStartI >= 10 ? hiOf(B.slice(0, accStartI)) : null, allTop = hiOf(B);
   const f = {
     close: last.c, date: last.d,
-    ret5: r1(ret(5)), ret20: r1(ret(20)), ret60: r1(ret(60)),
+    ret5: r1(ret(5)), ret20: r1(ret(20)), ret60: r1(ret(60)), ent: (() => { try { return entryNow(B); } catch { return []; } })(), // v237 최근 3거래일에 뜬 타점
     fromLow60: lo60 > 0 ? r1((last.c / lo60 - 1) * 100) : null, offHigh20: hi20 > 0 ? r1((last.c / hi20 - 1) * 100) : null,
     volX5: base60 ? r1(v5 / base60) : null, volX20: base60 ? r1(v20 / base60) : null, maxVolX10: base60 ? r1(maxV10 / base60) : null,
     box60: r1((bmax / bmin - 1) * 100), box40: r1(box40 * 100),
@@ -1636,7 +1637,7 @@ export function matchPat(pa, P) {
   const wp = (P.good || []).filter(hit).sort((a, b) => b.lift - a.lift)[0] || null, lp = (P.bad || []).filter(hit).sort((a, b) => a.lift - b.lift)[0] || null;
   return { wp, lp };
 }
-export function rankRow(x) { const r = rankRow0(x); try { r.pa = patAttrs(x, r); const m = x.f?.m20; if (m != null) r.pa.mk = m >= 3 ? '상승' : m <= -3 ? '하락' : '보합'; } catch {} return r; }
+export function rankRow(x) { const r = rankRow0(x); { const en = x.ent || x.f?.ent; if (en?.length) r.ent = en.map((e) => e.s); } try { r.pa = patAttrs(x, r); const m = x.f?.m20; if (m != null) r.pa.mk = m >= 3 ? '상승' : m <= -3 ? '하락' : '보합'; } catch {} return r; }
 // v229 ⭐ 자동으로 찾은 전략(mp/strat, 과거 재현 앞 기간에서 고르고 뒤 기간에서 통과한 것만)과 맞는지
 export function stratMatch(pa, S) {
   if (!pa || !S?.c?.length) return false;
@@ -1833,7 +1834,7 @@ export async function manipRank(kind = 'all') {
   for (const r of list) if (r.rr?.v > 20) r.rr = { ...r.rr, v: 20, big: true }; // 예전 줄의 비현실적 손익비는 1:20+로
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
-  let WP = null, ST = null; try { [WP, ST] = await Promise.all([getJSON('mp/winpat'), getJSON('mp/strat')]); } catch {}
+  let WP = null, ST = null, EL = null; try { [WP, ST, EL] = await Promise.all([getJSON('mp/winpat'), getJSON('mp/strat'), getJSON('mp/entlearn')]); } catch {}
   for (const r of list) { const v = verdictOf(r, WP); if (v) r.vd = v; if (ST && !ST.none && r.vd?.c !== 'r' && stratMatch(r.pa, ST)) r.star = { name: ST.name, tb: ST.tb, wb: ST.wb, nb: ST.nb }; } // v212 · v229 ⭐ 한 줄 결론 (경보·벌점 반영 뒤 읽을 때 계산 → 예전 줄에도 바로)
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
   else if (kind === 'pex') list = list.filter((r) => r.pex).sort((a, b) => (b.pex.net - a.pex.net) || (b.pex.su - a.pex.su));
@@ -1851,6 +1852,7 @@ export async function manipRank(kind = 'all') {
     out.pat = { on, n: sum?.map?.['전체']?.n20 || 0, need: PAT_MIN, base: sum?.map?.['전체']?.win20 ?? null, ok: ok.length };
     return out;
   }
+  else if (kind === 'ent') { const ok = (s) => EL?.m?.[s]?.ok; list = list.filter((r) => r.vd?.c !== 'r' && (r.ent || []).some(ok)).map((r) => { const best = (r.ent || []).filter(ok).map((s) => ({ s, ...EL.m[s] })).sort((a, b) => b.avg - a.avg)[0]; return { ...r, entB: best }; }).sort((a, b) => (b.entB?.avg || 0) - (a.entB?.avg || 0)); } // v237 🎯 지금 검증된 타점이 뜬 종목
   else if (kind === 'star') list = list.filter((r) => r.star).sort((a, b) => (b.vd?.c === 'g') - (a.vd?.c === 'g') || (b.s || 0) - (a.s || 0)); // v229 ⭐ 전략 종목
   else if (kind === 'win') list = list.filter((r) => r.vd?.wp && r.vd.c !== 'r').sort((a, b) => b.vd.wp.lift - a.vd.wp.lift || (b.s || 0) - (a.s || 0)); // v224 🏆 이긴 자리 닮은 종목
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);
@@ -2023,6 +2025,7 @@ export async function manipProfile(code) {
       } catch (e) { console.warn('rank 줄 맞춤 실패', e.message); }
     } catch (e) { console.warn('manipProfile', e.message); }
   }
+  if (p) { try { const EL = await import('./entrylab.mjs'); p.entV = EL.entryView(p.ent || p.f?.ent, await EL.loadEntLearn()); } catch {} } // v237 🎯 지금 이 자리 + 과거 성적
   if (p) { try { p.mvL = motiveList(p.mv || motiveOf(p.events, { Tms: Date.now() })); } catch {} } // v233 공시의 속뜻 (화면용 설명)
   return p;
 }

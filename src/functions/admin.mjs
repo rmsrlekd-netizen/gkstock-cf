@@ -46,6 +46,7 @@ export default async (req) => {
       if (mp === 'simrows') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simRows(u.searchParams.get('src') || 'live', u.searchParams.get('s') || 'g')) }); }
       if (mp === 'simstock') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simStock(u.searchParams.get('q') || '')) }); } // v222 성과검증 종목 검색
       if (mp === 'simrun') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...((await t.simStep({ maxCodes: 4, budgetMs: 20000 })) || {}) }); }
+      if (mp === 'ent') { const E = await import('../lib/entrylab.mjs'); return J({ ok: true, ...(await E.entSummary({ force: u.searchParams.get('force') === '1' })) }); } // v237 🎯 타점 연구
       if (mp === 'lab') { const L = await import('../lib/caselab.mjs'); return J({ ok: true, ...(await L.labSummary()) }); } // v233 🔬 연구실(적발 사례·대세상승·공시 속뜻)
       if (mp === 'bt') { const b = await import('../lib/backtest.mjs'); return J({ ok: true, ...(await b.btSummary()) }); } // 과거 재현 백테스트 결과
       if (mp === 'grows') { const g = u.searchParams.get('g') || '전체'; const lim = u.searchParams.get('all') ? 3000 : 400; const rows = u.searchParams.get('src') === 'perf' ? await (await import('../lib/manipx.mjs')).perfRows(g, lim) : await (await import('../lib/backtest.mjs')).btRows(g, lim); return J({ ok: true, g, rows }); } // 그룹별 종목 목록

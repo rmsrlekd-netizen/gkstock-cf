@@ -7,9 +7,10 @@
 import { getJSON, setJSON } from './store.mjs';
 import { partsReset, partsAppend, partsLoad } from './btstore.mjs';
 import { CASE_CODES, motiveOf, bigRuns, saveCase } from './caselab.mjs';
+import { entryEvents } from './entrylab.mjs';
 
 const DAY = 86400e3;
-const BT_V = 23; // v234 급락 가드 · v233 4년·적발 사례·대세상승·공시 속뜻 · // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
+const BT_V = 24; // v237 🎯 타점 연구 · // v234 급락 가드 · v233 4년·적발 사례·대세상승·공시 속뜻 · // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
 const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
 const STEP = 10, BACK = 95, BT_DAYS = 1460; // v233: 4년(적발 사례 2022~23 포함) · // v230: 10거래일 간격 최대 80개 날짜(약 3년 3개월) · 공시는 3년+180일 (v219: 16개 ≈ 8개월) // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
@@ -37,6 +38,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
     await partsReset('mp/bt/trades', BT_V, { nf: {}, deep: bf?.deep ? { from: bf.deep.limit, rows: bf.deep.rows } : null }); // v222 매매 따라하기 거래
     await partsReset('mp/bt/fw', BT_V); // v222 점수 검증용 (판정 숫자 + 그 뒤 시장 대비 수익률)
     await partsReset('mp/bt/big', BT_V); await partsReset('mp/bt/bigb', BT_V); // v233 대세상승 해부
+    await partsReset('mp/bt/ent', BT_V); // v237 🎯 타점 연구 (자리 × 파는 법)
     if (!codes.length) return { started: true, n: 0 };
   }
   if (st.done || st.wait || st.prep && !st.queue) return null;
@@ -46,7 +48,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows || {} : {};
   const TSm = await import('./tradesim.mjs'); const cmap = await TSm.capMap(); const capP = cmap.pct || {}; // 시가총액 순위(근사) → 소형주 항목·대형주 감점 재현 · 판정일 시총으로 세력주만
   const part = st.queue.slice(st.pos, st.pos + max);
-  const newRows = [], newTr = [], newNf = {}, newFw = [], newBig = [], newBase = [];
+  const newRows = [], newTr = [], newNf = {}, newFw = [], newBig = [], newBase = [], newEnt = [];
   const CS = new Set(CASE_CODES);
   const TS = await import('./tradesim.mjs');
   for (const code of part) {
@@ -96,16 +98,18 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
       { const L2 = tlist.map((p) => ({ ...p, di: TS.dOrd(p.d) })); const V = new Map(L2.map((p) => [p.di, p.v])); for (const r of TS.fwdOf(B, L2, { ix: ixd, mkt })) { const v = V.get(r[0]) || {}; newFw.push([r[0], v.s ?? null, v.ws ?? null, v.rr ?? null, v.gp ?? null, r[1], r[2], r[3], code]); } }
       { const R = TS.simTrades(B, tlist, { final: true, now, ix: ixd, mkt }); for (const t of R.trades) newTr.push(TS.pack(code, snap[code]?.[0] || code, t)); for (const [k, v] of Object.entries(R.nf)) newNf[k] = (newNf[k] || 0) + v; } // v222 매매 따라하기 (과거 재현은 10거래일 간격 판정)
       { const nm = snap[code]?.[0] || code; const BR = bigRuns(B, evAll); for (const r of BR.runs) newBig.push({ c: code, n: nm, ...r }); for (const k of BR.base) newBase.push(k); // v233 대세상승 해부
+        try { for (const e of entryEvents(B, { code, evs: evAll, ix: ixd, mkt, motiveOf })) newEnt.push(e); } catch (e) { console.warn('bt ent', code, e.message); } // v237 타점
         if (isCase) { const evMs = evAll.map((e) => e.ms).filter(Boolean); await saveCase(code, { pts: cpts, runs: BR.runs, evFrom: evMs.length ? new Date(Math.min(...evMs) + 9 * 3600e3).toISOString().slice(0, 10) : null, from: B[0]?.d || null }); } }
     } catch (e) { console.warn('bt', code, e.message); }
   }
   if (newBig.length) await partsAppend('mp/bt/big', newBig, { per: 800, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt big', e.message));
+  if (newEnt.length) await partsAppend('mp/bt/ent', newEnt, { per: 4000, maxParts: 60, v: BT_V }).catch((e) => console.warn('bt ent', e.message));
   if (newBase.length) await partsAppend('mp/bt/bigb', newBase, { per: 4000, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt bigb', e.message));
   if (newFw.length) await partsAppend('mp/bt/fw', newFw, { per: 5000, maxParts: 24, v: BT_V }).catch((e) => console.warn('bt fw', e.message));
   if (newTr.length || Object.keys(newNf).length) await partsAppend('mp/bt/trades', newTr, { per: 1500, maxParts: 30, nf: newNf, v: BT_V }).catch((e) => console.warn('bt tr', e.message));
   if (newRows.length) await partsAppend('mp/bt/rows', newRows, { per: 1500, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt rows', e.message));
   st.pos += part.length; st.at = Date.now();
-  if (st.pos >= st.queue.length) { st.done = true; st.doneAt = Date.now(); }
+  if (st.pos >= st.queue.length) { st.done = true; st.doneAt = Date.now(); try { await (await import('./entrylab.mjs')).entSummary({ force: true }); } catch (e) { console.warn('ent sum', e.message); } } // v237 끝나면 타점 학습 저장
   await setJSON('mp/bt/state', st);
   return { pos: st.pos, of: st.queue.length, kept: st.kept };
 }

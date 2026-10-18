@@ -2450,3 +2450,14 @@ body.pbm-open{overflow:hidden}
 .mp-mv{margin:.6rem 0 1rem;padding:.7rem .8rem;border-radius:12px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.22)}
 .mp-mvi{display:flex;flex-direction:column;padding:.4rem 0;border-top:1px solid rgba(255,255,255,.06)}.mp-mvi small{color:var(--muted);font-size:.8rem}.mp-mvi.s b{color:#f9a8d4}.mp-mvi.i b{color:#93c5fd}
 @media (max-width:640px){.lb-row{grid-template-columns:1fr 1fr}.lb-n{grid-column:1/-1}}
+/* v237 🎯 타점 연구 */
+.en-box{margin:.4rem 0 1rem;padding:.7rem .8rem;border-radius:12px;background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.22)}
+.en-i{padding:.4rem 0;border-top:1px solid rgba(255,255,255,.06)}.en-s{font-size:.85rem;margin-top:.2rem}
+.en-row{border-top:1px solid rgba(255,255,255,.06);padding:.45rem .2rem}.en-row.ok{background:rgba(34,197,94,.06)}
+.en-row summary{display:grid;grid-template-columns:minmax(170px,2fr) minmax(140px,1.4fr) minmax(110px,1fr) minmax(80px,.7fr);gap:8px;align-items:center;cursor:pointer;list-style:none}
+.en-row summary::-webkit-details-marker{display:none}
+.en-n,.en-b,.en-v{display:flex;flex-direction:column}.en-n small,.en-v small,.en-b em,.en-v em{color:var(--muted);font-size:.72rem;font-style:normal}
+.en-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin:.5rem 0}
+.en-c{display:flex;flex-direction:column;padding:.4rem .5rem;border-radius:8px;background:rgba(255,255,255,.04);font-size:.82rem}.en-c em{font-style:normal;color:var(--muted);font-size:.72rem}.en-c small{color:var(--muted);font-size:.7rem}.en-c.on{outline:1px solid rgba(34,197,94,.6)}
+.vp-e{background:rgba(239,68,68,.12);color:#fca5a5}
+@media (max-width:640px){.en-row summary{grid-template-columns:1fr 1fr}.en-n{grid-column:1/-1}}
