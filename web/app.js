@@ -4112,7 +4112,20 @@
         return `<button class="pbd-row" data-pb-open="${esc(r.g)}" data-pb-src="${src}"><span class="pbd-n">${esc(s)}<small>${r['pn' + H2] || r.n}건</small></span>
           <span class="pbd-bar"><i style="left:${(q[0] / mxd) * 100}%;width:${Math.max(2, ((q[1] - q[0]) / mxd) * 100)}%"></i><b style="left:${(r['md' + H2] / mxd) * 100}%"></b></span>
           <span class="pbd-v"><b>${r['md' + H2]}일</b><small>평균 ${r['ad' + H2]}일 · ${q[0]}~${q[1]}일</small></span>
-          <span class="pbd-v"><small>그때까지 평균 최고</small><b class="up">${sgn(r['up' + H2])}</b></span></button>`; }).join('')}</div></div>`;
+          <span class="pbd-v"><small>그때까지 평균 최고</small><b class="up">${sgn(r['up' + H2])}</b></span></button>`; }).join('')}</div>${pbLifeHTML(rows, src)}</div>`;
+  }
+  // v244 🎢 단계별 큰 수익(+30%)·실패(−15%)·실패 뒤 (120거래일, GK 요청)
+  function pbLifeHTML(rows, src) {
+    const ST = ['판 깔기', '매집', '띄우기', '털기', '엑시트 후', '관찰'];
+    const L = [['전체', rows.find((r) => r.g === '전체')], ...ST.map((s) => [s, rows.find((r) => r.g === '단계:' + s)])].filter(([, r]) => r?.lon);
+    if (!L.length) return '<p class="muted sm" style="margin-top:.8rem">🎢 큰 수익·실패·실패 뒤 움직임은 4년치 과거 재현을 새 기준으로 계산하면 채워져요.</p>';
+    const d = (v) => (v != null ? `${Math.round(v)}일` : '—');
+    return `<h5 style="margin:1rem 0 .3rem">🎢 단계별 — 크게 먹었나, 크게 깨졌나, 깨진 뒤엔?</h5><div class="pb-legend muted sm">판정 다음 날 시가에 샀다면 120거래일 안에 <b class="up">+30%</b>와 <b class="down">−15%</b> 중 먼저 닿은 쪽 · 걸린 날은 중간값. '깨진 뒤'는 −15% 닿은 다음 120거래일 동안.</div>
+      <div class="lf">${L.map(([s, r]) => `<button class="lf-row" data-pb-open="${esc(r.g)}" data-pb-src="${esc(src)}"><span class="lf-n"><b>${esc(s)}</b><small>${fmtInt(r.lon)}건</small></span>
+        <span class="lf-c"><em>크게 먹음 (+30% 먼저)</em><b class="up">${r.low}%</b><small>보통 ${d(r.lwd)} 걸림</small></span>
+        <span class="lf-c"><em>크게 깨짐 (−15% 먼저)</em><b class="down">${r.lol}%</b><small>보통 ${d(r.lfd)} 걸림</small></span>
+        <span class="lf-c"><em>깨진 뒤</em>${r.fbn ? `<b>${r.fbr}%</b><small>본전 회복 (보통 ${d(r.fbd)}) · +20%까지 ${r.f20r}% · 가장 깊이 중간 ${sgn(r.flm)}</small>` : '<small class="muted">—</small>'}</span></button>`).join('')}</div>
+      <p class="muted sm">한 줄 정리: '크게 먹음'이 높고 걸린 날이 짧은 단계일수록 <b>짧게 노릴 자리</b>, '깨진 뒤 본전 회복'이 낮은 단계는 <b>손절하고 나와야 하는 자리</b>예요.</p>`;
   }
   // 종목 목록 창
   function pbModal(src, g, rows, sort) {

@@ -69,6 +69,13 @@ export function pathStats(B, i, opt = {}) {
     out['u' + h] = Math.round((hi / entry - 1) * 1000) / 10; out['d' + h] = Math.round((lo / entry - 1) * 1000) / 10;
     const ir = ixRet(i + 1, e); if (ir != null) out['x' + h] = Math.round((r - ir) * 10) / 10;
   }
+  // v244 🎢 큰 수익·실패·실패 뒤 (GK: 단계별로 큰 수익까지·실패까지 얼마나 걸렸나, 실패 뒤 다시 올랐나) — 120거래일 안
+  { let bw = null, fd = null; for (let k = i + 1; k <= Math.min(B.length - 1, i + 120); k++) { if (fd == null && (B[k].l ?? B[k].c) <= entry * 0.85) fd = k; if (bw == null && (B[k].h ?? B[k].c) >= entry * 1.3) bw = k; if (bw != null && fd != null) break; }
+    if (bw != null) out.lw = bw - i; if (fd != null) out.lf = fd - i;
+    if (bw != null || fd != null) out.lo = fd == null || (bw != null && bw < fd) ? 'w' : 'l'; else if (B[i + 120]) out.lo = 'n';
+    if (fd != null) { let lo2 = Infinity; for (let k = fd; k <= Math.min(B.length - 1, fd + 60); k++) lo2 = Math.min(lo2, B[k].l ?? B[k].c); out.fl = Math.round((lo2 / entry - 1) * 1000) / 10;
+      let fb = null, f20 = 0; for (let k = fd + 1; k <= Math.min(B.length - 1, fd + 120); k++) { if (fb == null && B[k].c >= entry) fb = k - fd; if ((B[k].h ?? B[k].c) >= entry * 1.2) { f20 = 1; break; } }
+      if (fb != null) out.fb = fb; else if (B[fd + 120]) out.fb = -1; if (f20 || B[fd + 120]) out.f20 = f20; } }
   { const m = i >= 20 ? ixRet(i - 19, i) : null; if (m != null) out.m20 = Math.round(m * 10) / 10; } // v223: 판정 전 20거래일 시장 흐름 (국면)
   const touch = (up, dn) => { for (let k = i + 1; k < Math.min(B.length, i + 61); k++) { const H1 = B[k].h ?? B[k].c, L1 = B[k].l ?? B[k].c; if (L1 <= dn) return { r: 'l', k }; if (H1 >= up) return { r: 'w', k }; } return null; };
   const stopped = B.length < i + 61 && opt.now && Date.parse(B[B.length - 1].d) < opt.now - 10 * DAY; // 60일 전에 거래가 끊김
@@ -174,6 +181,8 @@ export function perfAdd(groups, g, row) {
   if (row.wy?.length) { const W = (o.wy ||= {}); for (const k of row.wy) W[k] = (W[k] || 0) + 1; }
   for (const h of [20, 60, 120]) for (const [K, f] of [['R', 'r'], ['U', 'u'], ['X', 'x']]) { const v = row[f + h]; if (v != null) { const a = (o[K + h] ||= []); if (a.length < 4000) a.push(v); } } // 중앙값용
   for (const h of [20, 60, 120]) { const v = row['pd' + h]; if (v != null) { const a = (o['P' + h] ||= []); if (a.length < 4000) a.push(v); } } // v223: 고점까지 걸린 날
+  if (row.lo) { o.lon = (o.lon || 0) + 1; if (row.lo === 'w') { o.low = (o.low || 0) + 1; (o.LW ||= []).length < 4000 && o.LW.push(row.lw); } if (row.lo === 'l') { o.lol = (o.lol || 0) + 1; (o.LF ||= []).length < 4000 && o.LF.push(row.lf); } } // v244 🎢
+  if (row.lo === 'l' && row.fb != null) { o.fbn = (o.fbn || 0) + 1; if (row.fb > 0) { o.fbk = (o.fbk || 0) + 1; (o.FB ||= []).length < 4000 && o.FB.push(row.fb); } if (row.f20) o.f20 = (o.f20 || 0) + 1; if (row.fl != null) (o.FL ||= []).length < 4000 && o.FL.push(row.fl); }
   for (const h of H) if (row['x' + h] != null) { o['xn' + h] = (o['xn' + h] || 0) + 1; o['xs' + h] = (o['xs' + h] || 0) + row['x' + h]; }
   for (const h of H) { const v = row['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) { o['sw' + h] = (o['sw' + h] || 0) + v; } else { o['sl' + h] = (o['sl' + h] || 0) + v; } if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; if (v >= 20) o['b' + h] = (o['b' + h] || 0) + 1; if (v <= -20) o['l' + h] = (o['l' + h] || 0) + 1; }
 }
@@ -187,6 +196,8 @@ export function perfOut(groups) {
     if (o.wy) { const top = (pre, n) => Object.entries(o.wy).filter(([k]) => k.startsWith(pre)).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, c]) => [k, n ? Math.round((c / n) * 100) : 0]); r.whyW = top('s:', o.ftw || 0); r.whyL = top('f:', o.ftl || 0); }
     const med = (a) => { if (!a?.length) return null; const b = [...a].sort((x, y) => x - y), m = b.length >> 1; return Math.round((b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2) * 10) / 10; };
     for (const h of [20, 60, 120]) if (o['P' + h]?.length) { r['md' + h] = med(o['P' + h]); r['ad' + h] = Math.round(o['P' + h].reduce((a, b) => a + b, 0) / o['P' + h].length); r['qd' + h] = (() => { const b = [...o['P' + h]].sort((x, y) => x - y); return [b[Math.floor(b.length / 4)], b[Math.floor(b.length * 3 / 4)]]; })(); }
+    if (o.lon) { r.lon = o.lon; r.low = Math.round(((o.low || 0) / o.lon) * 100); r.lol = Math.round(((o.lol || 0) / o.lon) * 100); r.lwd = med(o.LW); r.lfd = med(o.LF); } // v244 🎢 +30% 먼저 / −15% 먼저 (120일)
+    if (o.fbn) { r.fbn = o.fbn; r.fbr = Math.round(((o.fbk || 0) / o.fbn) * 100); r.fbd = med(o.FB); r.f20r = Math.round(((o.f20 || 0) / o.fbn) * 100); r.flm = med(o.FL); }
     for (const h of [20, 60, 120]) { r['mr' + h] = med(o['R' + h]); r['mu' + h] = med(o['U' + h]); r['mx' + h] = med(o['X' + h]); }
     for (const h of H) if (o['xn' + h]) r['ax' + h] = Math.round((o['xs' + h] / o['xn' + h]) * 10) / 10;
     for (const h of H) if (o['n' + h]) { r['n' + h] = o['n' + h]; r['avg' + h] = Math.round((o['s' + h] / o['n' + h]) * 10) / 10; r['win' + h] = Math.round(((o['w' + h] || 0) / o['n' + h]) * 100); r['big' + h] = Math.round(((o['b' + h] || 0) / o['n' + h]) * 100); r['loss' + h] = Math.round(((o['l' + h] || 0) / o['n' + h]) * 100); const nw = o['w' + h] || 0, nl = o['n' + h] - nw; r['aw' + h] = nw ? Math.round(((o['sw' + h] || 0) / nw) * 10) / 10 : null; r['al' + h] = nl ? Math.round(((o['sl' + h] || 0) / nl) * 10) / 10 : null; r['pf' + h] = o['sl' + h] ? Math.round(((o['sw' + h] || 0) / -o['sl' + h]) * 100) / 100 : (o['sw' + h] ? 99 : null); } // v222: 결과 기준 — 오른 비율·평균 수익/손실·번 돈÷잃은 돈
