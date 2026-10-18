@@ -3357,7 +3357,7 @@
     const TABS = [['price', '💰 가격·목표'], ['check', '✅ 체크리스트'], ['why', '<b class="up">▲</b><b class="down">▼</b> 근거'], ['chart', '🕯 차트 신호'], ['docs', '📄 공시'], ['ai', '🤖 AI·기록']];
     const tab = TABS.some(([t]) => t === S.rpTab) ? S.rpTab : 'price';
     const planBox = x.plan ? `<div class="pf-planbox"><h5>💼 버티기 계획 <small class="muted">세력이 일부러 밀어 손절을 받아내는 '흔들기'를 버티는 기준 · ⭐ 내 세력주 탭에서 계좌 금액을 넣으면 살 금액까지 계산</small></h5>${planHTML(x.plan)}</div>` : '';
-    const entBox = entNowHTML(x.entV);
+    const entBox = entNowHTML(x.entV, x);
     const body = { price: entBox + P.accLine + planBox + P.tgtBox, check: P.ckBox, why: (P.mvBox || '') + P.dirBox, chart: radarChart(x, d) + ((P.pexBox + P.cycLine + P.rbBox + P.markBox + P.wf) || '<p class="muted">하락 뒤 반등·매집봉·시장경보 신호가 없어요</p>'), docs: P.grid, ai: P.aiBox || '<p class="muted">AI 해석이 아직 없어요 (상위 종목은 장 마감 뒤 자동, 검색은 "지금 다시 분석")</p>' }[tab];
     box.innerHTML = `<div class="rp">
       <div class="rp-nav"><button class="btn sm" data-rp-back>← 작전 레이더</button><span class="muted sm">${x.at ? esc(rel(x.at)) + ' 분석' : ''}${j.cached ? ' · 저장된 결과' : ''}${x.migrated ? ' · 새 계산 방식으로 방금 갱신' : ''}</span></div>
@@ -3720,10 +3720,18 @@
   }
   // v237 🎯 타점 연구 — 들어가는 자리 × 파는 법
   const ENT_KO = { brk: '20일 고가 돌파', nh60: '60일 신고가', pull: '급등 뒤 20일선 눌림', boxbig: '박스 뒤 장대양봉', dry1: '거래량 마름 뒤 첫 양봉', accbar: '매집봉', gap: '갭 상승 유지', crash: '급락 뒤 첫 반등', ma20x: '20일선 회복', uplim: '상한가 다음 날', rnd: '아무 날이나' };
-  function entNowHTML(L) {
+  // v240 종목 페이지 맨 위 '🎯 지금 이 자리' — 무엇이 떴고, 사면 언제·어떻게 파는지를 가격으로
+  const EX_PLAN = { s7t15: (c) => `손절 ${fmtInt(c * 0.93)}원(−7%) · 익절 ${fmtInt(c * 1.15)}원(+15%) · 20거래일 지나면 정리`, s10t30: (c) => `손절 ${fmtInt(c * 0.9)}원(−10%) · 익절 ${fmtInt(c * 1.3)}원(+30%) · 40거래일 지나면 정리`, tr15: (c) => `산 뒤 최고가에서 −15% 떨어지면 다음 날 매도 (지금 기준 ${fmtInt(c * 0.85)}원) · 20거래일 지나면 정리`, tr10: (c) => `산 뒤 최고가에서 −10% 떨어지면 다음 날 매도 (지금 기준 ${fmtInt(c * 0.9)}원) · 20거래일 지나면 정리`, ma5: () => '종가가 5일선 아래로 내려가면 다음 날 매도 · 최대 20거래일', half: (c) => `${fmtInt(c * 1.2)}원(+20%)에서 절반 매도, 나머지는 최고가 −10%에 매도`, h5: () => '5거래일째 종가에 매도', h10: () => '10거래일째 종가에 매도', h20: () => '20거래일째 종가에 매도' };
+  const EX_KO2 = { s7t15: '손절 −7% · 목표 +15%', s10t30: '손절 −10% · 목표 +30%', tr15: '최고점 −15% 또는 20일', tr10: '최고점 −10% 또는 20일', ma5: '5일선 깨면 팔기', half: '+20%에 절반, 나머지 −10% 추적', h5: '5일 들고 팔기', h10: '10일 들고 팔기', h20: '20일 들고 팔기' };
+  function entNowHTML(L, x) {
     if (!L?.length) return '';
-    const row = (e) => `<div class="en-i"><b>${esc(e.ko)}</b> <small class="muted">${e.ago ? `${e.ago}거래일 전` : '오늘'} · ${esc(e.t)}</small>${e.st ? `<div class="en-s">${e.st.ok ? '<span class="simv v-ok">✅ 검증된 자리</span>' : '<span class="simv v-n">검증 안 됨</span>'} 과거 ${fmtInt(e.st.n)}번(안 본 기간) · 승률 <b>${e.st.win}%</b> · 한 번 평균 <b class="${dirCls(e.st.avg)}">${sgn(e.st.avg)}</b> (아무 날이나 ${sgn(e.st.base)}) · 실패(−10% 먼저) ${e.st.fail ?? '-'}% · 추천 매도: <b>${esc(e.st.ex)}</b>${e.st.mk ? `<br><small class="muted">시장 상승장 ${e.st.mk.상승 != null ? sgn(e.st.mk.상승) : '-'} · 보합장 ${e.st.mk.보합 != null ? sgn(e.st.mk.보합) : '-'} · 하락장 ${e.st.mk.하락 != null ? sgn(e.st.mk.하락) : '-'}</small>` : ''}</div>` : '<div class="en-s muted sm">과거 성적은 4년치 과거 재현이 끝나면 나와요.</div>'}</div>`;
-    return `<div class="en-box"><h5>🎯 지금 이 자리 <small class="muted">최근 3거래일 차트에서 뜬 '들어가는 자리' — 다음 날 시가에 샀다면 과거 같은 자리 성적 (어떤 종목이든 같은 기준)</small></h5>${L.map(row).join('')}</div>`;
+    const c = x?.close || 0, red = x?.vd?.c === 'r';
+    const exKey = (e) => (e.st?.ok ? Object.keys(EX_KO2).find((k) => EX_KO2[k] === e.st.ex) || 'tr15' : 'tr15');
+    const row = (e) => { const k = exKey(e), plan = c ? EX_PLAN[k](c) : ''; return `<div class="en-i"><div class="en-h"><b>🎯 ${esc(e.ko)}</b> <span class="en-when">${e.ago ? `${e.ago}거래일 전에 뜸` : '오늘 뜸'}</span>${e.st?.ok ? '<span class="simv v-ok">✅ 검증된 자리</span>' : e.st ? '<span class="simv v-n">검증 못 함</span>' : '<span class="simv v-n">검증 전</span>'}</div>
+      <div class="en-what">${esc(e.t)}</div>
+      <div class="en-plan"><b>산다면</b> 다음 날 시가 (지금 ${c ? fmtInt(c) + '원' : '—'} 근처) → <b>파는 법</b> ${esc(EX_KO2[k])}${e.st?.ok ? '' : ' <small class="muted">(아직 검증 전이라 기본 방식)</small>'}<br><small>${esc(plan)}</small></div>
+      ${e.st ? `<div class="en-s">과거 같은 자리(안 본 기간 ${fmtInt(e.st.n)}번): 승률 <b>${e.st.win}%</b> · 한 번 평균 <b class="${dirCls(e.st.avg)}">${sgn(e.st.avg)}</b> (아무 날이나 샀다면 ${sgn(e.st.base)}) · −10%가 +10%보다 먼저 온 비율 ${e.st.fail ?? '-'}%${e.st.mk ? ` · 상승장 ${e.st.mk.상승 != null ? sgn(e.st.mk.상승) : '-'} / 보합장 ${e.st.mk.보합 != null ? sgn(e.st.mk.보합) : '-'} / 하락장 ${e.st.mk.하락 != null ? sgn(e.st.mk.하락) : '-'}` : ''}</div>` : '<div class="en-s muted sm">이 자리의 과거 승률은 4년치 과거 재현이 끝나면 여기 붙어요. 지금은 "차트에 이 모양이 떴다"는 사실만이에요.</div>'}</div>`; };
+    return `<div class="en-box"><h5>🎯 지금 들어가는 자리</h5>${red ? '<p class="en-warn">⚠ 이 종목은 맨 위 결론이 🔴 피하기예요 — 자리가 떴어도 폭탄 신호·하락 위험이 우선이에요.</p>' : ''}${L.map(row).join('')}</div>`;
   }
   async function renderEnt(force) {
     const box = $('#entBox'); if (!box) return;

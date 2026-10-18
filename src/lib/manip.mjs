@@ -2026,7 +2026,7 @@ export async function manipProfile(code) {
       } catch (e) { console.warn('rank 줄 맞춤 실패', e.message); }
     } catch (e) { console.warn('manipProfile', e.message); }
   }
-  if (p) { try { const EL = await import('./entrylab.mjs'); p.entV = EL.entryView(p.ent || p.f?.ent, await EL.loadEntLearn()); } catch {} } // v237 🎯 지금 이 자리 + 과거 성적
+  if (p) { try { const EL = await import('./entrylab.mjs'); let en = p.ent || p.f?.ent; try { const N = (await getJSON('mp/entnow'))?.m?.[code]; if (N && Date.now() - (N.at || 0) < 4 * 864e5) en = N.ent; } catch {} p.entV = EL.entryView(en, await EL.loadEntLearn()); /* v240 랭킹 탭과 같은 '지금 들어가는 자리'(3분마다 훑은 결과) */ } catch {} } // v237 🎯 지금 이 자리 + 과거 성적
   if (p) { try { p.mvL = motiveList(p.mv || motiveOf(p.events, { Tms: Date.now() })); } catch {} } // v233 공시의 속뜻 (화면용 설명)
   return p;
 }
