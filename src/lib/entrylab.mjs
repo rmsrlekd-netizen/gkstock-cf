@@ -265,6 +265,7 @@ export async function entPreStep({ per = 10 } = {}) {
   const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 500) return { skip: 'db slow' };
   const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return { skip: 'radar busy' };
   let st = await getJSON('mp/entpre').catch(() => null);
+  if (st && !st.done && Math.floor(Date.now() / 180e3) % 2 === 1) { const cf = await getJSON('mp/costfill').catch(() => null); if (cf && !cf.done) return { skip: 'costfill turn' }; } // v250 세력 원가 받기와 3분씩 번갈아
   const { partsReset, partsAppend } = await import('./btstore.mjs');
   if (!st || st.v !== PRE_V) {
     const idx = (await getJSON('mp/idx').catch(() => null)) || [];

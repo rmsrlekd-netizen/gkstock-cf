@@ -71,10 +71,10 @@ export async function discReport() {
  *  3분 크론 · 한 번 45초·2개씩 · 하루 6,000건 · DB 느리면/정기 분석 중이면 쉼 · 1바퀴(지금 있는 공시) → 깊은 채우기 끝나면 2바퀴(옛 공시)
  *  종목: 지금 시총 2조 미만(스팩 제외) + 랭킹 먼저 */
 const CF_V = 1, CF_KINDS = ['cb', 'refix', 'rights3', 'rights', 'mna', 'fund5'];
-export async function costFillStep({ budgetMs = 30000, par = 2, dayMax = 6000 } = {}) {
+export async function costFillStep({ budgetMs = 35000, par = 3, dayMax = 9000 } = {}) {
   const { getJSON, setJSON } = await import('./store.mjs');
   const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 500) return { skip: 'db slow' };
-  { const ep = await getJSON('mp/entpre').catch(() => null); if (ep && !ep.done) return { skip: 'entpre running' }; } // v249: 차트만 먼저가 끝난 뒤에 (동시에 돌면 DB 부담)
+  if (Math.floor(Date.now() / 180e3) % 2 === 0) { const ep = await getJSON('mp/entpre').catch(() => null); if (ep && !ep.done) return { skip: 'entpre turn' }; } // v250: 차트만 먼저와 3분씩 번갈아 (동시에 돌면 DB 부담)
   const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return { skip: 'radar busy' };
   let st = await getJSON('mp/costfill').catch(() => null);
   const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
@@ -97,7 +97,7 @@ export async function costFillStep({ budgetMs = 30000, par = 2, dayMax = 6000 } 
   if (st.dn >= dayMax) return { skip: 'day max' };
   const M = await import('./manip.mjs');
   const now = Date.now(); let n = 0, codes = 0;
-  while (st.pos < st.queue.length && Date.now() - t0 < budgetMs && st.dn < dayMax && codes++ < 15) { // 한 번에 15종목까지 (DB 부담)
+  while (st.pos < st.queue.length && Date.now() - t0 < budgetMs && st.dn < dayMax && codes++ < 20) { // 한 번에 20종목까지 (DB 부담)
     const code = st.queue[st.pos];
     const evs = (await M._eventsOf(code, now, { days: 1640 }).catch(() => [])).filter((e) => CF_KINDS.includes(e.kind) && e.id);
     const need = [];
