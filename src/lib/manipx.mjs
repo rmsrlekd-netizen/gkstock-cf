@@ -71,7 +71,7 @@ export function pathStats(B, i, opt = {}) {
   }
   // v244 🎢 큰 수익·실패·실패 뒤 (GK: 단계별로 큰 수익까지·실패까지 얼마나 걸렸나, 실패 뒤 다시 올랐나) — 120거래일 안
   { let bw = null, fd = null; for (let k = i + 1; k <= Math.min(B.length - 1, i + 120); k++) { if (fd == null && (B[k].l ?? B[k].c) <= entry * 0.85) fd = k; if (bw == null && (B[k].h ?? B[k].c) >= entry * 1.3) bw = k; if (bw != null && fd != null) break; }
-    if (bw != null) out.lw = bw - i; if (fd != null) out.lf = fd - i;
+    if (bw != null) { out.lw = bw - i; let mn = Infinity; for (let k = i + 1; k <= bw; k++) mn = Math.min(mn, B[k].l ?? B[k].c); out.ldd = Math.round((mn / entry - 1) * 1000) / 10; } if (fd != null) out.lf = fd - i; // v247 ldd: +30% 가기 전 가장 깊이 빠진 정도
     if (bw != null || fd != null) out.lo = fd == null || (bw != null && bw < fd) ? 'w' : 'l'; else if (B[i + 120]) out.lo = 'n';
     if (fd != null) { let lo2 = Infinity; for (let k = fd; k <= Math.min(B.length - 1, fd + 60); k++) lo2 = Math.min(lo2, B[k].l ?? B[k].c); out.fl = Math.round((lo2 / entry - 1) * 1000) / 10;
       let fb = null, f20 = 0; for (let k = fd + 1; k <= Math.min(B.length - 1, fd + 120); k++) { if (fb == null && B[k].c >= entry) fb = k - fd; if ((B[k].h ?? B[k].c) >= entry * 1.2) { f20 = 1; break; } }

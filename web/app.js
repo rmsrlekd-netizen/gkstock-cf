@@ -3737,7 +3737,7 @@
     const box = $('#entBox'); if (!box) return;
     let j; try { j = await mpGet('mp=ent' + (force ? '&force=1' : ''), 90000); } catch (e) { box.innerHTML = `<p class="muted sm">타점 연구를 못 불러옴: ${esc(e.message)}</p>`; return; }
     const P = j.pre, preTxt = P && !P.done && P.of ? `<br><small class="muted">📊 차트만 먼저 계산 중: ${fmtInt(P.pos)} / ${fmtInt(P.of)}종목 · 사건 ${fmtInt(P.n)}개 (3분에 16종목 — 끝나면 표가 바뀌어요)</small>` : '';
-    if (j.need || !j.list) { box.innerHTML = `<div class="sx"><div class="sx-head"><h4>🎯 타점 연구</h4></div><p class="sx-empty">아직 자리 사건이 ${fmtInt(j.n || 0)}개예요 — 차트(일봉 4년치)로 먼저 계산하고 있어요 (200개 넘으면 표가 나와요). 들어가는 자리 10가지 × 파는 법 9가지를 모두 시험해요.${preTxt}</p></div>`; return; }
+    if (j.need || !j.list) { box.innerHTML = `<div class="sx"><div class="sx-head"><h4>🎯 타점 연구</h4></div><p class="sx-empty">아직 자리 사건이 ${fmtInt(j.n || 0)}개예요 — 차트(일봉 4년치)로 먼저 계산하고 있어요 (200개 넘으면 표가 나와요). 들어가는 자리 10가지 × 파는 법 11가지를 모두 시험해요.${preTxt}</p></div>`; return; }
     const srcTxt = j.src === 'pre' ? `<p class="sm" style="margin:6px 0">📊 <b>차트만 먼저 계산한 결과</b> — 시총 2조 미만 국장 종목 일봉 4년치. 자리는 일봉만으로 정해져서 공시를 기다리지 않았어요. 단, '판 깔기 공시 있음·무자본 M&A' 같은 공시 조건별 성적은 4년치 공시가 다 차고 과거 재현이 끝나면 나와요. 지금 상장된 종목만이라 상장폐지된 종목은 빠져 있어요(결과가 조금 좋게 나올 수 있음).</p>${preTxt}` : '';
     const B = j.base, EX = j.exits || {};
     const g = (c) => (c ? `<b class="${dirCls(c.avg)}">${sgn(c.avg)}</b><small>승률 ${c.win}% · ${fmtInt(c.n)}번${c.big ? ` · −15%↓ ${c.big}%` : ''}</small>` : '<small class="muted">—</small>');
@@ -3760,7 +3760,7 @@
       const miss = l && xx ? Math.round((xx.n / ((l.n || 0) + xx.n)) * 100) : null;
       return `<div class="nh-box"><h5>📈 60일 신고가 — 바로 살까, 눌림을 기다릴까? <small class="muted">(안 본 뒤 기간 · 한 번 평균)</small></h5><div class="nh-g">${cell(a, '① 신고가 다음 날 바로', '바로 시가')}${cell(l, '② 눌림 지정가', '+7% 오른 뒤 예전 고점 +3%까지 오면')}${cell(c2, '③ 눌림 뒤 확인 양봉', '예전 고점 지키고 양봉 나온 다음 날')}</div>
         <p class="muted sm" style="margin:.4rem 0 0">② 지정가는 '그 가격까지 내려오면 체결'로 계산해서 실제보다 조금 좋게 나올 수 있어요 → 아무 날이나보다 1%p 넘게 이겨야 ✅ 줘요.</p>${miss != null ? `<p class="sm">눌림을 기다리면 <b>${miss}%</b>는 안 내려와서 못 삼${(() => { const v = xx.best?.z.avg ?? xx.grid?.tr15?.avg; return v != null ? ` — 그 종목들은 바로 샀다면 한 번 평균 <b class="${dirCls(v)}">${sgn(v)}</b>였어요 <small class="muted">(이미 올라서 안 빠진 종목만 골라 놓고 계산한 숫자라 실제로 벌 수 있는 수익이 아니에요 — 기다리는 대신 놓치는 크기만 참고)</small>` : ''; })()}</p>` : ''}</div>`; })();
-    box.innerHTML = `<div class="sx"><div class="sx-head"><h4>🎯 타점 연구</h4><small class="muted">어떤 종목이든 '들어가는 자리'가 뜬 다음 날 시가에 샀다면 · 파는 법 9가지 · 비용 0.5% · ${esc(j.from || '')}~${esc(j.to || '')} · 사건 ${fmtInt(j.n)}개 <button class="btn sm" data-ent-re>다시 계산</button></small></div>
+    box.innerHTML = `<div class="sx"><div class="sx-head"><h4>🎯 타점 연구</h4><small class="muted">어떤 종목이든 '들어가는 자리'가 뜬 다음 날 시가에 샀다면 · 파는 법 ${Object.keys(EX).length}가지 · 비용 0.5% · ${esc(j.from || '')}~${esc(j.to || '')} · 사건 ${fmtInt(j.n)}개 <button class="btn sm" data-ent-re>다시 계산</button></small></div>
       <p class="sx-sum"><b>보는 법</b>: 줄마다 "그 자리에서 샀다면 한 번에 평균 몇 %, 10번 중 몇 번 수익"이에요. <b>아무 날이나 산 것</b>보다 나아야 의미 있어요. ✅ = 앞 기간(~${esc(j.cut)})과 안 본 뒤 기간 <b>둘 다</b> 이김 → 랭킹 '🎯 지금 들어가는 자리'와 종목 페이지에 표시 · ❌ = 못 이김. 줄을 누르면 자세한 숫자.</p>
       ${srcTxt}${nhBox}<div class="en-list">${L.filter((x) => x.s !== 'rnd' && !x.ref).map(row).join('')}${by.rnd ? row(by.rnd) : ''}</div></div>`;
   }
@@ -3797,8 +3797,24 @@
           ${G.pairs?.length ? `<h6 class="av-h">두 개가 같이 있을 때</h6><div class="lb-list">${G.pairs.map(lift).join('')}</div>` : ''}
           ${G.low?.length ? `<h6 class="av-h">대세상승 앞에 오히려 드물었던 것</h6><div class="lb-list">${G.low.map(lift).join('')}</div>` : ''}
           ${G.seq?.length ? `<h6 class="av-h">가장 흔한 순서 (오르기 전 처음 나온 공시 두 종류)</h6><p class="sm">${G.seq.map(([s, n]) => `${esc(s)} <b>${n}번</b>`).join(' · ')}</p>` : ''}
-          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}${exitAnatHTML(G.exit)}</div>
+          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}${exitAnatHTML(G.exit)}</div>${discHTML(j.disc)}
       <div class="st-box lb-box"><h5>③ 공시의 속뜻 사전 <small class="muted">같은 CB·3자배정도 '왜 했나'로 뜻이 달라요 — 🎭 세력 시각(싸게 받고·재료 깔고·띄워서 판다) · 🏛 기관 시각(희석·지배구조·자금 압박). 종목 페이지와 ⭐ 전략 찾기·🏆 이긴 자리에 자동으로 들어가요</small></h5><div class="lb-mvs">${mvDict}</div></div></div>`;
+  }
+  // v247 📜 공시 확률: 공시 재료(조합)별 120거래일 안 +30% 먼저 / −15% 먼저 + 4년치 차트로 본 손절·목표·진입 자리
+  function discHTML(X) {
+    const head = '<div class="st-box lb-box"><h5>📜 공시 확률 — 공시로 거르고, 타점은 차트로 <small class="muted">그날까지 나온 공시만 보고, 과거 4년 비슷한 공시 조합이 120거래일 안에 <b class="up">+30% 먼저</b> 갔나 <b class="down">−15% 먼저</b> 깨졌나</small></h5>';
+    if (!X) return '';
+    if (X.need) return head + `<p class="muted sm">판정 날 ${fmtInt(X.n || 0)}개 — 300개 넘으면 나와요 (4년치 과거 재현이 돌면 채워져요).</p></div>`;
+    const B = X.base; const ten = (v) => Math.round((v || 0) / 10);
+    const card = (x) => `<div class="dc-row${x.good ? ' ok' : x.bad ? ' bad' : ''}"><div class="dc-1">${x.good ? '✅' : x.bad ? '⚠' : '·'} <b>${esc(x.ko)}</b> — 10번 중 <b class="up">${ten(x.w)}번 +30% 먼저</b> · <b class="down">${ten(x.l)}번 −15% 먼저</b> <small class="muted">(전체 ${ten(B.w)}번 / ${ten(B.l)}번 · ${fmtInt(x.n)}번 · 앞 ${x.a.w}%·뒤 ${x.z.w}%)</small></div>
+      ${x.chart ? `<div class="dc-2">📈 차트로 보면: 이긴 종목 80%는 오르기 전 <b class="down">${sgn(x.chart.stop)}</b>까지만 빠짐 → <b>손절은 그보다 아래</b> · +30%까지 보통 <b>${x.chart.days}거래일</b> · 120일 안 최고 가운데 절반 <b class="up">${sgn(x.chart.tgt[0])}~${sgn(x.chart.tgt[2])}</b>(중간 ${sgn(x.chart.tgt[1])})${x.failDays != null ? ` · 깨질 땐 보통 ${x.failDays}거래일 만에 −15%` : ''}</div>` : ''}
+      ${x.ent?.length ? `<div class="dc-2">🎯 그날 차트 자리별: ${x.ent.map((e) => `${esc(ENT_KO[e.s] || e.s)} 10번 중 ${ten(e.w)}번 +30% (${e.n}번)`).join(' · ')}</div>` : ''}</div>`;
+    return head + `<p class="sx-sum">전체 ${fmtInt(B.n)}번: 10번 중 <b class="up">${ten(B.w)}번 +30% 먼저</b> · <b class="down">${ten(B.l)}번 −15% 먼저</b>. ✅ = 앞 기간·안 본 뒤 기간 <b>둘 다</b> 전체보다 1.2배↑ 자주 크게 감 · ⚠ = 둘 다 1.2배↑ 자주 크게 깨짐.</p>
+      ${X.pairs?.length ? `<h6 class="av-h">✅ 같이 있으면 크게 간 공시 조합</h6>${X.pairs.map(card).join('')}` : ''}
+      ${X.good?.length ? `<h6 class="av-h">✅ 혼자서도 크게 간 공시</h6>${X.good.map(card).join('')}` : '<p class="muted sm">혼자서 앞·뒤 기간 둘 다 통과한 공시는 아직 없어요.</p>'}
+      ${X.bad?.length ? `<h6 class="av-h">⚠ 크게 깨진 공시 (거르기)</h6>${X.bad.map(card).join('')}` : ''}
+      <details class="sm"><summary>공시 재료 전체 보기</summary>${(X.all || []).map(card).join('')}</details>
+      <p class="muted sm">여러 조합을 한꺼번에 시험한 결과라, 다음 달 결과로 다시 확인될 때까지 '참고'예요. 종목 페이지에는 4년치 결과를 보고 붙일게요.</p></div>`;
   }
   // v246 🏁 엑시트 해부: 실제 고점이 세력 원가의 몇 배였나 · 고점과 엑시트 신호 공시 사이 며칠
   function exitAnatHTML(X) {

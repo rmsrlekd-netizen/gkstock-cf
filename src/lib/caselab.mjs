@@ -205,7 +205,7 @@ export async function bigReport() {
   return { ...bigStudy(runs, base), exit: exitStudy(runs), v: R?.v || null };
 }
 export async function labSummary() {
-  const [cases, big] = await Promise.all([caseReport(), bigReport()]);
-  return { cases, big, mv: Object.fromEntries(Object.entries(MV).map(([k, v]) => [k, { ko: v.ko, side: v.side, t: v.t }])) };
+  const [cases, big, disc] = await Promise.all([caseReport(), bigReport(), import('./disclab.mjs').then((m) => m.discReport()).catch(() => null)]);
+  return { cases, big, disc, mv: Object.fromEntries(Object.entries(MV).map(([k, v]) => [k, { ko: v.ko, side: v.side, t: v.t }])) };
 }
 export async function saveCase(code, rec) { await setJSON(`mp/case/${code}`, { ...rec, at: Date.now() }).catch(() => {}); }
