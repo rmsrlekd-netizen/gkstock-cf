@@ -42,6 +42,8 @@ export default async (req) => {
     ok: true,
     dbWrite,
     backfillQuota: bf?.quota || null,
+    deepBackfill: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows, calls: bf.deep.calls, done: !!bf.deep.done, err: bf.deep.err || null, log: bf.deep.log || null, at: bf.deep.at ? new Date(bf.deep.at).toISOString() : null } : (bf?.dart?.done ? '아직 시작 안 함' : '보통 채우기 진행 중'),
+    deepTry: bf?.deepTry ? { n: bf.deepTry.n, at: new Date(bf.deepTry.at).toISOString() } : null, deepErr: bf?.deepErr ? { msg: bf.deepErr.msg, at: new Date(bf.deepErr.at).toISOString() } : null, dartBackfill: bf?.dart ? { day: bf.dart.day, done: !!bf.dart.done, at: bf.dart.at ? new Date(bf.dart.at).toISOString() : null } : null, // v234 4년치 채우기 진행 (공개해도 되는 숫자만)
     env: {
       DART_API_KEY: !!process.env.DART_API_KEY,
       SEC_USER_AGENT: !!process.env.SEC_USER_AGENT,

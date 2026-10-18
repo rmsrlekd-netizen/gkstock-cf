@@ -3456,7 +3456,8 @@
       <p class="note">⚠ 공시·거래 패턴이 '작전 세력의 전형적인 흐름과 비슷하다'는 신호일 뿐, 불공정거래의 증거가 아닙니다. 평단가는 전환가·발행가·거래량 가중 평균으로 추정한 값입니다. 종목명을 공개적으로 '작전주'라고 지칭하면 법적 문제가 생길 수 있어요.</p>`;
   }
   // v224 성과검증으로 찾은 패턴 칩 (과거 재현에서 앞·뒤 기간 둘 다 통과한 것만)
-  const vdPat = (v) => [v?.wp && v.why !== 'wp' && v.c !== 'r' ? `<span class="vp vp-w" title="과거 재현: 이 조건일 때 이긴 자리 비율 ${v.wp.rate}%">🏆 이긴 자리 닮음 · ${esc(v.wp.ko)} ${v.wp.lift}배</span>` : '', v?.lp && v.why !== 'lp' ? `<span class="vp vp-l" title="과거 재현: 이 조건일 때 이긴 자리 비율 ${v.lp.rate}%">⚠ 실패 패턴 · ${esc(v.lp.ko)} ${v.lp.lift}배</span>` : ''].join('');
+  const patKo = (t) => String(t || '').replace(/:\s*✗/g, ' 아님').replace(/:\s*✓/g, ' 있음'); // v234 '체크: 평단 근처: ✗' → '체크: 평단 근처 아님'
+  const vdPat = (v) => [v?.wp && v.why !== 'wp' && v.c !== 'r' && (v.wp.lift ?? 0) >= 1.3 ? `<span class="vp vp-w" title="과거 재현: 이 조건일 때 이긴 자리 비율 ${v.wp.rate}%">🏆 이긴 자리 닮음 · ${esc(patKo(v.wp.ko))} ${v.wp.lift}배</span>` : '', v?.lp && v.why !== 'lp' ? `<span class="vp vp-l" title="과거 재현: 이 조건일 때 이긴 자리 비율 ${v.lp.rate}%">⚠ 실패 패턴 · ${esc(patKo(v.lp.ko))} ${v.lp.lift}배</span>` : ''].join('');
   const RK_KINDS = [['all', '전체 (의심 순)'], ['star', '⭐ 전략 종목'], ['pick', '🎯 내 매매 후보'], ['up', '<b class="up">▲</b> 상승 가능성'], ['down', '<b class="down">▼</b> 하락 위험'], ['rr', '⚖️ 손익비 순'], ['ck', '✅ 체크리스트 순'], ['pex', '🔁 털기 후 상승'], ['win', '🏆 이긴 자리 닮음']];
   const rkKindsHTML = () => `<div class="seg mp-kinds">${RK_KINDS.map(([k, l]) => `<button data-rk-kind="${k}" class="${(S.rkKind || 'all') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   // 작전 레이더 가격 실시간(15초): 화면에 보이는 종목만 시세를 받아 가격·등락률을 바로 바꿈
@@ -4112,9 +4113,9 @@
     const rows = (j.groups || []).filter((r) => ord.includes(r.g)).sort((a, c) => ord.indexOf(a.g) - ord.indexOf(c.g));
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · ${r['n' + h]}건${r['n' + h] < 30 ? ' (적음)' : ''}</small></td>` : '<td class="muted">—</td>');
     const v230 = j.v >= 20; // v230: 3년치
-    const prepNote = j.wait ? `<p class="note">⏳ <b>3년치 과거 공시를 채우는 중</b> — 지금 ${esc(j.wait.deep?.day || '시작 전')}까지 (${esc(j.wait.deep?.limit || '3년 전')}까지 받으면 끝) · 저장 ${fmtInt(j.wait.deep?.rows || 0)}건. 다 채우면 과거 재현을 3년치로 처음부터 다시 계산해요 (1~2일). 그동안은 아래 예전(약 8개월) 결과를 그대로 보여줘요.</p>` : j.prep ? `<p class="note">⏳ <b>3년치 공시 색인 만드는 중</b> — 남은 달 ${fmtInt(j.prep.pending || 0)}개 (3분마다 3개월씩). 끝나면 과거 재현이 시작돼요.</p>` : '';
-    b.innerHTML = `<h4 style="margin:1rem 0 .3rem">🧪 과거 재현(백테스트) <small class="muted">참고용 · 지난 ${v230 ? '약 3년' : '약 8개월'} 동안 '그날 지금 규칙이었다면' 판정 → 실제 5·20·60거래일 뒤 결과 · ${j.done ? `완료 (${esc(rel(j.doneAt))})` : j.wait || j.prep ? '준비 중' : `계산 중 ${fmtInt(j.pos)}/${fmtInt(j.of)}종목`} · 판정 ${fmtInt(j.kept)}건</small> <button class="btn sm" data-bt-run>처음부터 다시</button></h4>${prepNote}
-      <p class="muted sm">한계: AI 판단·지분·신용·거래원·재무 같은 바깥 자료는 그날 기준으로 재현 못 해서 빠져요 · 시가총액 순위 모름 · ${v230 ? '3년 전 공시는 레이더가 보는 종류만 저장해 요약이 없고, 그 사이 상장폐지된 종목은 빠져서(생존 편향) 실제보다 조금 좋게 보일 수 있어요' : '공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임'} · 대상은 ${v230 ? '3년' : '최근 6개월'} 안 판 깔기 공시가 있던 종목</p>
+    const prepNote = j.wait ? `<p class="note">⏳ <b>4년치 과거 공시를 채우는 중</b> — 지금 ${esc(j.wait.deep?.day || '시작 전')}까지 (${esc(j.wait.deep?.limit || '4년 전')}까지 받으면 끝) · 저장 ${fmtInt(j.wait.deep?.rows || 0)}건. 다 채우면 과거 재현을 4년치로 처음부터 다시 계산해요 (1~2일). 그동안은 아래 예전(약 8개월) 결과를 그대로 보여줘요.</p>` : j.prep ? `<p class="note">⏳ <b>4년치 공시 색인 만드는 중</b> — 남은 달 ${fmtInt(j.prep.pending || 0)}개 (3분마다 3개월씩). 끝나면 과거 재현이 시작돼요.</p>` : '';
+    b.innerHTML = `<h4 style="margin:1rem 0 .3rem">🧪 과거 재현(백테스트) <small class="muted">참고용 · 지난 ${v230 ? '약 4년' : '약 8개월'} 동안 '그날 지금 규칙이었다면' 판정 → 실제 5·20·60거래일 뒤 결과 · ${j.done ? `완료 (${esc(rel(j.doneAt))})` : j.wait || j.prep ? '준비 중' : `계산 중 ${fmtInt(j.pos)}/${fmtInt(j.of)}종목`} · 판정 ${fmtInt(j.kept)}건</small> <button class="btn sm" data-bt-run>처음부터 다시</button></h4>${prepNote}
+      <p class="muted sm">한계: AI 판단·지분·신용·거래원·재무 같은 바깥 자료는 그날 기준으로 재현 못 해서 빠져요 · 시가총액 순위 모름 · ${v230 ? '4년 전까지의 옛 공시는 레이더가 보는 종류만 저장해 요약이 없고, 그 사이 상장폐지된 종목은 빠져서(생존 편향) 실제보다 조금 좋게 보일 수 있어요' : '공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임'} · 대상은 ${v230 ? '4년' : '최근 6개월'} 안 판 깔기 공시가 있던 종목</p>
       ${rows.length ? '<div id="pbBt"></div>' : '<p class="muted sm">아직 결과 없음</p>'}`;
     if (rows.length) { S.pbData = S.pbData || {}; S.pbData.bt = rows; renderBoard('bt'); }
   }
