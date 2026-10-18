@@ -18,6 +18,10 @@ export const SETUPS = {
   crash: { ko: '급락 뒤 첫 반등', t: '20일 고점 대비 −30%↓ 빠진 뒤 +5%↑ 양봉 · 거래량 1.5배↑' },
   ma20x: { ko: '20일선 회복', t: '최근 20일 중 15일↑ 20일선 아래에 있다가 종가가 20일선 위로' },
   uplim: { ko: '상한가 다음 날', t: '그날 +28%↑(상한가 근처) — 다음 날 시가에 삼' },
+  nhpl: { lim: 1, ko: '신고가 뒤 눌림 (지정가)', t: '60일 신고가 뒤 한 번 +7%↑ 오른 다음, 10거래일 안에 예전 고점(돌파한 가격) +3% 안까지 내려오면 그 가격에 삼 · 안 내려오면 안 삼', lv: 1 },
+  nhpc: { ko: '신고가 뒤 눌림 확인', t: '60일 신고가 뒤 +7%↑ 오른 다음 예전 고점 근처까지 내려왔다가(−5% 아래로는 안 깨고) 전날 고가를 넘는 양봉(종가 ≥ 예전 고점)이 나오면 다음 날 시가', lv: 1 },
+  nhpx: { ko: '눌림 안 옴 (못 산 경우)', t: '60일 신고가 뒤 +7%↑ 오르고 10거래일 안에 예전 고점까지 안 내려온 경우 — 신고가 다음 날 시가에 바로 샀다면 (참고: 기다렸다면 놓친 것)', lv: 1, ref: 1 },
+  nhpw: { ko: '신고가 뒤 눌림 기다리는 중', t: '최근 10거래일 안에 60일 신고가 — 예전 고점 +3%까지 내려오면 지정가로 살 자리 (아직 안 내려옴)', lv: 1, live: 1 },
   rnd: { ko: '아무 날이나 (비교 기준)', t: '20거래일마다 아무 이유 없이 샀다면 — 이것보다 나아야 의미 있는 자리' },
 };
 export const EXITS = {
@@ -30,6 +34,7 @@ export const EXITS = {
   h5: { ko: '5일 들고 팔기', t: '5거래일째 종가' },
   h10: { ko: '10일 들고 팔기', t: '10거래일째 종가' },
   h20: { ko: '20일 들고 팔기', t: '20거래일째 종가' },
+  lv5: { ko: '돌파 가격 −5% 손절 · 최고점 −15%', t: '예전 고점(돌파한 가격) −5% 아래로 빠지면 손절, 아니면 최고가 −15% 또는 20일 (60일 신고가·눌림 자리 전용)' },
 };
 const EX_KEYS = Object.keys(EXITS);
 const NEED = 41; // 결과 계산에 필요한 뒤 일수
@@ -64,9 +69,10 @@ export function setupsAt(B, i, P = prep(B)) {
 }
 
 /** 다음 날 시가에 샀다면 파는 법 9가지 결과 (%, 비용 뺌) + 실패(−10%가 +10%보다 먼저)·20일 최고/최저 */
-export function exitsFrom(B, i, P = prep(B)) {
-  const k0 = i + 1; if (!B[k0 + NEED - 1]) return null;
-  const e = B[k0].o || B[k0].c; if (!e) return null;
+export function exitsFrom(B, i, P = prep(B), opt = {}) {
+  const k0 = opt.k0 ?? i + 1; if (!B[k0 + NEED - 1]) return null;
+  const e = opt.e ?? (B[k0].o || B[k0].c); if (!e) return null;
+  if (opt.lim) { B = B.slice(); B[k0] = { ...B[k0], o: e, h: Math.max(e, B[k0].c) }; } // v243 지정가로 산 날: 사기 전 고가는 못 씀 (손절 쪽은 그날 저가 그대로 — 보수적)
   const ret = (px) => r1((px / e - 1) * 100 - COST);
   const R = {};
   const sl = (s, t, maxD) => { for (let k = k0; k < k0 + maxD; k++) { const x = B[k], o = x.o || x.c; if (x.l <= e * (1 - s)) return ret(Math.min(o, e * (1 - s))); if (x.h >= e * (1 + t)) return ret(Math.max(o, e * (1 + t))); } return ret(B[k0 + maxD - 1].c); };
@@ -76,9 +82,29 @@ export function exitsFrom(B, i, P = prep(B)) {
   { let out = null; for (let k = k0 + 1; k < k0 + 20; k++) if (P.ma5[k] && B[k].c < P.ma5[k] && B[k + 1]) { out = ret(B[k + 1].o || B[k + 1].c); break; } R.ma5 = out ?? ret(B[k0 + 19].c); }
   { let hi = e, half = false, got = 0, res = null; for (let k = k0; k < k0 + 30; k++) { const x = B[k], o = x.o || x.c; if (!half && x.h >= e * 1.2) { half = true; got = 0.5 * Math.max(o, e * 1.2) / e; } hi = Math.max(hi, x.h); if (x.c <= hi * 0.9 && B[k + 1]) { const px = (B[k + 1].o || B[k + 1].c) / e; res = r1(((half ? got + 0.5 * px : px) - 1) * 100 - COST); break; } } if (res == null) { const px = B[k0 + 29].c / e; res = r1(((half ? got + 0.5 * px : px) - 1) * 100 - COST); } R.half = res; }
   R.h5 = ret(B[k0 + 4].c); R.h10 = ret(B[k0 + 9].c); R.h20 = ret(B[k0 + 19].c);
+  R.lv5 = opt.lv ? (() => { const sp = opt.lv * 0.95; let hi = e; for (let k = k0; k < k0 + 20; k++) { const x = B[k], o = x.o || x.c; if (x.l <= sp) return ret(Math.min(o, sp)); hi = Math.max(hi, x.h); if (x.c <= hi * 0.85 && B[k + 1]) return ret(B[k + 1].o || B[k + 1].c); } return ret(B[k0 + 19].c); })() : null;
   let fail = 0; for (let k = k0; k < k0 + 20; k++) { const dn = B[k].l <= e * 0.9, upp = B[k].h >= e * 1.1; if (dn) { fail = 1; break; } if (upp) { fail = -1; break; } } // 같은 날이면 손절 먼저
   const mf = r1((maxH(B, k0, k0 + 19) / e - 1) * 100), mn = r1((minL(B, k0, k0 + 19) / e - 1) * 100);
   return { e, R, fail, mf, mn, xk: t15[1], gap: r1((e / B[i].c - 1) * 100) };
+}
+
+/** v243 신고가 뒤 눌림 (GK: '신고가는 위 매물 때문에 조정 한 번 받고 반등을 노리는 게 낫지 않나') — 상태가 있어 setupsAt과 따로
+ *  신고가 날 j, 예전 고점 L = 그 전 60일 최고가 → j+1~j+10 안 저가 ≤ L×1.03이면 nhpl(그 가격 지정가), 안 오면 nhpx(못 삼)
+ *  닿은 뒤 5거래일 안 종가 > 전날 고가 & 양봉 & 종가 ≥ L이면 nhpc(다음 날 시가), 그 전에 종가 < L×0.95면 무효 */
+function nhWin(B, from = 120) {
+  const out = []; let i = Math.max(61, from); const n = B.length;
+  while (i < n) {
+    const L = maxH(B, i - 60, i - 1); if (!(B[i].c > L)) { i++; continue; }
+    const j = i; let r = -1, k = -1;
+    for (let t = j; t <= Math.min(j + 10, n - 1); t++) if (B[t].h >= L * 1.07) { r = t; break; } // 돌파 뒤 한 번 +7%↑ 올라가야 '조정'을 기다릴 의미가 있음
+    if (r < 0) { if (j + 10 > n - 1) out.push({ s: 'nhpw', i: j, L, wait: 1 }); i = j + 1; continue; }
+    for (let t = r + 1; t <= Math.min(r + 10, n - 1); t++) if (B[t].l <= L * 1.03 * 0.995) { k = t; break; } // 지정가는 0.5% 더 밑으로 뚫고 내려가야 체결로 봄 (딱 닿기만 하면 못 살 수 있음 — 보수적)
+    if (k < 0) { if (r + 10 <= n - 1) out.push({ s: 'nhpx', i: j, L }); else out.push({ s: 'nhpw', i: j, L, wait: 1, up: 1 }); i = r + 11; continue; }
+    out.push({ s: 'nhpl', i: k - 1, k0: k, e: Math.min(B[k].o || B[k].c, L * 1.03), L, j });
+    for (let m = k; m <= Math.min(k + 5, n - 1); m++) { if (B[m].c < L * 0.95) break; if (B[m].c > B[m - 1].h && B[m].c > B[m].o && B[m].c >= L) { out.push({ s: 'nhpc', i: m, L, j }); break; } }
+    i = k + 1;
+  }
+  return out;
 }
 
 /** 한 종목의 자리 사건 전부 (과거 재현용) — 같은 자리는 5거래일 안 한 번만 · rnd는 10거래일마다 */
@@ -91,13 +117,24 @@ export function entryEvents(B, { code, evs = [], ix = null, mkt = 'Q', motiveOf 
     const S = setupsAt(B, i, P); if (i % 20 === 0) S.push('rnd');
     const fresh = S.filter((s) => !(last[s] != null && i - last[s] <= 5)); for (const s of S) last[s] = i;
     if (!fresh.length) continue;
-    const X = exitsFrom(B, i, P); if (!X) continue;
+    const X = exitsFrom(B, i, P, fresh.includes('nh60') ? { lv: maxH(B, i - 60, i - 1) } : {}); if (!X) continue;
     const Tms = Date.parse(B[i].d + 'T15:40:00+09:00');
     const m20 = mret(i - 19, i), mreg = m20 == null ? null : m20 >= 3 ? '상승' : m20 <= -3 ? '하락' : '보합';
     const pk = evs.some((e) => e.ms <= Tms && e.ms > Tms - 180 * 864e5 && ['cb', 'rights3', 'mna', 'fund5'].includes(e.kind)) ? 1 : 0;
     let mna = 0; if (motiveOf && pk) { try { mna = motiveOf(evs, { B, Tms }).includes('mnaFund') ? 1 : 0; } catch {} }
     const xm = mret(i + 1, X.xk); const xr = xm == null ? null : r1(X.R.tr15 - xm);
-    for (const s of fresh) out.push([code, B[i].d, s, X.gap, mreg, pk, mna, X.fail, X.mf, X.mn, ...EX_KEYS.map((k) => X.R[k]), xr]);
+    for (const s of fresh) out.push([code, B[i].d, s, X.gap, mreg, pk, mna, X.fail, X.mf, X.mn, ...EX_KEYS.map((k) => (k === 'lv5' && s !== 'nh60' ? null : X.R[k])), xr]);
+  }
+  // v243 신고가 뒤 눌림 3가지 (같은 신고가 날의 바로 사기(nh60)와 비교)
+  for (const w of nhWin(B)) {
+    if (w.wait || w.i < 120 || w.i >= P.n - NEED - 1) continue;
+    const X = exitsFrom(B, w.i, P, w.s === 'nhpl' ? { k0: w.k0, e: w.e, lim: true, lv: w.L } : { lv: w.L }); if (!X) continue;
+    const i = w.i, Tms = Date.parse(B[i].d + 'T15:40:00+09:00');
+    const m20 = mret(i - 19, i), mreg = m20 == null ? null : m20 >= 3 ? '상승' : m20 <= -3 ? '하락' : '보합';
+    const pk = evs.some((e) => e.ms <= Tms && e.ms > Tms - 180 * 864e5 && ['cb', 'rights3', 'mna', 'fund5'].includes(e.kind)) ? 1 : 0;
+    let mna = 0; if (motiveOf && pk) { try { mna = motiveOf(evs, { B, Tms }).includes('mnaFund') ? 1 : 0; } catch {} }
+    const xm = mret((w.k0 ?? i + 1), X.xk); const xr = xm == null ? null : r1(X.R.tr15 - xm);
+    out.push([code, B[i].d, w.s, X.gap, mreg, pk, mna, X.fail, X.mf, X.mn, ...EX_KEYS.map((k) => X.R[k]), xr]);
   }
   return out;
 }
@@ -132,11 +169,12 @@ export async function entryStudyFeed(feed) {
   const fOf = (f1, fN) => (fN ? Math.round((f1 / fN) * 100) : null);
   const B = S.rnd || get('rnd'); const out = [];
   for (const s of Object.keys(SETUPS)) {
+    if (SETUPS[s].live) continue;
     const g = S[s]; if (!g || g.n < 20) { out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: g?.n || 0, thin: true }); continue; }
     const grid = Object.fromEntries(EX_KEYS.map((k) => [k, cOut(g.G[k])]));
-    let best = null; for (const k of EX_KEYS) { const a = cOut(g.A[k]), b = cOut(B.A[k]); if (!a || a.n < 15 || !b) continue; const edge = a.avg - b.avg; if (!best || edge > best.edgeA) best = { k, edgeA: r1(edge), a }; }
+    let best = null; for (const k of EX_KEYS) { const a = cOut(g.A[k]), b = cOut(B.A[k === 'lv5' ? 'tr15' : k]); if (!a || a.n < 15 || !b) continue; const edge = a.avg - b.avg; if (!best || edge > best.edgeA) best = { k, edgeA: r1(edge), a }; }
     let verify = null;
-    if (best) { const z = cOut(g.Z[best.k]), zb = cOut(B.Z[best.k]); if (z && zb) verify = { k: best.k, ko: EXITS[best.k].ko, a: best.a, z, zb: zb.avg, edgeZ: r1(z.avg - zb.avg), ok: z.n >= 15 && best.a.n >= 15 && z.avg > 0 && z.avg > zb.avg && best.edgeA > 0 }; }
+    if (best) { const z = cOut(g.Z[best.k]), zb = cOut(B.Z[best.k === 'lv5' ? 'tr15' : best.k]); if (z && zb) verify = { k: best.k, ko: EXITS[best.k].ko, a: best.a, z, zb: zb.avg, edgeZ: r1(z.avg - zb.avg), ok: z.n >= 15 && best.a.n >= 15 && z.avg > 0 && z.avg > zb.avg + (SETUPS[s].lim ? 1 : 0) && best.edgeA > (SETUPS[s].lim ? 1 : 0) }; /* 지정가 자리는 체결을 좋게 가정할 수 있어 1%p 더 이겨야 ✅ (가짜 무작위 일봉 시험에서 +0.3~0.8%p 거품 확인) */ }
     const ex = verify?.k || 'tr15';
     const by = Object.fromEntries(CTX_K.map((cn) => { const z = g.ctx[cn]; const c = z ? cOut(z.c[ex]) : null; return [cn, c && c.n >= 10 ? { ...c, fail: fOf(z.f1, z.fN) } : null]; }));
     out.push({ s, ko: SETUPS[s].ko, t: SETUPS[s].t, n: g.n, fail: fOf(g.f1, g.fN), mf: hMed(g.mf, g.n), mn: hMed(g.mn, g.n), x: g.xn ? r1(g.xs / g.xn) : null, grid, best: verify, by });
@@ -152,18 +190,26 @@ export function entryNow(B, days = 3) {
   if (!B || B.length < 130) return [];
   const P = prep(B), out = [];
   for (let i = B.length - 1; i >= Math.max(120, B.length - days); i--) for (const s of setupsAt(B, i, P)) if (!out.some((o) => o.s === s)) out.push({ s, d: B[i].d, ago: B.length - 1 - i });
+  // v243 신고가 뒤 눌림: 닿은 날(nhpl)·확인 양봉(nhpc)이 최근 3거래일 안이면, 아직 안 닿고 기다리는 중(nhpw)이면 지정가 안내
+  const n = B.length;
+  for (const w of nhWin(B, n - 40)) {
+    const at = w.s === 'nhpl' ? w.k0 : w.i, ago = n - 1 - at;
+    if (w.s === 'nhpl' && ago < days) out.push({ s: 'nhpl', d: B[at].d, ago, lv: Math.round(w.L), px: Math.round(w.e) });
+    else if (w.s === 'nhpc' && ago < days) out.push({ s: 'nhpc', d: B[at].d, ago, lv: Math.round(w.L) });
+    else if (w.s === 'nhpw') out.push({ s: 'nhpw', d: B[w.i].d, ago: n - 1 - w.i, lv: Math.round(w.L), px: Math.round(w.L * 1.03), left: 10 - (n - 1 - w.i) });
+  }
   return out;
 }
 /** 학습 결과(검증된 자리) 저장·읽기 */
 export async function saveEntLearn(st, src = 'bt') {
   if (!st?.list) return;
-  const m = {}; for (const x of st.list) if (x.best) m[x.s] = { ok: x.best.ok, ex: x.best.k, exKo: x.best.ko, avg: x.best.z.avg, win: x.best.z.win, n: x.best.z.n, base: x.best.zb, fail: x.fail, mk: { 상승: x.by?.mk상승?.avg ?? null, 보합: x.by?.mk보합?.avg ?? null, 하락: x.by?.mk하락?.avg ?? null } };
+  const m = {}; for (const x of st.list) if (x.best && !SETUPS[x.s]?.ref) m[x.s] = { ok: x.best.ok, ex: x.best.k, exKo: x.best.ko, avg: x.best.z.avg, win: x.best.z.win, n: x.best.z.n, base: x.best.zb, fail: x.fail, mk: { 상승: x.by?.mk상승?.avg ?? null, 보합: x.by?.mk보합?.avg ?? null, 하락: x.by?.mk하락?.avg ?? null } };
   await setJSON('mp/entlearn', { at: Date.now(), n: st.n, m, src }).catch(() => {});
 }
 export async function loadEntLearn() { return (await getJSON('mp/entlearn').catch(() => null)) || null; }
 /** 종목에 붙일 설명: 지금 뜬 자리 + 과거 성적 */
 export function entryView(ent, EL) {
-  return (ent || []).filter((e) => e.s !== 'rnd').map((e) => { const m = EL?.m?.[e.s]; return { ...e, ko: SETUPS[e.s]?.ko || e.s, t: SETUPS[e.s]?.t || '', st: m ? { ok: m.ok, ex: m.exKo, avg: m.avg, win: m.win, n: m.n, base: m.base, fail: m.fail, mk: m.mk } : null }; });
+  return (ent || []).filter((e) => e.s !== 'rnd').map((e) => { const m = EL?.m?.[e.s === 'nhpw' ? 'nhpl' : e.s]; return { ...e, ko: SETUPS[e.s]?.ko || e.s, t: SETUPS[e.s]?.t || '', st: m ? { ok: m.ok, ex: m.exKo, avg: m.avg, win: m.win, n: m.n, base: m.base, fail: m.fail, mk: m.mk } : null }; });
 }
 
 /** 자리 사건 통계 (6시간 캐시 · 사건 수가 같으면 그대로)
@@ -184,7 +230,7 @@ export async function entSummary({ force = false } = {}) {
 
 /** v242 🎯 차트만 먼저 — 시총 2조 미만 국장 종목 일봉 4년치로 자리 사건만 계산 (공시 조건 없음)
  *  3분 크론, 한 번에 16종목(4개씩 동시) · DB 느리면 쉼 · 레이더 정기 분석 중엔 쉼 */
-export const PRE_V = 1;
+export const PRE_V = 2; // v243 신고가 뒤 눌림 3가지 + 파는 법 lv5 → 처음부터 다시
 export async function entPreStep({ per = 16 } = {}) {
   const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 800) return { skip: 'db slow' };
   const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return { skip: 'radar busy' };
