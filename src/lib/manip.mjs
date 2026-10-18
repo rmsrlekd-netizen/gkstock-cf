@@ -1834,7 +1834,8 @@ export async function manipRank(kind = 'all') {
   for (const r of list) if (r.rr?.v > 20) r.rr = { ...r.rr, v: 20, big: true }; // 예전 줄의 비현실적 손익비는 1:20+로
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
-  let WP = null, ST = null, EL = null; try { [WP, ST, EL] = await Promise.all([getJSON('mp/winpat'), getJSON('mp/strat'), getJSON('mp/entlearn')]); } catch {}
+  let WP = null, ST = null, EL = null, EN = null; try { [WP, ST, EL, EN] = await Promise.all([getJSON('mp/winpat'), getJSON('mp/strat'), getJSON('mp/entlearn'), getJSON('mp/entnow')]); } catch {}
+  if (EN?.m) for (const r of list) { const e = EN.m[r.code]; if (e && Date.now() - (e.at || 0) < 4 * 864e5) { r.ent = e.s; r.entD = e.ent; } } // v239 지금 들어가는 자리 (3분마다 훑은 결과가 더 최신)
   for (const r of list) { const v = verdictOf(r, WP); if (v) r.vd = v; if (ST && !ST.none && r.vd?.c !== 'r' && stratMatch(r.pa, ST)) r.star = { name: ST.name, tb: ST.tb, wb: ST.wb, nb: ST.nb }; } // v212 · v229 ⭐ 한 줄 결론 (경보·벌점 반영 뒤 읽을 때 계산 → 예전 줄에도 바로)
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
   else if (kind === 'pex') list = list.filter((r) => r.pex).sort((a, b) => (b.pex.net - a.pex.net) || (b.pex.su - a.pex.su));
@@ -1852,7 +1853,7 @@ export async function manipRank(kind = 'all') {
     out.pat = { on, n: sum?.map?.['전체']?.n20 || 0, need: PAT_MIN, base: sum?.map?.['전체']?.win20 ?? null, ok: ok.length };
     return out;
   }
-  else if (kind === 'ent') { const ok = (s) => EL?.m?.[s]?.ok; list = list.filter((r) => r.vd?.c !== 'r' && (r.ent || []).some(ok)).map((r) => { const best = (r.ent || []).filter(ok).map((s) => ({ s, ...EL.m[s] })).sort((a, b) => b.avg - a.avg)[0]; return { ...r, entB: best }; }).sort((a, b) => (b.entB?.avg || 0) - (a.entB?.avg || 0)); } // v237 🎯 지금 검증된 타점이 뜬 종목
+  else if (kind === 'ent') { const st = (s) => (EL?.m?.[s] ? { s, ...EL.m[s] } : { s }); list = list.filter((r) => (r.ent || []).some((s) => s !== 'rnd')).map((r) => { const all = (r.ent || []).filter((s) => s !== 'rnd').map(st).sort((a, b) => (b.ok ? 1 : 0) - (a.ok ? 1 : 0) || (b.avg ?? -99) - (a.avg ?? -99)); return { ...r, entL: all, entB: all.find((x) => x.ok) || null }; }).sort((a, b) => (a.vd?.c === 'r') - (b.vd?.c === 'r') || (b.entB ? 1 : 0) - (a.entB ? 1 : 0) || (b.entB?.avg || 0) - (a.entB?.avg || 0) || (b.entL.length - a.entL.length) || (b.s || 0) - (a.s || 0)); } // v239 지금 들어가는 자리가 뜬 종목 전부 (검증된 자리 먼저 · 검증 전도 보여줌) // v237 🎯 지금 검증된 타점이 뜬 종목
   else if (kind === 'star') list = list.filter((r) => r.star).sort((a, b) => (b.vd?.c === 'g') - (a.vd?.c === 'g') || (b.s || 0) - (a.s || 0)); // v229 ⭐ 전략 종목
   else if (kind === 'win') list = list.filter((r) => r.vd?.wp && r.vd.c !== 'r').sort((a, b) => b.vd.wp.lift - a.vd.wp.lift || (b.s || 0) - (a.s || 0)); // v224 🏆 이긴 자리 닮은 종목
   else if (kind === 'down') list = list.filter((r) => r.d === 'down').sort((a, b) => -(b.nr ?? (b.us || 0) - (b.ds || 0)) + (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.ds || 0) - (a.ds || 0) || b.s - a.s);

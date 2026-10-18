@@ -164,3 +164,25 @@ export async function entSummary({ force = false } = {}) {
   if (data.list) await saveEntLearn(data);
   return data;
 }
+
+/** v239 지금 들어가는 자리 훑기 — 랭킹 종목 일봉을 3분에 10개씩 받아 최근 3거래일 자리를 `mp/entnow`에 (DB 쓰기는 한 번에 1건)
+ *  장 마감(15:40 KST) 뒤 새로 한 바퀴 · DB가 느리면 쉼 */
+export async function entScanStep({ per = 10 } = {}) {
+  const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 1500) return { skip: 'db slow' };
+  const k = new Date(Date.now() + 9 * 3600e3), today = k.toISOString().slice(0, 10), after = k.getUTCHours() * 60 + k.getUTCMinutes() >= 15 * 60 + 40;
+  const runDay = after ? today : new Date(Date.now() + 9 * 3600e3 - 864e5).toISOString().slice(0, 10); // 이 날짜 장 마감 기준 한 바퀴
+  let st = (await getJSON('mp/entnow').catch(() => null)) || { m: {} };
+  if (st.day !== runDay) st = { day: runDay, pos: 0, m: st.m || {}, start: Date.now() };
+  const rank = (await getJSON('mp/rank').catch(() => null)) || {};
+  const my = (await getJSON('mp/my').catch(() => null)) || {};
+  const codes = [...new Set([...Object.keys(rank), ...(Array.isArray(my.items) ? my.items.map((i) => i.code) : [])])].sort();
+  if (st.pos >= codes.length) return null; // 오늘 한 바퀴 끝
+  const { _bars } = await import('./manip.mjs');
+  const part = codes.slice(st.pos, st.pos + per);
+  const res = await Promise.all(part.map((c) => _bars(c).then((B) => [c, entryNow(B), B[B.length - 1]?.d]).catch(() => [c, null, null])));
+  for (const [c, en, d] of res) { if (!en) continue; if (en.length) st.m[c] = { s: en.map((e) => e.s), ent: en, d, at: Date.now() }; else delete st.m[c]; }
+  for (const c of Object.keys(st.m)) if (!rank[c] && Date.now() - (st.m[c].at || 0) > 7 * 864e5) delete st.m[c];
+  st.pos += part.length; st.at = Date.now(); st.of = codes.length;
+  await setJSON('mp/entnow', st).catch(() => {});
+  return { pos: st.pos, of: codes.length, hits: Object.keys(st.m).length };
+}

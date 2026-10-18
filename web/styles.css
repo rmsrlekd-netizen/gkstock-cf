@@ -2461,3 +2461,4 @@ body.pbm-open{overflow:hidden}
 .en-c{display:flex;flex-direction:column;padding:.4rem .5rem;border-radius:8px;background:rgba(255,255,255,.04);font-size:.82rem}.en-c em{font-style:normal;color:var(--muted);font-size:.72rem}.en-c small{color:var(--muted);font-size:.7rem}.en-c.on{outline:1px solid rgba(34,197,94,.6)}
 .vp-e{background:rgba(239,68,68,.12);color:#fca5a5}
 @media (max-width:640px){.en-row summary{grid-template-columns:1fr 1fr}.en-n{grid-column:1/-1}}
+.vp-e.un{background:rgba(148,163,184,.12);color:#cbd5e1}
