@@ -471,12 +471,15 @@ export async function myDiscWatch(now = Date.now()) {
     const k = evKind(`${x.f || ''} ${x.t || ''}`, x.p);
     const bad = BADK.includes(k) || /매도|처분|철회|해제|연기|정지|의견거절|부적정|자본잠식|횡령|배임/.test(`${x.f || ''} ${x.t || ''}`);
     const good = ['paid', 'cbbuy', 'rights3', 'fund5', 'purpose', 'contract'].includes(k);
-    const tag = bad ? '⚠ 털기·위험 신호일 수 있음' : good ? '✅ 판 깔기·자금 투입 쪽 신호' : 'ℹ️ 확인 필요';
+    const exitK = ['conv', 'majsell', 'tsell'].includes(k) || (k === 'insider' && /매도|처분/.test(`${x.f || ''} ${x.t || ''} ${x.st || ''} ${x.ss || ''}`));
+    const XL = exitK ? (st._xl ??= await getJSON('mp/exitlearn').catch(() => null)) : null; // v251 🏁 엑시트 해부 결과 (4년치 과거 재현 뒤 채워짐)
+    const xm = XL ? (k === 'conv' ? XL.conv : XL.sell) : null;
+    const tag = exitK ? `🏁 엑시트 신호 — 세력이 물량을 내놓기 시작했을 수 있음${xm?.med != null ? ` (과거 대세상승에서 이 공시는 보통 고점 ${xm.med > 0 ? xm.med + '일 뒤' : xm.med < 0 ? -xm.med + '일 전' : '그날'} · 고점 ±10일 안 ${xm.near}%)` : ''} → 목표가 근처면 나눠 팔기 검토` : bad ? '⚠ 털기·위험 신호일 수 있음' : good ? '✅ 판 깔기·자금 투입 쪽 신호' : 'ℹ️ 확인 필요';
     const sum = [x.st, x.ss].filter(Boolean).join(' · ').slice(0, 120);
     lines.push(`📌 ${nameOf[x.code] || x.name || x.code} 새 공시 — ${String(x.f || x.t || '').slice(0, 60)}${sum ? `\n   ${sum}` : ''}\n   ${tag}${k && EV?.[k] ? ` (${EV[k].ko})` : ''} · gk-stock.com/p/${x.id}`);
     codes.push(x.code);
   }
-  st.seen = [...fresh.map((x) => x.id), ...(st.seen || [])].slice(0, 300);
+  st.seen = [...fresh.map((x) => x.id), ...(st.seen || [])].slice(0, 300); delete st._xl;
   await setJSON('mp/mydisc', st);
   const { radarAlert } = await import('./manipx.mjs');
   await radarAlert(lines, codes, { force: true, title: '💼 내 포트폴리오 알림' }).catch(() => {});

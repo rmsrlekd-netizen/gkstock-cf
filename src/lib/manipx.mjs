@@ -91,7 +91,21 @@ export async function perfRowOf(x, rv = null) {
   const row = { n: x.name || null, mk: x.mkt || null, rv, cap: x.mcap ? Math.round(x.mcap > 1e7 ? x.mcap / 1e8 : x.mcap) : null, c0: x.close ?? null, st: x.stage, dir: x.dir?.dir || null, lv: x.ai?.level || null, s: x.score, ck: x.cl?.grade || null, rr: x.dir?.rr?.v ?? null, tp: x.dir?.rr?.t ?? null, sp: x.dir?.rr?.s ?? null };
   // 패턴 찾기용 특징 (매매 후보 조건 충족 여부·털기 후 상승·매집봉 수)
   try { const M = await import('./manip.mjs'); const rk = M.rankRow({ ...x, pex: x.pex || M.postExitOf(x), cl: x.cl || M.checklistOf(x) }); row.pk = M.pickFails(rk).length ? 0 : 1; let WP = null; try { WP = await getJSON('mp/winpat'); } catch {} const vdx = M.verdictOf(rk, WP); row.vd = vdx?.c || null; if (vdx?.why) row.vw = vdx.why; /* v224 실제로 보여준 판정 그대로 기록 */ row.pexl = rk.pex?.lv || null; row.cm = rk.cm || 0; row.gp = rk.gap ?? null; const clx = x.cl || M.checklistOf(x); row.ckv = Object.fromEntries((clx?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])); row.ws = clx?.ws ?? null; row.rd = M.redKeys(clx); try { const CL = await import('./caselab.mjs'); row.mv = x.mv || CL.motiveOf(x.events, { Tms: Date.now() }); } catch {} } catch {}
+  try { const L = await getJSON('mp/disclearn').catch(() => null); if (L?.list?.length) { const M = await import('./manip.mjs'); const DL = await import('./disclab.mjs'); const now = Date.now(); const hit = DL.discMatch(DL.discFeats({ evs: x.events || [], px: x.px || [], close: x.close, Tms: now, mv: x.mv || [], rd: M.redKeys(x.cl), ev60: M.evKinds60(x.events || [], x.px || [], now) }), L); row.dh = hit.filter((h) => h.good).length; row.db = hit.filter((h) => h.bad).length; } } catch {} // v251 📜 공시 확률 확실함 조합 (앞으로 검증용)
   return row;
+}
+/** v251 📒 앞으로 검증: FWD_START 뒤 실제 판정만 — 과거에 맞춘 결과가 아닌 '그날 알 수 있던 판정 → 그 뒤 실제' (1시간 캐시) */
+export const FWD_START = '2026-10-19';
+export async function fwdReport({ force = false } = {}) {
+  const c = await getJSON('mp/fwdsum').catch(() => null); if (!force && c && Date.now() - c.at < 3600e3) return c.data;
+  const idx = ((await getJSON('mp/idx').catch(() => null)) || []).filter((d) => d >= FWD_START).sort();
+  const G = {}; const add = (g, r) => { const o = (G[g] ||= { n: 0, codes: [] }); o.n++; for (const h of [5, 20, 60]) { const v = r['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; const u = r['u' + h], dd = r['d' + h]; if (u != null) o['u' + h] = (o['u' + h] || 0) + u; if (dd != null) o['d' + h] = (o['d' + h] || 0) + dd; } if (r.lo) { o.lon = (o.lon || 0) + 1; if (r.lo === 'w') o.low = (o.low || 0) + 1; if (r.lo === 'l') o.lol = (o.lol || 0) + 1; } };
+  const seen = new Map();
+  for (const d of idx) { const pf = await getJSON(`mp/perf/${d}`).catch(() => null); for (const [code, r] of Object.entries(pf?.rows || {})) { const k = `${code}|${r.vd || ''}`; const last = seen.get(k); if (last && Date.parse(d) - Date.parse(last) < 30 * 864e5) continue; seen.set(k, d); add('전체', r); if (r.vd) add('vd:' + r.vd, r); if (r.dh > 0) add('📜 확실함 조합', r); if (r.db > 0) add('📜 깨짐 조합', r); if (r.st) add('단계:' + r.st, r); } }
+  const out = Object.entries(G).map(([g, o]) => { const z = { g, n: o.n }; for (const h of [5, 20, 60]) if (o['n' + h]) { z['n' + h] = o['n' + h]; z['avg' + h] = Math.round((o['s' + h] / o['n' + h]) * 10) / 10; z['win' + h] = Math.round(((o['w' + h] || 0) / o['n' + h]) * 100); z['up' + h] = Math.round(((o['u' + h] || 0) / o['n' + h]) * 10) / 10; z['dn' + h] = Math.round(((o['d' + h] || 0) / o['n' + h]) * 10) / 10; } if (o.lon) { z.lon = o.lon; z.low = Math.round((o.low || 0) / o.lon * 100); z.lol = Math.round((o.lol || 0) / o.lon * 100); } return z; });
+  const data = { from: FWD_START, days: idx.length, list: out };
+  await setJSON('mp/fwdsum', { at: Date.now(), data }).catch(() => {});
+  return data;
 }
 /** v222 매매 따라하기용: 그날 목록의 판정 줄을 (결과 칸 없이) 바로 전부 만들어 둠 → 판정이 바뀐 날을 놓치지 않게 */
 export async function ensurePerfRows(date) {

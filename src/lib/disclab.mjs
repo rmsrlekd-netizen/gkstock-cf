@@ -9,7 +9,7 @@ const COSTK = { cb: 1, refix: 1, rights3: 1, mna: 1, fund5: 1 };
 export const DF_KO = {
   'e:cb': 'CB 발행', 'e:refix': '전환가 조정', 'e:rights3': '3자배정 유상증자', 'e:rights': '유상증자', 'e:mna': '최대주주 변경·경영권', 'e:fund5': '투자조합·5% 신고', 'e:conv': '전환청구', 'e:paid': '납입 완료', 'e:fail': '철회·납입 연기',
   'e:pledge': '주식 담보', 'e:majsell': '대주주 매도', 'e:tsell': '자사주 처분', 'e:insider_b': '임원·주주 장내 매수', 'e:insider_s': '임원·주주 장내 매도', 'e:contract': '공급계약', 'e:invest': '타법인 투자', 'e:rename': '상호 변경', 'e:purpose': '사업목적 추가', 'e:ceo': '대표 변경', 'e:inquiry': '조회공시', 'e:cbbuy': 'CB 되사기', 'e:risk': '위험 공시', 'e:agm': '주총 안건',
-  'c:under': '세력 원가 아래', 'c:near': '세력 원가 근처(+20% 안)', 'c:mid': '세력 원가 +20~100%', 'c:far': '세력 원가 2배↑', 'u:30': '보호예수 해제 30일 안', 'u:90': '보호예수 해제 31~90일', 'x:20': '최근 20일 물량 신호(전환청구·대주주 매도·자사주 처분)',
+  'c:under': '세력 원가 아래', 'c:near': '세력 원가 근처(+20% 안)', 'c:mid': '세력 원가 +20~100%', 'c:far': '세력 원가 2배↑', 'u:30': '보호예수 해제 30일 안', 'u:90': '보호예수 해제 31~90일', 'x:20': '최근 20일 물량 신호(전환청구·대주주 매도·자사주 처분)', 'c:floor': 'CB 전환가가 리픽싱 하한까지 내려옴', 'e:stake5g': '5% 보유자 경영참가 목적', 'h:won': '같은 세력(조합·발행 대상자)의 다른 종목이 예전에 크게 감', 'h:lost': '같은 세력의 다른 종목이 예전에 크게 깨짐',
 };
 const kko = (k) => DF_KO[k] || (k.startsWith('mv:') ? '속뜻: ' + k.slice(3) : k.startsWith('r:') ? '위험: ' + k.slice(2) : k);
 /** 그날 알 수 있는 공시 꼬리표 */
@@ -24,11 +24,20 @@ export function discFeats({ evs, px, close, Tms, mv = [], rd = [], ev60 = [] }) 
   let ul = null; for (const p of px || []) { const u = p.lock?.until; if (!u || !p.date || p.date > d) continue; const dd = (Date.parse(u) - Tms) / DAY; if (dd > 0 && (ul == null || dd < ul)) ul = dd; }
   if (ul != null) { if (ul <= 30) F.add('u:30'); else if (ul <= 90) F.add('u:90'); }
   if ((evs || []).some((e) => e.ms <= Tms && e.ms > Tms - 28 * DAY && ['conv', 'majsell', 'tsell'].includes(e.kind))) F.add('x:20');
+  { let fl = 0, rf = null; for (const p of px || []) { if (!p.date || p.date > d) continue; if (p.cbx?.floor > fl) fl = p.cbx.floor; if (p.kind === 'refix' && p.p > 0 && (!rf || p.date > rf.date)) rf = p; } if (fl > 0 && rf && rf.p <= fl * 1.02) F.add('c:floor'); } // v251 전환가가 리픽싱 하한까지 내려옴
   return [...F];
 }
-/** 줄: [code, d, feats, lo('w'|'l'|'n'), lw(+30%까지 일), lf(−15%까지 일), ldd(+30% 전 최저 %), u120(120일 최고 %), ent(그날 차트 자리)] */
+/** 줄: [code, d, feats, lo('w'|'l'|'n'), lw(+30%까지 일), lf(−15%까지 일), ldd(+30% 전 최저 %), u120(120일 최고 %), ent(그날 차트 자리), parties(세력 이름 키)] */
+/** v251 세력 이력: 같은 이름(조합·발행 대상자)이 나온 다른 종목의 '그날 전에 이미 결과가 난' 판정 → h:won / h:lost (미래 정보 안 씀) */
+function addHistory(R) {
+  const byP = new Map(); R.forEach((r, i) => { for (const p of r[9] || []) { const a = byP.get(p) || []; a.push(i); byP.set(p, a); } });
+  for (const r of R) { if (!(r[9] || []).length) continue; const t = Date.parse(r[1]); let w = 0, l = 0;
+    for (const p of r[9]) for (const j of byP.get(p) || []) { const o = R[j]; if (o[0] === r[0]) continue; const end = Date.parse(o[1]) + ((o[3] === 'w' ? o[4] : o[3] === 'l' ? o[5] : 120) || 120) * 1.45 * DAY; if (end >= t) continue; if (o[3] === 'w') w++; else if (o[3] === 'l') l++; }
+    if (w || l) r[2] = [...r[2], w >= l ? 'h:won' : 'h:lost']; }
+  return R;
+}
 export function discStudy(rows) {
-  const R = rows.filter((r) => r[3]); const N = R.length; if (N < 300) return { n: N, need: 300 };
+  const R = addHistory(rows.filter((r) => r[3]).map((r) => [...r])); const N = R.length; if (N < 300) return { n: N, need: 300 };
   const ds = R.map((r) => r[1]).sort(); const cut = ds[Math.floor(ds.length / 2)];
   const rate = (L) => { const w = L.filter((r) => r[3] === 'w').length, l = L.filter((r) => r[3] === 'l').length; return { n: L.length, w: Math.round((w / L.length) * 100), l: Math.round((l / L.length) * 100) }; };
   const base = rate(R), baseA = rate(R.filter((r) => r[1] < cut)), baseZ = rate(R.filter((r) => r[1] >= cut));
@@ -61,20 +70,24 @@ export function discStudy(rows) {
   return { n: N, cut, base, cov, good: one.filter((x) => x.good), bad: one.filter((x) => x.bad).sort((a, b) => b.fl - a.fl), pairs: pairs.slice(0, 12), all: one.slice(0, 60), ko: DF_KO };
 }
 export async function discReport() {
-  const { partsLoad } = await import('./btstore.mjs');
+  const { partsLoad } = await import('./btstore.mjs'); const { setJSON } = await import('./store.mjs');
   const R = await partsLoad('mp/bt/disc');
-  return { ...discStudy(R?.list || []), v: R?.v || null };
+  const out = { ...discStudy(R?.list || []), v: R?.v || null };
+  if (out.base) { const L = [...(out.pairs || []), ...(out.good || []), ...(out.bad || [])].filter((x) => x.sure).map((x) => ({ k: x.k, ko: x.ko, good: x.good ? 1 : 0, bad: x.bad ? 1 : 0, w: x.w, l: x.l, n: x.n, chart: x.chart || null })); await setJSON('mp/disclearn', { at: Date.now(), base: out.base, list: L }).catch(() => {}); }
+  return out;
 }
+/** v251 지금 종목의 공시 꼬리표가 '확실함' 조합에 맞는지 */
+export function discMatch(feats, learn) { const F = new Set(feats || []); return (learn?.list || []).filter((x) => x.k.split('+').every((k) => F.has(k))); }
 
 /** v248 💰 세력 원가 원문 미리 받기 (GK: '세력 원가 정보가 일부 종목에만 있는 문제는 중요')
  *  과거 재현은 원문을 캐시에서만 읽음 → 4년치 CB·3자배정·유상증자·경영권·5% 공시 원문 가격을 미리 받아 둠
  *  3분 크론 · 한 번 45초·2개씩 · 하루 6,000건 · DB 느리면/정기 분석 중이면 쉼 · 1바퀴(지금 있는 공시) → 깊은 채우기 끝나면 2바퀴(옛 공시)
  *  종목: 지금 시총 2조 미만(스팩 제외) + 랭킹 먼저 */
 const CF_V = 1, CF_KINDS = ['cb', 'refix', 'rights3', 'rights', 'mna', 'fund5'];
-export async function costFillStep({ budgetMs = 30000, par = 2, dayMax = 6000 } = {}) {
+export async function costFillStep({ budgetMs = 35000, par = 3, dayMax = 9000 } = {}) {
   const { getJSON, setJSON } = await import('./store.mjs');
   const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 500) return { skip: 'db slow' };
-  { const ep = await getJSON('mp/entpre').catch(() => null); if (ep && !ep.done) return { skip: 'entpre running' }; } // v249: 차트만 먼저가 끝난 뒤에 (동시에 돌면 DB 부담)
+  if (Math.floor(Date.now() / 180e3) % 2 === 0) { const ep = await getJSON('mp/entpre').catch(() => null); if (ep && !ep.done) return { skip: 'entpre turn' }; } // v250: 차트만 먼저와 3분씩 번갈아 (동시에 돌면 DB 부담)
   const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > Date.now()) return { skip: 'radar busy' };
   let st = await getJSON('mp/costfill').catch(() => null);
   const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
@@ -97,7 +110,7 @@ export async function costFillStep({ budgetMs = 30000, par = 2, dayMax = 6000 } 
   if (st.dn >= dayMax) return { skip: 'day max' };
   const M = await import('./manip.mjs');
   const now = Date.now(); let n = 0, codes = 0;
-  while (st.pos < st.queue.length && Date.now() - t0 < budgetMs && st.dn < dayMax && codes++ < 15) { // 한 번에 15종목까지 (DB 부담)
+  while (st.pos < st.queue.length && Date.now() - t0 < budgetMs && st.dn < dayMax && codes++ < 20) { // 한 번에 20종목까지 (DB 부담)
     const code = st.queue[st.pos];
     const evs = (await M._eventsOf(code, now, { days: 1640 }).catch(() => [])).filter((e) => CF_KINDS.includes(e.kind) && e.id);
     const need = [];

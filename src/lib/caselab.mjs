@@ -202,7 +202,8 @@ export async function bigReport() {
   const { partsLoad } = await import('./btstore.mjs');
   const [R, Bs] = await Promise.all([partsLoad('mp/bt/big'), partsLoad('mp/bt/bigb')]);
   const runs = R?.list || [], base = Bs?.list || [];
-  return { ...bigStudy(runs, base), exit: exitStudy(runs), v: R?.v || null };
+  const exit = exitStudy(runs); if (exit && !exit.need) await setJSON('mp/exitlearn', { at: Date.now(), conv: exit.conv, sell: exit.sell, unl: exit.unl, ratio: exit.ratio }).catch(() => {}); // v251 보유 종목 엑시트 알림에 씀
+  return { ...bigStudy(runs, base), exit, v: R?.v || null };
 }
 export async function labSummary() {
   const [cases, big, disc] = await Promise.all([caseReport(), bigReport(), import('./disclab.mjs').then((m) => m.discReport()).catch(() => null)]);

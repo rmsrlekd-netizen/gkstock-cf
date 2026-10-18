@@ -10,8 +10,8 @@ import { CASE_CODES, motiveOf, bigRuns, saveCase } from './caselab.mjs';
 import { entryEvents } from './entrylab.mjs';
 
 const DAY = 86400e3;
-const BT_V = 28; // v237 🎯 타점 연구 · // v234 급락 가드 · v233 4년·적발 사례·대세상승·공시 속뜻 · // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
-const PER_RUN = 6; // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
+const BT_V = 29; // v237 🎯 타점 연구 · // v234 급락 가드 · v233 4년·적발 사례·대세상승·공시 속뜻 · // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
+const PER_RUN = 8; // v250 GK '내일까지' 6 → 8 (+ 50초 넘으면 멈추고 다음 차례) // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
 const STEP = 10, BACK = 95, BT_DAYS = 1460; // v233: 4년(적발 사례 2022~23 포함) · // v230: 10거래일 간격 최대 80개 날짜(약 3년 3개월) · 공시는 3년+180일 (v219: 16개 ≈ 8개월) // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
 export async function btStep({ restart = false, now = Date.now(), max = PER_RUN } = {}) {
@@ -20,7 +20,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   if (restart || !st || st.v !== BT_V || (st.prep && !st.queue)) {
     // v230: 3년치 공시 깊은 채우기(backfill deep)가 끝나야 시작 — 그 전엔 예전 결과를 그대로 둠(화면엔 '준비 중' 표시)
     const bf = await getJSON('backfill/state').catch(() => null);
-    { /* v248 세력 원가 원문 미리 받기(costFillStep)가 옛 공시까지 끝날 때까지 기다림 — 깊은 채우기 끝난 뒤 최대 12시간 */ const cf = bf?.deep?.done && !restart ? await getJSON('mp/costfill').catch(() => null) : null; if (cf && !cf.done && now - (bf.deep.doneAt || now) < 12 * 3600e3) { if (!st?.wait?.cf || now - (st.wait.at || 0) > 600e3) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: st?.wait?.since || now, at: now, cf: { pos: cf.pos, of: cf.queue?.length || 0, round: cf.round, got: cf.got } } }); return { waiting: 'costfill', pos: cf.pos }; } }
+    { /* v248 세력 원가 원문 미리 받기(costFillStep)가 옛 공시까지 끝날 때까지 기다림 — 깊은 채우기 끝난 뒤 최대 12시간 */ const cf = bf?.deep?.done && !restart ? await getJSON('mp/costfill').catch(() => null) : null; if (((cf && !cf.done) || (bf?.deep?.done && bf.deep.stakeTo && !bf.deep.dD?.done)) && now - (bf.deep.doneAt || now) < 3 * 3600e3) { /* v251 + 5% 경영참가 다시 훑기 */ if (!st?.wait?.cf || now - (st.wait.at || 0) > 600e3) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: st?.wait?.since || now, at: now, cf: cf ? { pos: cf.pos, of: cf.queue?.length || 0, round: cf.round, got: cf.got } : { pos: 0, of: 0, round: 0, got: 0 } } }); return { waiting: 'costfill', pos: cf?.pos }; } }
     if (!restart && !bf?.deep?.done) { if (!st?.wait) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); else if (now - (st.wait.at || 0) > 600e3) await setJSON('mp/bt/state', { ...st, wait: { ...st.wait, at: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); return { waiting: true, deep: bf?.deep?.day || null }; }
     // 월별 공시 색인을 3년치로 다시 만들기 (한 번에 3개월씩, 깊은 채우기 뒤에 만든 것만 인정)
     const prep = st?.v === BT_V && st.prep ? st.prep : { since: now };
@@ -53,7 +53,9 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   const newRows = [], newTr = [], newNf = {}, newFw = [], newBig = [], newBase = [], newEnt = [], newDisc = [];
   const CS = new Set(CASE_CODES);
   const TS = await import('./tradesim.mjs');
+  const tRun = Date.now(); let done = 0;
   for (const code of part) {
+    if (done > 0 && Date.now() - tRun > 50e3) break; done++;
     try {
       const B = await M._bars(code, 1000); // v230 약 4년치 일봉
       if (!B || B.length < 120) continue;
@@ -86,7 +88,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
         { const rr0 = { st: x.stage, dir: x.dir?.dir, ck: x.cl?.grade, pk: M.pickFails(rk).length ? 0 : 1, vd: M.verdictOf(rk)?.c, rr: x.dir?.rr?.v ?? null, gp: rk.gap ?? null, cm: rk.cm || 0, pexl: rk.pex?.lv || null, ckv: Object.fromEntries((x.cl?.pos || []).filter((i) => i.ok != null).map((i) => [i.k, i.ok ? 1 : 0])),
             mv: motiveOf(evs, { B, Tms }), ev: M.evKinds60(evs, x.px, Tms), lo60: f.fromLow60 ?? null, bx: f.box60 ?? null, cy: f.cyc ? 1 : 0, p1: f.pump1 ? 1 : 0, mk2: (f.marks || []).filter((m) => m.ok).length, rd: M.redKeys(x.cl) }; // v231 rd · v224 🏆 이긴 자리 공통점용: 최근 60일 공시 종류·차트 모양
           tlist.push({ d, f: TS.flagsOf(rr0), tp: x.dir?.rr?.t || 0, sp: x.dir?.rr?.s || 0, a: TS.attrsOf(rr0), v: { s: score, ws: x.cl?.ws ?? null, rr: rr0.rr, gp: rr0.gp } }); }
-        { /* v247 📜 공시 확률 줄 — 같은 종목 30일에 1번 */ if (x.stage !== '거래정지' && (!lastDisc || Tms - lastDisc >= 30 * DAY)) { lastDisc = Tms; const ps = pathStats(B, i, {}); if (ps.lo) { const DL = await import('./disclab.mjs'); const EL = await import('./entrylab.mjs'); newDisc.push([code, d, DL.discFeats({ evs, px: x.px, close: f.close, Tms, mv: motiveOf(evs, { B, Tms }), rd: M.redKeys(x.cl), ev60: M.evKinds60(evs, x.px, Tms) }), ps.lo, ps.lw ?? null, ps.lf ?? null, ps.ldd ?? null, ps.u120 ?? null, EL.entryNow(B.slice(0, i + 1)).map((e) => e.s)]); } } }
+        { /* v247 📜 공시 확률 줄 — 같은 종목 30일에 1번 */ if (x.stage !== '거래정지' && (!lastDisc || Tms - lastDisc >= 30 * DAY)) { lastDisc = Tms; const ps = pathStats(B, i, {}); if (ps.lo) { const DL = await import('./disclab.mjs'); const XP = await import('./manipx.mjs'); const EL = await import('./entrylab.mjs'); newDisc.push([code, d, DL.discFeats({ evs, px: x.px, close: f.close, Tms, mv: motiveOf(evs, { B, Tms }), rd: M.redKeys(x.cl), ev60: M.evKinds60(evs, x.px, Tms) }), ps.lo, ps.lw ?? null, ps.lf ?? null, ps.ldd ?? null, ps.u120 ?? null, EL.entryNow(B.slice(0, i + 1)).map((e) => e.s), (() => { const P = new Set(); for (const p of x.px || []) for (const nm of [...(p.to || []), p.f5?.gp, ...(p.f5?.mem || [])]) { if (!nm || nm.length < 2 || XP.BIG.test(nm)) continue; const k = XP.partyKey(nm); if (k && k.length >= 3) P.add(k); } return [...P].slice(0, 8); })()]); } } }
         if (isCase && cpts.length) Object.assign(cpts[cpts.length - 1], { st: x.stage, vd: M.verdictOf(rk)?.c || null, ck: x.cl?.grade || null, dir: x.dir?.dir || null, mv: motiveOf(evs, { B, Tms }) });
         if (x.stage === '거래정지') continue; // v222: 거래정지 중엔 실제로 살 수 없음 → 판정일 기준 결과에서 뺌 (따라 샀다면에선 '🔴' 판정으로만 씀)
         // 같은 종목·같은 단계가 30일 안에 이어지면 처음 1번만 (성적표 집계와 같은 기준)
@@ -112,7 +114,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   if (newFw.length) await partsAppend('mp/bt/fw', newFw, { per: 5000, maxParts: 24, v: BT_V }).catch((e) => console.warn('bt fw', e.message));
   if (newTr.length || Object.keys(newNf).length) await partsAppend('mp/bt/trades', newTr, { per: 1500, maxParts: 30, nf: newNf, v: BT_V }).catch((e) => console.warn('bt tr', e.message));
   if (newRows.length) await partsAppend('mp/bt/rows', newRows, { per: 1500, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt rows', e.message));
-  st.pos += part.length; st.at = Date.now();
+  st.pos += done; st.at = Date.now();
   if (st.pos >= st.queue.length) { st.done = true; st.doneAt = Date.now(); try { await (await import('./entrylab.mjs')).entSummary({ force: true }); } catch (e) { console.warn('ent sum', e.message); } } // v237 끝나면 타점 학습 저장
   await setJSON('mp/bt/state', st);
   return { pos: st.pos, of: st.queue.length, kept: st.kept };

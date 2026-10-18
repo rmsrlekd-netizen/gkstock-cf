@@ -28,6 +28,7 @@ export const EV = {
   cb:        { w: 2, cap: 6, stage: 'setup', ko: 'CB·BW·EB 발행' },
   refix:     { w: 2, cap: 4, stage: 'setup', ko: '전환가 하향 조정(리픽싱)' },
   fund5:     { w: 3, cap: 6, stage: 'setup', ko: '투자조합 5% 지분 신고' },
+  stake5g:   { w: 0, cap: 0, stage: 'setup', ko: '5% 보유자 경영참가 목적' }, // v251 점수엔 아직 안 넣음 — 4년치 📜 공시 확률로 효과 확인 뒤
   purpose:   { w: 2, cap: 2, stage: 'setup', ko: '정관·사업목적 변경' },
   bonus:     { w: 2, cap: 2, stage: 'pump', ko: '무상증자' },
   capred:    { w: 2, cap: 2, stage: 'setup', ko: '감자' },
@@ -72,6 +73,7 @@ export function evKind(text, party = '') {
   if (/담보|질권/.test(t) && !/양수도|양도계약|인수/.test(t)) return 'pledge'; // '최대주주변경을수반하는주식담보제공계약'은 경영권 거래가 아니라 담보(반대매매 위험)
   if (/최대주주변경|경영권|주식등?양수도|최대주주인수/.test(t)) return 'mna';
   if (/대량보유/.test(t) && /조합|투자조합|신기술|사모/.test(String(party || '') + t)) return 'fund5';
+  if (/대량보유/.test(t) && /\(일반\)/.test(String(text || ''))) return 'stake5g'; // v251 5% 보유자 '경영참가' 목적(일반 보고) — 단순투자(약식)에서 바뀌면 경영권 개입 신호
   if (/담보|질권/.test(t)) return 'pledge';
   if (/정관|사업목적/.test(t)) return 'purpose';
   if (/무상증자/.test(t)) return 'bonus';
@@ -2142,12 +2144,26 @@ export async function manipIncr() {
       if (!x) continue;
       await saveProfiles([x], `새 공시 반영: ${job.why}`);
       out.n++;
+      try { await discAlert(x, now); } catch (e) { console.warn('discAlert', e.message); } // v251 📜 공시 확률 '확실함' 조합이 새로 완성되면 알림
     } catch (e) { out.err = String(e.message || e).slice(0, 120); }
   }
   iq.busyUntil = 0;
   await setJSON('mp/iq', iq);
   out.left = iq.q.length;
   return out.n || out.err ? out : null;
+}
+
+/** v251 새 공시로 '📜 공시 확률' 확실함 조합이 새로 맞으면 관리자 텔레그램 (조합 결과는 4년치 과거 재현 뒤 mp/disclearn) */
+async function discAlert(x, now) {
+  const L = await getJSON('mp/disclearn').catch(() => null); if (!L?.list?.length) return;
+  const DL = await import('./disclab.mjs');
+  const feats = DL.discFeats({ evs: x.events || [], px: x.px || [], close: x.close, Tms: now, mv: x.mv || [], rd: redKeys(x.cl), ev60: evKinds60(x.events || [], x.px || [], now) });
+  const hit = DL.discMatch(feats, L); const key = `mp/discal/${x.code}`; const prev = (await getJSON(key).catch(() => null)) || { ks: [] };
+  const fresh = hit.filter((h) => !prev.ks.includes(h.k)); await setJSON(key, { ks: hit.map((h) => h.k), at: now }).catch(() => {});
+  if (!fresh.length) return;
+  const b = L.base || {}; const ten = (v) => Math.round((v || 0) / 10);
+  const lines = fresh.slice(0, 3).map((h) => `${h.good ? '📜✅' : '📜⚠'} ${x.name} (${x.code}) — ${h.ko}\n   과거 4년 비슷한 공시 조합: 10번 중 ${ten(h.w)}번 +30% 먼저 · ${ten(h.l)}번 −15% 먼저 (전체 ${ten(b.w)}번/${ten(b.l)}번 · ${h.n}번)${h.good && h.chart ? `\n   차트: 이긴 종목 80%는 오르기 전 ${h.chart.stop}%까지만 빠짐 · +30%까지 보통 ${h.chart.days}거래일` : ''}`);
+  await radarAlert(lines, fresh.slice(0, 3).map(() => x.code), { force: true, title: '📜 공시 확률 알림' }).catch(() => {});
 }
 
 // 보조 작업 (크론): 시장경보 수집(6시간마다) · 성적표 채우기

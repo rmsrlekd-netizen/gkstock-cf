@@ -96,8 +96,8 @@ export function dartItem(b) {
     approxMs: (Date.parse(`${date}T08:00:00+09:00`) || 0) + Math.min(seqPart, 36000) * 1000, archived: true,
   };
 }
-async function dartDay(key, ymd, page) {
-  const url = `https://opendart.fss.or.kr/api/list.json?crtfc_key=${encodeURIComponent(key)}&bgn_de=${ymd}&end_de=${ymd}&page_no=${page}&page_count=100&sort=date&sort_mth=desc`;
+async function dartDay(key, ymd, page, ty = null) {
+  const url = `https://opendart.fss.or.kr/api/list.json?crtfc_key=${encodeURIComponent(key)}&bgn_de=${ymd}&end_de=${ymd}&page_no=${page}&page_count=100&sort=date&sort_mth=desc${ty ? `&pblntf_ty=${ty}` : ''}`;
   const r = await fetchWithTimeout(url, {}, 9000);
   const j = await r.json();
   if (j.status === '013') return { list: [], total: 0 };
@@ -108,7 +108,8 @@ async function dartDay(key, ymd, page) {
 /** 과거 채우기 한 단계 (수집기 실행 뒤 남는 시간에 조금씩). which: 'sec' | 'dart' */
 // Cloudflare D1 무료 한도: 하루 10만 행 쓰기 (한국시간 오전 9시 초기화)
 // 과거 채우기는 하루 이 만큼만 씀 → 실시간 수집이 쓸 몫을 남겨둠. 유료(Workers Paid)면 BACKFILL_DAILY_ROWS를 크게 (예: 2000000)
-const DEEP_DAYS = 1500, /* v233: 4년(2022 적발 사례까지) */ DEEP_CALLS = 12000, DEEP_DAILY_ROWS = 200000; // v236 실측: 하루 약 11쪽·160행 → 4년치 약 1.2만 호출·18만 행 — 예전 한도(6천·6만)면 3일, 지금 한도면 약 하루 (DART 하루 한도 2만 안) // v230 깊은 채우기: 3년 · DART 하루 호출 6천 · 하루 6만 행까지
+const DEEP_TY = ['B', 'C', 'D', 'I']; // v250
+const DEEP_DAYS = 1500, /* v233: 4년(2022 적발 사례까지) */ DEEP_CALLS = 16000, DEEP_DAILY_ROWS = 200000; // v236 실측: 하루 약 11쪽·160행 → 4년치 약 1.2만 호출·18만 행 — 예전 한도(6천·6만)면 3일, 지금 한도면 약 하루 (DART 하루 한도 2만 안) // v230 깊은 채우기: 3년 · DART 하루 호출 6천 · 하루 6만 행까지
 const DAILY_ROWS = () => Math.max(0, Number(process.env.BACKFILL_DAILY_ROWS) || 25000);
 const utcDay = () => new Date().toISOString().slice(0, 10);
 
@@ -173,16 +174,31 @@ export async function backfillStep(which, { budgetMs = 20000, deepPages = 5 } = 
       const dp = st.deep || { day: [shiftDay(limitDay, -1), s.day].sort()[0], page: 1, limit: kstDate(-DEEP_DAYS), rows: 0, calls: {}, started: Date.now() };
       if (dp.limit > kstDate(-DEEP_DAYS)) { dp.limit = kstDate(-DEEP_DAYS); if (dp.done) { dp.done = false; dp.doneAt = null; } } // 기간을 늘리면 이어서 더 과거로
       if (!dp.done && s.day && dp.day > s.day) { dp.day = s.day; dp.page = 1; } // v234 보통 채우기가 이미 받은 날은 건너뜀 (예전엔 겹친 19일치를 다시 받아 저장 0건으로 보였음)
+      if (dp.ti == null) { dp.ti = 0; dp.page = 1; } // v250 유형별로 바뀐 첫 실행: 그날 처음부터 (유형 필터)
+      if (!dp.stakeTo) dp.stakeTo = dp.day; // v251 이 날까지(최근 쪽)는 '5% 경영참가' 공시를 안 받았음 → 깊은 채우기 끝난 뒤 지분공시(D)만 다시 훑음
       const cd = utcDay(); dp.calls = dp.calls?.day === cd ? dp.calls : { day: cd, n: 0 };
       let runCalls = 0; // v238 한 번에 DART 5쪽까지만 (DB 쓰기 부담 줄이기)
       while (!dp.done && runCalls++ < deepPages && Date.now() < dUntil - 2000 && dp.calls.n < DEEP_CALLS && st.quota.rows < DAILY_ROWS() + DEEP_DAILY_ROWS) {
         if (dp.day < dp.limit) { dp.done = true; dp.doneAt = Date.now(); break; }
-        let r; try { r = await dartDay(key, dp.day.replace(/-/g, ''), dp.page); dp.calls.n++; } catch (e) { dp.err = `${dp.day}: ${e.message}`; break; }
+        const TY = DEEP_TY[dp.ti || 0]; // v250 공시 유형별로만 받음 (B 주요사항·C 발행·D 지분·I 거래소) — 펀드(G)·정기(A)·감사(F)·기타(E)는 레이더가 안 씀 → 하루 쪽수 약 절반 이하
+        let r; try { r = await dartDay(key, dp.day.replace(/-/g, ''), dp.page, TY); dp.calls.n++; } catch (e) { dp.err = `${dp.day}: ${e.message}`; break; }
         const keep = r.list.filter((x) => (x.corp_cls === 'Y' || x.corp_cls === 'K') && x.stock_code && evKind((x.report_nm || '').replace(/\s+/g, ' ')));
         if (keep.length) { const n = await archiveItems(keep.map(dartItem), { mode: 'ignore' }); saved += n; dp.rows += n; count(); }
-        if (!r.list.length || dp.page >= (r.totalPage || 1) || dp.page >= 60) { dp.log = `${dp.day}: ${dp.page}쪽 완료`; dp.day = shiftDay(dp.day, -1); dp.page = 1; }
+        if (!r.list.length || dp.page >= (r.totalPage || 1) || dp.page >= 60) { if ((dp.ti || 0) < DEEP_TY.length - 1) { dp.ti = (dp.ti || 0) + 1; dp.page = 1; } else { dp.log = `${dp.day}: 유형 4개 완료`; dp.day = shiftDay(dp.day, -1); dp.page = 1; dp.ti = 0; } }
         else dp.page++;
         if (dp.calls.n % 3 === 0) { st.deep = { ...dp, at: Date.now() }; await setJSON('backfill/state', st).catch(() => {}); } // v234 3번마다 중간 저장 (1분 크론이 시간·CPU 한도로 끊겨도 진행이 남게)
+      }
+      // v251 다시 훑기: 보통 채우기 시작일(s.day) ~ stakeTo 사이를 지분공시(D)만, 새 종류(stake5g)만 저장
+      if (dp.done && !dp.dD?.done && s.day && dp.stakeTo) {
+        const dD = dp.dD || { day: s.day < dp.stakeTo ? s.day : dp.stakeTo, page: 1, rows: 0 }; let rc = 0;
+        while (!dD.done && rc++ < deepPages && Date.now() < dUntil - 2000 && dp.calls.n < DEEP_CALLS) {
+          if (dD.day < dp.stakeTo) { dD.done = true; break; }
+          let r; try { r = await dartDay(key, dD.day.replace(/-/g, ''), dD.page, 'D'); dp.calls.n++; } catch (e) { dD.err = `${dD.day}: ${e.message}`; break; }
+          const keep = r.list.filter((x) => (x.corp_cls === 'Y' || x.corp_cls === 'K') && x.stock_code && evKind((x.report_nm || '').replace(/\s+/g, ' ')) === 'stake5g');
+          if (keep.length) { const n = await archiveItems(keep.map(dartItem), { mode: 'ignore' }); saved += n; dD.rows += n; count(); }
+          if (!r.list.length || dD.page >= (r.totalPage || 1) || dD.page >= 60) { dD.day = shiftDay(dD.day, -1); dD.page = 1; } else dD.page++;
+        }
+        dp.dD = dD;
       }
       st.deep = { ...dp, at: Date.now() }; st.deepErr = null;
     } catch (e) { st.deepErr = { at: Date.now(), msg: String(e?.message || e).slice(0, 300) }; console.warn('deep-backfill', e?.message); }
