@@ -3612,7 +3612,7 @@
       <div class="pf-pane" data-pf="day" ${pt === 'day' ? '' : 'hidden'}><p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
       ${ckRows ? `<details class="pb-ck"><summary>✅ 체크리스트 항목별 비교 (눌러서 보기)</summary><h4 style="margin:.8rem 0 .3rem">✅ 체크리스트 항목별 20거래일 뒤 오른 비율 <small class="muted">충족(✓)한 종목 vs 아닌(✗) 종목 · 차이가 클수록 등급 계산에서 그 항목의 중요도가 자동으로 커져요</small></h4><div class="mp-perf"><table class="tbl"><tr><th>항목</th><th>✓ 충족</th><th>✗ 미충족</th><th>차이</th></tr>${ckRows}</table></div></details>` : ''}
       ${g.length ? `<div id="pbPerf"></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
-      <div id="btBox"></div></div>
+      <div id="btBox"></div><p class="sm" style="margin-top:.6rem">🔊 뉴스 수집 준비 확인 <button class="btn sm" data-news-probe>네이버 1쪽 시험</button> <small class="muted">저장 안 함 · 삼성전자 1쪽만</small></p><div id="newsProbe"></div></div>
       <p class="note">📊 <b>월간 규칙 점검</b> — 매달 1일 아침 관리자 텔레그램으로 그룹별 승률과 ⚠ 거꾸로 나온 규칙을 보내요 (표본 30건 미만은 '아직 판단 이름'). <button class="btn sm" data-mp-rulechk>지금 한 번 받기</button> <span class="muted sm" data-mp-rulechk-msg></span></p>
       <p class="note">수집 상태 · 거래소 시장경보·관리종목·거래정지: ${j.warn ? `${j.warn.at ? `${j.warn.n || 0}종목 · ${esc(rel(j.warn.at))}` : '첫 확인 중'}${j.warn.src === 'KIS' ? ' (한국투자증권 기준)' : ''}${j.warn.scan && j.warn.scan.pos < j.warn.scan.of ? ` · 오늘 확인 ${j.warn.scan.pos}/${j.warn.scan.of}` : ''}${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
     if (g.length) { S.pbData = S.pbData || {}; S.pbData.perf = g; renderBoard('perf'); }
@@ -3777,7 +3777,7 @@
   function labPaint() {
     const box = $('#labBox'), j = S.labData; if (!box || !j) return;
     const C = j.cases || {}, G = j.big || {}, VD = { g: '🟢', y: '🟡', r: '🔴' };
-    const crow = (x) => `<div class="lb-row ${x.caught ? 'ok' : x.none ? 'na' : 'miss'}"><span class="lb-n"><b>${esc(x.n)}</b><small>${esc(x.c)} · ${esc(x.from)}~${esc(x.to)} · ${esc(x.st)}</small><small class="muted">${esc(x.type)}</small></span>
+    const crow = (x) => `<div class="lb-row ${x.caught ? 'ok' : x.none ? 'na' : 'miss'}"><span class="lb-n"><b>${x.gk ? '🧑‍🏫 ' : ''}${esc(x.n)}</b><small>${esc(x.c)} · ${esc(x.from)}~${esc(x.to)} · ${x.gk ? 'GK 정답지' : esc(x.st)}</small><small class="muted">${esc(x.type)}</small></span>
       <span class="lb-r">${x.caught ? `<b class="up">✅ 잡음</b><small>${esc(x.first.d)} 처음 · 고점 ${x.lead}일 전${x.early ? ' (띄우기 시작 전)' : ''}<br>단계 ${esc(x.first.st || '-')} · 결론 ${VD[x.first.vd] || '-'} · 체크 ${esc(x.first.ck || '-')}</small>` : x.none ? `<b class="muted">계산 전</b><small>${esc(x.why)}</small>` : `<b class="down">놓침</b><small>${esc(x.why)}${x.maxS != null ? ` · 최고 점수 ${x.maxS}` : ''}</small>`}</span>
       <span class="lb-g">${x.caught ? `<b class="${x.gain >= 0 ? 'up' : 'down'}">${x.gain >= 0 ? '+' : ''}${x.gain}%</b><small>처음 잡은 날 → 고점</small>` : ''}</span></div>`;
     const lift = (x) => `<div class="lb-row"><span class="lb-n"><b>${esc(x.ko)}</b><small>대세상승 ${x.pR}% · 평범한 날 ${x.pB}%</small></span><span class="lb-g"><b class="${x.lift >= 1.5 ? 'up' : x.lift <= 0.7 ? 'down' : ''}">${x.lift}배</b><small>${x.nR}번</small></span></div>`;
@@ -3799,9 +3799,30 @@
           ${G.pairs?.length ? `<h6 class="av-h">두 개가 같이 있을 때</h6><div class="lb-list">${G.pairs.map(lift).join('')}</div>` : ''}
           ${G.low?.length ? `<h6 class="av-h">대세상승 앞에 오히려 드물었던 것</h6><div class="lb-list">${G.low.map(lift).join('')}</div>` : ''}
           ${G.seq?.length ? `<h6 class="av-h">가장 흔한 순서 (오르기 전 처음 나온 공시 두 종류)</h6><p class="sm">${G.seq.map(([s, n]) => `${esc(s)} <b>${n}번</b>`).join(' · ')}</p>` : ''}
-          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}${exitAnatHTML(G.exit)}</div>${discHTML(j.disc)}
+          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}${exitAnatHTML(G.exit)}</div>${discHTML(j.disc)}<div id="newsLab"><button class="btn sm" data-news-load>🔊 뉴스 신호 결과 보기</button></div>
       <div class="st-box lb-box"><h5>③ 공시의 속뜻 사전 <small class="muted">같은 CB·3자배정도 '왜 했나'로 뜻이 달라요 — 🎭 세력 시각(싸게 받고·재료 깔고·띄워서 판다) · 🏛 기관 시각(희석·지배구조·자금 압박). 종목 페이지와 ⭐ 전략 찾기·🏆 이긴 자리에 자동으로 들어가요</small></h5><div class="lb-mvs">${mvDict}</div></div></div>`;
   }
+  // v253 🔊 뉴스 신호 (버튼을 눌러야 불러옴 — 무거운 집계라 연구실 열 때 자동으로 안 읽음)
+  async function renderNews() {
+    const box = $('#newsLab'); if (!box) return; box.innerHTML = '<div class="loading"><span class="spin"></span>뉴스 신호 계산 중…</div>';
+    let j; try { j = await mpGet('mp=news', 90000); } catch (e) { box.innerHTML = `<p class="muted sm">못 불러옴: ${esc(e.message)}</p>`; return; }
+    const P = j.progress, ten = (v) => Math.round((v || 0) / 10);
+    const head = `<div class="st-box lb-box"><h5>🔊 뉴스 신호 <small class="muted">네이버 종목 뉴스 제목·날짜만(본문 저장 안 함) · 레이더·대세상승·적발 사례 종목</small></h5>`;
+    if (!j.on && !P) return (box.innerHTML = head + '<p class="muted sm">아직 뉴스 모으기를 시작하지 않았어요.</p></div>');
+    const prog = P ? `<p class="sm">모은 종목 ${fmtInt(P.pos)} / ${fmtInt(P.of)} · 기사 ${fmtInt(P.n)}건${P.done ? ' · 다 모음' : ' · 모으는 중'}</p>` : '';
+    const T = j.timing; const tm = T ? `<p class="sm">대세상승 ${fmtInt(T.n)}번: 뉴스가 가장 많이 쏟아진 때는 보통 고점 <b>${T.med > 0 ? T.med + '일 뒤' : T.med < 0 ? -T.med + '일 전' : '그날'}</b> · 고점 5일보다 먼저 ${T.before}% · 고점 ±5일 ${T.near}% · 고점 뒤 ${T.after}% → ${T.near + T.after >= 60 ? '<b>뉴스 몰림은 대체로 \'나올 때\' 신호</b>' : T.before >= 50 ? '<b>뉴스 몰림이 오르기 전에 오는 편</b>' : '뚜렷한 쪽은 아직 없음'}</p>` : '<p class="muted sm">대세상승과 뉴스 시점 비교는 기사가 더 모이면 나와요.</p>';
+    const D = j.disc || {}; const B = D.base;
+    const row = (x) => `<div class="dc-row${x.good ? ' ok' : x.bad ? ' bad' : ''}"><div class="dc-1">${x.good ? '✅' : x.bad ? '⚠' : '·'} <b>${esc(x.ko)}</b>${x.good || x.bad ? (x.sure ? ' <span class="simv v-ok">확실함</span>' : ' <span class="simv v-n">우연일 수 있음</span>') : ''} — 10번 중 <b class="up">${ten(x.w)}번 +30% 먼저</b> · <b class="down">${ten(x.l)}번 −15% 먼저</b> <small class="muted">(전체 ${ten(B?.w)} / ${ten(B?.l)} · ${fmtInt(x.n)}번)</small></div></div>`;
+    const tab = D.need || !B ? `<p class="muted sm">판정 날 ${fmtInt(D.n || 0)}개 — 300개 넘으면 나와요.</p>` : ((D.all || []).filter((x) => String(x.k).startsWith('n:')).map(row).join('') + (D.pairs || []).filter((x) => /n:/.test(x.k)).slice(0, 6).map(row).join('') || '<p class="muted sm">뉴스 꼬리표가 붙은 판정 날이 아직 적어요.</p>');
+    box.innerHTML = head + prog + tm + '<h6 class="av-h">뉴스 꼬리표가 붙은 판정 날 — 그 뒤 120거래일</h6>' + tab + '<p class="muted sm">뉴스 꼬리표: 뉴스 몰림(평소 3배↑) · 호재성 단어 3건↑ · 공시 근거 없는 호재 · 갑자기 붙은 테마 단어 · 같은 제목 3곳↑(보도자료) · 60일 기사 없음.</p></div>';
+  }
+  async function renderNewsProbe() {
+    const box = $('#newsProbe'); if (!box) return; box.innerHTML = '<div class="loading"><span class="spin"></span>네이버에서 삼성전자 뉴스 1쪽 받는 중…</div>';
+    let j; try { j = await mpGet('mp=newsprobe&code=005930', 30000); } catch (e) { box.innerHTML = `<p class="muted sm">못 불러옴: ${esc(e.message)}</p>`; return; }
+    const ok = j.n >= 5 && j.items.every((x) => x[1] && x[0]);
+    box.innerHTML = `<p class="sm"><b>${ok ? '✅ 제대로 읽힘' : '⚠ 제대로 못 읽음'}</b> · 응답 ${j.status} · ${fmtInt(j.ms)}ms · 읽은 기사 ${j.n}건 (날짜 표시 ${j.dates} · 제목칸 ${j.tit} · 매체칸 ${j.info})</p>` + (j.items || []).map((x) => `<p class="sm">${esc(x[0])} · ${esc(x[2])} · ${esc(x[1])}</p>`).join('');
+  }
+  document.addEventListener('click', (ev) => { if (ev.target.closest?.('[data-news-load]')) renderNews(); if (ev.target.closest?.('[data-news-probe]')) renderNewsProbe(); });
   // v251 📒 앞으로 검증 — 10/19부터 레이더가 실제로 낸 판정이 그 뒤 어떻게 됐나 (과거에 맞춘 결과가 아닌 진짜 시험)
   async function renderFwd(force) {
     const box = $('#fwdBox'); if (!box) return;
@@ -4219,7 +4240,7 @@
     const rows = (j.groups || []).filter((r) => ord.includes(r.g)).sort((a, c) => ord.indexOf(a.g) - ord.indexOf(c.g));
     const cell = (r, h) => (r['n' + h] ? `<td><b class="${dirCls(r['avg' + h])}">${r['avg' + h] > 0 ? '+' : ''}${r['avg' + h]}%</b><small>오른 비율 ${r['win' + h]}% · ${r['n' + h]}건${r['n' + h] < 30 ? ' (적음)' : ''}</small></td>` : '<td class="muted">—</td>');
     const v230 = j.v >= 20; // v230: 3년치
-    const prepNote = j.wait?.cf ? `<p class="note">⏳ <b>세력 원가(CB 전환가·발행가) 원문을 미리 받는 중</b> — ${fmtInt(j.wait.cf.pos)} / ${fmtInt(j.wait.cf.of)}종목 (${j.wait.cf.round === 2 ? '옛 공시' : '최근 공시'}) · 받은 원문 ${fmtInt(j.wait.cf.got)}건. 끝나면(최대 12시간) 과거 재현을 시작해요.</p>` : j.wait ? `<p class="note">⏳ <b>4년치 과거 공시를 채우는 중</b> — 지금 ${esc(j.wait.deep?.day || '시작 전')}까지 (${esc(j.wait.deep?.limit || '4년 전')}까지 받으면 끝) · 저장 ${fmtInt(j.wait.deep?.rows || 0)}건. 다 채우면 과거 재현을 4년치로 처음부터 다시 계산해요 (1~2일). 그동안은 아래 예전(약 8개월) 결과를 그대로 보여줘요.</p>` : j.prep ? `<p class="note">⏳ <b>4년치 공시 색인 만드는 중</b> — 남은 달 ${fmtInt(j.prep.pending || 0)}개 (3분마다 3개월씩). 끝나면 과거 재현이 시작돼요.</p>` : '';
+    const prepNote = j.wait?.cf ? `<p class="note">⏳ <b>세력 원가(CB 전환가·발행가) 원문을 미리 받는 중</b> — ${fmtInt(j.wait.cf.pos)} / ${fmtInt(j.wait.cf.of)}종목 (${j.wait.cf.round === 2 ? '옛 공시' : '최근 공시'}) · 받은 원문 ${fmtInt(j.wait.cf.got)}건. 끝나면(최대 3시간) 과거 재현을 시작해요.</p>` : j.wait ? `<p class="note">⏳ <b>4년치 과거 공시를 채우는 중</b> — 지금 ${esc(j.wait.deep?.day || '시작 전')}까지 (${esc(j.wait.deep?.limit || '4년 전')}까지 받으면 끝) · 저장 ${fmtInt(j.wait.deep?.rows || 0)}건. 다 채우면 과거 재현을 4년치로 처음부터 다시 계산해요 (1~2일). 그동안은 아래 예전(약 8개월) 결과를 그대로 보여줘요.</p>` : j.prep ? `<p class="note">⏳ <b>4년치 공시 색인 만드는 중</b> — 남은 달 ${fmtInt(j.prep.pending || 0)}개 (3분마다 3개월씩). 끝나면 과거 재현이 시작돼요.</p>` : '';
     b.innerHTML = `<h4 style="margin:1rem 0 .3rem">🧪 과거 재현(백테스트) <small class="muted">참고용 · 지난 ${v230 ? '약 4년' : '약 8개월'} 동안 '그날 지금 규칙이었다면' 판정 → 실제 5·20·60거래일 뒤 결과 · ${j.done ? `완료 (${esc(rel(j.doneAt))})` : j.wait || j.prep ? '준비 중' : `계산 중 ${fmtInt(j.pos)}/${fmtInt(j.of)}종목`} · 판정 ${fmtInt(j.kept)}건</small> <button class="btn sm" data-bt-run>처음부터 다시</button></h4>${prepNote}
       <p class="muted sm">한계: AI 판단·지분·신용·거래원·재무 같은 바깥 자료는 그날 기준으로 재현 못 해서 빠져요 · 시가총액 순위 모름 · ${v230 ? '4년 전까지의 옛 공시는 레이더가 보는 종류만 저장해 요약이 없고, 그 사이 상장폐지된 종목은 빠져서(생존 편향) 실제보다 조금 좋게 보일 수 있어요' : '공시는 최근 180일치만 있어 오래된 날짜일수록 공시가 덜 보임'} · 대상은 ${v230 ? '4년' : '최근 6개월'} 안 판 깔기 공시가 있던 종목</p>
       ${rows.length ? '<div id="pbBt"></div>' : '<p class="muted sm">아직 결과 없음</p>'}`;

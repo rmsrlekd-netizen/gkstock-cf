@@ -169,7 +169,8 @@ export const CASES = [
   { n: '자이글', c: '234920', m: 'Q', from: '2022-12', to: '2023-04', type: '2차전지 신사업·현물출자 허위 보도자료', st: '고발' },
   { n: '아이엠', c: '101390', m: 'Q', from: '2023-06', to: '2023-06', type: '해외 광물 MOU 허위 테마', st: '고발' },
 ];
-export const CASE_CODES = CASES.map((x) => x.c);
+export const GK_CASES = []; // v252 GK 정답지 — GK가 '일단 반영 안 함' (10/19) · 필요하면 여기에 종목 추가
+export const CASE_CODES = [...GK_CASES, ...CASES].map((x) => x.c);
 const RADAR_TYPE = (t) => /M&A|CB|3자|현물출자|투자조합|허위 공시/.test(t); // 레이더가 원래 잡으려던 유형(공시 흔적이 남는 작전)
 
 /** 레이더 채점: 띄우기 기간 앞 6개월~끝 사이에 처음 잡은 날·단계·판정, 그때 샀다면 고점까지 · 놓쳤으면 이유 */
@@ -179,24 +180,24 @@ export function gradeCase(C, rec) {
   const dataFrom = rec.pts[0]?.d || '0000'; // 일봉·판정이 시작되는 날 (사건이 그보다 오래 이어졌으면 거기서부터 채점)
   const w0 = [ymd(Date.parse(s0) - 180 * DAY), dataFrom].sort()[1], w1 = ymd(Date.parse(e0) + 31 * DAY);
   const P = rec.pts.filter((p) => p.d >= w0 && p.d <= w1);
-  if (!P.length) return { ...C, none: true, radar: RADAR_TYPE(C.type), why: rec.pts[0] && rec.pts[0].d > w1 ? '일봉 자료가 이 기간까지 거슬러 가지 않음' : `이 기간 일봉·판정 자료 없음 (자료 ${rec.pts[0]?.d || '?'}~)` };
+  if (!P.length) return { ...C, none: true, radar: (C.gk ? true : RADAR_TYPE(C.type)), why: rec.pts[0] && rec.pts[0].d > w1 ? '일봉 자료가 이 기간까지 거슬러 가지 않음' : `이 기간 일봉·판정 자료 없음 (자료 ${rec.pts[0]?.d || '?'}~)` };
   const pk = P.filter((p) => p.d >= [s0, dataFrom].sort()[1]).reduce((a, p) => (!a || p.c > a.c ? p : a), null) || P[P.length - 1];
   const lo = P.filter((p) => p.d <= pk.d).reduce((a, p) => (!a || p.c < a.c ? p : a), null);
   const first = P.find((p) => p.s >= 4 && p.d <= pk.d);
-  const radar = RADAR_TYPE(C.type), evOk = (rec.evFrom || '9999') <= ymd(Date.parse(w0) + 90 * DAY);
-  if (!first) return { ...C, caught: false, radar: RADAR_TYPE(C.type), pk, lo, maxS: Math.max(...P.map((p) => p.s || 0)), why: !radar ? '공시 흔적이 거의 없는 유형(통정매매·장기 시세조종) — 레이더는 공시 흔적(CB·3자배정·M&A)으로 찾기 때문에 구조적으로 못 잡음' : !evOk ? `그 기간 공시 자료가 아직 없음 (보관 ${rec.evFrom || '없음'}~) — 공시 채우기 뒤 다시 채점` : '판 깔기 공시는 있었지만 점수가 기준(4점) 아래' };
+  const radar = (C.gk ? true : RADAR_TYPE(C.type)), evOk = (rec.evFrom || '9999') <= ymd(Date.parse(w0) + 90 * DAY);
+  if (!first) return { ...C, caught: false, radar: (C.gk ? true : RADAR_TYPE(C.type)), pk, lo, maxS: Math.max(...P.map((p) => p.s || 0)), why: !radar ? '공시 흔적이 거의 없는 유형(통정매매·장기 시세조종) — 레이더는 공시 흔적(CB·3자배정·M&A)으로 찾기 때문에 구조적으로 못 잡음' : !evOk ? `그 기간 공시 자료가 아직 없음 (보관 ${rec.evFrom || '없음'}~) — 공시 채우기 뒤 다시 채점` : '판 깔기 공시는 있었지만 점수가 기준(4점) 아래' };
   const lead = Math.round((Date.parse(pk.d) - Date.parse(first.d)) / DAY);
-  return { ...C, caught: true, radar: RADAR_TYPE(C.type), first, pk, lo, lead, gain: Math.round((pk.c / first.c - 1) * 100), early: first.d < s0, motives: first.mv || [] };
+  return { ...C, caught: true, radar: (C.gk ? true : RADAR_TYPE(C.type)), first, pk, lo, lead, gain: Math.round((pk.c / first.c - 1) * 100), early: first.d < s0, motives: first.mv || [] };
 }
 export async function caseReport() {
   const out = [];
-  for (const C of CASES) { const rec = await getJSON(`mp/case/${C.c}`).catch(() => null); out.push(gradeCase(C, rec)); }
+  for (const C of [...GK_CASES, ...CASES]) { const rec = await getJSON(`mp/case/${C.c}`).catch(() => null); out.push(gradeCase(C, rec)); }
   const done = out.filter((x) => x.caught != null), caught = done.filter((x) => x.caught);
   const med = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : null; };
   const rt = done.filter((x) => x.radar), rtC = rt.filter((x) => x.caught);
   const vdAt = {}; for (const x of caught) { const v = x.first?.vd || '-'; vdAt[v] = (vdAt[v] || 0) + 1; }
   const stAt = {}; for (const x of caught) { const v = x.first?.st || '-'; stAt[v] = (stAt[v] || 0) + 1; }
-  return { list: out, n: CASES.length, done: done.length, caught: caught.length, radarType: rt.length, radarCaught: rtC.length, lead: med(caught.map((x) => x.lead)), gain: med(caught.map((x) => x.gain)), vdAt, stAt };
+  return { list: out, n: CASES.length + GK_CASES.length, done: done.length, caught: caught.length, radarType: rt.length, radarCaught: rtC.length, lead: med(caught.map((x) => x.lead)), gain: med(caught.map((x) => x.gain)), vdAt, stAt };
 }
 export async function bigReport() {
   const { partsLoad } = await import('./btstore.mjs');
