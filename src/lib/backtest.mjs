@@ -16,11 +16,13 @@ const STEP = 10, BACK = 95, BT_DAYS = 1460; // v233: 4년(적발 사례 2022~23 
 
 export async function btStep({ restart = false, now = Date.now(), max = PER_RUN } = {}) {
   let st = (await getJSON('mp/bt/state')) || null;
+  // v257 GK '결과가 늦더라도 원가를 다 받고' — 이번 계산이 끝난 뒤 세력 원가 2차(옛 공시)가 끝나 있으면 원가까지 넣어 한 번 더 처음부터 (계산 시작보다 뒤에 끝난 경우만 → 1번만)
+  if (st?.done && st.v === BT_V && !restart) { const cf = await getJSON('mp/costfill').catch(() => null); if (cf?.done && (cf.doneAt || 0) > (st.started || 0)) { console.log('bt rerun after costfill'); restart = true; } }
   const M = await import('./manip.mjs');
   if (restart || !st || st.v !== BT_V || (st.prep && !st.queue)) {
     // v230: 3년치 공시 깊은 채우기(backfill deep)가 끝나야 시작 — 그 전엔 예전 결과를 그대로 둠(화면엔 '준비 중' 표시)
     const bf = await getJSON('backfill/state').catch(() => null);
-    { /* v248 세력 원가 원문 미리 받기(costFillStep)가 옛 공시까지 끝날 때까지 기다림 — 깊은 채우기 끝난 뒤 최대 12시간 */ const cf = bf?.deep?.done && !restart ? await getJSON('mp/costfill').catch(() => null) : null; if (((cf && !cf.done) || (bf?.deep?.done && bf.deep.stakeTo && !bf.deep.dD?.done)) && now - (bf.deep.doneAt || now) < 3 * 3600e3) { /* v251 + 5% 경영참가 다시 훑기 */ if (!st?.wait?.cf || now - (st.wait.at || 0) > 600e3) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: st?.wait?.since || now, at: now, cf: cf ? { pos: cf.pos, of: cf.queue?.length || 0, round: cf.round, got: cf.got } : { pos: 0, of: 0, round: 0, got: 0 } } }); return { waiting: 'costfill', pos: cf?.pos }; } }
+    { /* v248 세력 원가 원문 미리 받기(costFillStep)가 옛 공시까지 끝날 때까지 기다림 — 깊은 채우기 끝난 뒤 최대 3시간 (v257: 그 뒤 원가가 다 차면 끝나고 자동으로 한 번 더) */ const cf = bf?.deep?.done && !restart ? await getJSON('mp/costfill').catch(() => null) : null; if (((cf && !cf.done) || (bf?.deep?.done && bf.deep.stakeTo && !bf.deep.dD?.done)) && now - (bf.deep.doneAt || now) < 3 * 3600e3) { /* v251 + 5% 경영참가 다시 훑기 */ if (!st?.wait?.cf || now - (st.wait.at || 0) > 600e3) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: st?.wait?.since || now, at: now, cf: cf ? { pos: cf.pos, of: cf.queue?.length || 0, round: cf.round, got: cf.got } : { pos: 0, of: 0, round: 0, got: 0 } } }); return { waiting: 'costfill', pos: cf?.pos }; } }
     if (!restart && !bf?.deep?.done) { if (!st?.wait) await setJSON('mp/bt/state', { ...(st || {}), wait: { since: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); else if (now - (st.wait.at || 0) > 600e3) await setJSON('mp/bt/state', { ...st, wait: { ...st.wait, at: now, deep: bf?.deep ? { day: bf.deep.day, limit: bf.deep.limit, rows: bf.deep.rows } : null } }); return { waiting: true, deep: bf?.deep?.day || null }; }
     // 월별 공시 색인을 3년치로 다시 만들기 (한 번에 3개월씩, 깊은 채우기 뒤에 만든 것만 인정)
     const prep = st?.v === BT_V && st.prep ? st.prep : { since: now };

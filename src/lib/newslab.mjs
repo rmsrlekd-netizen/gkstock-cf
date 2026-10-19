@@ -57,9 +57,19 @@ export async function newsProbe(code = '005930') {
   const out = [];
   const one = async (name, url) => { const t0 = Date.now(); try { const x = await rawGet(url); out.push({ name, status: x.status, ms: Date.now() - t0, ct: x.ct, len: x.len, n: x.items.length, first: x.items[0] || null, last: x.items.at(-1) || null, head: x.items.length ? '' : x.txt.replace(/\s+/g, ' ').slice(0, 300), items: name === 'm 1쪽' || (name === 'html 1쪽' && x.items.length) ? x.items.slice(0, 20) : undefined }); } catch (e) { out.push({ name, err: String(e.message).slice(0, 80) }); } };
   await one('m 1쪽', SRC.m(code, 1));
-  for (const pg of [50, 150, 400]) await one(`m ${pg}쪽`, SRC.m(code, pg));
-  const sm = '007110'; // 일신석재 — 작은 종목은 몇 년 전까지 나오는지
-  for (const pg of [1, 20, 60]) await one(`일신석재 ${pg}쪽`, SRC.m(sm, pg));
+  for (const pg of [100, 101]) await one(`m ${pg}쪽`, SRC.m(code, pg));
+  // v256: 종목마다 마지막 쪽을 찾아(이분 탐색) 가장 옛 기사 날짜 — 네이버가 몇 년치를 주는지
+  const depth = [];
+  for (const [c, nm] of [['005930', '삼성전자'], ['007110', '일신석재'], ['001210', '금호전기'], ['028300', 'HLB'], ['016670', '디모아']]) {
+    try {
+      let lo = 1, hi = 0, last = null, calls = 0; const okAt = async (pg) => { calls++; const x = await rawGet(SRC.m(c, pg)); if (x.items.length) { last = { pg, d: x.items.at(-1)[0] }; return true; } return false; };
+      if (!(await okAt(1))) { depth.push({ nm, pages: 0 }); continue; }
+      let step = 4; while (step <= 512 && (await okAt(step))) { lo = step; step *= 2; } hi = Math.min(step, 1024);
+      while (hi - lo > 1 && calls < 14) { const mid = (lo + hi) >> 1; if (await okAt(mid)) lo = mid; else hi = mid; }
+      const x = await rawGet(SRC.m(c, lo)); depth.push({ nm, pages: lo, oldest: x.items.at(-1)?.[0] || last?.d || null });
+    } catch (e) { depth.push({ nm, err: String(e.message).slice(0, 60) }); }
+  }
+  out.push(...depth.map((d) => ({ name: `${d.nm} 끝쪽`, status: d.err ? 0 : 200, ms: 0, n: d.pages || 0, err: d.err, first: d.oldest ? ['마지막 ' + d.pages + '쪽', '', ''] : null, last: d.oldest ? [d.oldest + ' 까지', '', ''] : null })));
   const best = out.find((x) => x.n >= 5);
   return { code, src: best?.name || null, n: best?.n || 0, items: best?.items || out.find((x) => x.items)?.items || [], tries: out };
 }
