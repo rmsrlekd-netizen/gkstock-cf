@@ -24,20 +24,50 @@ export function parseNewsPage(h) {
   }
   return out;
 }
-/** 실제 네이버 한 쪽 시험 (저장 안 함) — 관리자 🔊 '네이버 1쪽 시험' 버튼 */
-export async function newsProbe(code = '005930', page = 1) {
-  const t0 = Date.now();
-  const r = await fetchWithTimeout(`https://finance.naver.com/item/news_news.naver?code=${code}&page=${page}&clusterId=`, { headers: NH }, 9000);
+/** 네이버 모바일 증권 JSON → [[YYYY-MM-DD, 제목, 언론사]] (모양이 바뀌어도 title+날짜 있는 객체를 모두 찾음) */
+export function parseNewsJSON(j) {
+  const out = [], seen = new Set();
+  const walk = (o, dep) => {
+    if (!o || dep > 6) return;
+    if (Array.isArray(o)) { for (const x of o) walk(x, dep + 1); return; }
+    if (typeof o !== 'object') return;
+    const t = o.title || o.tit || o.articleTitle, dt = String(o.datetime || o.dateTime || o.date || o.publishedAt || o.regDate || '');
+    const m = dt.match(/^(20\d{2})[.\-]?(\d{2})[.\-]?(\d{2})/);
+    if (t && m) { const title = strip(t).slice(0, 120), k = (o.officeId || '') + (o.articleId || title); if (title && !seen.has(k)) { seen.add(k); out.push([`${m[1]}-${m[2]}-${m[3]}`, title, strip(o.officeName || o.office || o.press || '').slice(0, 20)]); } return; }
+    for (const v of Object.values(o)) if (v && typeof v === 'object') walk(v, dep + 1);
+  };
+  walk(j, 0);
+  return out;
+}
+const SRC = {
+  m: (c, p) => `https://m.stock.naver.com/api/news/stock/${c}?pageSize=20&page=${p}`,
+  h: (c, p) => `https://finance.naver.com/item/news_news.naver?code=${c}&page=${p}&clusterId=`,
+};
+async function rawGet(url) {
+  const isM = url.includes('m.stock');
+  const r = await fetchWithTimeout(url, { headers: isM ? { 'User-Agent': BROWSER_UA, Accept: 'application/json', Referer: 'https://m.stock.naver.com/' } : NH }, 9000);
   const ct = r.headers.get('content-type') || '';
-  const h = decodeText(await r.arrayBuffer(), /utf-?8/i.test(ct) ? 'utf-8' : 'euc-kr');
-  const items = parseNewsPage(h);
-  return { code, page, status: r.status, ms: Date.now() - t0, len: h.length, dates: (h.match(/20\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2}/g) || []).length, tit: (h.match(/class="tit"/g) || []).length, info: (h.match(/class="info"/g) || []).length, n: items.length, items: items.slice(0, 20) };
+  const txt = decodeText(await r.arrayBuffer(), /utf-?8|json/i.test(ct) || isM ? 'utf-8' : 'euc-kr');
+  let items = [];
+  if (r.ok) { if (/json/i.test(ct) || /^\s*[[{]/.test(txt)) { try { items = parseNewsJSON(JSON.parse(txt)); } catch {} } else items = parseNewsPage(txt); }
+  return { status: r.status, ct: ct.slice(0, 40), len: txt.length, txt, items };
+}
+/** 실제 네이버 시험 (저장 안 함) — 관리자 '네이버 1쪽 시험' 버튼. 주소 후보마다 1쪽 + 모바일은 깊은 쪽(얼마나 옛날까지 되는지) */
+export async function newsProbe(code = '005930') {
+  const out = [];
+  const one = async (name, url) => { const t0 = Date.now(); try { const x = await rawGet(url); out.push({ name, status: x.status, ms: Date.now() - t0, ct: x.ct, len: x.len, n: x.items.length, first: x.items[0] || null, last: x.items.at(-1) || null, head: x.items.length ? '' : x.txt.replace(/\s+/g, ' ').slice(0, 300), items: name === 'm 1쪽' || (name === 'html 1쪽' && x.items.length) ? x.items.slice(0, 20) : undefined }); } catch (e) { out.push({ name, err: String(e.message).slice(0, 80) }); } };
+  await one('m 1쪽', SRC.m(code, 1));
+  await one('m 30쪽', SRC.m(code, 30));
+  await one('m 80쪽', SRC.m(code, 80));
+  await one('html 1쪽', SRC.h(code, 1));
+  const best = out.find((x) => x.n >= 5);
+  return { code, src: best?.name || null, n: best?.n || 0, items: best?.items || out.find((x) => x.items)?.items || [], tries: out };
 }
 async function newsPage(code, page) {
-  const r = await fetchWithTimeout(`https://finance.naver.com/item/news_news.naver?code=${code}&page=${page}&clusterId=`, { headers: NH }, 9000);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const ct = r.headers.get('content-type') || '';
-  return parseNewsPage(decodeText(await r.arrayBuffer(), /utf-?8/i.test(ct) ? 'utf-8' : 'euc-kr'));
+  let x = await rawGet(SRC.m(code, page));
+  if (!x.items.length && page === 1) { const y = await rawGet(SRC.h(code, page)); if (y.items.length) x = y; }
+  if (x.status >= 400 && !x.items.length) throw new Error('HTTP ' + x.status);
+  return x.items;
 }
 
 // ── 꼬리표 ──

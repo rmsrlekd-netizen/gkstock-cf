@@ -46,7 +46,7 @@ export default async (req) => {
       if (mp === 'simrows') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simRows(u.searchParams.get('src') || 'live', u.searchParams.get('s') || 'g')) }); }
       if (mp === 'simstock') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simStock(u.searchParams.get('q') || '')) }); } // v222 성과검증 종목 검색
       if (mp === 'simrun') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...((await t.simStep({ maxCodes: 4, budgetMs: 20000 })) || {}) }); }
-      if (mp === 'newsprobe') { const NL = await import('../lib/newslab.mjs'); return J({ ok: true, ...(await NL.newsProbe(String(u.searchParams.get('code') || '005930').replace(/\D/g, '').slice(0, 6) || '005930')) }); } // v253 네이버 1쪽 시험(저장 안 함)
+      if (mp === 'newsprobe') { const NL = await import('../lib/newslab.mjs'); return J({ ok: true, ...(await NL.newsProbe(String(u.searchParams.get('code') || '005930').replace(/\D/g, '').slice(0, 6) || '005930')) }); } // v253·254 네이버 시험(저장 안 함)
       if (mp === 'news') { const NL = await import('../lib/newslab.mjs'); return J({ ok: true, on: NL.NEWS_ON, ...(await NL.newsReport()) }); } // v253 🔊 뉴스 신호
       if (mp === 'fwd') { const X = await import('../lib/manipx.mjs'); return J({ ok: true, ...(await X.fwdReport({ force: u.searchParams.get('force') === '1' })) }); } // v251 📒 앞으로 검증
       if (mp === 'ent') { const E = await import('../lib/entrylab.mjs'); return J({ ok: true, ...(await E.entSummary({ force: u.searchParams.get('force') === '1' })) }); } // v237 🎯 타점 연구

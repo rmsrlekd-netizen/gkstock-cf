@@ -3817,10 +3817,11 @@
     box.innerHTML = head + prog + tm + '<h6 class="av-h">뉴스 꼬리표가 붙은 판정 날 — 그 뒤 120거래일</h6>' + tab + '<p class="muted sm">뉴스 꼬리표: 뉴스 몰림(평소 3배↑) · 호재성 단어 3건↑ · 공시 근거 없는 호재 · 갑자기 붙은 테마 단어 · 같은 제목 3곳↑(보도자료) · 60일 기사 없음.</p></div>';
   }
   async function renderNewsProbe() {
-    const box = $('#newsProbe'); if (!box) return; box.innerHTML = '<div class="loading"><span class="spin"></span>네이버에서 삼성전자 뉴스 1쪽 받는 중…</div>';
+    const box = $('#newsProbe'); if (!box) return; box.innerHTML = '<div class="loading"><span class="spin"></span>네이버에서 삼성전자 뉴스 받아 보는 중…</div>';
     let j; try { j = await mpGet('mp=newsprobe&code=005930', 30000); } catch (e) { box.innerHTML = `<p class="muted sm">못 불러옴: ${esc(e.message)}</p>`; return; }
-    const ok = j.n >= 5 && j.items.every((x) => x[1] && x[0]);
-    box.innerHTML = `<p class="sm"><b>${ok ? '✅ 제대로 읽힘' : '⚠ 제대로 못 읽음'}</b> · 응답 ${j.status} · ${fmtInt(j.ms)}ms · 읽은 기사 ${j.n}건 (날짜 표시 ${j.dates} · 제목칸 ${j.tit} · 매체칸 ${j.info})</p>` + (j.items || []).map((x) => `<p class="sm">${esc(x[0])} · ${esc(x[2])} · ${esc(x[1])}</p>`).join('');
+    const ok = j.n >= 5 && (j.items || []).every((x) => x[1] && x[0]);
+    const tr = (j.tries || []).map((t) => `<p class="sm muted">${esc(t.name)}: ${t.err ? '오류 ' + esc(t.err) : `응답 ${t.status} · ${fmtInt(t.ms)}ms · 기사 ${t.n}건${t.first ? ` · ${esc(t.first[0])} ~ ${esc(t.last[0])}` : ''}${t.head ? ' · ' + esc(t.head.slice(0, 120)) : ''}`}</p>`).join('');
+    box.innerHTML = `<p class="sm"><b>${ok ? '✅ 제대로 읽힘 (' + esc(j.src) + ')' : '⚠ 제대로 못 읽음'}</b> · 읽은 기사 ${j.n}건</p>` + tr + (j.items || []).map((x) => `<p class="sm">${esc(x[0])} · ${esc(x[2])} · ${esc(x[1])}</p>`).join('');
   }
   document.addEventListener('click', (ev) => { if (ev.target.closest?.('[data-news-load]')) renderNews(); if (ev.target.closest?.('[data-news-probe]')) renderNewsProbe(); });
   // v251 📒 앞으로 검증 — 10/19부터 레이더가 실제로 낸 판정이 그 뒤 어떻게 됐나 (과거에 맞춘 결과가 아닌 진짜 시험)
