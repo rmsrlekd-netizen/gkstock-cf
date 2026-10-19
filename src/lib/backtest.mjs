@@ -51,6 +51,11 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   const idx = (await getJSON('mp/idx')) || [];
   const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows || {} : {};
   const TSm = await import('./tradesim.mjs'); const cmap = await TSm.capMap(); const capP = cmap.pct || {}; // 시가총액 순위(근사) → 소형주 항목·대형주 감점 재현 · 판정일 시총으로 세력주만
+  // v258: 같은 자리에서 계속 멈추면(작업이 시간·CPU 한도로 끊겨 저장 전에 죽음 — 10/20 05:36부터 633에서 멈춤) 2번째부터 1종목씩, 3번째엔 그 종목 건너뜀
+  if (st.tryPos === st.pos) st.tryN = (st.tryN || 0) + 1; else { st.tryPos = st.pos; st.tryN = 1; }
+  if (st.tryN >= 3) { (st.skipped ||= []).push(st.queue[st.pos]); console.warn('bt skip', st.queue[st.pos]); st.pos++; st.tryPos = st.pos; st.tryN = 1; }
+  if (st.tryN >= 2) max = 1;
+  await setJSON('mp/bt/state', st); // 시도 횟수를 먼저 저장 (중간에 끊겨도 남게)
   const part = st.queue.slice(st.pos, st.pos + max);
   const newRows = [], newTr = [], newNf = {}, newFw = [], newBig = [], newBase = [], newEnt = [], newDisc = [];
   const CS = new Set(CASE_CODES);
