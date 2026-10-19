@@ -57,9 +57,9 @@ export async function newsProbe(code = '005930') {
   const out = [];
   const one = async (name, url) => { const t0 = Date.now(); try { const x = await rawGet(url); out.push({ name, status: x.status, ms: Date.now() - t0, ct: x.ct, len: x.len, n: x.items.length, first: x.items[0] || null, last: x.items.at(-1) || null, head: x.items.length ? '' : x.txt.replace(/\s+/g, ' ').slice(0, 300), items: name === 'm 1쪽' || (name === 'html 1쪽' && x.items.length) ? x.items.slice(0, 20) : undefined }); } catch (e) { out.push({ name, err: String(e.message).slice(0, 80) }); } };
   await one('m 1쪽', SRC.m(code, 1));
-  await one('m 30쪽', SRC.m(code, 30));
-  await one('m 80쪽', SRC.m(code, 80));
-  await one('html 1쪽', SRC.h(code, 1));
+  for (const pg of [50, 150, 400]) await one(`m ${pg}쪽`, SRC.m(code, pg));
+  const sm = '007110'; // 일신석재 — 작은 종목은 몇 년 전까지 나오는지
+  for (const pg of [1, 20, 60]) await one(`일신석재 ${pg}쪽`, SRC.m(sm, pg));
   const best = out.find((x) => x.n >= 5);
   return { code, src: best?.name || null, n: best?.n || 0, items: best?.items || out.find((x) => x.items)?.items || [], tries: out };
 }
@@ -99,8 +99,8 @@ export function newsFeats(items, Tms, evs = []) {
 export const NEWS_KO = { 'n:burst': '뉴스 몰림(평소 3배↑)', 'n:hype': '호재성 단어 기사 3건↑(10일)', 'n:nobasis': '공시 근거 없는 호재 기사', 'n:theme': '갑자기 붙은 테마 단어', 'n:dup': '같은 제목 3곳↑ 매체(보도자료)', 'n:quiet': '60일 동안 기사 없음' };
 
 // ── 모으기: 3분 크론, 한 번 2종목·종목당 최대 8쪽(이어서), DB 핑 0.6초↑·정기 분석 중이면 쉼 ──
-//  대상: 레이더 랭킹 + 과거 재현 대세상승 종목 + 적발 사례 (최대 500) · 종목당 4년 전까지 또는 최대 80쪽
-const MAX_PAGES = 80, PER_RUN_PAGES = 8;
+//  대상: 레이더 랭킹 + 과거 재현 대세상승 종목 + 적발 사례 (최대 500) · 종목당 4년 전까지 또는 최대 150쪽
+const MAX_PAGES = 150, PER_RUN_PAGES = 8; // v255: 큰 종목은 하루 수십 건이라 150쪽(3천 건)에서 끊음 — 세력주 같은 작은 종목은 보통 4년 안에 끝남
 export async function newsStep({ codes = 2 } = {}) {
   if (!NEWS_ON) return null;
   const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 600) return { skip: 'db slow' };

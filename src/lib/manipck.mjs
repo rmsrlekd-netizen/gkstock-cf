@@ -104,7 +104,15 @@ async function buzzOf(code) {
   // 뉴스: 최근 3페이지 기사 날짜 → 최근 3일 건수 vs 그 전 일평균
   try {
     const ts = [];
-    for (let p = 1; p <= 3; p++) { const h = await html(`https://finance.naver.com/item/news_news.naver?code=${code}&page=${p}&clusterId=`); const n0l = ts.length; for (const m of h.matchAll(dtRe)) ts.push(msOf(m)); if (p === 1 && ts.length === n0l) throw new Error('뉴스 목록 형식을 읽지 못함'); }
+    // v255: 옛 finance.naver.com 뉴스 목록은 410(없어짐) → 모바일 증권 JSON (datetime 'YYYYMMDDHHmm')
+    for (let p = 1; p <= 3; p++) {
+      const r = await fetchWithTimeout(`https://m.stock.naver.com/api/news/stock/${code}?pageSize=20&page=${p}`, { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json', Referer: 'https://m.stock.naver.com/' } }, 9000);
+      if (!r.ok) throw new Error('뉴스 HTTP ' + r.status);
+      const n0l = ts.length, txt = JSON.stringify(await r.json());
+      for (const m of txt.matchAll(/"datetime":"(20\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/g)) ts.push(msOf(m));
+      if (p === 1 && ts.length === n0l && txt.length > 50) throw new Error('뉴스 목록 형식을 읽지 못함');
+      if (ts.length === n0l) break;
+    }
     if (ts.length) {
       const n3 = ts.filter((t) => now - t <= 3 * DAY).length, old = ts.filter((t) => now - t > 3 * DAY);
       const span = old.length ? Math.max(1, (now - 3 * DAY - Math.min(...old)) / DAY) : null;
