@@ -3799,7 +3799,7 @@
           ${G.pairs?.length ? `<h6 class="av-h">두 개가 같이 있을 때</h6><div class="lb-list">${G.pairs.map(lift).join('')}</div>` : ''}
           ${G.low?.length ? `<h6 class="av-h">대세상승 앞에 오히려 드물었던 것</h6><div class="lb-list">${G.low.map(lift).join('')}</div>` : ''}
           ${G.seq?.length ? `<h6 class="av-h">가장 흔한 순서 (오르기 전 처음 나온 공시 두 종류)</h6><p class="sm">${G.seq.map(([s, n]) => `${esc(s)} <b>${n}번</b>`).join(' · ')}</p>` : ''}
-          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}${exitAnatHTML(G.exit)}</div>${discHTML(j.disc)}<div id="newsLab"><button class="btn sm" data-news-load>🔊 뉴스 신호 결과 보기</button></div>
+          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}${exitAnatHTML(G.exit)}</div>${discHTML(j.disc)}<div id="ruleLab"><button class="btn sm primary" data-rule-load>🧭 규칙 찾기 — 오르기 전 특이점</button></div><div id="newsLab"><button class="btn sm" data-news-load>🔊 뉴스 신호 결과 보기</button></div>
       <div class="st-box lb-box"><h5>③ 공시의 속뜻 사전 <small class="muted">같은 CB·3자배정도 '왜 했나'로 뜻이 달라요 — 🎭 세력 시각(싸게 받고·재료 깔고·띄워서 판다) · 🏛 기관 시각(희석·지배구조·자금 압박). 종목 페이지와 ⭐ 전략 찾기·🏆 이긴 자리에 자동으로 들어가요</small></h5><div class="lb-mvs">${mvDict}</div></div></div>`;
   }
   // v253 🔊 뉴스 신호 (버튼을 눌러야 불러옴 — 무거운 집계라 연구실 열 때 자동으로 안 읽음)
@@ -3823,6 +3823,19 @@
     const tr = (j.tries || []).map((t) => `<p class="sm muted">${esc(t.name)}: ${t.err ? '오류 ' + esc(t.err) : `응답 ${t.status} · ${fmtInt(t.ms)}ms · 기사 ${t.n}건${t.first ? ` · ${esc(t.first[0])} ~ ${esc(t.last[0])}` : ''}${t.head ? ' · ' + esc(t.head.slice(0, 120)) : ''}`}</p>`).join('');
     box.innerHTML = `<p class="sm"><b>${ok ? '✅ 제대로 읽힘 (' + esc(j.src) + ')' : '⚠ 제대로 못 읽음'}</b> · 읽은 기사 ${j.n}건</p>` + tr + (j.items || []).map((x) => `<p class="sm">${esc(x[0])} · ${esc(x[2])} · ${esc(x[1])}</p>`).join('');
   }
+  async function renderRules(force) {
+    const box = $('#ruleLab'); if (!box) return; box.innerHTML = '<div class="loading"><span class="spin"></span>규칙 찾는 중… (저장된 과거 재현 줄만 읽음)</div>';
+    let j; try { j = await mpGet('mp=rules' + (force ? '&force=1' : ''), 120000); } catch (e) { box.innerHTML = `<p class="muted sm">못 불러옴: ${esc(e.message)}</p>`; return; }
+    const ko = (k) => k.startsWith('ent:') ? '차트: ' + (j.entKo?.[k.slice(4)] || k.slice(4)) : (j.ko?.[k] || (k.startsWith('mv:') ? '속뜻: ' + k.slice(3) : k.startsWith('r:') ? '위험: ' + k.slice(2) : k === 'h:won' ? '같은 세력이 전에 이김' : k === 'h:lost' ? '같은 세력이 전에 짐' : k));
+    const P = j.prog; const prog = P ? `<small class="muted">과거 재현 ${fmtInt(P.pos)}/${fmtInt(P.of)}종목${P.done ? ' · 끝' : ' · 계산 중 (끝나면 숫자가 바뀜)'}</small>` : '';
+    const head = `<div class="st-box lb-box"><h5>🧭 규칙 찾기 — 오르기 전 특이점 ${prog}</h5><p class="muted sm">성공 = 다음 날 시가에 사서 120거래일 안에 <b class="up">+30%</b>가 <b class="down">−15%</b>보다 먼저. 2024년까지로 조합을 고르고 2025년부터(안 본 기간)에도 통하는지 확인 — 둘 다 통과한 것만 ✅.</p>`;
+    if (j.need) return (box.innerHTML = head + `<p class="muted sm">아직 줄이 부족해요 — 학습 ${fmtInt(j.ntr || 0)}줄(300 필요) · 검증 ${fmtInt(j.nte || 0)}줄(100 필요).</p><button class="btn sm" data-rule-load="1">다시 계산</button></div>`);
+    const B = j.base; const baseL = `<p class="sm">전체(레이더 후보 ${fmtInt(j.n)}번 · ${fmtInt(j.codes)}종목): 학습 기간 10번 중 <b class="up">${Math.round(B.tr.w / 10)}번 성공</b>·<b class="down">${Math.round(B.tr.l / 10)}번 실패</b> · 안 본 기간 <b class="up">${Math.round(B.te.w / 10)}</b>·<b class="down">${Math.round(B.te.l / 10)}</b></p>`;
+    const row = (x, y) => `<div class="dc-row${x.pass ? (y === 'w' ? ' ok' : ' bad') : ''}"><div class="dc-1">${x.pass ? (y === 'w' ? '✅' : '⚠') : '·'} <b>${x.ks.map(ko).map(esc).join(' + ')}</b> — 학습 ${fmtInt(x.tr.n)}번 <b class="up">${x.tr.w}%</b>/<b class="down">${x.tr.l}%</b> → 안 본 기간 ${fmtInt(x.te.n)}번 <b class="up">${x.te.w}%</b>/<b class="down">${x.te.l}%</b> <small class="muted">(평소의 ${x.liftTe ?? '—'}배${x.t != null ? ` · t ${x.t}` : ''} · ${x.codes}종목)</small></div></div>`;
+    const sg = (j.single || []).slice(0, 15).map((x) => `<div class="dc-row"><div class="dc-1">${esc(ko(x.k))} — 학습 ${fmtInt(x.trn)}번 성공 ${x.trw}% (평소의 ${x.lw}배) · 안 본 기간 ${fmtInt(x.ten)}번 ${x.tew ?? '—'}% (${x.lwz ?? '—'}배)</div></div>`).join('');
+    box.innerHTML = head + baseL + '<h6 class="av-h">✅ 성공률을 올린 조합 (규칙 후보)</h6>' + ((j.good || []).map((x) => row(x, 'w')).join('') || '<p class="muted sm">아직 없음</p>') + '<h6 class="av-h">⚠ 실패가 잦았던 조합 (피할 것)</h6>' + ((j.bad || []).map((x) => row(x, 'l')).join('') || '<p class="muted sm">아직 없음</p>') + '<details class="sx-more"><summary>꼬리표 하나씩 보기</summary>' + sg + '</details><p class="muted sm">⚠ 과거 재현에서 상장폐지된 종목은 빠져 있어(생존 편향) 실제보다 조금 좋게 보일 수 있어요. 소수 종목이 반복해서 나온 조합은 종목 수를 같이 보세요.</p><button class="btn sm" data-rule-load="1">다시 계산</button></div>';
+  }
+  document.addEventListener('click', (ev) => { const rb = ev.target.closest?.('[data-rule-load]'); if (rb) renderRules(rb.dataset.ruleLoad === '1'); });
   document.addEventListener('click', (ev) => { if (ev.target.closest?.('[data-news-load]')) renderNews(); if (ev.target.closest?.('[data-news-probe]')) renderNewsProbe(); });
   // v251 📒 앞으로 검증 — 10/19부터 레이더가 실제로 낸 판정이 그 뒤 어떻게 됐나 (과거에 맞춘 결과가 아닌 진짜 시험)
   async function renderFwd(force) {

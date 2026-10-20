@@ -50,6 +50,7 @@ export default async (req) => {
       if (mp === 'news') { const NL = await import('../lib/newslab.mjs'); return J({ ok: true, on: NL.NEWS_ON, ...(await NL.newsReport()) }); } // v253 🔊 뉴스 신호
       if (mp === 'fwd') { const X = await import('../lib/manipx.mjs'); return J({ ok: true, ...(await X.fwdReport({ force: u.searchParams.get('force') === '1' })) }); } // v251 📒 앞으로 검증
       if (mp === 'ent') { const E = await import('../lib/entrylab.mjs'); return J({ ok: true, ...(await E.entSummary({ force: u.searchParams.get('force') === '1' })) }); } // v237 🎯 타점 연구
+      if (mp === 'rules') { const L = await import('../lib/rulelab.mjs'); const E = await import('../lib/entrylab.mjs'); return J({ ok: true, ...(await L.ruleReport({ force: u.searchParams.get('force') === '1' })), entKo: Object.fromEntries(Object.entries(E.SETUPS).map(([k, v]) => [k, v.ko])) }); } // v267 🧭 규칙 찾기
       if (mp === 'lab') { const L = await import('../lib/caselab.mjs'); return J({ ok: true, ...(await L.labSummary()) }); } // v233 🔬 연구실(적발 사례·대세상승·공시 속뜻)
       if (mp === 'bt') { const b = await import('../lib/backtest.mjs'); return J({ ok: true, ...(await b.btSummary()) }); } // 과거 재현 백테스트 결과
       if (mp === 'grows') { const g = u.searchParams.get('g') || '전체'; const lim = u.searchParams.get('all') ? 3000 : 400; const rows = u.searchParams.get('src') === 'perf' ? await (await import('../lib/manipx.mjs')).perfRows(g, lim) : await (await import('../lib/backtest.mjs')).btRows(g, lim); return J({ ok: true, g, rows }); } // 그룹별 종목 목록
