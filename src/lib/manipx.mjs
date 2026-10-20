@@ -185,6 +185,10 @@ export function perfGroupKeys(row) {
   for (const [kk, v] of Object.entries(row.ckv || {})) k.push(`ck:${kk}:${v}`); // 체크리스트 항목별 (중요도 자동 조정용)
   return k;
 }
+// v263: 중앙값용 숫자 목록은 그룹당 250개까지 (무작위 표본) — 예전엔 4000개라 과거 재현 상태가 저장 한도(1.9MB)를 넘어 10/20 05:36부터 저장이 실패, 같은 종목을 계속 다시 계산·중복 저장했음
+const RS = 250;
+function rs(o, K, v) { const a = (o[K] ||= []); const c = (o['_' + K] = (o['_' + K] || a.length) + 1); if (a.length < RS) a.push(v); else { const j = Math.floor(Math.random() * c); if (j < RS) a[j] = v; } }
+export function trimGroups(groups) { for (const o of Object.values(groups || {})) for (const [k, a] of Object.entries(o)) if (Array.isArray(a) && a.length > RS) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } o['_' + k] = Math.max(o['_' + k] || 0, a.length); a.length = RS; } return groups; }
 export function perfAdd(groups, g, row) {
   const o = (groups[g] ||= { n: 0 });
   o.n++;
@@ -193,10 +197,10 @@ export function perfAdd(groups, g, row) {
   if (row.ft2) { o.f2n = (o.f2n || 0) + 1; if (row.ft2 === 'w') o.f2w = (o.f2w || 0) + 1; if (row.ft2 === 'l') o.f2l = (o.f2l || 0) + 1; }
   if (row.gp != null) { o.gpn = (o.gpn || 0) + 1; o.gps = (o.gps || 0) + row.gp; }
   if (row.wy?.length) { const W = (o.wy ||= {}); for (const k of row.wy) W[k] = (W[k] || 0) + 1; }
-  for (const h of [20, 60, 120]) for (const [K, f] of [['R', 'r'], ['U', 'u'], ['X', 'x']]) { const v = row[f + h]; if (v != null) { const a = (o[K + h] ||= []); if (a.length < 4000) a.push(v); } } // 중앙값용
-  for (const h of [20, 60, 120]) { const v = row['pd' + h]; if (v != null) { const a = (o['P' + h] ||= []); if (a.length < 4000) a.push(v); } } // v223: 고점까지 걸린 날
-  if (row.lo) { o.lon = (o.lon || 0) + 1; if (row.lo === 'w') { o.low = (o.low || 0) + 1; (o.LW ||= []).length < 4000 && o.LW.push(row.lw); } if (row.lo === 'l') { o.lol = (o.lol || 0) + 1; (o.LF ||= []).length < 4000 && o.LF.push(row.lf); } } // v244 🎢
-  if (row.lo === 'l' && row.fb != null) { o.fbn = (o.fbn || 0) + 1; if (row.fb > 0) { o.fbk = (o.fbk || 0) + 1; (o.FB ||= []).length < 4000 && o.FB.push(row.fb); } if (row.f20) o.f20 = (o.f20 || 0) + 1; if (row.fl != null) (o.FL ||= []).length < 4000 && o.FL.push(row.fl); }
+  for (const h of [20, 60, 120]) for (const [K, f] of [['R', 'r'], ['U', 'u'], ['X', 'x']]) { const v = row[f + h]; if (v != null) { rs(o, K + h, v); } } // 중앙값용
+  for (const h of [20, 60, 120]) { const v = row['pd' + h]; if (v != null) { rs(o, 'P' + h, v); } } // v223: 고점까지 걸린 날
+  if (row.lo) { o.lon = (o.lon || 0) + 1; if (row.lo === 'w') { o.low = (o.low || 0) + 1; rs(o, 'LW', row.lw); } if (row.lo === 'l') { o.lol = (o.lol || 0) + 1; rs(o, 'LF', row.lf); } } // v244 🎢
+  if (row.lo === 'l' && row.fb != null) { o.fbn = (o.fbn || 0) + 1; if (row.fb > 0) { o.fbk = (o.fbk || 0) + 1; rs(o, 'FB', row.fb); } if (row.f20) o.f20 = (o.f20 || 0) + 1; if (row.fl != null) rs(o, 'FL', row.fl); }
   for (const h of H) if (row['x' + h] != null) { o['xn' + h] = (o['xn' + h] || 0) + 1; o['xs' + h] = (o['xs' + h] || 0) + row['x' + h]; }
   for (const h of H) { const v = row['r' + h]; if (v == null) continue; o['n' + h] = (o['n' + h] || 0) + 1; o['s' + h] = (o['s' + h] || 0) + v; if (v > 0) { o['sw' + h] = (o['sw' + h] || 0) + v; } else { o['sl' + h] = (o['sl' + h] || 0) + v; } if (v > 0) o['w' + h] = (o['w' + h] || 0) + 1; if (v >= 20) o['b' + h] = (o['b' + h] || 0) + 1; if (v <= -20) o['l' + h] = (o['l' + h] || 0) + 1; }
 }

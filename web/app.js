@@ -3910,13 +3910,13 @@
       if (!x.n) return `<button class="sx-row" data-sim-open="${x.s}"><span class="sx-n">${esc(x.ko)}<small>아직 없음</small></span><span class="sx-big muted">—</span><span class="sx-mid muted sm">${h}거래일이 지난 매수가 아직 없어요</span><span></span><span class="pb-go">›</span></button>`;
       const n20 = Math.round((x.up[1] / 100) * x.n);
       return `<button class="sx-row${isB ? ' base' : ''}" data-sim-open="${x.s}"><span class="sx-n">${esc(isB ? '레이더 전체 (비교 기준)' : x.ko)}<small>${x.n}번 매수</small></span>
-        <span class="sx-big up">${sgn(x.mu)}<small>절반이 이만큼 이상 오름</small><small>평균 ${sgn(x.au)}</small></span>
+        <span class="sx-big up">${sgn(x.au)}<small>평균 최고 상승</small><small>절반이 ${sgn(x.mu)} 이상 오름</small></span>
         <span class="sx-mid"><span class="sx-pct"><b class="${x.up[1] >= 30 ? 'up' : ''}">${x.up[1]}%</b> 확률로 +20%↑</span>${dots(x.up[1])}<small>${x.n}번 중 ${n20}번 · +10%↑ ${x.up[0]}% · +30%↑ ${x.up[2]}%</small></span>
         <span class="sx-vd"><b class="down">${sgn(x.md)}</b><small>오르기 전 절반이 이만큼까지 빠짐</small></span><span class="pb-go">›</span></button>`; };
     return `<div class="sx"><div class="sx-head"><h4>💰 따라 샀다면</h4><small class="muted">산 날(신호 다음 날 시가)부터 ${h}거래일 안에 최고 얼마까지 올랐나 — 손절·매도 상관없이</small></div>
       ${simCtl(D, j)}
       ${has ? `<div class="sx-list">${list.map(line).join('')}</div>` : simEmpty(D, src)}
-      <details class="sx-more"><summary>ⓘ 보는 법</summary><ul class="sx-ul"><li><b>큰 숫자</b> = 산 날부터 ${h}거래일 안에 가장 높이 오른 지점을 매수마다 하나씩 구해 줄 세웠을 때 딱 가운데 값 → '절반이 이만큼 이상 올랐다'는 뜻 (평균은 한두 종목이 크게 튀면 왜곡돼서 작게만 표시)</li><li><b>점 10칸</b> = +20% 넘게 오른 적이 있는 매수 비율</li><li><b>오르기 전 최저</b> = 그 최고점이 나오기 <b>전에</b> 가장 많이 빠졌던 폭 (올랐다가 내린 건 안 셈) · 이것도 가운데 값</li><li>줄을 누르면 +10%·+30%·+50%·+100% 찍은 비율과 종목별 기록이 나와요</li></ul></details></div>`;
+      <details class="sx-more"><summary>ⓘ 보는 법</summary><ul class="sx-ul"><li><b>큰 숫자</b> = 산 날부터 ${h}거래일 안에 가장 높이 오른 지점의 <b>평균</b> (GK 요청 · 한두 종목이 크게 튀면 평균이 부풀 수 있어서 아래에 '절반이 이만큼 이상 오름'(가운데 값)을 같이 표시)</li><li><b>점 10칸</b> = +20% 넘게 오른 적이 있는 매수 비율</li><li><b>오르기 전 최저</b> = 그 최고점이 나오기 <b>전에</b> 가장 많이 빠졌던 폭 (올랐다가 내린 건 안 셈) · 이것도 가운데 값</li><li>줄을 누르면 +10%·+30%·+50%·+100% 찍은 비율과 종목별 기록이 나와요</li></ul></details></div>`;
   }
   // ── 상세 창 ──
   const coName = (t) => `<span class="ca-co sx-co" data-mp-go="${esc(t.c)}" data-pbm-close-go>${logoHTML('KR', t.c, t.n || t.c, 'sm')}<b>${esc(t.n || t.c)}</b></span>`;
@@ -3943,7 +3943,7 @@
     const D = S.simData?.[src] || {}, x = (D.peak?.[h] || []).find((z) => z.s === s) || {};
     const L = rows.filter((t) => t.pk?.[hi]).sort((a, b) => b.pk[hi][0] - a.pk[hi][0]);
     const reach = x.n ? `<div class="sx-reach">${[10, 20, 30, 50, 100].map((v, i) => `<div><b>${x.up[i]}%</b><i style="height:${Math.max(3, Math.round(x.up[i] * 0.5))}px"></i><small>+${v}%↑</small></div>`).join('')}</div>
-      <div class="sx-tiles">${[['절반이 이만큼 이상 오름', sgn(x.mu), 'up', `평균 ${sgn(x.au)} · 가장 많이 ${sgn(x.best)}`], ['최고점까지', `${x.days}일`, '', '절반이 이 안에 최고점'], ['오르기 전 절반이 이만큼까지 빠짐', sgn(x.md), 'down', `−10%↓ ${x.dn[1]}% · −20%↓ ${x.dn[2]}%`], ['실패', `${x.flop}%`, 'down', '+10%도 못 가고 −10%↓']].map(([k, v, c, sub]) => `<div class="sx-t"><em>${k}</em><b class="${c}">${v}</b><small>${sub}</small></div>`).join('')}</div>` : '';
+      <div class="sx-tiles">${[['평균 최고 상승', sgn(x.au), 'up', `절반이 ${sgn(x.mu)} 이상 · 가장 많이 ${sgn(x.best)}`], ['최고점까지', `${x.days}일`, '', '절반이 이 안에 최고점'], ['오르기 전 절반이 이만큼까지 빠짐', sgn(x.md), 'down', `−10%↓ ${x.dn[1]}% · −20%↓ ${x.dn[2]}%`], ['실패', `${x.flop}%`, 'down', '+10%도 못 가고 −10%↓']].map(([k, v, c, sub]) => `<div class="sx-t"><em>${k}</em><b class="${c}">${v}</b><small>${sub}</small></div>`).join('')}</div>` : '';
     openPbModal(`<div class="pbm-back" data-pbm-close></div><div class="pbm" role="dialog" aria-label="최고·최저 기록">
       <div class="pbm-head"><div><b>${esc(x.ko || s)}</b> <small class="muted">${h}거래일 안 최고·최저 · 많이 오른 순</small></div><button class="pbm-x" data-pbm-close aria-label="닫기">✕</button></div>
       <div class="pbm-list">${reach}<h5 class="sx-h5">종목별 ${L.length}번${rows.length - L.length ? ` <small class="muted">(${h}일 안 지난 ${rows.length - L.length}번 제외)</small>` : ''}</h5>${L.length ? L.map((t) => { const [u, d, dd, pd] = t.pk[hi]; return `<div class="sx-tr"><div class="sx-tr1">${coName(t)}<span class="sx-res"><b class="up">${sgn(u)}</b><small>${esc(pd)} · ${dd}일째 최고</small></span><span class="sx-res"><b class="down">${sgn(d)}</b><small>오르기 전 최저</small></span></div><small class="muted">${esc(t.d)} 신호 → 다음 날 ${fmtInt(t.e)}원에 삼</small>${aiLine(t)}</div>`; }).join('') : '<p class="muted sm">아직 기록이 없어요</p>'}</div></div>`);
