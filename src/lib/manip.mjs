@@ -330,7 +330,9 @@ export function barFeatures(B, opt = {}) {
   const heavy = B.slice(-120).filter((x) => x.v >= med120 * 2);
   // 과거 고점(매물대): 매집 시작 전 최고가 · 전체(약 300거래일) 최고가 — 위쪽 저항 가격 후보
   const hiOf = (rows) => rows.reduce((m, x) => (!m || x.h > m.h ? x : m), null);
-  const preTop = accStartI >= 10 ? hiOf(B.slice(0, accStartI)) : null, allTop = hiOf(B);
+  // v260: 상장 1년 안 된 종목(일봉이 300개 미만)은 상장 직후 20거래일 고점을 뺌 — 핑크퐁처럼 상장 첫날 급등가(61,500원)가 '매집 전 고점' 목표로 잡히던 문제
+  const lst = !opt.now && B.length < 290 ? Math.min(20, Math.max(0, accStartI - 10)) : 0;
+  const preTop = accStartI - lst >= 10 ? hiOf(B.slice(lst, accStartI)) : null, allTop = hiOf(B.slice(lst));
   const f = {
     close: last.c, date: last.d,
     ret5: r1(ret(5)), ret20: r1(ret(20)), ret60: r1(ret(60)), ent: (() => { try { return entryNow(B); } catch { return []; } })(), // v237 최근 3거래일에 뜬 타점
@@ -346,7 +348,7 @@ export function barFeatures(B, opt = {}) {
     vwapHeavy: heavy.length >= 3 ? Math.round(vwap(heavy)) : null, // 거래량이 평소 2배 넘던 날들의 평균 체결가
     vwap120: Math.round(vwap(B.slice(-120))),
     rng20: (() => { const R = []; for (let i = Math.max(1, n - 20); i < n; i++) if (B[i - 1].c > 0 && B[i].h > 0) R.push((Math.max(B[i].h, B[i - 1].c) - Math.min(B[i].l, B[i - 1].c)) / B[i - 1].c * 100); return R.length >= 10 ? r1(R.reduce((a, b) => a + b, 0) / R.length) : null; })(), // 최근 20일 평균 하루 흔들림 폭(%)
-    hiPre: preTop?.h || null, hiPreD: preTop?.d || null, hiAll: allTop?.h || null, hiAllD: allTop?.d || null,
+    hiPre: preTop?.h || null, hiPreD: preTop?.d || null, hiAll: allTop?.h || null, hiAllD: allTop?.d || null, listCut: lst || undefined,
   };
   // 패턴 점수
   const sig = [];

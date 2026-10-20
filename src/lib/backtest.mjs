@@ -54,7 +54,8 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   // v258: 같은 자리에서 계속 멈추면(작업이 시간·CPU 한도로 끊겨 저장 전에 죽음 — 10/20 05:36부터 633에서 멈춤) 2번째부터 1종목씩, 3번째엔 그 종목 건너뜀
   if (st.tryPos === st.pos) st.tryN = (st.tryN || 0) + 1; else { st.tryPos = st.pos; st.tryN = 1; }
   if (st.tryN >= 3) { (st.skipped ||= []).push(st.queue[st.pos]); console.warn('bt skip', st.queue[st.pos]); st.pos++; st.tryPos = st.pos; st.tryN = 1; }
-  if (st.tryN >= 2) max = 1;
+  if (st.tryN >= 2) { max = 1; st.per = Math.max(1, Math.floor((st.per || max) / 2)); } // v260: 끊기면 다음부터 한 번에 계산할 종목 수를 절반으로
+  else if (st.per) max = Math.min(max, st.per);
   await setJSON('mp/bt/state', st); // 시도 횟수를 먼저 저장 (중간에 끊겨도 남게)
   const part = st.queue.slice(st.pos, st.pos + max);
   const newRows = [], newTr = [], newNf = {}, newFw = [], newBig = [], newBase = [], newEnt = [], newDisc = [];
@@ -121,6 +122,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   if (newFw.length) await partsAppend('mp/bt/fw', newFw, { per: 5000, maxParts: 24, v: BT_V }).catch((e) => console.warn('bt fw', e.message));
   if (newTr.length || Object.keys(newNf).length) await partsAppend('mp/bt/trades', newTr, { per: 1500, maxParts: 30, nf: newNf, v: BT_V }).catch((e) => console.warn('bt tr', e.message));
   if (newRows.length) await partsAppend('mp/bt/rows', newRows, { per: 1500, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt rows', e.message));
+  if (done && done === part.length && Date.now() - tRun < 25e3 && st.per && st.per < PER_RUN) st.per++; // v260: 여유 있으면 한 종목씩 다시 늘림
   st.pos += done; st.at = Date.now();
   if (st.pos >= st.queue.length) { st.done = true; st.doneAt = Date.now(); try { await (await import('./entrylab.mjs')).entSummary({ force: true }); } catch (e) { console.warn('ent sum', e.message); } } // v237 끝나면 타점 학습 저장
   await setJSON('mp/bt/state', st);
