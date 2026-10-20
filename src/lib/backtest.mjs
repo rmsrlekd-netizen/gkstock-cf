@@ -46,6 +46,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
     if (!codes.length) return { started: true, n: 0 };
   }
   if (st.done || st.wait || st.prep && !st.queue) return null;
+  { st.callAt = Date.now(); await setJSON('mp/bt/state', st).catch(() => {}); } // v263: 불렸다는 표시를 무거운 준비(지수·시총 읽기)보다 먼저 저장
   const { perfGroupKeys, perfAdd, pathStats, outcomeWhy } = await import('./manipx.mjs');
   const ixd = await M.indexDaily().catch(() => ({}));
   const idx = (await getJSON('mp/idx')) || [];
@@ -56,7 +57,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   if (st.tryN >= 3) { (st.skipped ||= []).push(st.queue[st.pos]); console.warn('bt skip', st.queue[st.pos]); st.pos++; st.tryPos = st.pos; st.tryN = 1; }
   if (st.tryN >= 2) { max = 1; st.per = Math.max(1, Math.floor((st.per || max) / 2)); } // v260: 끊기면 다음부터 한 번에 계산할 종목 수를 절반으로
   else if (st.per) max = Math.min(max, st.per);
-  await setJSON('mp/bt/state', st); // 시도 횟수를 먼저 저장 (중간에 끊겨도 남게)
+  st.tryAt = Date.now(); await setJSON('mp/bt/state', st); // 시도 횟수를 먼저 저장 (중간에 끊겨도 남게)
   const part = st.queue.slice(st.pos, st.pos + max);
   const newRows = [], newTr = [], newNf = {}, newFw = [], newBig = [], newBase = [], newEnt = [], newDisc = [];
   const CS = new Set(CASE_CODES);
@@ -133,7 +134,7 @@ export async function btSummary() {
   const st = await getJSON('mp/bt/state');
   if (!st) return { none: true };
   const { perfOut } = await import('./manipx.mjs');
-  return { pos: st.pos, of: st.queue?.length || 0, done: !!st.done, started: st.started, doneAt: st.doneAt || null, samples: st.samples, kept: st.kept, groups: perfOut(st.groups || {}), v: st.v, cur: BT_V, wait: st.wait || null, prep: st.prep && !st.queue ? st.prep : null };
+  return { pos: st.pos, of: st.queue?.length || 0, done: !!st.done, started: st.started, doneAt: st.doneAt || null, samples: st.samples, kept: st.kept, groups: perfOut(st.groups || {}), v: st.v, cur: BT_V, wait: st.wait || null, prep: st.prep && !st.queue ? st.prep : null, at: st.at || null, callAt: st.callAt || null, tryAt: st.tryAt || null, tryN: st.tryN || 0, per: st.per || null, skipped: (st.skipped || []).length };
 }
 
 /** 그룹(예: '한 줄 결론:🟢 매수 검토')에 들어간 종목별 판정과 결과 */

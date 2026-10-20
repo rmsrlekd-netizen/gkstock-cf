@@ -233,7 +233,8 @@ export async function buildEdition(mk, slot, date, { prev = null, force = false 
     stocks: (Array.isArray(x.stocks) ? x.stocks : []).slice(0, 3).map((s) => {
       const name = cut(s?.name, 20);
       let code = String(s?.code || '').trim().toUpperCase();
-      if (!okCode(code)) code = g.names.get(name.replace(/\s/g, '')) || '';
+      const known = g.names.get(name.replace(/\s/g, '')); // v262: 이름으로 아는 코드가 있으면 그걸 우선 (AI가 다른 종목 코드를 붙여 SK하이닉스에 현대로템 등락률이 뜬 일)
+      if (known || !okCode(code)) code = known || '';
       return { name: name || code, code: okCode(code) ? code : '' };
     }).filter((s) => s.name),
   }));
@@ -242,7 +243,13 @@ export async function buildEdition(mk, slot, date, { prev = null, force = false 
   const keys = [...new Set(issues.flatMap((x) => x.stocks.filter((s) => s.code).map((s) => `${mk}:${s.code}`)))];
   let q = {};
   if (keys.length) { try { q = await (await import('../functions/quote.mjs')).getQuotes(keys); } catch {} }
-  for (const x of issues) for (const s of x.stocks) { const v = q[`${mk}:${s.code}`]; const vp = v?.livePct ?? v?.pct; if (vp != null) s.pct = Math.round(Number(vp) * 100) / 100; }
+  const nk = (t) => String(t || '').replace(/[\s()㈜.,]|주식회사/g, '').toUpperCase();
+  for (const x of issues) for (const s of x.stocks) {
+    const v = q[`${mk}:${s.code}`]; const vp = v?.livePct ?? v?.pct;
+    const vn = nk(v?.name || v?.nameKo), sn = nk(s.name);
+    if (mk === 'KR' && vn && sn && !vn.includes(sn) && !sn.includes(vn)) { s.code = ''; continue; } // v262: 시세의 종목 이름이 AI가 쓴 이름과 다르면 등락률을 붙이지 않음
+    if (vp != null) s.pct = Math.round(Number(vp) * 100) / 100;
+  }
   return {
     id: editionId(mk, date, slot.n, slot.min || 0), mk, date, n: slot.n, hour: slot.n, min: slot.min || 0, slot: slot.name, short: slot.phase, fresh, sig: g.keys.slice(0, 200),
     headline: cut(j.headline, 60), keywords: (Array.isArray(j.keywords) ? j.keywords : []).map((k) => cut(k, 12)).filter(Boolean).slice(0, 4),
