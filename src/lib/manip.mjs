@@ -460,15 +460,16 @@ export function candleCands(B) {
 }
 export const MARK_KO = { acc: '매집봉', wick: '윗꼬리 매물 테스트', absorb: '물량 받아먹는 음봉', dry: '거래량 마름', close: '종가 관리 의심', up30: '상한가', dn30: '하한가' };
 /** 지수 일별 등락률 (코스피 P · 코스닥 Q) — 시장 전체가 급등한 날의 봉은 매집 흔적에서 제외하려고 */
-export async function indexDaily() {
-  const z = kst(), k = `mp/ix/${z.date}`;
+export async function indexDaily(count = 300) {
+  // v273: 4년 과거 재현은 1100봉 필요 — 예전엔 300봉(약 14개월)만 받아 그 전 기간은 시장 국면·시장 대비·지수 급등락 날 제외가 전부 비어 있었음
+  const z = kst(), k = count > 300 ? `mp/ix${count}/${z.date}` : `mp/ix/${z.date}`;
   const c = await getJSON(k).catch(() => null);
   // 장 마감(15:40) 뒤에 받은 것만 하루 종일 씀 · 장중에 받은 건 10분만 (오늘 등락률이 아직 확정 전이라)
   if (c?.data && (c.after || Date.now() - (c.at || 0) < 10 * 60e3)) return c.data;
   const out = {}, got = { P: false, Q: false };
   for (const [sym, key] of [['KOSPI', 'P'], ['KOSDAQ', 'Q']]) {
     try {
-      const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${sym}&timeframe=day&count=300&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 9000);
+      const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${sym}&timeframe=day&count=${count}&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 9000);
       const xml = await r.text();
       const rows = [...xml.matchAll(/data="(\d{8})\|[^|]*\|[^|]*\|[^|]*\|([\d.]+)\|/g)].map((m) => ({ d: `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6)}`, c: +m[2] }));
       for (let i = 1; i < rows.length; i++) ((out[rows[i].d] ||= {})[key] = Math.round((rows[i].c / rows[i - 1].c - 1) * 1000) / 10);

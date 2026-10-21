@@ -281,7 +281,7 @@ export async function entPreStep({ per = 10 } = {}) {
   }
   if (st.done) return null;
   const { _bars, indexDaily } = await import('./manip.mjs');
-  const ix = await indexDaily().catch(() => ({}));
+  const ix = await indexDaily(1100).catch(() => ({}));
   const part = st.queue.slice(st.pos, st.pos + per), rows = [];
   for (let i = 0; i < part.length; i += 4) {
     const res = await Promise.all(part.slice(i, i + 4).map(([c, mkt]) => _bars(c, 1000).then((B) => entryEvents(B, { code: c, ix, mkt })).catch(() => [])));

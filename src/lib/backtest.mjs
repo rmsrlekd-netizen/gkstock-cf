@@ -48,7 +48,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   if (st.done || st.wait || st.prep && !st.queue) return null;
   { const { trimGroups } = await import('./manipx.mjs'); trimGroups(st.groups); st.callAt = Date.now(); await setJSON('mp/bt/state', st).catch((e) => console.warn('bt state', e.message)); } // v263: 불렸다는 표시를 무거운 준비(지수·시총 읽기)보다 먼저 저장
   const { perfGroupKeys, perfAdd, pathStats, outcomeWhy, trimGroups } = await import('./manipx.mjs');
-  const ixd = await M.indexDaily().catch(() => ({}));
+  const ixd = await M.indexDaily(1100).catch(() => ({}));
   const idx = (await getJSON('mp/idx')) || [];
   const snap = idx[0] ? (await getJSON(`mp/snap/${idx[0]}`))?.rows || {} : {};
   const TSm = await import('./tradesim.mjs'); const cmap = await TSm.capMap(); const capP = cmap.pct || {}; // 시가총액 순위(근사) → 소형주 항목·대형주 감점 재현 · 판정일 시총으로 세력주만
