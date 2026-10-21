@@ -187,7 +187,9 @@ export function gradeCase(C, rec) {
   const radar = (C.gk ? true : RADAR_TYPE(C.type)), evOk = (rec.evFrom || '9999') <= ymd(Date.parse(w0) + 90 * DAY);
   if (!first) return { ...C, caught: false, radar: (C.gk ? true : RADAR_TYPE(C.type)), pk, lo, maxS: Math.max(...P.map((p) => p.s || 0)), why: !radar ? '공시 흔적이 거의 없는 유형(통정매매·장기 시세조종) — 레이더는 공시 흔적(CB·3자배정·M&A)으로 찾기 때문에 구조적으로 못 잡음' : !evOk ? `그 기간 공시 자료가 아직 없음 (보관 ${rec.evFrom || '없음'}~) — 공시 채우기 뒤 다시 채점` : '판 깔기 공시는 있었지만 점수가 기준(4점) 아래' };
   const lead = Math.round((Date.parse(pk.d) - Date.parse(first.d)) / DAY);
-  return { ...C, caught: true, radar: (C.gk ? true : RADAR_TYPE(C.type)), first, pk, lo, lead, gain: Math.round((pk.c / first.c - 1) * 100), early: first.d < s0, motives: first.mv || [] };
+  // v272 정직한 채점: '목록에 올림'만으로 '잡음'이라 하지 않음 — 오르기 전(바닥 날 이전)에 올렸나 · 🟢(사라)로 본 적 있나 · 사건이 우리 자료 시작보다 먼저 시작됐나
+  const stale = dataFrom > s0, pre = first.d <= lo.d, green = P.some((p) => p.vd === 'g' && p.d <= pk.d);
+  return { ...C, caught: true, radar: (C.gk ? true : RADAR_TYPE(C.type)), first, pk, lo, lead, gain: Math.round((pk.c / first.c - 1) * 100), early: first.d < s0, motives: first.mv || [], stale, pre, green };
 }
 export async function caseReport() {
   const out = [];
@@ -197,7 +199,7 @@ export async function caseReport() {
   const rt = done.filter((x) => x.radar), rtC = rt.filter((x) => x.caught);
   const vdAt = {}; for (const x of caught) { const v = x.first?.vd || '-'; vdAt[v] = (vdAt[v] || 0) + 1; }
   const stAt = {}; for (const x of caught) { const v = x.first?.st || '-'; stAt[v] = (stAt[v] || 0) + 1; }
-  return { list: out, n: CASES.length + GK_CASES.length, done: done.length, caught: caught.length, radarType: rt.length, radarCaught: rtC.length, lead: med(caught.map((x) => x.lead)), gain: med(caught.map((x) => x.gain)), vdAt, stAt };
+  return { list: out, n: CASES.length + GK_CASES.length, done: done.length, caught: caught.length, staleN: caught.filter((x) => x.stale).length, preN: caught.filter((x) => !x.stale && x.pre).length, judgeN: caught.filter((x) => !x.stale).length, greenN: caught.filter((x) => x.green).length, radarType: rt.length, radarCaught: rtC.length, lead: med(caught.map((x) => x.lead)), gain: med(caught.map((x) => x.gain)), vdAt, stAt };
 }
 export async function bigReport() {
   const { partsLoad } = await import('./btstore.mjs');
