@@ -59,7 +59,7 @@ export function ruleStudy(rows, { cut = CUT } = {}) {
 
 export async function ruleReport({ force = false } = {}) {
   const c = await getJSON('mp/rulelearn').catch(() => null);
-  if (!force && c && Date.now() - c.at < 30 * 60e3) return c.data;
+  if (!force && c && (Date.now() - c.at < 30 * 60e3 || c.data?.prog?.done)) return c.data; // v270: 과거 재현이 끝난 결과는 바뀌지 않으니 계속 씀 (다시 계산은 force)
   const lk = await getJSON('mp/rulelock').catch(() => null);
   if (lk && Date.now() - lk.at < 5 * 60e3 && c) return c.data; // 다른 계산이 도는 중이면 예전 결과
   await setJSON('mp/rulelock', { at: Date.now() }).catch(() => {});

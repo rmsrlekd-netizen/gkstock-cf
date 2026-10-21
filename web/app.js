@@ -3606,13 +3606,13 @@
       <div class="pf-pane" data-pf="find" ${pt === 'find' ? '' : 'hidden'}><div class="sx"><div class="sx-head"><h4>🔎 성과검증 종목 검색</h4><small class="muted">레이더가 판정했던 종목의 따라 샀다면 기록·판정 기록·AI 해설만 따로</small></div>
         <form class="sf-form" data-sf-form><input class="sf-in" name="q" placeholder="종목 이름 또는 코드 (예: 대원전선, 006340)" autocomplete="off" value="${esc(S.sfQ || '')}"><button class="btn">검색</button></form><div id="sfBox"></div></div></div>
       <div class="pf-pane" data-pf="ent" ${pt === 'ent' ? '' : 'hidden'}><div id="entBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
-      <div class="pf-pane" data-pf="lab" ${pt === 'lab' ? '' : 'hidden'}><div id="labBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
+      <div class="pf-pane" data-pf="lab" ${pt === 'lab' ? '' : 'hidden'}><div id="ruleLab"><button class="btn sm primary" data-rule-load>🧭 규칙 찾기 — 오르기 전 특이점</button></div><div id="labBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="win" ${pt === 'win' ? '' : 'hidden'}><div id="winBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="inst" ${pt === 'inst' ? '' : 'hidden'}><div id="instBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="day" ${pt === 'day' ? '' : 'hidden'}><p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
       ${ckRows ? `<details class="pb-ck"><summary>✅ 체크리스트 항목별 비교 (눌러서 보기)</summary><h4 style="margin:.8rem 0 .3rem">✅ 체크리스트 항목별 20거래일 뒤 오른 비율 <small class="muted">충족(✓)한 종목 vs 아닌(✗) 종목 · 차이가 클수록 등급 계산에서 그 항목의 중요도가 자동으로 커져요</small></h4><div class="mp-perf"><table class="tbl"><tr><th>항목</th><th>✓ 충족</th><th>✗ 미충족</th><th>차이</th></tr>${ckRows}</table></div></details>` : ''}
       ${g.length ? `<div id="pbPerf"></div>` : '<p class="muted">아직 집계할 기록이 없어요.</p>'}
-      <div id="btBox"></div><p class="sm" style="margin-top:.6rem">🔊 뉴스 수집 준비 확인 <button class="btn sm" data-news-probe>네이버 1쪽 시험</button> <small class="muted">저장 안 함 · 삼성전자 1쪽만</small></p><div id="newsProbe"></div></div>
+      <div id="btBox"></div><p class="sm" style="margin-top:.6rem">🔊 뉴스 수집 준비 확인 <button class="btn sm" data-news-probe>네이버 1쪽 시험</button> <small class="muted">저장 안 함 · 삼성전자 1쪽만</small></p><div id="newsProbe"></div><p class="sm" style="margin-top:.4rem">☠ 상장폐지 목록 준비 확인 <button class="btn sm" data-del-probe>KIND 상폐 목록 시험</button> <small class="muted">저장 안 함 · 2022년부터 첫 100건</small></p><div id="delProbe"></div></div>
       <p class="note">📊 <b>월간 규칙 점검</b> — 매달 1일 아침 관리자 텔레그램으로 그룹별 승률과 ⚠ 거꾸로 나온 규칙을 보내요 (표본 30건 미만은 '아직 판단 이름'). <button class="btn sm" data-mp-rulechk>지금 한 번 받기</button> <span class="muted sm" data-mp-rulechk-msg></span></p>
       <p class="note">수집 상태 · 거래소 시장경보·관리종목·거래정지: ${j.warn ? `${j.warn.at ? `${j.warn.n || 0}종목 · ${esc(rel(j.warn.at))}` : '첫 확인 중'}${j.warn.src === 'KIS' ? ' (한국투자증권 기준)' : ''}${j.warn.scan && j.warn.scan.pos < j.warn.scan.of ? ` · 오늘 확인 ${j.warn.scan.pos}/${j.warn.scan.of}` : ''}${j.warn.err ? ` <span class="err">(${esc(j.warn.err)})</span>` : ''}` : '아직'} · 같은 세력 연결 색인: ${j.party ? `${j.party.n}개 이름 · ${esc(rel(j.party.at))}` : '아직'}</p>`;
     if (g.length) { S.pbData = S.pbData || {}; S.pbData.perf = g; renderBoard('perf'); }
@@ -3771,7 +3771,9 @@
   async function renderLab(force) {
     const box = $('#labBox'); if (!box) return;
     if (S.labData && !force) return labPaint();
-    let j; try { j = await mpGet('mp=lab', 60000); } catch (e) { box.innerHTML = `<p class="muted sm">연구실 자료를 못 불러옴: ${esc(e.message)}</p>`; return; }
+    if (force) box.innerHTML = '<div class="loading"><span class="spin"></span>4년치 다시 계산 중… (최대 2~3분)</div>';
+    let j; try { j = await mpGet('mp=lab' + (force ? '&force=1' : ''), force ? 180000 : 60000); } catch (e) { box.innerHTML = `<p class="muted sm">연구실 자료를 못 불러옴: ${esc(e.message)}</p><button class="btn sm" data-lab-re>다시 계산</button>`; return; }
+    if (j.computing) { box.innerHTML = `<p class="muted sm">🔬 연구실 결과를 아직 만드는 중이에요 — 과거 재현이 끝나면 서버가 3분마다 조금씩 미리 계산해 저장해요(보통 10분 안). 잠시 뒤 다시 열어 주세요.</p><button class="btn sm" data-lab-re>지금 직접 계산 (최대 2~3분)</button>`; return; }
     S.labData = j; labPaint();
   }
   function labPaint() {
@@ -3799,7 +3801,7 @@
           ${G.pairs?.length ? `<h6 class="av-h">두 개가 같이 있을 때</h6><div class="lb-list">${G.pairs.map(lift).join('')}</div>` : ''}
           ${G.low?.length ? `<h6 class="av-h">대세상승 앞에 오히려 드물었던 것</h6><div class="lb-list">${G.low.map(lift).join('')}</div>` : ''}
           ${G.seq?.length ? `<h6 class="av-h">가장 흔한 순서 (오르기 전 처음 나온 공시 두 종류)</h6><p class="sm">${G.seq.map(([s, n]) => `${esc(s)} <b>${n}번</b>`).join(' · ')}</p>` : ''}
-          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}${exitAnatHTML(G.exit)}</div>${discHTML(j.disc)}<div id="ruleLab"><button class="btn sm primary" data-rule-load>🧭 규칙 찾기 — 오르기 전 특이점</button></div><div id="newsLab"><button class="btn sm" data-news-load>🔊 뉴스 신호 결과 보기</button></div>
+          <h6 class="av-h">가장 크게 오른 구간 — 왜 오를 수 있었나</h6>${(G.ex || []).map(ex).join('')}`}${exitAnatHTML(G.exit)}</div>${discHTML(j.disc)}<div id="newsLab"><button class="btn sm" data-news-load>🔊 뉴스 신호 결과 보기</button></div>
       <div class="st-box lb-box"><h5>③ 공시의 속뜻 사전 <small class="muted">같은 CB·3자배정도 '왜 했나'로 뜻이 달라요 — 🎭 세력 시각(싸게 받고·재료 깔고·띄워서 판다) · 🏛 기관 시각(희석·지배구조·자금 압박). 종목 페이지와 ⭐ 전략 찾기·🏆 이긴 자리에 자동으로 들어가요</small></h5><div class="lb-mvs">${mvDict}</div></div></div>`;
   }
   // v253 🔊 뉴스 신호 (버튼을 눌러야 불러옴 — 무거운 집계라 연구실 열 때 자동으로 안 읽음)
@@ -3835,6 +3837,12 @@
     const sg = (j.single || []).slice(0, 15).map((x) => `<div class="dc-row"><div class="dc-1">${esc(ko(x.k))} — 학습 ${fmtInt(x.trn)}번 성공 ${x.trw}% (평소의 ${x.lw}배) · 안 본 기간 ${fmtInt(x.ten)}번 ${x.tew ?? '—'}% (${x.lwz ?? '—'}배)</div></div>`).join('');
     box.innerHTML = head + baseL + '<h6 class="av-h">✅ 성공률을 올린 조합 (규칙 후보)</h6>' + ((j.good || []).map((x) => row(x, 'w')).join('') || '<p class="muted sm">아직 없음</p>') + '<h6 class="av-h">⚠ 실패가 잦았던 조합 (피할 것)</h6>' + ((j.bad || []).map((x) => row(x, 'l')).join('') || '<p class="muted sm">아직 없음</p>') + '<details class="sx-more"><summary>꼬리표 하나씩 보기</summary>' + sg + '</details><p class="muted sm">⚠ 과거 재현에서 상장폐지된 종목은 빠져 있어(생존 편향) 실제보다 조금 좋게 보일 수 있어요. 소수 종목이 반복해서 나온 조합은 종목 수를 같이 보세요.</p><button class="btn sm" data-rule-load="1">다시 계산</button></div>';
   }
+  async function renderDelProbe() {
+    const box = $('#delProbe'); if (!box) return; box.innerHTML = '<div class="loading"><span class="spin"></span>KIND에서 상장폐지 목록 받아 보는 중…</div>';
+    let j; try { j = await mpGet('mp=delprobe', 40000); } catch (e) { box.innerHTML = `<p class="muted sm">못 불러옴: ${esc(e.message)}</p>`; return; }
+    box.innerHTML = `<p class="sm"><b>${j.ok ? '✅ 받아짐' : '⚠ 못 받음'}</b> · ${esc(j.from)} ~ ${esc(j.to)}</p>` + (j.tries || []).map((t) => `<p class="sm muted">${esc(t.method)}: ${t.err ? '오류 ' + esc(t.err) : `응답 ${t.status} · ${fmtInt(t.ms)}ms · ${t.n}줄${t.total ? ` · 전체 ${esc(t.total)}건` : ''}${t.head ? ' · ' + esc(t.head.slice(0, 160)) : ''}`}</p>` + (t.sample || []).map((r) => `<p class="sm">${esc(r.cells.join(' | '))}</p>`).join('')).join('');
+  }
+  document.addEventListener('click', (ev) => { if (ev.target.closest?.('[data-del-probe]')) renderDelProbe(); });
   document.addEventListener('click', (ev) => { const rb = ev.target.closest?.('[data-rule-load]'); if (rb) renderRules(rb.dataset.ruleLoad === '1'); });
   document.addEventListener('click', (ev) => { if (ev.target.closest?.('[data-news-load]')) renderNews(); if (ev.target.closest?.('[data-news-probe]')) renderNewsProbe(); });
   // v251 📒 앞으로 검증 — 10/19부터 레이더가 실제로 낸 판정이 그 뒤 어떻게 됐나 (과거에 맞춘 결과가 아닌 진짜 시험)

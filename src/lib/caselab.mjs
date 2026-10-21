@@ -206,8 +206,19 @@ export async function bigReport() {
   const exit = exitStudy(runs); if (exit && !exit.need) await setJSON('mp/exitlearn', { at: Date.now(), conv: exit.conv, sell: exit.sell, unl: exit.unl, ratio: exit.ratio }).catch(() => {}); // v251 보유 종목 엑시트 알림에 씀
   return { ...bigStudy(runs, base), exit, v: R?.v || null };
 }
-export async function labSummary() {
-  const [cases, big, disc] = await Promise.all([caseReport(), bigReport(), import('./disclab.mjs').then((m) => m.discReport()).catch(() => null)]);
-  return { cases, big, disc, mv: Object.fromEntries(Object.entries(MV).map(([k, v]) => [k, { ko: v.ko, side: v.side, t: v.t }])) };
+export async function labSummary({ force = false, cacheOnly = false } = {}) {
+  // v270: 4년치가 다 차니 계산이 60초를 넘어 화면이 못 열림 → 결과 저장(mp/labsum) 먼저 보여 주고, 계산은 3분 크론(btwatch)이 과거 재현 끝난 뒤 한 번
+  const c = await getJSON('mp/labsum').catch(() => null);
+  if (!force && c?.data) return { ...c.data, cachedAt: c.at };
+  if (cacheOnly) return { computing: 1 };
+  const lk = await getJSON('mp/lablock').catch(() => null);
+  if (lk && Date.now() - (lk.at || 0) < 5 * 60e3) return c?.data ? { ...c.data, cachedAt: c.at } : { computing: 1 };
+  await setJSON('mp/lablock', { at: Date.now() }).catch(() => {});
+  try {
+    const [cases, big, disc] = await Promise.all([caseReport(), bigReport(), import('./disclab.mjs').then((m) => m.discReport()).catch(() => null)]);
+    const data = { cases, big, disc, mv: Object.fromEntries(Object.entries(MV).map(([k, v]) => [k, { ko: v.ko, side: v.side, t: v.t }])) };
+    const at = Date.now(); await setJSON('mp/labsum', { at, data }).catch(() => {});
+    return { ...data, cachedAt: at };
+  } finally { await setJSON('mp/lablock', { at: 0 }).catch(() => {}); }
 }
 export async function saveCase(code, rec) { await setJSON(`mp/case/${code}`, { ...rec, at: Date.now() }).catch(() => {}); }

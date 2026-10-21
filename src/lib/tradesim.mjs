@@ -819,9 +819,15 @@ export async function simSummary() {
   out.live.win = winStudy(L); out.bt.win = winStudy(BT); out.now.win = out.live.win; // v224 🏆 이긴 자리 공통점
   out.bt.strat = stratFind(BT); out.live.strat = stratFind(L); out.now.strat = out.live.strat; // v229 ⭐ 전략 자동 찾기
   out.bt.avoid = avoidStudy(BT); out.live.avoid = avoidStudy(L); out.now.avoid = out.live.avoid; // v231 🛡 피하기 검증
+  // v268: 과거 재현이 다 끝났을 때만 배운 규칙(🛡 피하기·⭐ 전략·🏆 이긴/실패 패턴)을 레이더 판정에 반영 — 계산 중간(일부 종목만)으로 덮어써 판정이 흔들리던 문제(제넥신 🟢→🟡)
+  const btDone = await (async () => { try { const { getJSON } = await import('./store.mjs'); const b = await getJSON('mp/bt/state'); return !!b?.done; } catch { return false; } })();
+  out.learnFrozen = !btDone;
+  if (!btDone) { const { getJSON } = await import('./store.mjs'); const wp0 = await getJSON('mp/winpat').catch(() => null); if (wp0 && !wp0.off) { await setJSON('mp/winpat', { off: 1, at: Date.now(), why: '과거 재현 계산 중' }).catch(() => {}); await setJSON('mp/avoidlearn', { k: {}, at: Date.now(), off: 1 }).catch(() => {}); await setJSON('mp/strat', { none: 1, at: Date.now(), off: 1 }).catch(() => {}); } } // 계산 중간에 배운 규칙은 끔(끝나면 다시 배움)
+  if (btDone) {
   { const A = out.bt.avoid; if (A?.items) { const k = {}; for (const it of A.items) if (it.sure && it.vd?.k && it.vd.k !== 'n') k[it.k] = it.vd.k; await setJSON('mp/avoidlearn', { k, at: Date.now(), n: A.n }).catch(() => {}); } } // 앞·뒤 반 기간이 같은 결과인 항목만 자동 반영
   if (out.bt.strat?.best) await setJSON('mp/strat', { ...out.bt.strat.best, at: Date.now(), baseTe: out.bt.strat.baseTe, rho: out.bt.strat.rho }).catch(() => {}); else await setJSON('mp/strat', { none: 1, at: Date.now() }).catch(() => {});
   { const wp = winPatOf(out.bt.win); if (wp) await setJSON('mp/winpat', { ...wp, at: Date.now(), src: 'bt' }).catch(() => {}); } // 레이더 판정(🟢·🟡)이 읽어 감
+  }
   // 실제 vs 과거 재현 차이 (실제가 훨씬 나쁘면 '과거에만 맞춘 규칙' 신호)
   out.gap = out.live.groups.map((g) => { const a = g.T, b2 = out.bt.groups.find((x) => x.s === g.s)?.T; return a && b2 && a.n >= 20 && b2.n >= 20 ? { s: g.s, ko: g.ko, live: a.avg, bt: b2.avg, d: r1(a.avg - b2.avg) } : null; }).filter(Boolean);
   await setJSON('mp/sim/sum', { key, out }).catch(() => {});
