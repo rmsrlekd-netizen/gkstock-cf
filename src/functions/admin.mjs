@@ -51,6 +51,7 @@ export default async (req) => {
       if (mp === 'fwd') { const X = await import('../lib/manipx.mjs'); return J({ ok: true, ...(await X.fwdReport({ force: u.searchParams.get('force') === '1' })) }); } // v251 📒 앞으로 검증
       if (mp === 'ent') { const E = await import('../lib/entrylab.mjs'); return J({ ok: true, ...(await E.entSummary({ force: u.searchParams.get('force') === '1' })) }); } // v237 🎯 타점 연구
       if (mp === 'delprobe') { const D = await import('../lib/delist.mjs'); return J({ ok: true, ...(await D.delistProbe()) }); } // v269 ☠ KIND 상장폐지 목록 시험(저장 안 함)
+      if (mp === 'exitlab') { const L = await import('../lib/exitlab.mjs'); return J({ ok: true, ...(await L.exitReport()) }); } // v271 🚪 파는 법·나눠 사기 연구
       if (mp === 'rules') { const L = await import('../lib/rulelab.mjs'); const E = await import('../lib/entrylab.mjs'); return J({ ok: true, ...(await L.ruleReport({ force: u.searchParams.get('force') === '1' })), entKo: Object.fromEntries(Object.entries(E.SETUPS).map(([k, v]) => [k, v.ko])) }); } // v267 🧭 규칙 찾기
       if (mp === 'lab') { const L = await import('../lib/caselab.mjs'); return J({ ok: true, ...(await L.labSummary({ force: u.searchParams.get('force') === '1', cacheOnly: u.searchParams.get('force') !== '1' })) }); } // v233 🔬 연구실(적발 사례·대세상승·공시 속뜻)
       if (mp === 'bt') { const b = await import('../lib/backtest.mjs'); return J({ ok: true, ...(await b.btSummary()) }); } // 과거 재현 백테스트 결과

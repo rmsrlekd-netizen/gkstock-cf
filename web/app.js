@@ -3606,7 +3606,7 @@
       <div class="pf-pane" data-pf="find" ${pt === 'find' ? '' : 'hidden'}><div class="sx"><div class="sx-head"><h4>🔎 성과검증 종목 검색</h4><small class="muted">레이더가 판정했던 종목의 따라 샀다면 기록·판정 기록·AI 해설만 따로</small></div>
         <form class="sf-form" data-sf-form><input class="sf-in" name="q" placeholder="종목 이름 또는 코드 (예: 대원전선, 006340)" autocomplete="off" value="${esc(S.sfQ || '')}"><button class="btn">검색</button></form><div id="sfBox"></div></div></div>
       <div class="pf-pane" data-pf="ent" ${pt === 'ent' ? '' : 'hidden'}><div id="entBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
-      <div class="pf-pane" data-pf="lab" ${pt === 'lab' ? '' : 'hidden'}><div id="ruleLab"><button class="btn sm primary" data-rule-load>🧭 규칙 찾기 — 오르기 전 특이점</button></div><div id="labBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
+      <div class="pf-pane" data-pf="lab" ${pt === 'lab' ? '' : 'hidden'}><div id="exitLab"><button class="btn sm primary" data-exit-load>🚪 파는 법 · 나눠 사기 비교</button></div><div id="ruleLab"><button class="btn sm primary" data-rule-load>🧭 규칙 찾기 — 오르기 전 특이점</button></div><div id="labBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="win" ${pt === 'win' ? '' : 'hidden'}><div id="winBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="inst" ${pt === 'inst' ? '' : 'hidden'}><div id="instBox"><div class="loading"><span class="spin"></span>불러오는 중…</div></div></div>
       <div class="pf-pane" data-pf="day" ${pt === 'day' ? '' : 'hidden'}><p class="note">레이더가 그날 판정한 종목이 <b>그 뒤 실제로 몇 % 움직였는지</b> 자동 집계 (판정일 종가 기준 5·20·60거래일 뒤). 기록 ${j.days}일치${j.dup ? ` · 같은 종목·같은 단계 중복 ${fmtInt(j.dup)}건은 처음 판정 1번만 셈 (${fmtInt(j.raw - j.dup)}건 집계)` : ''}${j.days ? '' : ' — 판정 후 5거래일이 지나야 첫 숫자가 나와요'}. 표본이 30건 미만이면 우연일 수 있어요.</p>
@@ -3837,6 +3837,26 @@
     const sg = (j.single || []).slice(0, 15).map((x) => `<div class="dc-row"><div class="dc-1">${esc(ko(x.k))} — 학습 ${fmtInt(x.trn)}번 성공 ${x.trw}% (평소의 ${x.lw}배) · 안 본 기간 ${fmtInt(x.ten)}번 ${x.tew ?? '—'}% (${x.lwz ?? '—'}배)</div></div>`).join('');
     box.innerHTML = head + baseL + '<h6 class="av-h">✅ 성공률을 올린 조합 (규칙 후보)</h6>' + ((j.good || []).map((x) => row(x, 'w')).join('') || '<p class="muted sm">아직 없음</p>') + '<h6 class="av-h">⚠ 실패가 잦았던 조합 (피할 것)</h6>' + ((j.bad || []).map((x) => row(x, 'l')).join('') || '<p class="muted sm">아직 없음</p>') + '<details class="sx-more"><summary>꼬리표 하나씩 보기</summary>' + sg + '</details><p class="muted sm">⚠ 과거 재현에서 상장폐지된 종목은 빠져 있어(생존 편향) 실제보다 조금 좋게 보일 수 있어요. 소수 종목이 반복해서 나온 조합은 종목 수를 같이 보세요.</p><button class="btn sm" data-rule-load="1">다시 계산</button></div>';
   }
+  // v271 🚪 파는 법·나눠 사기 연구 (exitlab.mjs)
+  async function renderExitLab() {
+    const box = $('#exitLab'); if (!box) return; box.innerHTML = '<div class="loading"><span class="spin"></span>불러오는 중…</div>';
+    let j; try { j = await mpGet('mp=exitlab', 60000); } catch (e) { box.innerHTML = `<p class="muted sm">못 불러옴: ${esc(e.message)}</p><button class="btn sm" data-exit-load>다시</button>`; return; }
+    if (j.none) return (box.innerHTML = '<p class="muted sm">🚪 아직 시작 전 — 과거 재현이 끝나 있으면 3분 안에 서버가 시작해요.</p><button class="btn sm" data-exit-load>다시 보기</button>');
+    const P = j.prog || {}, C = P.chk || {};
+    const sg = (v) => (v == null ? '—' : `<b class="${v > 0 ? 'up' : v < 0 ? 'down' : ''}">${v > 0 ? '+' : ''}${v}%</b>`);
+    const chk = C.n ? `<p class="sm">🔍 계산 확인: 지금 기본 방식을 같은 일봉으로 다시 계산했더니 ${fmtInt(C.n)}번 중 <b>${C.pct}%</b>가 저장된 결과와 같음 ${C.pct >= 95 ? '✅' : '⚠ 차이 큼 — 결과를 믿기 전에 확인 필요'}${(C.bad || []).length ? ` <small class="muted">(다른 예: ${C.bad.slice(0, 3).map((b) => `${esc(b[0])} ${esc(b[1])} 저장 ${b[2]}% → 다시 ${b[3]}%`).join(' · ')})</small>` : ''}</p>` : '';
+    const head = `<div class="st-box lb-box"><h5>🚪 파는 법 · 나눠 사기 비교 <small class="muted">${fmtInt(P.pos)}/${fmtInt(P.of)}종목 · 매수 자리 ${fmtInt(P.ent)}${P.done ? ' · 끝' : ' · 계산 중 (3분마다 늘어남)'}</small></h5>
+      <p class="muted sm">과거 재현에서 산 자리(다음 날 시가)는 그대로 두고, 사는 법·파는 법만 바꿔 다시 계산. 수익률은 <b>계획한 돈 전체 기준</b>(나눠 사기에서 안 산 몫은 현금 0%) · 비용 0.5% · 같은 날 손절·목표 둘 다면 손절 먼저 · 상장폐지 종목은 빠져 있어 손절을 넓힐수록 실제보다 좋게 보일 수 있어요.</p>${chk}`;
+    const tbl = (g) => `<details class="ex-g"${g.s === 'all' ? ' open' : ''}><summary><b>${esc(g.ko)}</b></summary>` + g.rows.map((r) => {
+      const d = r.diff; const badge = !d ? '<span class="vd-chip">비교 기준</span>' : d.ok > 0 ? '<span class="vd-chip ok">✅ 더 나음 (확실)</span>' : d.ok < 0 ? '<span class="vd-chip bad">❌ 더 나쁨 (확실)</span>' : d.d > 0 ? '<span class="vd-chip">좋아 보임 (아직 우연 가능)</span>' : '<span class="vd-chip">나빠 보임 / 차이 없음</span>';
+      const reg = Object.entries(r.reg || {}).map(([k, v]) => `${k}장 ${sg(v[1])}<small class="muted">${fmtInt(v[0])}</small>`).join(' · ');
+      return `<div class="dc-row${d?.ok > 0 ? ' ok' : d?.ok < 0 ? ' bad' : ''}"><div class="dc-1"><b>${esc(r.ko)}</b> ${badge}</div>
+        <div class="dc-2 sm">한 번 평균 ${sg(r.avg)} · 수익 확률 <b>${r.win}%</b> · 질 때 평균 ${sg(r.loss)} · 운 나쁜 5% ${sg(r.w5)} · 돈 쓴 비율 ${r.used}% · 평균 ${r.hold}일 · ${fmtInt(r.n)}번</div>
+        <div class="dc-2 sm muted">2024년까지 ${sg(r.a)} → 2025년부터 ${sg(r.b)}${d ? ` · 기본 방식보다 ${sg(d.d)}p (2024까지 ${sg(d.a)}p · 2025부터 ${sg(d.b)}p · t ${d.t ?? '—'})` : ''}${reg ? ' · ' + reg : ''}</div></div>`;
+    }).join('') + '</details>';
+    box.innerHTML = head + (j.sigs || []).map(tbl).join('') + '<button class="btn sm" data-exit-load>새로고침</button></div>';
+  }
+  document.addEventListener('click', (ev) => { if (ev.target.closest?.('[data-exit-load]')) renderExitLab(); });
   async function renderDelProbe() {
     const box = $('#delProbe'); if (!box) return; box.innerHTML = '<div class="loading"><span class="spin"></span>KIND에서 상장폐지 목록 받아 보는 중…</div>';
     let j; try { j = await mpGet('mp=delprobe', 40000); } catch (e) { box.innerHTML = `<p class="muted sm">못 불러옴: ${esc(e.message)}</p>`; return; }
