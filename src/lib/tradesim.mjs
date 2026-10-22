@@ -1,3 +1,4 @@
+import { simPol, POL } from './exitlab.mjs'; const POL_S3 = POL.find((p) => p.id === 'S3'); // v274 💰 S3 (규칙 1판 매도)
 // 📈 매매 따라하기 성적 (v222) — "신호가 새로 뜬 날 사서 규칙대로 팔았다면"
 //  ① 거래 만들기 (simTrades)
 //    · 진입: 신호가 '새로' 뜬 날(최근 10거래일 안 같은 신호 없음 + 같은 신호로 산 게 끝난 뒤) 다음 날 시가
@@ -34,7 +35,7 @@ const BAD = 64;
 export const WHY_X = { stop: '손절선', tgt: '목표가', view: '판정 🔴 전환', time: '기간 끝 정리', halt: '거래정지', trail: '최고점 대비 −15%' };
 const COST = 0.5, HOLD = 60, COOL = 10, NOFILL = 1.25;
 export const PK_H = [5, 20, 60, 120]; // 최고·최저 기록 기간(거래일)
-export const MODES = ['T', 'U', 'ST', 'SU', 'TR', 'TH', 'PL', 'PR', 'TT', 'BK']; // v230 BK: 돌파 확인 뒤 진입(판정 뒤 10거래일 안에 20일 고가를 거래량 1.5배↑로 넘긴 다음 날 시가) + TT 매도 · // v227 TT: 최고점 −15% 또는 20거래일 지나면 팔기 (과거 재현: 고점까지 중간값 14거래일) // v223 PL·PR: 눌림 진입(판정 뒤 5거래일 안 판정일 종가 −3% 지정가, 안 오면 안 삼) → PL 1차 목표 팔기 · PR 최고점 −15% 팔기
+export const MODES = ['T', 'U', 'ST', 'SU', 'TR', 'TH', 'PL', 'PR', 'TT', 'BK', 'S3']; // v274 S3: 규칙 1판 매도 — 3번 나눠 사기(0·−10·−20%) · 손절 −30% · 최고점 −20% · 60일 (🚪 4년치 비교에서 🟢 ✅) // v230 BK: 돌파 확인 뒤 진입(판정 뒤 10거래일 안에 20일 고가를 거래량 1.5배↑로 넘긴 다음 날 시가) + TT 매도 · // v227 TT: 최고점 −15% 또는 20거래일 지나면 팔기 (과거 재현: 고점까지 중간값 14거래일) // v223 PL·PR: 눌림 진입(판정 뒤 5거래일 안 판정일 종가 −3% 지정가, 안 오면 안 삼) → PL 1차 목표 팔기 · PR 최고점 −15% 팔기
 export const BK_D = 10, BK_VX = 1.5; // v230 돌파 확인: 판정 뒤 10거래일 · 거래량 1.5배
 const PULL = 0.97, PULL_D = 5; // 한 번에 사기(목표 팔기·끝까지) · 3번 나눠 사기(목표 팔기·끝까지) · v222 추적 매도(TR: 최고점 대비 −15% / TH: +30%에 절반·나머지 최고점 대비 −15%)
 export const GRID_S = [7, 10, 15, 'c'], GRID_T = [15, 30, 't', 0]; // 'c' = 세력 원가 손절선, 't' = 1차 목표가, 0 = 목표 없음
@@ -197,6 +198,7 @@ export function simTrades(B, tl, opt = {}) {
           const x = runB();
           if (x && (opt.final || x.k <= lastI)) { const r = (x.px / ep - 1) * 100 - COST, risk = Math.max(3, (1 - sp3 / ep) * 100), m = mret(ek, x.k);
             BK = { r: r1(r), R: Math.round((r / risk) * 100) / 100, h: x.k - ek + 1, w: x.w, xd: B[x.k].d, x: m == null ? null : r1(r - m), ed: B[ek].d, bp: r1((ep / e - 1) * 100) }; } } }
+      let S3 = null; { const z = simPol(B, ei, e, p.sp, POL_S3, stale); if (z && (opt.final || ei + z.h - 1 <= lastI)) { const k = Math.min(B.length - 1, ei + z.h - 1), m = mret(ei, k); S3 = { r: z.r, R: Math.round((z.r / 30) * 100) / 100, h: z.h, w: z.w, xd: B[k].d, x: m == null ? null : r1(z.r - m), u: z.u }; } }
       let lqv = 0, lqn = 0; for (let k = Math.max(0, p.i - 19); k <= p.i; k++) { lqv += B[k].c * B[k].v; lqn++; }
       const lq = lqn ? Math.round(lqv / lqn / 1e7) / 10 : null; // 억 원
       // 손절·목표 16개 조합 (진행 중이면 null)
@@ -219,8 +221,8 @@ export function simTrades(B, tl, opt = {}) {
       const p5 = p.i >= 5 ? (B[p.i].c / B[p.i - 5].c - 1) * 100 : null; let v20 = 0; for (let k = Math.max(0, p.i - 20); k < p.i; k++) v20 += B[k].v; v20 /= Math.max(1, Math.min(20, p.i));
       const vx = v20 ? B[p.i].v / v20 : null;
       const a = { ...(p.a || {}), p5: p5 == null ? null : p5 < -5 ? '−5% 아래' : p5 < 5 ? '±5%' : p5 < 20 ? '+5~20%' : '+20%↑', vx: vx == null ? null : vx < 1.5 ? '평소 수준' : vx < 3 ? '1.5~3배' : vx < 6 ? '3~6배' : '6배↑', lq: lq == null ? null : lq < 5 ? '5억 미만' : lq < 20 ? '5~20억' : lq < 100 ? '20~100억' : '100억↑', mk: m20 == null ? null : m20 >= 3 ? '상승' : m20 <= -3 ? '하락' : '보합', eg: (() => { const v = (e / B[p.i].c - 1) * 100; return v < -3 ? '−3% 아래' : v < 3 ? '±3%' : v < 10 ? '+3~10%' : '+10%↑'; })() };
-      out.push({ s, d: p.d, e: Math.round(e * 100) / 100, sp: Math.round(spc), tp: Math.round(tpt), T, U, ST, SU, TR, TH, PL, PR, TT, BK, nfP, nfB, rv: p.rv ?? null, lq, pk, g, mf: r1((mf / e - 1) * 100), ma: r1((ma / e - 1) * 100), a });
-      const ends = [T, U, ST, SU, TR, TH, PL, PR, TT, BK].map((z, zi) => (z ? ix(z.xd) : ((zi === 6 || zi === 7) && nfP) || (zi === 9 && nfB) ? -1 : B.length + 999)); // 눌림을 못 산 건 막지 않음
+      out.push({ s, d: p.d, e: Math.round(e * 100) / 100, sp: Math.round(spc), tp: Math.round(tpt), T, U, ST, SU, TR, TH, PL, PR, TT, BK, S3, nfP, nfB, rv: p.rv ?? null, lq, pk, g, mf: r1((mf / e - 1) * 100), ma: r1((ma / e - 1) * 100), a });
+      const ends = [T, U, ST, SU, TR, TH, PL, PR, TT, BK, S3].map((z, zi) => (z ? ix(z.xd) : ((zi === 6 || zi === 7) && nfP) || (zi === 9 && nfB) ? -1 : B.length + 999)); // 눌림을 못 산 건 막지 않음
       busyTo = Math.max(...ends);
     }
   }
@@ -597,13 +599,13 @@ const uz = (z) => (z ? { r: z[0], R: z[1], h: z[2], w: z[3], xd: z[4], x: z[5] ?
 // v230 조각 저장 읽기 (예전 한 덩어리 형식도 읽힘)
 export async function loadBtTrades() { const { partsLoad } = await import('./btstore.mjs'); const x = await partsLoad('mp/bt/trades'); return x ? { ...x, t: x.list } : null; }
 export async function loadBtFw() { const { partsLoad } = await import('./btstore.mjs'); const x = await partsLoad('mp/bt/fw'); return x ? { ...x, r: x.list } : null; }
-export const pack = (c, n, t) => [c, n || '', t.s, t.d, t.e, t.sp, t.tp, pz(t.T), pz(t.U), t.g || [], t.mf, t.ma, t.a || {}, pz(t.ST), pz(t.SU), t.rv ?? null, t.lq ?? null, t.pk || [], pz(t.TR), pz(t.TH), t.nfP ? 'nf' : pz(t.PL), t.nfP ? 'nf' : pz(t.PR), pz(t.TT), t.nfB ? 'nf' : pz(t.BK)];
-export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp: a[5], tp: a[6], T: uz(a[7]), U: uz(a[8]), g: a[9] || [], mf: a[10], ma: a[11], a: a[12] || {}, ST: uz(a[13]), SU: uz(a[14]), rv: a[15] ?? null, lq: a[16] ?? null, pk: a[17] || [], TR: uz(a[18]), TH: uz(a[19]), PL: a[20] === 'nf' ? null : uz(a[20]), PR: a[21] === 'nf' ? null : uz(a[21]), nfP: a[20] === 'nf' ? 1 : 0, TT: uz(a[22]), BK: a[23] === 'nf' ? null : uz(a[23]), nfB: a[23] === 'nf' ? 1 : 0 });
+export const pack = (c, n, t) => [c, n || '', t.s, t.d, t.e, t.sp, t.tp, pz(t.T), pz(t.U), t.g || [], t.mf, t.ma, t.a || {}, pz(t.ST), pz(t.SU), t.rv ?? null, t.lq ?? null, t.pk || [], pz(t.TR), pz(t.TH), t.nfP ? 'nf' : pz(t.PL), t.nfP ? 'nf' : pz(t.PR), pz(t.TT), t.nfB ? 'nf' : pz(t.BK), pz(t.S3)];
+export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp: a[5], tp: a[6], T: uz(a[7]), U: uz(a[8]), g: a[9] || [], mf: a[10], ma: a[11], a: a[12] || {}, ST: uz(a[13]), SU: uz(a[14]), rv: a[15] ?? null, lq: a[16] ?? null, pk: a[17] || [], TR: uz(a[18]), TH: uz(a[19]), PL: a[20] === 'nf' ? null : uz(a[20]), PR: a[21] === 'nf' ? null : uz(a[21]), nfP: a[20] === 'nf' ? 1 : 0, TT: uz(a[22]), BK: a[23] === 'nf' ? null : uz(a[23]), nfB: a[23] === 'nf' ? 1 : 0, S3: uz(a[24]) });
 
 // ───── 실제 성적표(매일 판정 기록)로 계산 ─────
 //  mp/sim/tl {dates:[], codes:{코드:{n, m(시장), p:[[날짜번호, 신호비트, 목표가, 손절선, 조건]]}}}
 //  mp/sim/tr {codes:{코드:{chk, need, open, nf, t:[pack…]}}} · mp/sim/sum 통계 캐시
-const SIM_V = 10; // v230 BK(돌파 확인 진입) 추가 · // v227 TT(20일 매도) 추가 · // v223: 눌림 진입(PL·PR) 추가 ·  v222: 거래량 0 정지 감자 보정 → 다시 계산
+const SIM_V = 11; // v274 S3 추가 · // v230 BK(돌파 확인 진입) 추가 · // v227 TT(20일 매도) 추가 · // v223: 눌림 진입(PL·PR) 추가 ·  v222: 거래량 0 정지 감자 보정 → 다시 계산
 export async function simStep({ maxDates = 2, maxCodes = 12, budgetMs = 30000 } = {}) {
   const { getJSON, setJSON } = await import('./store.mjs');
   const t0 = Date.now();

@@ -2479,3 +2479,4 @@ body.pbm-open{overflow:hidden}
 
 /* v272 🚪 파는 법 비교 표 */
 .xl-g{margin:.4rem 0}.xl-g>summary{cursor:pointer;padding:.3rem 0}.xl-t{display:flex;flex-direction:column;gap:2px;margin:.3rem 0}.xl-h,.xl-r{display:grid;grid-template-columns:minmax(0,3fr) repeat(4,minmax(0,1fr));gap:6px;align-items:center;padding:.35rem .5rem;border-radius:6px;font-size:.85rem}.xl-h{color:var(--muted);font-size:.75rem}.xl-r{background:rgba(255,255,255,.03)}.xl-r.ok{background:rgba(239,68,68,.08)}.xl-r.bad{background:rgba(59,130,246,.08)}.xl-r span:first-child{line-height:1.35}@media(max-width:600px){.xl-h,.xl-r{grid-template-columns:minmax(0,2.2fr) repeat(4,minmax(0,1fr));font-size:.75rem;gap:4px}}
+.vp-p{background:rgba(250,204,21,.12);color:#facc15}.pq{display:inline-block;margin:0 .5rem .2rem 0;white-space:nowrap}

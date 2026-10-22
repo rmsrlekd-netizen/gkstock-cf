@@ -12,6 +12,7 @@ import { buildPartyIndex, linksOf, radarAlert, BIG as NOT_PARTY, partyKey } from
 import { attrsOf as tsAttrs } from './tradesim.mjs';
 import { motiveOf, motiveList } from './caselab.mjs';
 import { entryNow } from './entrylab.mjs';
+import { discFeats } from './disclab.mjs'; // v274 규칙 1판: 랭킹 줄에 공시 꼬리표(df) — 피할 조합·우선순위 점수
 
 const n0 = (v) => { if (v == null || v === '') return null; const x = Number(String(v).replace(/[,\s]/g, '')); return Number.isFinite(x) ? x : null; };
 const kst = (ms = Date.now()) => { const d = new Date(ms + 9 * 3600e3); return { date: d.toISOString().slice(0, 10), m: d.getUTCHours() * 60 + d.getUTCMinutes(), wd: d.getUTCDay() }; };
@@ -310,9 +311,14 @@ export function barFeatures(B, opt = {}) {
   // v234 (실측 10/18 한화투자증권: 고점 10,300 → 지금 4,120으로 미끄러진 140거래일을 통째로 '2차 매집 구간'으로 봐서 평단 6,683·목표 +62%·손익비 1:4.2·🟢) — 시간만 지났다고 2차 매집으로 보지 않고, 고점 뒤 바닥을 20거래일↑ 안 깼을 때만, 구간도 그 바닥부터
   let postLowI = -1; if (cyc) { postLowI = topI; for (let i = topI; i < n; i++) if (B[i].l < B[postLowI].l) postLowI = i; }
   const acc2 = !!cyc && (!!base2 || (cyc.since >= 120 && postLowI >= 0 && n - 1 - postLowI >= 20));
-  const accEnd = acc2 ? n : cyc ? pumpI : pump1 && p1I > 0 ? p1I : spike > 0 ? spike : n;
+  // v274 규칙 1판 '판 나누기'(GK 10/21 DS단석): 1차 띄우기 뒤 고점 대비 −40%↓면 그 판은 끝 → 고점 뒤 바닥을 20거래일↑ 안 깼으면 새 판 매집 구간은 그 바닥부터 (옛 판 매집 구간·평단·최저가를 지금 값으로 쓰지 않음)
+  let p1Low = -1; if (pump1 && pump1.drop <= -40) { const tI1 = n - 1 - pump1.since; p1Low = tI1; for (let i = tI1; i < n; i++) if (B[i].l < B[p1Low].l) p1Low = i; }
+  const acc2p = !acc2 && p1Low >= 0 && n - 1 - p1Low >= 20;
+  if (pump1) { pump1.ended = pump1.drop <= -40 ? 1 : 0; if (acc2p) { pump1.acc2 = 1; pump1.postLow = B[p1Low].l; pump1.postLowD = B[p1Low].d; } }
+  const accEnd = acc2 || acc2p ? n : cyc ? pumpI : pump1 && p1I > 0 ? p1I : spike > 0 ? spike : n;
   let accFloor = 0;
-  if (acc2) accFloor = postLowI; // 2차 매집은 고점 뒤 바닥부터 (예전: 바닥 확인 없이 고점+20일부터 → 하락 구간이 평단에 섞임)
+  if (acc2) accFloor = postLowI;
+  if (acc2p) accFloor = p1Low; // 2차 매집은 고점 뒤 바닥부터 (예전: 바닥 확인 없이 고점+20일부터 → 하락 구간이 평단에 섞임)
   // 매집 시작 추정: 폭증(또는 오늘) 이전 150일 중 OBV(오른 날 거래량 +, 내린 날 −를 누적)가 가장 낮았던 날
   //  → 그날 이후 '오를 때 거래가 많고 내릴 때 적은' 흐름이 시작됐다고 봄. 너무 가까우면(20일 미만) 최소 20일 구간
   let obv = 0, minObv = Infinity, accStartI = Math.max(accFloor, accEnd - 60);
@@ -322,7 +328,7 @@ export function barFeatures(B, opt = {}) {
     if (obv < minObv) { minObv = obv; accStartI = i; }
   }
   if (accEnd - accStartI < 20) accStartI = Math.max(accFloor, accEnd - 20);
-  if (acc2) accStartI = accFloor; // 2차 매집: 고점 뒤 바닥부터 오늘까지
+  if (acc2 || acc2p) accStartI = accFloor; // 2차 매집: 고점 뒤 바닥부터 오늘까지 (v274 1차 띄우기 판 끝도)
   const accRows = accEnd >= 10 ? B.slice(accStartI, accEnd) : []; // 급등이 차트 맨 앞이면 매집 구간은 차트 범위 밖
   // 매집 구간 동안 OBV가 얼마나 늘었는지 (구간 거래량 대비) — 클수록 '조용히 사 모은' 흔적
   let obv2 = 0, vsum = 0;
@@ -348,7 +354,7 @@ export function barFeatures(B, opt = {}) {
     vwapHeavy: heavy.length >= 3 ? Math.round(vwap(heavy)) : null, // 거래량이 평소 2배 넘던 날들의 평균 체결가
     vwap120: Math.round(vwap(B.slice(-120))),
     rng20: (() => { const R = []; for (let i = Math.max(1, n - 20); i < n; i++) if (B[i - 1].c > 0 && B[i].h > 0) R.push((Math.max(B[i].h, B[i - 1].c) - Math.min(B[i].l, B[i - 1].c)) / B[i - 1].c * 100); return R.length >= 10 ? r1(R.reduce((a, b) => a + b, 0) / R.length) : null; })(), // 최근 20일 평균 하루 흔들림 폭(%)
-    hiPre: preTop?.h || null, hiPreD: preTop?.d || null, hiAll: allTop?.h || null, hiAllD: allTop?.d || null, listCut: lst || undefined,
+    hiPre: preTop?.h || null, hiPreD: preTop?.d || null, hiAll: allTop?.h || null, hiAllD: allTop?.d || null, hi60: n >= 30 ? hiOf(B.slice(-60))?.h || null : null, hi60D: n >= 30 ? hiOf(B.slice(-60))?.d || null : null, hi120: n >= 90 ? hiOf(B.slice(-120))?.h || null : null, hi120D: n >= 90 ? hiOf(B.slice(-120))?.d || null : null, // v274 가까운 저항(3·6개월 고점) listCut: lst || undefined,
   };
   // 패턴 점수
   const sig = [];
@@ -744,14 +750,14 @@ export function stageOf(by, f, evs = []) {
     if (p.drop <= -25) {
       if (falling) return '털기'; // v225 아직 새 저점을 만드는 중
       if (newSetup && p.since >= 20) return '판 깔기';
-      if (p.since >= 100 && stageOf(by, { ...f, pump1: null }, []) === '매집') return '매집'; // 고점 뒤 오래 지나 다시 매집 모양
+      if ((p.since >= 100 || p.acc2) && stageOf(by, { ...f, pump1: null }, []) === '매집') return '매집'; // v274 판 끝 뒤 바닥 20일↑ 유지면 새 판 매집 가능 // 고점 뒤 오래 지나 다시 매집 모양
       return '털기';
     }
     if (p.since <= 40 && p.drop > -15) return '띄우기';
     if (exitAfter && p.drop <= -15) return '털기';
   }
   // v234 급락 가드 (실측 10/18 퀀텀레일: 20일 −62%·1년 고점 −84%·거래량 2.5배인데 지난 급등이 200거래일 밖이라 cyc·pump1이 안 잡혀 '판 깔기·상승 가능성'으로 매매 후보 3위) — 지금 무너지는 종목은 공시가 판 깔기여도 '털기'
-  if (f && ((f.ret20 ?? 0) <= -35 || ((f.ret60 ?? 0) <= -50 && falling))) return '털기';
+  if (f && ((f.ret20 ?? 0) <= -25 || ((f.ret60 ?? 0) <= -50 && falling))) return '털기'; // v274 −35 → −25 (10/21 점검: 20일 −29~−48%인데 '매집·판 깔기' 4종목)
   if (f && (f.fromLow60 ?? 0) >= 50 && ((f.offHigh20 ?? 0) <= -20 || exit >= 3)) return '털기';
   if (f && ((f.fromLow60 ?? 0) >= 50 || ((f.maxVolX10 ?? 0) >= 10 && (f.ret20 ?? 0) >= 20))) return '띄우기';
   // 매집: 아직 크게 안 올랐고(60일 저점 대비 +40% 미만), 박스권에서 거래가 늘거나 순매수 흐름이 이어짐
@@ -917,6 +923,8 @@ export function priceLevels(x) {
   if (f.cyc?.vwapPump) add(f.cyc.vwapPump, 'res', '급등 때 평균 체결가', `${f.cyc.pumpD} ~ ${f.cyc.topD} 급등 구간의 거래량 가중 평균가 — 그때 산 사람들이 물려 있는 가격`, '일봉 계산');
   if (f.hiPre) add(f.hiPre, 'res', '매집 전 고점', `${f.hiPreD} 고점 — 매집 시작 전 가장 높았던 가격. 그때 산 사람들의 매물이 쌓인 자리`, '일봉 계산');
   if (f.hiAll && (!f.hiPre || Math.abs(f.hiAll / f.hiPre - 1) > 0.03)) add(f.hiAll, 'res', '최근 고점', `${f.hiAllD} 고점 — 최근 약 300거래일(1년 2개월) 중 가장 높은 가격`, '일봉 계산');
+  if (f.hi60 && close && f.hi60 > close * 1.03) add(f.hi60, 'res', '3개월 고점', `${f.hi60D} 고점 — 최근 60거래일 중 가장 높은 가격 (가까운 매물대)`, '일봉 계산');
+  if (f.hi120 && close && f.hi120 > close * 1.03 && (!f.hi60 || Math.abs(f.hi120 / f.hi60 - 1) > 0.03)) add(f.hi120, 'res', '6개월 고점', `${f.hi120D} 고점 — 최근 120거래일 중 가장 높은 가격`, '일봉 계산');
   if (f.vwapHeavy) add(f.vwapHeavy, close && f.vwapHeavy > close ? 'res' : 'cost', '거래 몰린 가격대', '최근 120일 중 거래량이 평소 2배 넘은 날들의 평균가 — 손바뀜이 많았던 가격', '일봉 계산');
   // 같은 가격(3% 이내)은 하나로 (공시 원문이 우선)
   const rankK = { cost: 0, floor: 1, risk: 2, res: 3 };
@@ -1042,7 +1050,7 @@ export function direction(x, now = Date.now()) {
     }
   }
   // v225 하락 근거: ① 지난 급등 뒤 아직 저점을 깨며 내려가는 중 ② 현재가가 CB 전환가보다 많이 아래 → 전환가 조정(리픽싱)으로 물량이 늘 위험
-  if ((f.ret20 ?? 0) <= -35) R(down, 3, `최근 20거래일 ${f.ret20}% 급락 중 — 무너지는 중엔 판 깔기 공시가 있어도 바닥 확인 전`, 'chart'); // v234 급락 가드
+  if ((f.ret20 ?? 0) <= -25) R(down, 3, `최근 20거래일 ${f.ret20}% 급락 중 — 무너지는 중엔 판 깔기 공시가 있어도 바닥 확인 전`, 'chart'); // v234 급락 가드
   if (f.post && f.post.held < 20 && (f.cyc || f.pump1)) R(down, 2, `지난 고점(${f.post.topD}) 뒤 아직 저점을 깨며 내려가는 중 — 최근 저점 ${f.post.lowD} (${f.post.held}거래일 전), 바닥 확인 전`, 'chart');
   { const cbs = (x.px || []).filter((p) => p.kind === 'cb' && p.p > 0 && (!p.date || now - Date.parse(p.date) < 400 * DAY)); const cbMin = cbs.length ? Math.min(...cbs.map((p) => p.p)) : null;
     if (cbMin && x.close && x.close < cbMin * 0.95) R(down, 1.5, `현재가가 CB 전환가 ${fmtW(cbMin)}원보다 ${Math.round((1 - x.close / cbMin) * 100)}% 아래 — 전환가 조정(리픽싱)으로 주식 수가 늘 수 있음`, cbs.find((p) => p.p === cbMin)?.ref); }
@@ -1183,7 +1191,7 @@ export function postExitOf(x, now = Date.now()) {
   if (fails.length) add(Dn, 2, `${ymdOf(fails[0].ms)} '${fails[0].title}' — 자금 문제 신호`);
   const su = U.reduce((a, r) => a + r.w, 0), sd = Dn.reduce((a, r) => a + r.w, 0), net = su - sd;
   let lv = su >= 5 && net >= 3 ? '높음' : net >= 0 && su >= 2 ? '중간' : '낮음';
-  if (lv === '높음' && (pst.held < 20 || (f?.ret20 ?? 0) <= -35)) lv = '중간'; // v234 20일 −35%↓ 급락 중에도 '높음' 안 줌 // v227 바닥 확인(20거래일 저점 유지) 전엔 '높음' 안 줌
+  if (lv === '높음' && (pst.held < 20 || (f?.ret20 ?? 0) <= -25)) lv = '중간'; // v234 20일 −35%↓ 급락 중에도 '높음' 안 줌 // v227 바닥 확인(20거래일 저점 유지) 전엔 '높음' 안 줌
   return { lv, su, sd, net, up: U, down: Dn, post: pst };
 }
 
@@ -1660,10 +1668,11 @@ function rankRow0(x) {
   const hv = x.f?.halted || evHalt(x.events, Date.now(), x.f);
   const cf = x.pex && ((d.dir === 'up' && x.pex.lv === '낮음') || (d.dir === 'down' && x.pex.lv === '높음')) ? 1 : 0;
   const cka = (x.cl?.pos || []).find((i) => i.k === 'acc')?.ok; // v227 체크 '매집 흔적'
-  return { ...chipsOf(x), cf, m20: x.f?.m20 ?? null, cka: cka == null ? null : cka ? 1 : 0, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, bm: cl?.bombs?.length || 0, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
+  let df = null; try { const T = x.f?.date ? Date.parse(x.f.date + 'T15:30:00+09:00') : Date.now(); /* 과거 재현은 그날 기준 */ df = discFeats({ evs: x.events || [], px: x.px || [], close: x.close, Tms: T, mv: x.mv || [], rd: redKeys(x.cl), ev60: evKinds60(x.events || [], x.px || [], T) }); } catch {} // v274
+  return { ...chipsOf(x), df, cf, m20: x.f?.m20 ?? null, cka: cka == null ? null : cka ? 1 : 0, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, bm: cl?.bombs?.length || 0, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 // 판단 규칙 버전 — 규칙을 바꾸면 +1. 이전 규칙으로 저장된 카드는 다음 저장 1번만 '단계·분류 변화' 알림을 안 보냄 (규칙 변경 때문에 생긴 변화라 알림 폭주 방지)
-export const RULE_V = 213; // v234b: 2차 매집 구간은 고점 뒤 바닥(20일↑ 유지)부터만 · v234: 급락 가드(20일 −35%↓면 털기·하락 근거·털기 후 상승 높음 금지) · // v227: 하락장 🟢 대기 · 매집 흔적 필수 · 임원 매매 매수/매도 구분 · 털기 후 상승 바닥 확인 ·  // v225: 엑시트 뒤 새 저점이면 2차 판 깔기·매집 아님 · CB 전환가 아래 리픽싱 위험 · 실패 패턴 아래로 · // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
+export const RULE_V = 214; // v274 규칙 1판(GK 10/22 승인): 피할 조합 3개 → 🔴 · 1차 띄우기 판 끝(−40%↓) 판 나누기 · 급락 가드 20일 −25% · 3·6개월 고점 저항 · 매도 안내 3번 나눠 사기·손절 −30%·고점 −20%·60일 · 🧮 우선순위 점수 ·  // v234b: 2차 매집 구간은 고점 뒤 바닥(20일↑ 유지)부터만 · v234: 급락 가드(20일 −35%↓면 털기·하락 근거·털기 후 상승 높음 금지) · // v227: 하락장 🟢 대기 · 매집 흔적 필수 · 임원 매매 매수/매도 구분 · 털기 후 상승 바닥 확인 ·  // v225: 엑시트 뒤 새 저점이면 2차 판 깔기·매집 아님 · CB 전환가 아래 리픽싱 위험 · 실패 패턴 아래로 · // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
 // v212 서버 부담 점검: 정기 분석이 언제 시작·끝났고 몇 분 걸렸는지 최근 20번 기록 (/api/health?db=1 · 이상치 점검에서 봄)
 async function runHist(st, err) {
   const h = (await getJSON('mp/runhist')) || [];
@@ -1676,6 +1685,14 @@ async function runHist(st, err) {
 // v224 GK: '성과검증한 걸 토대로 검색 기준 자체를 바꿔라' — 과거 재현에서 앞·뒤 기간 둘 다 통과한 패턴만 판정에 반영
 //  실패 패턴(이긴 비율이 전체의 0.8배↓, 두 기간 모두)에 걸리면 🟢 → 🟡 · 이긴 자리 패턴(1.2배↑, 두 기간 모두, 약한 쪽 기간도 1.5배↑)이면 부족한 조건 2개 이하의 🟡 → 🟢
 //  🔴(폭탄·D등급·하락 위험·털기 등 위험)은 패턴으로 풀지 않음 · 과거 재현(backtest)은 pat 없이 부름(자기 결과로 자기를 채점하지 않게)
+/** v274 규칙 1판: 4년치 🧭 규칙 찾기에서 안 본 기간까지 실패가 잦았던 조합 (공시 꼬리표 df) */
+export function avoidCombo(df) {
+  if (!df?.length) return null; const F = new Set(df);
+  if (F.has('e:ceo') && F.has('e:conv')) return '대표 변경 + 전환청구';
+  if (F.has('e:ceo') && F.has('mv:convPump')) return '대표 변경 + 띄운 뒤 전환';
+  if (F.has('mv:paidUp') && F.has('x:20')) return '납입 뒤 급등 + 최근 물량 신호';
+  return null;
+}
 export function verdictOf(r, pat = null) {
   if (!r) return null;
   const { wp, lp } = pat ? matchPat(r.pa, pat) : { wp: null, lp: null };
@@ -1686,11 +1703,12 @@ export function verdictOf(r, pat = null) {
   if (r.d === 'down') red.push('하락 위험 분류');
   if (['털기', '엑시트 후', '거래정지'].includes(r.st)) red.push(`단계 ${r.st}`);
   if (r.st === '띄우기' && (r.gap ?? 0) > 50) red.push(`띄우기 중 평단 +${r.gap}%`);
+  const av = avoidCombo(r.df); if (av) red.push(`피할 조합: ${av}`); // v274 4년치 🧭 규칙 찾기 ✅ (안 본 기간 실패 72~78%)
   if (red.length) return tag({ c: 'r', t: red.slice(0, 2).join(' · ') });
   const f = pickFails(r);
   // v227 하락장 대기: 시장 20일 −3%↓면 🟢를 🟡로 (과거 재현 60일 손익비 하락장 1:0.93 vs 상승장 1:1.55)
   const mkWait = r.m20 != null && r.m20 <= -3 ? `시장 대기: 지수 20일 ${r.m20}% (하락장에선 같은 신호도 손해 — 과거 재현 손익비 1:0.93)` : null;
-  const HOLD = ' · 보유는 2~4주 안 (과거 재현: 고점까지 보통 14거래일)';
+  const HOLD = ' · 3번 나눠 사기(지금·−10%·−20%) · 손절 −30% · 고점 대비 −20%면 매도 · 최대 60일'; // v274 🚪 4년치 비교 결과
   if (!f.length) return tag(lp ? { c: 'y', t: `과거 실패 패턴: ${lp.ko} (이긴 비율 ${lp.lift}배)`, why: 'lp' } : mkWait ? { c: 'y', t: mkWait, why: 'mkt' } : { c: 'g', t: '매매 후보 조건 모두 통과' + HOLD });
   if (wp && !lp && f.length <= 2 && Math.min(wp.la ?? 0, wp.lz ?? 0) >= 1.5) return tag(mkWait ? { c: 'y', t: mkWait, why: 'mkt' } : { c: 'g', t: `과거 이긴 자리 패턴: ${wp.ko} (${wp.lift}배)` + HOLD, why: 'wp' });
   return tag({ c: 'y', t: f.length === 1 ? `부족: ${f[0]}` : `부족 ${f.length}개: ${f.slice(0, 2).join(' · ')}` });
@@ -1839,9 +1857,11 @@ export async function manipRank(kind = 'all') {
   for (const r of list) if (r.rr?.v > 20) r.rr = { ...r.rr, v: 20, big: true }; // 예전 줄의 비현실적 손익비는 1:20+로
   // 예전 기준으로 저장된 줄도 새 기준(급등·털기 종목은 상승 가능성 제외)으로 다시 거름
   for (const r of list) if (r.d === 'up' && (['띄우기', '털기', '엑시트 후'].includes(r.st) || (r.fl ?? 0) >= 50)) r.d = 'none';
-  let WP = null, ST = null, EL = null, EN = null; try { [WP, ST, EL, EN] = await Promise.all([getJSON('mp/winpat'), getJSON('mp/strat'), getJSON('mp/entlearn'), getJSON('mp/entnow')]); } catch {}
+  let WP = null, ST = null, EL = null, EN = null, PR = null; try { [WP, ST, EL, EN, PR] = await Promise.all([getJSON('mp/winpat'), getJSON('mp/strat'), getJSON('mp/entlearn'), getJSON('mp/entnow'), getJSON('mp/prio')]); } catch {}
   if (EN?.m) for (const r of list) { const e = EN.m[r.code]; if (e && Date.now() - (e.at || 0) < 4 * 864e5) { r.ent = e.s; r.entD = e.ent; } } // v239 지금 들어가는 자리 (3분마다 훑은 결과가 더 최신)
   for (const r of list) { const v = verdictOf(r, WP); if (v) r.vd = v; if (ST && !ST.none && r.vd?.c !== 'r' && stratMatch(r.pa, ST)) r.star = { name: ST.name, tb: ST.tb, wb: ST.wb, nb: ST.nb }; } // v212 · v229 ⭐ 한 줄 결론 (경보·벌점 반영 뒤 읽을 때 계산 → 예전 줄에도 바로)
+  if (PR?.w) for (const r of list) r.pr = prioOf(r, PR); // v274 🧮 우선순위 점수 (검증 통과했을 때만 순서에 씀)
+  if (kind === 'prio') { list = list.filter((r) => r.vd?.c !== 'r' && r.pr); list.sort((a, b) => b.pr.s - a.pr.s); list.prio = PR ? { ok: !!PR.ok, q: PR.q, base: PR.base, t: PR.t } : null; return list.slice(0, 150); }
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
   else if (kind === 'pex') list = list.filter((r) => r.pex).sort((a, b) => (b.pex.net - a.pex.net) || (b.pex.su - a.pex.su));
   else if (kind === 'ck') list = list.filter((r) => r.ckg && r.d !== 'down').sort((a, b) => ((b.cnp || 0) - 2 * (b.cnr || 0)) - ((a.cnp || 0) - 2 * (a.cnr || 0)) || (b.us || 0) - (a.us || 0));
@@ -1851,7 +1871,7 @@ export async function manipRank(kind = 'all') {
     for (const r of list) { r.pf = pickFails(r); r.pat = patScore(r, sum); }
     const ok = list.filter((r) => r.vd?.c === 'g'), near = list.filter((r) => r.vd?.c !== 'g' && r.pf.length === 1 && r.d === 'up'); // v224: 🟢(검증된 패턴 반영)과 같은 기준
     const on = !!ok[0]?.pat?.on || !!near[0]?.pat?.on;
-    const key = (r) => (on && r.pat ? r.pat.est * 10 : 0) + ({ A: 2, B: 1 }[r.ckg] || 0) * 5 + Math.min(r.rr?.v || 0, 10);
+    const key = PR?.ok ? (r) => r.pr?.s ?? -99 : (r) => (on && r.pat ? r.pat.est * 10 : 0) + ({ A: 2, B: 1 }[r.ckg] || 0) * 5 + Math.min(r.rr?.v || 0, 10); // v274 검증된 우선순위 점수가 있으면 그 순서 (등급·손익비는 4년치에서 성적을 못 가름)
     ok.sort((a, b) => key(b) - key(a)); near.sort((a, b) => key(b) - key(a));
     for (const r of near) r.near = true;
     const out = [...ok, ...near.slice(0, 20)];
@@ -1865,6 +1885,14 @@ export async function manipRank(kind = 'all') {
   else list.sort((a, b) => (LV[b.lv] || 0) - (LV[a.lv] || 0) || b.s - a.s);
   if (kind !== 'down') list = [...list.filter((r) => !r.vd?.lp), ...list.filter((r) => r.vd?.lp)]; // v225 검증된 실패 패턴에 걸린 종목은 아래로 (순서는 그대로)
   return list.slice(0, 150);
+}
+/** v274 🧮 우선순위 점수: 4년치 판정 날(📜)로 학습한 꼬리표별 무게(mp/prio.w)를 지금 꼬리표(df)+차트 자리(ent)에 더함 → 점수·5단계(학습 때 점수 구간) */
+export function prioOf(r, P) {
+  const F = [...(r.df || []), ...((r.ent || []).map((s) => 'ent:' + s))]; if (!r.df) return null;
+  let s = 0; const top = []; for (const k of F) { const w = P.w[k]; if (w) { s += w; top.push([k, w]); } }
+  top.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const cuts = P.cuts || []; let lv = 1; for (const c of cuts) if (s > c) lv++;
+  return { s: Math.round(s * 1000) / 10, lv, top: top.slice(0, 3).map(([k, w]) => [k, Math.round(w * 1000) / 10]) };
 }
 // ───── 📝 서술형 정리 (규칙으로 문장 조립 · AI 아님 → 계산된 숫자만 씀) ─────
 // 상승 근거 점수와 '털기 후 상승 가능성'이 서로 반대일 때 이유 설명

@@ -57,6 +57,31 @@ export function ruleStudy(rows, { cut = CUT } = {}) {
   return { n: R.length, cut, base: { tr: pct(base.tr), te: pct(base.te) }, good: search('w'), bad: search('l'), single: single.slice(0, 40), codes: new Set(R.map((r) => r.c)).size };
 }
 
+/** v274 🧮 우선순위 점수 (GK 10/22 '검색식에 걸리는 종목 우선순위 검토') — 꼬리표마다 '+30% 먼저 − −15% 먼저' 차이를 표본 수로 줄여(n/(n+300)) 더함.
+ *  2024년까지로 무게를 배우고 2025년부터(안 본 기간) 점수 5단계별 실제 성공·실패율로 확인 → 주 단위 위/아래 반 차이 t≥2 & 맨 위 단계 > 맨 아래 단계면 ok.
+ *  ok면 전체 기간으로 다시 배운 무게를 mp/prio에 저장 → 랭킹 '🧮 우선순위'·🎯 매매 후보 순서. 지금 알 수 없는 꼬리표(h: 세력 이력)는 뺌. */
+export function prioModel(rows, { cut = CUT } = {}) {
+  // v275 GK 10/22: "매수 이후 얼마만큼 올랐었느냐가 중요 — 지금 주가·올랐다 빠진 건 안 봄" → 목표 = 다음 날 시가에 산 뒤 120거래일 안 최고 상승률(u120, 100% 넘으면 100으로 자름)
+  const R = (rows || []).filter((r) => r && r[7] != null && Number.isFinite(+r[7])).map((r) => ({ d: r[1], u: +r[7], y: Math.max(-30, Math.min(+r[7], 100)), F: [...new Set([...(r[2] || []).filter((k) => !k.startsWith('h:')), ...((r[8] || []).map((s) => 'ent:' + s))])] }));
+  const fit = (L) => { const base = L.reduce((a, r) => a + r.y, 0) / (L.length || 1); const S = new Map(); for (const r of L) for (const k of r.F) { const z = S.get(k) || [0, 0]; z[0]++; z[1] += r.y; S.set(k, z); }
+    const w = {}; for (const [k, [n, sy]] of S) if (n >= 80) { const e = ((sy / n - base) / 100) * (n / (n + 300)); if (Math.abs(e) >= 0.001) w[k] = Math.round(e * 10000) / 10000; } return { base, w }; };
+  const sc = (r, w) => r.F.reduce((a, k) => a + (w[k] || 0), 0);
+  const TR = R.filter((r) => r.d < cut), TE = R.filter((r) => r.d >= cut);
+  if (TR.length < 1000 || TE.length < 300) return { need: true, ntr: TR.length, nte: TE.length };
+  const M = fit(TR); const sTr = TR.map((r) => sc(r, M.w)).sort((a, b) => a - b); const cuts = [0.2, 0.4, 0.6, 0.8].map((q) => sTr[Math.floor(q * sTr.length)]);
+  const lvOf = (s) => 1 + cuts.filter((c) => s > c).length;
+  const med = (a) => { const z = [...a].sort((x, y) => x - y); return z.length ? z[Math.floor(z.length / 2)] : null; };
+  const stat = (L) => ({ n: L.length, avg: L.length ? Math.round(L.reduce((a, r) => a + Math.min(r.u, 300), 0) / L.length) : null, med: L.length ? Math.round(med(L.map((r) => r.u))) : null, p30: L.length ? Math.round((L.filter((r) => r.u >= 30).length / L.length) * 100) : null, p50: L.length ? Math.round((L.filter((r) => r.u >= 50).length / L.length) * 100) : null });
+  const q = [1, 2, 3, 4, 5].map((lv) => ({ lv, ...stat(TE.filter((r) => lvOf(sc(r, M.w)) === lv)) }));
+  const G = new Map(); for (const r of TE) { const k = Math.floor(Date.parse(r.d) / (7 * DAY)); const a = G.get(k) || []; a.push([sc(r, M.w), r.y]); G.set(k, a); }
+  const sp = []; for (const [, a] of G) { if (a.length < 6) continue; a.sort((x, y) => x[0] - y[0]); const h = Math.floor(a.length / 2); const lo = a.slice(0, h), hi = a.slice(a.length - h); sp.push(hi.reduce((s, x) => s + x[1], 0) / h - lo.reduce((s, x) => s + x[1], 0) / h); }
+  const m = sp.length ? sp.reduce((a, b) => a + b, 0) / sp.length : 0, sd = sp.length > 1 ? Math.sqrt(sp.reduce((a, b) => a + (b - m) ** 2, 0) / (sp.length - 1)) : 0;
+  const t = sd ? Math.round((m / sd) * Math.sqrt(sp.length) * 10) / 10 : null;
+  const ok = t != null && t >= 2 && q[4].n >= 30 && q[0].n >= 30 && q[4].avg > q[0].avg && q[4].p30 > q[0].p30;
+  const ALL = fit(R); const sAll = R.map((r) => sc(r, ALL.w)).sort((a, b) => a - b);
+  const top = Object.entries(ALL.w).sort((a, b) => b[1] - a[1]);
+  return { ok, t, spread: Math.round(m * 10) / 10, weeks: sp.length, q, base: stat(TE), w: ALL.w, cuts: [0.2, 0.4, 0.6, 0.8].map((x) => sAll[Math.floor(x * sAll.length)]), plus: top.slice(0, 8), minus: top.slice(-8).reverse(), ntr: TR.length, nte: TE.length, target: 'u120' };
+}
 export async function ruleReport({ force = false } = {}) {
   const c = await getJSON('mp/rulelearn').catch(() => null);
   if (!force && c && (Date.now() - c.at < 30 * 60e3 || c.data?.prog?.done)) return c.data; // v270: 과거 재현이 끝난 결과는 바뀌지 않으니 계속 씀 (다시 계산은 force)
@@ -69,6 +94,7 @@ export async function ruleReport({ force = false } = {}) {
     const st = await getJSON('mp/bt/state').catch(() => null);
     const DL = await import('./disclab.mjs');
     const data = { ...ruleStudy(R?.list || []), ko: DL.DF_KO, prog: st ? { pos: st.pos, of: st.queue?.length || 0, done: !!st.done } : null };
+    try { const P = prioModel(R?.list || []); data.prio = { ...P, w: undefined }; if (!P.need && st?.done) await setJSON('mp/prio', { at: Date.now(), ok: P.ok, t: P.t, q: P.q, base: P.base, w: P.ok ? P.w : null, cuts: P.cuts }).catch(() => {}); } catch (e) { data.prio = { err: e.message }; } // v274
     await setJSON('mp/rulelearn', { at: Date.now(), data }).catch(() => {});
     return data;
   } finally { await setJSON('mp/rulelock', { at: 0 }).catch(() => {}); }

@@ -10,7 +10,7 @@ import { CASE_CODES, motiveOf, bigRuns, saveCase } from './caselab.mjs';
 import { entryEvents } from './entrylab.mjs';
 
 const DAY = 86400e3;
-const BT_V = 30; // v263 다시 처음부터: 10/20 저장 실패로 643번째 근처 종목이 수백 번 중복 저장됨 · // v237 🎯 타점 연구 · // v234 급락 가드 · v233 4년·적발 사례·대세상승·공시 속뜻 · // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
+const BT_V = 31; // v274 규칙 1판(RULE_V 214) + 지수 4년치 + 💰 S3 · // v263 다시 처음부터: 10/20 저장 실패로 643번째 근처 종목이 수백 번 중복 저장됨 · // v237 🎯 타점 연구 · // v234 급락 가드 · v233 4년·적발 사례·대세상승·공시 속뜻 · // v230 3년치(공시 깊은 채우기 뒤)·돌파 확인 진입(BK)·조각 저장 · // v227 하락장 대기·매집 흔적·임원 매매 구분·20일 매도 · // v225 단계 규칙(엑시트 뒤 새 저점) · // v223: 눌림 진입·시장 국면·고점까지 걸린 날 ·  v222: 감자·액면분할 일봉 보정(가짜 +2000%) + 매매 따라하기 성적 → 처음부터 다시 (v219: 120거래일·성공/실패 이유)
 const PER_RUN = 8; // v250 GK '내일까지' 6 → 8 (+ 50초 넘으면 멈추고 다음 차례) // 3분마다 이만큼 종목 (v215: 12 → 6, DB 부담 줄이기)
 const STEP = 10, BACK = 95, BT_DAYS = 1460; // v233: 4년(적발 사례 2022~23 포함) · // v230: 10거래일 간격 최대 80개 날짜(약 3년 3개월) · 공시는 3년+180일 (v219: 16개 ≈ 8개월) // 10거래일 간격으로 최대 16개 날짜 (약 8개월 — 120거래일 결과를 보려고 v219에서 늘림, 오래된 날은 공시가 덜 보임)
 
@@ -18,6 +18,8 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   let st = (await getJSON('mp/bt/state')) || null;
   // v257 GK '결과가 늦더라도 원가를 다 받고' — 이번 계산이 끝난 뒤 세력 원가 2차(옛 공시)가 끝나 있으면 원가까지 넣어 한 번 더 처음부터 (계산 시작보다 뒤에 끝난 경우만 → 1번만)
   if (st?.done && st.v === BT_V && !restart) { const cf = await getJSON('mp/costfill').catch(() => null); if (cf?.done && (cf.doneAt || 0) > (st.started || 0)) { console.log('bt rerun after costfill'); restart = true; } }
+  // v274: 새 규칙으로 처음부터 다시 돌기 전에, 끝난 4년치 결과로 🧮 우선순위 점수(mp/prio)를 먼저 만들어 둠 (다시 돌면 판정 줄이 지워지므로)
+  if (st?.done && st.v !== BT_V && !(await getJSON('mp/prio').catch(() => null))) { try { await (await import('./rulelab.mjs')).ruleReport({ force: true }); } catch (e) { console.warn('prio before restart', e.message); } return { prio: 'built before restart' }; }
   const M = await import('./manip.mjs');
   if (restart || !st || st.v !== BT_V || (st.prep && !st.queue)) {
     // v230: 3년치 공시 깊은 채우기(backfill deep)가 끝나야 시작 — 그 전엔 예전 결과를 그대로 둠(화면엔 '준비 중' 표시)

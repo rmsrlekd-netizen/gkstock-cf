@@ -41,7 +41,7 @@ export default async (req) => {
   if (mp) {
     try {
       const m = await import('../lib/manip.mjs');
-      if (mp === 'rank') { const list = await m.manipRank(u.searchParams.get('kind') || 'all'); return J({ ok: true, list, pat: list.pat || null, state: await m.manipState() }); }
+      if (mp === 'rank') { const list = await m.manipRank(u.searchParams.get('kind') || 'all'); return J({ ok: true, list, pat: list.pat || null, prio: list.prio || null, state: await m.manipState() }); }
       if (mp === 'sim') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simSummary()) }); } // v222 매매 따라하기 성적
       if (mp === 'simrows') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simRows(u.searchParams.get('src') || 'live', u.searchParams.get('s') || 'g')) }); }
       if (mp === 'simstock') { const t = await import('../lib/tradesim.mjs'); return J({ ok: true, ...(await t.simStock(u.searchParams.get('q') || '')) }); } // v222 성과검증 종목 검색
