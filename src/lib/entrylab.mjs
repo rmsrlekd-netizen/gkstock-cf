@@ -247,6 +247,8 @@ export async function entSummary({ force = false } = {}) {
   const src = useB ? 'bt' : 'pre', base = useB ? 'mp/bt/ent' : 'mp/bt/entp', meta = useB ? metaB : metaP;
   const prog = pre ? { pos: pre.pos || 0, of: pre.queue?.length || 0, done: !!pre.done, n: metaP?.n || 0 } : null;
   if (!force && cache && cache.src === src && cache.n === (meta?.n || 0) && Date.now() - cache.at < 6 * 3600e3) return { ...cache.data, pre: prog };
+  // v276: 과거 재현이 새 규칙으로 처음부터 다시 도는 동안엔 지난번 끝난 결과(저장본)를 그대로 보여 줌 — 다시 계산하면 차트만 먼저 수십 조각을 읽느라 90초를 넘겨 화면이 안 열렸음(10/22)
+  if (!force && cache?.data?.list && bt && !bt.done) return { ...cache.data, pre: prog, rerun: { pos: bt.pos || 0, of: bt.queue?.length || 0 } };
   // v249: 차트만 먼저가 도는 중엔 사건 수가 3분마다 바뀌어 화면을 열 때마다 전체(수십 조각)를 다시 읽어 DB가 멈춤 → 계산 중엔 30분에 1번만 다시 계산
   if (!force && cache && cache.data?.list && src === 'pre' && prog && !prog.done && Date.now() - cache.at < 30 * 60e3) return { ...cache.data, pre: prog, stale: 1 };
   { const lk = await getJSON('mp/entsumlock').catch(() => null); if (!force && lk && Date.now() - lk.at < 120e3 && cache?.data) return { ...cache.data, pre: prog, stale: 1 }; await setJSON('mp/entsumlock', { at: Date.now() }).catch(() => {}); } // 동시에 여러 번 계산 금지

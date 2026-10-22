@@ -3743,7 +3743,8 @@
   async function renderEnt(force) {
     const box = $('#entBox'); if (!box) return;
     let j; try { j = await mpGet('mp=ent' + (force ? '&force=1' : ''), 90000); } catch (e) { box.innerHTML = `<p class="muted sm">타점 연구를 못 불러옴: ${esc(e.message)}</p>`; return; }
-    const P = j.pre, preTxt = P && !P.done && P.of ? `<br><small class="muted">📊 차트만 먼저 계산 중: ${fmtInt(P.pos)} / ${fmtInt(P.of)}종목 · 사건 ${fmtInt(P.n)}개 (3분에 16종목 — 끝나면 표가 바뀌어요)</small>` : '';
+    const rrTxt = j.rerun ? `<br><small class="muted">🧪 새 규칙으로 과거 재현을 다시 도는 중 (${fmtInt(j.rerun.pos)}/${fmtInt(j.rerun.of)}종목) — 아래는 지난번 끝난 4년치 결과예요</small>` : '';
+    const P = j.pre, preTxt = rrTxt + (P && !P.done && P.of ? `<br><small class="muted">📊 차트만 먼저 계산 중: ${fmtInt(P.pos)} / ${fmtInt(P.of)}종목 · 사건 ${fmtInt(P.n)}개 (3분에 16종목 — 끝나면 표가 바뀌어요)</small>` : '');
     if (j.need || !j.list) { box.innerHTML = `<div class="sx"><div class="sx-head"><h4>🎯 타점 연구</h4></div><p class="sx-empty">아직 자리 사건이 ${fmtInt(j.n || 0)}개예요 — 차트(일봉 4년치)로 먼저 계산하고 있어요 (200개 넘으면 표가 나와요). 들어가는 자리 10가지 × 파는 법 11가지를 모두 시험해요.${preTxt}</p></div>`; return; }
     const srcTxt = j.src === 'pre' ? `<p class="sm" style="margin:6px 0">📊 <b>차트만 먼저 계산한 결과</b> — 시총 2조 미만 국장 종목 일봉 4년치. 자리는 일봉만으로 정해져서 공시를 기다리지 않았어요. 단, '판 깔기 공시 있음·무자본 M&A' 같은 공시 조건별 성적은 4년치 공시가 다 차고 과거 재현이 끝나면 나와요. 지금 상장된 종목만이라 상장폐지된 종목은 빠져 있어요(결과가 조금 좋게 나올 수 있음).</p>${preTxt}` : '';
     const B = j.base, EX = j.exits || {};
