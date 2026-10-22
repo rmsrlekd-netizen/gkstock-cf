@@ -888,8 +888,19 @@ export async function namesOf(codes) {
         try { const r = await d.prepare(`SELECT ticker AS t, MAX(name) AS n FROM items WHERE market = 'KR' AND ticker IN (${part.map(() => '?').join(',')}) AND name IS NOT NULL AND name != '' GROUP BY ticker`).bind(...part).all(); for (const row of r.results || []) if (row.n) cache[row.t] = String(row.n).replace(/^\(주\)|㈜|주식회사/g, '').trim(); } catch {}
       }
       let k = 0; for (const c of miss) { if (cache[c]) continue; if (++k > 30) break; const p = await getJSON(`mp/prof/${c}`).catch(() => null); if (p?.name && p.name !== c) cache[c] = p.name; } // 보관함에도 없으면 레이더 카드 이름 (최대 30개)
-      await setJSON('mp/names', cache).catch(() => {});
     }
+    // v277: 보관함·레이더 카드에도 없는 종목(옛날 상장폐지·이름 바뀐 종목 등 — 과거 재현 4년치에 많음) → 네이버 일봉 응답의 종목 이름(chartdata name)
+    const left = miss.filter((c) => !cache[c]);
+    if (left.length) {
+      const tried = (await getJSON('mp/namesmiss').catch(() => null)) || {}; const now = Date.now();
+      const todo = left.filter((c) => !tried[c] || now - tried[c] > 7 * 864e5).slice(0, 40);
+      const { fetchWithTimeout, BROWSER_UA, decodeText } = await import('./util.mjs');
+      for (let i = 0; i < todo.length; i += 8) await Promise.all(todo.slice(i, i + 8).map(async (c) => {
+        try { const r = await fetchWithTimeout(`https://fchart.stock.naver.com/sise.nhn?symbol=${c}&timeframe=day&count=1&requestType=0`, { headers: { 'User-Agent': BROWSER_UA, Referer: 'https://finance.naver.com/' } }, 5000); const buf = await r.arrayBuffer(), ct = r.headers.get('content-type') || '', head = new TextDecoder().decode(buf.slice(0, 120)); const x = decodeText(buf, /utf-?8/i.test(ct) || /encoding="?utf-?8/i.test(head) ? 'utf-8' : 'euc-kr'); const n = x.match(/<chartdata[^>]*\sname="([^"]+)"/)?.[1]?.trim(); if (n && n !== c) cache[c] = n; else tried[c] = now; } catch { tried[c] = now; }
+      }));
+      await setJSON('mp/namesmiss', tried).catch(() => {});
+    }
+    await setJSON('mp/names', cache).catch(() => {});
   }
   return cache;
 }
