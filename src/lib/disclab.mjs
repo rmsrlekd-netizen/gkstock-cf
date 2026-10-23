@@ -8,7 +8,7 @@ const r1 = (x) => Math.round(x * 10) / 10;
 const COSTK = { cb: 1, refix: 1, rights3: 1, mna: 1, fund5: 1 };
 export const DF_KO = {
   'e:cb': 'CB 발행', 'e:refix': '전환가 조정', 'e:rights3': '3자배정 유상증자', 'e:rights': '유상증자', 'e:mna': '최대주주 변경·경영권', 'e:fund5': '투자조합·5% 신고', 'e:conv': '전환청구', 'e:paid': '납입 완료', 'e:fail': '철회·납입 연기',
-  'e:pledge': '주식 담보', 'e:majsell': '대주주 매도', 'e:tsell': '자사주 처분', 'e:insider_b': '임원·주주 장내 매수', 'e:insider_s': '임원·주주 장내 매도', 'e:contract': '공급계약', 'e:invest': '타법인 투자', 'e:rename': '상호 변경', 'e:purpose': '사업목적 추가', 'e:ceo': '대표 변경', 'e:inquiry': '조회공시', 'e:cbbuy': 'CB 되사기', 'e:risk': '위험 공시', 'e:agm': '주총 안건',
+  'e:pledge': '주식 담보', 'e:resume': '거래 재개', 'e:halt': '거래정지', 'e:ceo': '대표 변경', 'e:bonus': '무상증자', 'e:capred': '감자', 'e:supply': '공급계약', 'e:majsell': '대주주 매도', 'e:tsell': '자사주 처분', 'e:insider_b': '임원·주주 장내 매수', 'e:insider_s': '임원·주주 장내 매도', 'e:contract': '공급계약', 'e:invest': '타법인 투자', 'e:rename': '상호 변경', 'e:purpose': '사업목적 추가', 'e:ceo': '대표 변경', 'e:inquiry': '조회공시', 'e:cbbuy': 'CB 되사기', 'e:risk': '위험 공시', 'e:agm': '주총 안건',
   'c:under': '세력 원가 아래', 'c:near': '세력 원가 근처(+20% 안)', 'c:mid': '세력 원가 +20~100%', 'c:far': '세력 원가 2배↑', 'u:30': '보호예수 해제 30일 안', 'u:90': '보호예수 해제 31~90일', 'x:20': '최근 20일 물량 신호(전환청구·대주주 매도·자사주 처분)', 'c:floor': 'CB 전환가가 리픽싱 하한까지 내려옴', 'e:stake5g': '5% 보유자 경영참가 목적', 'h:won': '같은 세력(조합·발행 대상자)의 다른 종목이 예전에 크게 감', 'h:lost': '같은 세력의 다른 종목이 예전에 크게 깨짐',
 };
 const kko = (k) => DF_KO[k] || (k.startsWith('mv:') ? '속뜻: ' + k.slice(3) : k.startsWith('r:') ? '위험: ' + k.slice(2) : k);

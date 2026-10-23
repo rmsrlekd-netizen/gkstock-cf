@@ -132,7 +132,7 @@ export async function btStep({ restart = false, now = Date.now(), max = PER_RUN 
   if (newBase.length) await partsAppend('mp/bt/bigb', newBase, { per: 4000, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt bigb', e.message));
   if (newFw.length) await partsAppend('mp/bt/fw', newFw, { per: 5000, maxParts: 24, v: BT_V }).catch((e) => console.warn('bt fw', e.message));
   if (newTr.length || Object.keys(newNf).length) await partsAppend('mp/bt/trades', newTr, { per: 1500, maxParts: 30, nf: newNf, v: BT_V }).catch((e) => console.warn('bt tr', e.message));
-  if (newRows.length) await partsAppend('mp/bt/rows', newRows, { per: 1500, maxParts: 30, v: BT_V }).catch((e) => console.warn('bt rows', e.message));
+  if (newRows.length) await partsAppend('mp/bt/rows', newRows, { per: 1500, maxParts: 45, v: BT_V }) /* v281: 30조각(45,000줄)에서 꽉 차 마지막 약 3,800줄이 종목 목록에서 빠졌음 */.catch((e) => console.warn('bt rows', e.message));
   if (st.done) { try { await (await import('./entrylab.mjs')).entSummary({ force: true }); } catch (e) { console.warn('ent sum', e.message); } } // v237 끝나면 타점 학습 저장 (v263: 마지막 조각을 붙인 뒤)
   return { pos: st.pos, of: st.queue.length, kept: st.kept };
 }

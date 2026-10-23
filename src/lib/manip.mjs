@@ -2193,7 +2193,8 @@ async function discAlert(x, now) {
   const fresh = hit.filter((h) => !prev.ks.includes(h.k)); await setJSON(key, { ks: hit.map((h) => h.k), at: now }).catch(() => {});
   if (!fresh.length) return;
   const b = L.base || {}; const ten = (v) => Math.round((v || 0) / 10);
-  const lines = fresh.slice(0, 3).map((h) => `${h.good ? '📜✅' : '📜⚠'} ${x.name} (${x.code}) — ${h.ko}\n   과거 4년 비슷한 공시 조합: 10번 중 ${ten(h.w)}번 +30% 먼저 · ${ten(h.l)}번 −15% 먼저 (전체 ${ten(b.w)}번/${ten(b.l)}번 · ${h.n}번)${h.good && h.chart ? `\n   차트: 이긴 종목 80%는 오르기 전 ${h.chart.stop}%까지만 빠짐 · +30%까지 보통 ${h.chart.days}거래일` : ''}`);
+  const koX = (t) => String(t || '').replace(/\be:(\w+)/g, (m, k) => EV[k]?.ko || m).replace(/\bmv:(\w+)/g, (m, k) => '속뜻: ' + k); // v281 'e:resume' 같은 영어 꼬리표를 한글로
+  const lines = fresh.slice(0, 3).map((h) => `${h.good ? '📜✅ 잘 갔던 공시' : '📜⚠ 실패가 잦았던 공시'} — ${x.name} (${x.code}): ${koX(h.ko)}\n   과거 4년 이 공시 뒤 산 경우 10번 중 ${ten(h.w)}번은 +30%가 먼저, ${ten(h.l)}번은 −15%가 먼저 (레이더 평소 ${ten(b.w)}번/${ten(b.l)}번 · ${h.n}번 기준)${h.good && h.chart ? `\n   차트: 이긴 종목 80%는 오르기 전 ${h.chart.stop}%까지만 빠짐 · +30%까지 보통 ${h.chart.days}거래일` : ''}`);
   await radarAlert(lines, fresh.slice(0, 3).map(() => x.code), { force: true, title: '📜 공시 확률 알림' }).catch(() => {});
 }
 
