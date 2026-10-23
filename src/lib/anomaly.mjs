@@ -98,6 +98,8 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
     chk((r) => r.d === 'up' && r.ckg === 'D', 'info', "'상승 가능성'인데 D등급인 예전 줄 (이제 폭탄 신호면 상승 분류를 보류 — 열거나 다음 분석 때 갱신)", (r) => r.n);
     // v284 🔎 차트와 판정이 어긋난 종목 (GK 10/23 '이상한 걸 규칙으로 잡아라' — KBI동양철관·DS단석·퀀텀레일 같은 경우를 GK보다 먼저)
     {
+      const ms0 = await getJSON('mp/state').catch(() => null); const t0p = Date.now(); await getJSON('health/ping').catch(() => null); const slow = Date.now() - t0p > 700 || (ms0?.busyUntil || 0) > Date.now(); // v286 정기 분석 중·DB 느리면 이번엔 건너뜀 (10/23 22:25 D1 과부하)
+      if (!slow) {
       const BUY = ['매집', '판 깔기'];
       const cand = rows.filter((r) => r.st !== '거래정지').sort((a, b) => (b.s || 0) - (a.s || 0)).slice(0, 150);
       const bad = []; let oldN = 0; const RV = (await import('./manip.mjs')).RULE_V;
@@ -120,6 +122,7 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
       }
       if (bad.length) items.push({ lv: 'warn', area: '작전 레이더', msg: `🔎 차트와 판정이 어긋나 보이는 종목 ${bad.length}개 (새 규칙으로 계산된 ${cand.length - oldN}개 중 · 예전 규칙 카드 ${oldN}개는 다시 계산 대기라 뺌)`, ex: bad.slice(0, 20) });
       await setJSON('anom/chartchk', { at: now, n: cand.length, oldN, bad }).catch(() => {});
+      }
     }
     // 같은 이름 다른 코드 (종목명 오류)
     const byName = new Map(); for (const r of rows) if (r.n) byName.set(r.n, [...(byName.get(r.n) || []), r.code]);

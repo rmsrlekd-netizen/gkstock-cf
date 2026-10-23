@@ -331,6 +331,8 @@ export function barFeatures(B, opt = {}) {
   if (acc2 || acc2p) accStartI = accFloor; // 2차 매집: 고점 뒤 바닥부터 오늘까지 (v274 1차 띄우기 판 끝도)
   // v283 하락 구간은 매집이 아님 (GK 10/23 KBI동양철관: 2,190 → 890으로 −59% 흘러내린 03-04~09-02 전체를 매집 구간으로 봐서 평단 1,759원) — 구간 안 바닥 전에 고점 대비 −30%↓ 미끄러졌으면 구간을 그 바닥부터
   if (!acc2 && !acc2p && accEnd - accStartI >= 20) { let lo = accStartI; for (let i = accStartI; i < accEnd; i++) if (B[i].l < B[lo].l) lo = i; let hi = accStartI; for (let i = accStartI; i <= lo; i++) if (B[i].h > B[hi].h) hi = i; if (B[hi].h / B[lo].l >= 1.4 && accEnd - lo >= 10) accStartI = lo; }
+  // v288 (점검기 10/24: 새 규칙 카드 66개 중 35개가 아직 '평단 ÷ 구간 최저 1.4배↑' — MSDI·다보링크·사토시홀딩스) 하락뿐 아니라 구간 안 급등도 섞였음 → 매집 구간은 끝에서 거꾸로 '고저 폭 40% 안' 박스만 (조용히 모으는 구간)
+  if (!acc2 && !acc2p && accEnd - accStartI >= 10) { let hb = -Infinity, lb = Infinity, ns = accEnd; for (let i = accEnd - 1; i >= accStartI; i--) { const h2 = Math.max(hb, B[i].h), l2 = Math.min(lb, B[i].l); if (h2 / l2 >= 1.4) break; hb = h2; lb = l2; ns = i; } if (ns > accStartI && accEnd - ns >= 10) accStartI = ns; }
   const accRows = accEnd >= 10 ? B.slice(accStartI, accEnd) : []; // 급등이 차트 맨 앞이면 매집 구간은 차트 범위 밖
   // 매집 구간 동안 OBV가 얼마나 늘었는지 (구간 거래량 대비) — 클수록 '조용히 사 모은' 흔적
   let obv2 = 0, vsum = 0;
@@ -722,6 +724,7 @@ export function evHalt(evs = [], now = Date.now(), f = null) {
   const resume = (evs || []).filter((e) => e.kind === 'resume').sort((a, b) => b.ms - a.ms)[0];
   const h = (evs || []).filter((e) => /매매거래\s*정지|거래정지|의견거절|부적정\s*의견|상장폐지|실질심사\s*대상/.test(e.title) && !/해제|재개/.test(e.title) && now - e.ms < 365 * DAY).sort((a, b) => b.ms - a.ms)[0];
   if (!h || (resume && resume.ms > h.ms)) return null;
+  if (/자본감소|감자|주식병합|액면분할|주식분할|합병|분할/.test(h.title)) return null; // v287 (GK 10/24 퀀텀레일: 10/23 '주권매매거래정지(자본감소)' 공시 = 감자 일정에 맞춘 '앞으로의' 정지 예고인데 그날부터 정지로 봄) → 이런 정지는 실제로 거래가 끊겼을 때(일봉 f.halted)만
   const hd = new Date(h.ms + 9 * 3600e3).toISOString().slice(0, 10);
   if (f?.lastD && f.lastD > hd && (f.lastV ?? 1) > 0) return null; // 정지 공시 뒤에 거래가 있었음 → 풀림
   const long = LONG_HALT.test(h.title) && !SHORT_HALT.test(h.title);
@@ -1676,7 +1679,7 @@ function rankRow0(x) {
   return { ...chipsOf(x), df, cf, m20: x.f?.m20 ?? null, cka: cka == null ? null : cka ? 1 : 0, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, bm: cl?.bombs?.length || 0, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 // 판단 규칙 버전 — 규칙을 바꾸면 +1. 이전 규칙으로 저장된 카드는 다음 저장 1번만 '단계·분류 변화' 알림을 안 보냄 (규칙 변경 때문에 생긴 변화라 알림 폭주 방지)
-export const RULE_V = 215; // v283 하락 구간 매집 제외 · 최근 20일 급등(60일 저점 1.5배↑+거래량 폭증)은 띄우기/털기 · 214: // v274 규칙 1판(GK 10/22 승인): 피할 조합 3개 → 🔴 · 1차 띄우기 판 끝(−40%↓) 판 나누기 · 급락 가드 20일 −25% · 3·6개월 고점 저항 · 매도 안내 3번 나눠 사기·손절 −30%·고점 −20%·60일 · 🧮 우선순위 점수 ·  // v234b: 2차 매집 구간은 고점 뒤 바닥(20일↑ 유지)부터만 · v234: 급락 가드(20일 −35%↓면 털기·하락 근거·털기 후 상승 높음 금지) · // v227: 하락장 🟢 대기 · 매집 흔적 필수 · 임원 매매 매수/매도 구분 · 털기 후 상승 바닥 확인 ·  // v225: 엑시트 뒤 새 저점이면 2차 판 깔기·매집 아님 · CB 전환가 아래 리픽싱 위험 · 실패 패턴 아래로 · // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
+export const RULE_V = 216; // v288 매집 구간은 끝에서 거꾸로 고저 폭 40% 안 박스만 · 215: // v283 하락 구간 매집 제외 · 최근 20일 급등(60일 저점 1.5배↑+거래량 폭증)은 띄우기/털기 · 214: // v274 규칙 1판(GK 10/22 승인): 피할 조합 3개 → 🔴 · 1차 띄우기 판 끝(−40%↓) 판 나누기 · 급락 가드 20일 −25% · 3·6개월 고점 저항 · 매도 안내 3번 나눠 사기·손절 −30%·고점 −20%·60일 · 🧮 우선순위 점수 ·  // v234b: 2차 매집 구간은 고점 뒤 바닥(20일↑ 유지)부터만 · v234: 급락 가드(20일 −35%↓면 털기·하락 근거·털기 후 상승 높음 금지) · // v227: 하락장 🟢 대기 · 매집 흔적 필수 · 임원 매매 매수/매도 구분 · 털기 후 상승 바닥 확인 ·  // v225: 엑시트 뒤 새 저점이면 2차 판 깔기·매집 아님 · CB 전환가 아래 리픽싱 위험 · 실패 패턴 아래로 · // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
 // v212 서버 부담 점검: 정기 분석이 언제 시작·끝났고 몇 분 걸렸는지 최근 20번 기록 (/api/health?db=1 · 이상치 점검에서 봄)
 async function runHist(st, err) {
   const h = (await getJSON('mp/runhist')) || [];
@@ -1754,7 +1757,7 @@ async function saveProfiles(list, reason, opt = {}) {
       if (keepUp || keepDown) x.dir = { ...x.dir, dir: pd0, sticky: true };
     }
     const halted = !!x.f?.halted || x.stage === '거래정지' || !!evHalt(x.events, Date.now(), x.f);
-    if (prev.at && halted && prev.stage !== '거래정지') alerts.push(`• ⛔ ${x.name} 거래정지로 보임 (${x.f?.halted?.since || ''}부터 거래 없음) — 이 종목 알림은 거래가 다시 열릴 때까지 멈춤`);
+    if (prev.at && halted && prev.stage !== '거래정지') { const eh = evHalt(x.events, Date.now(), x.f); alerts.push(`• ⛔ ${x.name} 거래정지로 보임 (${x.f?.halted?.since ? x.f.halted.since + '부터 거래 없음' : eh ? `${eh.since} '${eh.why}' 공시` : '최근 시세 목록에 없음'}) — 이 종목 알림은 거래가 다시 열릴 때까지 멈춤`); }
     const ruleNew = !!prev.at && prev.rv !== RULE_V; // 규칙이 바뀐 뒤 첫 저장
     if (prev.at && !halted && !ruleNew) { // 처음 들어온 종목·거래정지 종목·규칙 변경 직후는 단계·분류 알림 안 함
       const nd = x.dir.dir, pd = prev.dir?.dir;
@@ -2238,7 +2241,7 @@ export async function manipAux() {
     // v234 판단 규칙이 바뀌면(RULE_V) 랭킹 종목을 3분에 3종목씩 새 규칙으로 다시 계산 — 정기 분석(다음 거래일 15:50)까지 예전 판정이 랭킹·🎯에 남던 문제 (실측 10/18 퀀텀레일: 종목 페이지는 '엑시트 후·🔴'인데 랭킹 줄은 하루 전 '판 깔기·▲'로 🎯 3위)
     try {
       const sw = (await getJSON('mp/rvsweep')) || {}; if (sw.rv !== RULE_V) { sw.rv = RULE_V; sw.done = []; sw.at = Date.now(); }
-      const doneS = new Set(sw.done || []); const t0 = Date.now(); await getJSON('health/ping').catch(() => null); const slow = Date.now() - t0 > 1500; const todo = slow ? [] : Object.entries(rank).filter(([c]) => !doneS.has(c)).sort((a, b) => (b[1].s || 0) - (a[1].s || 0)).slice(0, 1); // v238 3분에 1종목 · DB 느리면 쉼
+      const doneS = new Set(sw.done || []); const t0 = Date.now(); await getJSON('health/ping').catch(() => null); const bz = ((await getJSON('mp/state').catch(() => null))?.busyUntil || 0) > Date.now(); const slow = bz || Date.now() - t0 > 700; /* v286 정기 분석 중·DB 느리면 쉼 */ const todo = slow ? [] : Object.entries(rank).filter(([c]) => !doneS.has(c)).sort((a, b) => (b[1].s || 0) - (a[1].s || 0)).slice(0, 1); // v238 3분에 1종목 · DB 느리면 쉼
       for (const [c] of todo) { doneS.add(c); try { await migrateProf(c, `판단 규칙 v${RULE_V}로 다시 계산`); } catch {} }
       if (todo.length) { sw.done = [...doneS]; sw.upd = Date.now(); await setJSON('mp/rvsweep', sw).catch(() => {}); out.rvsweep = { done: sw.done.length, of: Object.keys(rank).length }; }
     } catch (e) { out.rvsweepErr = String(e.message || e).slice(0, 80); }

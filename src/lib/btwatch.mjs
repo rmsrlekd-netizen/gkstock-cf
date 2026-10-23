@@ -34,6 +34,7 @@ export async function btWatch(now = Date.now()) {
 // v270 과거 재현이 끝나면 무거운 집계(🔬 연구실·🧭 규칙 찾기)를 크론에서 미리 한 번 계산해 저장 — 화면은 저장본만 읽음(60초 넘어 못 열리던 문제)
 // v279 끝난 뒤 한 번: 결과 전체에서 같은 종목·같은 날짜 줄이 몇 개 겹쳤는지 세어 텔레그램으로 (0이어도 한 번 알림 — '깨끗함' 확인용)
 async function finalDupCheck(st, now) {
+  const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > now) return null; // v286 정기 분석 중엔 안 함 (결과 전체를 읽는 무거운 일)
   const w = (await getJSON('mp/bt/watch').catch(() => null)) || {};
   const doneAt = st.doneAt || st.at || 0; if (w.finalAt === doneAt) return null;
   const { partsLoad } = await import('./btstore.mjs');
