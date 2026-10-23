@@ -32,7 +32,21 @@ export async function btWatch(now = Date.now()) {
 }
 
 // v270 과거 재현이 끝나면 무거운 집계(🔬 연구실·🧭 규칙 찾기)를 크론에서 미리 한 번 계산해 저장 — 화면은 저장본만 읽음(60초 넘어 못 열리던 문제)
+// v279 끝난 뒤 한 번: 결과 전체에서 같은 종목·같은 날짜 줄이 몇 개 겹쳤는지 세어 텔레그램으로 (0이어도 한 번 알림 — '깨끗함' 확인용)
+async function finalDupCheck(st, now) {
+  const w = (await getJSON('mp/bt/watch').catch(() => null)) || {};
+  const doneAt = st.doneAt || st.at || 0; if (w.finalAt === doneAt) return null;
+  const { partsLoad } = await import('./btstore.mjs');
+  const R = (await partsLoad('mp/bt/rows'))?.list || [], T = (await partsLoad('mp/bt/trades'))?.list || [];
+  const cnt = (L, k) => { const s = new Set(); let d = 0; for (const x of L) { const z = k(x); if (s.has(z)) d++; else s.add(z); } return d; };
+  const dr = cnt(R, (r) => `${r.c}|${r.d}`), dt = cnt(T, (a) => `${a[0]}|${a[2]}|${a[3]}`);
+  w.finalAt = doneAt; w.final = { rows: R.length, dupRows: dr, trades: T.length, dupTr: dt, v: st.v, at: now };
+  await setJSON('mp/bt/watch', w).catch(() => {});
+  try { const X = await import('./manipx.mjs'); await X.radarAlert([dr || dt ? `⚠ 과거 재현 끝 (v${st.v}) — 판정 ${R.length}줄 중 겹친 줄 ${dr}개 · 거래 ${T.length}건 중 겹친 거래 ${dt}건 (화면·학습은 겹친 것 빼고 읽음)` : `✅ 과거 재현 끝 (v${st.v}) — 판정 ${R.length}줄 · 거래 ${T.length}건, 겹친 줄 없음`], [], { force: true, title: '🧪 과거 재현 지킴이' }); } catch {}
+  return w.final;
+}
 async function labPrecompute(st, now) {
+  try { const f = await finalDupCheck(st, now); if (f) return { final: f }; } catch (e) { console.warn('final dup', e.message); }
   const doneAt = st.doneAt || st.at || 0;
   const t0 = Date.now(); await getJSON('health/ping').catch(() => null); if (Date.now() - t0 > 800) return { skip: 'db slow' };
   const ms = await getJSON('mp/state').catch(() => null); if ((ms?.busyUntil || 0) > now) return { skip: 'radar busy' };

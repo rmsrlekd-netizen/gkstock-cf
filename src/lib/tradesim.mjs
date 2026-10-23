@@ -597,7 +597,7 @@ export function icStats(pts, nDates) {
 const pz = (z) => (z ? [z.r, z.R, z.h, z.w, z.xd, z.x] : 0);
 const uz = (z) => (z ? { r: z[0], R: z[1], h: z[2], w: z[3], xd: z[4], x: z[5] ?? null } : null);
 // v230 조각 저장 읽기 (예전 한 덩어리 형식도 읽힘)
-export async function loadBtTrades() { const { partsLoad } = await import('./btstore.mjs'); const x = await partsLoad('mp/bt/trades'); return x ? { ...x, t: x.list } : null; }
+export async function loadBtTrades() { const { partsLoad } = await import('./btstore.mjs'); const x = await partsLoad('mp/bt/trades'); if (!x) return null; const seen = new Set(), t = []; for (const a of x.list) { const k = `${a[0]}|${a[2]}|${a[3]}`; if (seen.has(k)) continue; seen.add(k); t.push(a); } return { ...x, t, dupDrop: x.list.length - t.length }; } // v279 겹친 거래는 읽을 때 뺌
 export async function loadBtFw() { const { partsLoad } = await import('./btstore.mjs'); const x = await partsLoad('mp/bt/fw'); return x ? { ...x, r: x.list } : null; }
 export const pack = (c, n, t) => [c, n || '', t.s, t.d, t.e, t.sp, t.tp, pz(t.T), pz(t.U), t.g || [], t.mf, t.ma, t.a || {}, pz(t.ST), pz(t.SU), t.rv ?? null, t.lq ?? null, t.pk || [], pz(t.TR), pz(t.TH), t.nfP ? 'nf' : pz(t.PL), t.nfP ? 'nf' : pz(t.PR), pz(t.TT), t.nfB ? 'nf' : pz(t.BK), pz(t.S3)];
 export const unpack = (a) => ({ c: a[0], n: a[1], s: a[2], d: a[3], e: a[4], sp: a[5], tp: a[6], T: uz(a[7]), U: uz(a[8]), g: a[9] || [], mf: a[10], ma: a[11], a: a[12] || {}, ST: uz(a[13]), SU: uz(a[14]), rv: a[15] ?? null, lq: a[16] ?? null, pk: a[17] || [], TR: uz(a[18]), TH: uz(a[19]), PL: a[20] === 'nf' ? null : uz(a[20]), PR: a[21] === 'nf' ? null : uz(a[21]), nfP: a[20] === 'nf' ? 1 : 0, TT: uz(a[22]), BK: a[23] === 'nf' ? null : uz(a[23]), nfB: a[23] === 'nf' ? 1 : 0, S3: uz(a[24]) });

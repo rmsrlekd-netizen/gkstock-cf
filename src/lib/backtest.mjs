@@ -147,6 +147,8 @@ export async function btSummary() {
 /** 그룹(예: '한 줄 결론:🟢 매수 검토')에 들어간 종목별 판정과 결과 */
 export async function btRows(g, limit = 400) {
   const { perfGroupKeys } = await import('./manipx.mjs');
-  const R = { rows: (await partsLoad('mp/bt/rows'))?.list || [] };
+  const R = { rows: dedupeBy((await partsLoad('mp/bt/rows'))?.list || [], (r) => `${r.c}|${r.d}`) }; // v279 혹시 겹친 줄은 읽을 때 빼고 보여 줌
   return (await import('./tradesim.mjs')).fixNames((R.rows || []).filter((r) => perfGroupKeys(r).includes(g)).slice(-limit)); // v222: 코드만 있던 이름 채움
 }
+
+export function dedupeBy(list, key) { const seen = new Set(), out = []; for (const x of list) { const k = key(x); if (seen.has(k)) continue; seen.add(k); out.push(x); } return out; }
