@@ -66,16 +66,16 @@ export function closeHtml(d) {
       </div>
       <div style="display:flex;font-size:26px;font-weight:700;color:#c4b5fd">GK의 공시레이더</div>
     </div>
-    <div style="display:flex;margin-top:18px;font-size:62px;font-weight:700;color:#fff">오늘의 장 마감 정리</div>
-    ${d.headline ? `<div style="display:flex;margin-top:6px;font-size:29px;line-height:1.35;color:#f5d97a">${esc(cut(d.headline, 44))}</div>` : ''}
-    <div style="display:flex;width:100%;margin-top:22px">
-      ${d.ix.map((x, i) => `<div style="display:flex;flex-direction:column;flex:1;margin-left:${i ? 14 : 0}px;padding:16px 20px;border-radius:18px;background:rgba(255,255,255,.07)"><div style="display:flex;font-size:21px;color:#a3a8cc">${esc(x.label)}</div><div style="display:flex;font-size:30px;font-weight:700;color:#fff;margin-top:2px">${esc(fmtPx(x))}</div><div style="display:flex;font-size:26px;font-weight:700;color:${pc(x.pct)}">${esc(sp(x.pct))}</div></div>`).join('')}
+    <div style="display:flex;flex-shrink:0;margin-top:12px;font-size:56px;line-height:1.2;height:68px;font-weight:700;color:#fff">오늘의 장 마감 정리</div>
+    ${d.headline ? `<div style="display:flex;flex-shrink:0;margin-top:10px;font-size:29px;line-height:1.35;color:#f5d97a">${esc(cut(d.headline, 44))}</div>` : ''}
+    <div style="display:flex;flex-shrink:0;width:100%;margin-top:16px">
+      ${d.ix.map((x, i) => `<div style="display:flex;flex-direction:column;flex:1;margin-left:${i ? 14 : 0}px;padding:12px 20px;border-radius:18px;background:rgba(255,255,255,.07)"><div style="display:flex;font-size:21px;color:#a3a8cc">${esc(x.label)}</div><div style="display:flex;font-size:30px;font-weight:700;color:#fff;margin-top:2px">${esc(fmtPx(x))}</div><div style="display:flex;font-size:26px;font-weight:700;color:${pc(x.pct)}">${esc(sp(x.pct))}</div></div>`).join('')}
     </div>
-    ${d.issues.length ? `<div style="${box};margin-top:20px">
+    ${d.issues.length ? `<div style="${box};flex-shrink:0;margin-top:14px">
       <div style="display:flex;font-size:25px;font-weight:700;color:#c4b5fd">핵심 이슈</div>
-      ${d.issues.map((x, i) => `<div style="display:flex;align-items:center;margin-top:12px"><div style="display:flex;width:40px;height:40px;border-radius:11px;background:#f5c542;color:#1b1300;font-size:23px;font-weight:700;align-items:center;justify-content:center">${i + 1}</div><div style="display:flex;margin-left:12px;padding:3px 12px;border-radius:999px;border:2px solid ${toneC(x.tone)};color:${toneC(x.tone)};font-size:18px;font-weight:700">${esc(cut(x.tag, 7))}</div><div style="display:flex;margin-left:12px;font-size:27px;font-weight:700;color:#fff">${esc(cut(x.title, 24))}</div></div>`).join('')}
+      ${d.issues.map((x, i) => `<div style="display:flex;align-items:center;margin-top:9px"><div style="display:flex;width:40px;height:40px;border-radius:11px;background:#f5c542;color:#1b1300;font-size:23px;font-weight:700;align-items:center;justify-content:center">${i + 1}</div><div style="display:flex;margin-left:12px;padding:3px 12px;border-radius:999px;border:2px solid ${toneC(x.tone)};color:${toneC(x.tone)};font-size:18px;font-weight:700">${esc(cut(x.tag, 7))}</div><div style="display:flex;margin-left:12px;font-size:27px;font-weight:700;color:#fff">${esc(cut(x.title, 24))}</div></div>`).join('')}
     </div>` : ''}
-    <div style="display:flex;width:100%;margin-top:18px">
+    <div style="display:flex;width:100%;margin-top:14px">
       <div style="${box};flex:1;margin-right:16px">
         <div style="display:flex;font-size:25px;font-weight:700;color:#ff8a96">급등 TOP ${d.up.length}</div>
         ${d.up.map((x, i) => row(x, i, true)).join('')}
@@ -92,7 +92,7 @@ export function closeHtml(d) {
         </div>
       </div>
     </div>
-    <div style="display:flex;width:100%;margin-top:auto;padding-top:16px;border-top:1px solid rgba(140,150,255,.22);justify-content:space-between;align-items:center;font-size:22px;color:#8b90b8">
+    <div style="display:flex;flex-shrink:0;width:100%;margin-top:auto;padding-top:12px;border-top:1px solid rgba(140,150,255,.22);justify-content:space-between;align-items:center;font-size:22px;color:#8b90b8">
       <div style="display:flex">${esc((d.keywords || []).map((k) => '#' + k).join('  ') || '실시간 공시 · AI 분석 · 급등 이유')}</div>
       <div style="display:flex;color:#f5c542;font-weight:700">gk-stock.com</div>
     </div>
