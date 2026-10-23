@@ -96,6 +96,31 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
     chk((r) => r.rr && r.rr.t && r.c && r.rr.t <= r.c, 'err', '1차 목표가 현재가보다 낮음', (r) => `${r.n} 목표 ${r.rr.t} / 현재 ${r.c}`);
     chk((r) => r.d === 'up' && ['띄우기', '털기', '엑시트 후'].includes(r.st), 'warn', "띄우기·털기 단계인데 '상승 가능성'으로 분류", (r) => `${r.n} ${r.st}`);
     chk((r) => r.d === 'up' && r.ckg === 'D', 'info', "'상승 가능성'인데 D등급인 예전 줄 (이제 폭탄 신호면 상승 분류를 보류 — 열거나 다음 분석 때 갱신)", (r) => r.n);
+    // v284 🔎 차트와 판정이 어긋난 종목 (GK 10/23 '이상한 걸 규칙으로 잡아라' — KBI동양철관·DS단석·퀀텀레일 같은 경우를 GK보다 먼저)
+    {
+      const BUY = ['매집', '판 깔기'];
+      const cand = rows.filter((r) => r.st !== '거래정지').sort((a, b) => (b.s || 0) - (a.s || 0)).slice(0, 150);
+      const bad = [];
+      for (let i = 0; i < cand.length; i += 15) {
+        const ps = await Promise.all(cand.slice(i, i + 15).map((r) => getJSON(`mp/prof/${r.code}`).catch(() => null)));
+        ps.forEach((p, j) => {
+          const r = cand[i + j], f = p?.f; if (!f) return; const why = [];
+          const buy = BUY.includes(r.st);
+          if (f.vwapAcc && f.accLow && f.vwapAcc / f.accLow >= 1.4) why.push(`매집 구간 평단 ${Math.round(f.vwapAcc)}이 구간 최저 ${Math.round(f.accLow)}의 ${(f.vwapAcc / f.accLow).toFixed(1)}배 (하락 구간이 섞임)`);
+          const pk20 = f.fromLow60 != null && f.offHigh20 != null ? (1 + f.fromLow60 / 100) / (1 + f.offHigh20 / 100) : 0;
+          if (buy && pk20 >= 1.5 && (f.maxVolX10 ?? 0) >= 5) why.push(`'${r.st}'인데 최근 20일 60일 저점 대비 +${Math.round((pk20 - 1) * 100)}%까지 쏨`);
+          if (buy && (f.ret20 ?? 0) <= -25) why.push(`'${r.st}'인데 20일 ${f.ret20}% 급락`);
+          if (buy && r.gap != null && (r.gap <= -35 || r.gap >= 60)) why.push(`'${r.st}'인데 현재가가 평단 대비 ${r.gap > 0 ? '+' : ''}${r.gap}%`);
+          if (r.rr?.t && r.c && r.rr.t / r.c >= 2 && r.vd?.c !== 'r') why.push(`1차 목표 ${r.rr.t}가 현재가의 ${(r.rr.t / r.c).toFixed(1)}배`);
+          const top = f.cyc?.topD || (f.pump1?.ended && !f.pump1.acc2 ? f.pump1.topD : null);
+          if (buy && top && f.accStart && f.accStart < top) why.push(`지난 판(고점 ${top}) 전 구간이 매집으로 잡힘`);
+          if (r.d === 'up' && f.post && f.post.held < 20) why.push('상승 가능성인데 최근 20일 안 새 저점');
+          if (why.length) bad.push(`${r.n || r.code}(${r.code}): ${why.slice(0, 2).join(' / ')}`);
+        });
+      }
+      if (bad.length) items.push({ lv: 'warn', area: '작전 레이더', msg: `🔎 차트와 판정이 어긋나 보이는 종목 ${bad.length}개 (규칙 고칠 후보)`, ex: bad.slice(0, 20) });
+      await setJSON('anom/chartchk', { at: now, n: cand.length, bad }).catch(() => {});
+    }
     // 같은 이름 다른 코드 (종목명 오류)
     const byName = new Map(); for (const r of rows) if (r.n) byName.set(r.n, [...(byName.get(r.n) || []), r.code]);
     const dupN = [...byName].filter(([, c]) => c.length > 1);
