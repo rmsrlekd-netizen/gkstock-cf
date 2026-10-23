@@ -1861,7 +1861,7 @@ export async function manipRank(kind = 'all') {
   if (EN?.m) for (const r of list) { const e = EN.m[r.code]; if (e && Date.now() - (e.at || 0) < 4 * 864e5) { r.ent = e.s; r.entD = e.ent; } } // v239 지금 들어가는 자리 (3분마다 훑은 결과가 더 최신)
   for (const r of list) { const v = verdictOf(r, WP); if (v) r.vd = v; if (ST && !ST.none && r.vd?.c !== 'r' && stratMatch(r.pa, ST)) r.star = { name: ST.name, tb: ST.tb, wb: ST.wb, nb: ST.nb }; } // v212 · v229 ⭐ 한 줄 결론 (경보·벌점 반영 뒤 읽을 때 계산 → 예전 줄에도 바로)
   if (PR?.w) for (const r of list) r.pr = prioOf(r, PR); // v274 🧮 우선순위 점수 (검증 통과했을 때만 순서에 씀)
-  if (kind === 'prio') { list = list.filter((r) => r.vd?.c !== 'r' && r.pr); list.sort((a, b) => b.pr.s - a.pr.s); list.prio = PR ? { ok: !!PR.ok, q: PR.q, base: PR.base, t: PR.t } : null; return list.slice(0, 150); }
+  if (kind === 'prio') { list = list.filter((r) => r.vd?.c !== 'r' && r.pr); list.sort((a, b) => b.pr.s - a.pr.s); const out = list.slice(0, 150); out.prio = PR ? { ok: !!PR.ok, q: PR.q, base: PR.base, t: PR.t } : null; return out; } // v280: slice가 prio 정보를 떨어뜨리던 것
   if (kind === 'up') list = list.filter((r) => r.d === 'up').sort((a, b) => (b.nr ?? (b.us || 0) - (b.ds || 0)) - (a.nr ?? (a.us || 0) - (a.ds || 0)) || (b.us || 0) - (a.us || 0) || (a.gap ?? 0) - (b.gap ?? 0));
   else if (kind === 'pex') list = list.filter((r) => r.pex).sort((a, b) => (b.pex.net - a.pex.net) || (b.pex.su - a.pex.su));
   else if (kind === 'ck') list = list.filter((r) => r.ckg && r.d !== 'down').sort((a, b) => ((b.cnp || 0) - 2 * (b.cnr || 0)) - ((a.cnp || 0) - 2 * (a.cnr || 0)) || (b.us || 0) - (a.us || 0));
