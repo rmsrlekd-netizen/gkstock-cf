@@ -100,11 +100,11 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
     {
       const BUY = ['매집', '판 깔기'];
       const cand = rows.filter((r) => r.st !== '거래정지').sort((a, b) => (b.s || 0) - (a.s || 0)).slice(0, 150);
-      const bad = [];
+      const bad = []; let oldN = 0; const RV = (await import('./manip.mjs')).RULE_V;
       for (let i = 0; i < cand.length; i += 15) {
         const ps = await Promise.all(cand.slice(i, i + 15).map((r) => getJSON(`mp/prof/${r.code}`).catch(() => null)));
         ps.forEach((p, j) => {
-          const r = cand[i + j], f = p?.f; if (!f) return; const why = [];
+          const r = cand[i + j], f = p?.f; if (!f) return; if ((p.rv || 0) < RV) { oldN++; return; } const why = []; // v285 예전 규칙으로 계산된 카드는 다시 계산 전이라 빼고 셈
           const buy = BUY.includes(r.st);
           if (f.vwapAcc && f.accLow && f.vwapAcc / f.accLow >= 1.4) why.push(`매집 구간 평단 ${Math.round(f.vwapAcc)}이 구간 최저 ${Math.round(f.accLow)}의 ${(f.vwapAcc / f.accLow).toFixed(1)}배 (하락 구간이 섞임)`);
           const pk20 = f.fromLow60 != null && f.offHigh20 != null ? (1 + f.fromLow60 / 100) / (1 + f.offHigh20 / 100) : 0;
@@ -118,8 +118,8 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
           if (why.length) bad.push(`${r.n || r.code}(${r.code}): ${why.slice(0, 2).join(' / ')}`);
         });
       }
-      if (bad.length) items.push({ lv: 'warn', area: '작전 레이더', msg: `🔎 차트와 판정이 어긋나 보이는 종목 ${bad.length}개 (규칙 고칠 후보)`, ex: bad.slice(0, 20) });
-      await setJSON('anom/chartchk', { at: now, n: cand.length, bad }).catch(() => {});
+      if (bad.length) items.push({ lv: 'warn', area: '작전 레이더', msg: `🔎 차트와 판정이 어긋나 보이는 종목 ${bad.length}개 (새 규칙으로 계산된 ${cand.length - oldN}개 중 · 예전 규칙 카드 ${oldN}개는 다시 계산 대기라 뺌)`, ex: bad.slice(0, 20) });
+      await setJSON('anom/chartchk', { at: now, n: cand.length, oldN, bad }).catch(() => {});
     }
     // 같은 이름 다른 코드 (종목명 오류)
     const byName = new Map(); for (const r of rows) if (r.n) byName.set(r.n, [...(byName.get(r.n) || []), r.code]);
