@@ -329,6 +329,8 @@ export function barFeatures(B, opt = {}) {
   }
   if (accEnd - accStartI < 20) accStartI = Math.max(accFloor, accEnd - 20);
   if (acc2 || acc2p) accStartI = accFloor; // 2차 매집: 고점 뒤 바닥부터 오늘까지 (v274 1차 띄우기 판 끝도)
+  // v283 하락 구간은 매집이 아님 (GK 10/23 KBI동양철관: 2,190 → 890으로 −59% 흘러내린 03-04~09-02 전체를 매집 구간으로 봐서 평단 1,759원) — 구간 안 바닥 전에 고점 대비 −30%↓ 미끄러졌으면 구간을 그 바닥부터
+  if (!acc2 && !acc2p && accEnd - accStartI >= 20) { let lo = accStartI; for (let i = accStartI; i < accEnd; i++) if (B[i].l < B[lo].l) lo = i; let hi = accStartI; for (let i = accStartI; i <= lo; i++) if (B[i].h > B[hi].h) hi = i; if (B[hi].h / B[lo].l >= 1.4 && accEnd - lo >= 10) accStartI = lo; }
   const accRows = accEnd >= 10 ? B.slice(accStartI, accEnd) : []; // 급등이 차트 맨 앞이면 매집 구간은 차트 범위 밖
   // 매집 구간 동안 OBV가 얼마나 늘었는지 (구간 거래량 대비) — 클수록 '조용히 사 모은' 흔적
   let obv2 = 0, vsum = 0;
@@ -757,7 +759,9 @@ export function stageOf(by, f, evs = []) {
     if (exitAfter && p.drop <= -15) return '털기';
   }
   // v234 급락 가드 (실측 10/18 퀀텀레일: 20일 −62%·1년 고점 −84%·거래량 2.5배인데 지난 급등이 200거래일 밖이라 cyc·pump1이 안 잡혀 '판 깔기·상승 가능성'으로 매매 후보 3위) — 지금 무너지는 종목은 공시가 판 깔기여도 '털기'
-  if (f && ((f.ret20 ?? 0) <= -25 || ((f.ret60 ?? 0) <= -50 && falling))) return '털기'; // v274 −35 → −25 (10/21 점검: 20일 −29~−48%인데 '매집·판 깔기' 4종목)
+  if (f && ((f.ret20 ?? 0) <= -25 || ((f.ret60 ?? 0) <= -50 && falling))) return '털기';
+  // v283 (GK 10/23 KBI동양철관: 20일 안에 60일 저점 대비 +68%까지 거래량 폭증으로 쏜 뒤 고점 대비 −28%인데 '관찰·상승 가능성') — 최근 20일 고점이 60일 저점의 1.5배↑ + 거래량 폭증이면 이미 띄운 자리: 고점 대비 −20%↓면 털기, 아니면 띄우기
+  { const pk20 = f && f.fromLow60 != null && f.offHigh20 != null ? (1 + f.fromLow60 / 100) / (1 + f.offHigh20 / 100) : 0; if (pk20 >= 1.5 && (f.maxVolX10 ?? 0) >= 5) return (f.offHigh20 ?? 0) <= -20 ? '털기' : '띄우기'; } // v274 −35 → −25 (10/21 점검: 20일 −29~−48%인데 '매집·판 깔기' 4종목)
   if (f && (f.fromLow60 ?? 0) >= 50 && ((f.offHigh20 ?? 0) <= -20 || exit >= 3)) return '털기';
   if (f && ((f.fromLow60 ?? 0) >= 50 || ((f.maxVolX10 ?? 0) >= 10 && (f.ret20 ?? 0) >= 20))) return '띄우기';
   // 매집: 아직 크게 안 올랐고(60일 저점 대비 +40% 미만), 박스권에서 거래가 늘거나 순매수 흐름이 이어짐
@@ -1672,7 +1676,7 @@ function rankRow0(x) {
   return { ...chipsOf(x), df, cf, m20: x.f?.m20 ?? null, cka: cka == null ? null : cka ? 1 : 0, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, bm: cl?.bombs?.length || 0, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 // 판단 규칙 버전 — 규칙을 바꾸면 +1. 이전 규칙으로 저장된 카드는 다음 저장 1번만 '단계·분류 변화' 알림을 안 보냄 (규칙 변경 때문에 생긴 변화라 알림 폭주 방지)
-export const RULE_V = 214; // v274 규칙 1판(GK 10/22 승인): 피할 조합 3개 → 🔴 · 1차 띄우기 판 끝(−40%↓) 판 나누기 · 급락 가드 20일 −25% · 3·6개월 고점 저항 · 매도 안내 3번 나눠 사기·손절 −30%·고점 −20%·60일 · 🧮 우선순위 점수 ·  // v234b: 2차 매집 구간은 고점 뒤 바닥(20일↑ 유지)부터만 · v234: 급락 가드(20일 −35%↓면 털기·하락 근거·털기 후 상승 높음 금지) · // v227: 하락장 🟢 대기 · 매집 흔적 필수 · 임원 매매 매수/매도 구분 · 털기 후 상승 바닥 확인 ·  // v225: 엑시트 뒤 새 저점이면 2차 판 깔기·매집 아님 · CB 전환가 아래 리픽싱 위험 · 실패 패턴 아래로 · // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
+export const RULE_V = 215; // v283 하락 구간 매집 제외 · 최근 20일 급등(60일 저점 1.5배↑+거래량 폭증)은 띄우기/털기 · 214: // v274 규칙 1판(GK 10/22 승인): 피할 조합 3개 → 🔴 · 1차 띄우기 판 끝(−40%↓) 판 나누기 · 급락 가드 20일 −25% · 3·6개월 고점 저항 · 매도 안내 3번 나눠 사기·손절 −30%·고점 −20%·60일 · 🧮 우선순위 점수 ·  // v234b: 2차 매집 구간은 고점 뒤 바닥(20일↑ 유지)부터만 · v234: 급락 가드(20일 −35%↓면 털기·하락 근거·털기 후 상승 높음 금지) · // v227: 하락장 🟢 대기 · 매집 흔적 필수 · 임원 매매 매수/매도 구분 · 털기 후 상승 바닥 확인 ·  // v225: 엑시트 뒤 새 저점이면 2차 판 깔기·매집 아님 · CB 전환가 아래 리픽싱 위험 · 실패 패턴 아래로 · // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
 // v212 서버 부담 점검: 정기 분석이 언제 시작·끝났고 몇 분 걸렸는지 최근 20번 기록 (/api/health?db=1 · 이상치 점검에서 봄)
 async function runHist(st, err) {
   const h = (await getJSON('mp/runhist')) || [];
