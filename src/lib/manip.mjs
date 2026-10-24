@@ -314,11 +314,15 @@ export function barFeatures(B, opt = {}) {
   // v274 규칙 1판 '판 나누기'(GK 10/21 DS단석): 1차 띄우기 뒤 고점 대비 −40%↓면 그 판은 끝 → 고점 뒤 바닥을 20거래일↑ 안 깼으면 새 판 매집 구간은 그 바닥부터 (옛 판 매집 구간·평단·최저가를 지금 값으로 쓰지 않음)
   let p1Low = -1; if (pump1 && pump1.drop <= -40) { const tI1 = n - 1 - pump1.since; p1Low = tI1; for (let i = tI1; i < n; i++) if (B[i].l < B[p1Low].l) p1Low = i; }
   const acc2p = !acc2 && p1Low >= 0 && n - 1 - p1Low >= 20;
+  // v291 (GK 10/24 '남은 것 1번' 케스피온): 지난 사이클(cyc) 뒤 아직 2차 매집 조건(바닥 20일 유지·120일)이 안 됐어도 고점 뒤 바닥이 10거래일↑ 지나면 매집 구간은 그 바닥부터 — 예전 판 급등 전 구간을 지금 매집 구간으로 보여 주지 않음 (예전 판 평단은 vwapOld로 따로)
+  const acc2c = !!cyc && !acc2 && postLowI >= 0 && n - 1 - postLowI >= 10;
+  const vwapOld = cyc && pumpI > 10 ? Math.round(vwap(B.slice(Math.max(0, pumpI - 60), pumpI)) || 0) || null : null;
   if (pump1) { pump1.ended = pump1.drop <= -40 ? 1 : 0; if (acc2p) { pump1.acc2 = 1; pump1.postLow = B[p1Low].l; pump1.postLowD = B[p1Low].d; } }
-  const accEnd = acc2 || acc2p ? n : cyc ? pumpI : pump1 && p1I > 0 ? p1I : spike > 0 ? spike : n;
+  const accEnd = acc2 || acc2p || acc2c ? n : cyc ? pumpI : pump1 && p1I > 0 ? p1I : spike > 0 ? spike : n;
   let accFloor = 0;
   if (acc2) accFloor = postLowI;
-  if (acc2p) accFloor = p1Low; // 2차 매집은 고점 뒤 바닥부터 (예전: 바닥 확인 없이 고점+20일부터 → 하락 구간이 평단에 섞임)
+  if (acc2p) accFloor = p1Low;
+  if (acc2c) accFloor = postLowI; // 2차 매집은 고점 뒤 바닥부터 (예전: 바닥 확인 없이 고점+20일부터 → 하락 구간이 평단에 섞임)
   // 매집 시작 추정: 폭증(또는 오늘) 이전 150일 중 OBV(오른 날 거래량 +, 내린 날 −를 누적)가 가장 낮았던 날
   //  → 그날 이후 '오를 때 거래가 많고 내릴 때 적은' 흐름이 시작됐다고 봄. 너무 가까우면(20일 미만) 최소 20일 구간
   let obv = 0, minObv = Infinity, accStartI = Math.max(accFloor, accEnd - 60);
@@ -328,11 +332,11 @@ export function barFeatures(B, opt = {}) {
     if (obv < minObv) { minObv = obv; accStartI = i; }
   }
   if (accEnd - accStartI < 20) accStartI = Math.max(accFloor, accEnd - 20);
-  if (acc2 || acc2p) accStartI = accFloor; // 2차 매집: 고점 뒤 바닥부터 오늘까지 (v274 1차 띄우기 판 끝도)
+  if (acc2 || acc2p || acc2c) accStartI = accFloor; // 2차 매집: 고점 뒤 바닥부터 오늘까지 (v274 1차 띄우기 판 끝도)
   // v283 하락 구간은 매집이 아님 (GK 10/23 KBI동양철관: 2,190 → 890으로 −59% 흘러내린 03-04~09-02 전체를 매집 구간으로 봐서 평단 1,759원) — 구간 안 바닥 전에 고점 대비 −30%↓ 미끄러졌으면 구간을 그 바닥부터
   if (!acc2 && !acc2p && accEnd - accStartI >= 20) { let lo = accStartI; for (let i = accStartI; i < accEnd; i++) if (B[i].l < B[lo].l) lo = i; let hi = accStartI; for (let i = accStartI; i <= lo; i++) if (B[i].h > B[hi].h) hi = i; if (B[hi].h / B[lo].l >= 1.4 && accEnd - lo >= 10) accStartI = lo; }
   // v288 (점검기 10/24: 새 규칙 카드 66개 중 35개가 아직 '평단 ÷ 구간 최저 1.4배↑' — MSDI·다보링크·사토시홀딩스) 하락뿐 아니라 구간 안 급등도 섞였음 → 매집 구간은 끝에서 거꾸로 '고저 폭 40% 안' 박스만 (조용히 모으는 구간)
-  if (!acc2 && !acc2p && accEnd - accStartI >= 10) { let hb = -Infinity, lb = Infinity, ns = accEnd; for (let i = accEnd - 1; i >= accStartI; i--) { const h2 = Math.max(hb, B[i].h), l2 = Math.min(lb, B[i].l); if (h2 / l2 >= 1.4) break; hb = h2; lb = l2; ns = i; } if (ns > accStartI && accEnd - ns >= 10) accStartI = ns; }
+  if (accEnd - accStartI >= 10) { /* v289: 2차 매집(고점 뒤 바닥부터)에도 — 바닥 뒤 반등 구간이 평단에 섞이던 것(금호전기 평단 5,639 vs 바닥 2,325) */ let hb = -Infinity, lb = Infinity, ns = accEnd; for (let i = accEnd - 1; i >= accStartI; i--) { const h2 = Math.max(hb, B[i].h), l2 = Math.min(lb, B[i].l); if (h2 / l2 >= 1.4) break; hb = h2; lb = l2; ns = i; } if (ns > accStartI && accEnd - ns >= 10) accStartI = ns; }
   const accRows = accEnd >= 10 ? B.slice(accStartI, accEnd) : []; // 급등이 차트 맨 앞이면 매집 구간은 차트 범위 밖
   // 매집 구간 동안 OBV가 얼마나 늘었는지 (구간 거래량 대비) — 클수록 '조용히 사 모은' 흔적
   let obv2 = 0, vsum = 0;
@@ -354,7 +358,7 @@ export function barFeatures(B, opt = {}) {
     accStart: accRows.length ? B[accStartI]?.d || null : null, accEnd: accRows.length ? B[Math.max(0, accEnd - 1)]?.d || null : null, accDays: accRows.length,
     accObv: vsum ? r1((obv2 / vsum) * 100) : null, // 매집 구간 순매수 강도(%)
     accLow: accRows.length ? Math.min(...accRows.map((x) => x.l)) : null, accHigh: accRows.length ? Math.max(...accRows.map((x) => x.h)) : null,
-    vwapAcc: accRows.length >= 10 ? Math.round(vwap(accRows)) : null, // 매집 구간(추정 시작일~폭증 전) 평균 체결가(거래량 가중)
+    vwapAcc: accRows.length >= 10 ? Math.round(vwap(accRows)) : null, vwapOld, accNew: acc2c ? 1 : undefined, // 매집 구간(추정 시작일~폭증 전) 평균 체결가(거래량 가중)
     vwapHeavy: heavy.length >= 3 ? Math.round(vwap(heavy)) : null, // 거래량이 평소 2배 넘던 날들의 평균 체결가
     vwap120: Math.round(vwap(B.slice(-120))),
     rng20: (() => { const R = []; for (let i = Math.max(1, n - 20); i < n; i++) if (B[i - 1].c > 0 && B[i].h > 0) R.push((Math.max(B[i].h, B[i - 1].c) - Math.min(B[i].l, B[i - 1].c)) / B[i - 1].c * 100); return R.length >= 10 ? r1(R.reduce((a, b) => a + b, 0) / R.length) : null; })(), // 최근 20일 평균 하루 흔들림 폭(%)
@@ -733,6 +737,9 @@ export function evHalt(evs = [], now = Date.now(), f = null) {
 }
 export function stageOf(by, f, evs = []) {
   if (f?.halted || evHalt(evs, Date.now(), f)) return '거래정지';
+  // v289 급락·급등 가드를 맨 앞으로 (점검기 10/24: KS인더스트리 20일 −49%·코퍼스코리아 −27%가 1차 띄우기 뒤 '새 판 깔기' 분기에서 먼저 '판 깔기'로 나가 가드에 안 걸림)
+  if (f && (f.ret20 ?? 0) <= -25) return '털기';
+  { const pk0 = f && f.fromLow60 != null && f.offHigh20 != null ? (1 + f.fromLow60 / 100) / (1 + f.offHigh20 / 100) : 0; if (pk0 >= 1.5 && (f.maxVolX10 ?? 0) >= 5) return (f.offHigh20 ?? 0) <= -20 ? '털기' : '띄우기'; }
   const exit = (by.conv || 0) + (by.majsell || 0) + (by.pledge || 0);
   const setup = (by.mna || 0) + (by.rights3 || 0) + (by.cb || 0) + (by.fund5 || 0) + (by.purpose || 0) + (by.refix || 0);
   // 이미 한 번 띄우고 빠진 종목: 고점 뒤 새 '판 깔기' 공시가 있으면 2차 판 깔기, 없으면 '엑시트 후'
@@ -891,7 +898,7 @@ export function oldCost(x) {
 export function costRange(x, opt = {}) {
   const c0 = x.close || null, sane = (v) => !c0 || (v <= c0 * 8 && v >= c0 / 8); // 현재가의 8배·8분의 1을 넘는 원가는 금액을 가격으로 잘못 읽었거나 병합·분할 전 가격 → 제외
   const pc = opt.all ? null : pastCycle(x); // 지난 판이면 고점 '뒤' 새 공시 가격만 지금 원가로 봄
-  const it = [...(x.px || []).filter((p) => p.p > 0 && sane(p.p) && !['pledge', 'majsell', 'risk', 'insider'].includes(p.kind) && (!pc || p.date > pc.topD)).map((p) => ({ p: p.p, s: CR_KO[p.kind] || p.label || '공시 가격' })), ...(x.f?.vwapAcc > 0 && !pc ? [{ p: x.f.vwapAcc, s: '매집 구간 평균가' }] : [])];
+  const it = [...(x.px || []).filter((p) => p.p > 0 && sane(p.p) && !['pledge', 'majsell', 'risk', 'insider'].includes(p.kind) && (!pc || p.date > pc.topD)).map((p) => ({ p: p.p, s: CR_KO[p.kind] || p.label || '공시 가격' })), ...((opt.all && x.f?.vwapOld > 0) ? [{ p: x.f.vwapOld, s: '지난 판 급등 전 평균가' }] : x.f?.vwapAcc > 0 && (!pc || x.f.accNew) ? [{ p: x.f.vwapAcc, s: '매집 구간 평균가' }] : [])];
   if (!it.length) return null;
   const ps = it.map((y) => y.p).sort((a, b) => a - b);
   // 대표값 = 가운데 값(중앙값) — 가격이 몇 개 튀어도 덜 흔들림, 그 값에 가장 가까운 근거 이름을 같이 보여줌
@@ -922,8 +929,8 @@ export function priceLevels(x) {
     if (p.cbx?.floor) addX(p.cbx.floor, 'floor', 'CB 리픽싱 하한', `${p.date} CB 원문의 최저 조정가 — 주가가 내리면 전환가가 여기까지 낮아질 수 있음 (CB 쪽은 더 싸게 주식을 받음)`, '공시 원문', p.ref);
     if (p.pledge) addX(p.pledge.perShare * 1.4, 'risk', '반대매매 추정선', `${p.date} 담보 1주당 대출 ${fmtW(p.pledge.perShare)}원의 1.4배(일반적 담보비율 가정) — 이 아래로 빠지면 담보 물량이 나올 수 있음`, '공시 원문+가정', p.ref);
   }
-  if (f.vwapAcc) add(f.vwapAcc, 'cost', '매집 구간 평균가', `${f.accStart} ~ ${f.accEnd} 매집 추정 구간의 거래량 가중 평균가`, '일봉 계산', null, !!pc);
-  if (f.accLow) add(f.accLow, 'floor', '매집 구간 최저가', `매집 추정 구간(${f.accStart} ~ ${f.accEnd})의 가장 낮은 가격`, '일봉 계산', null, !!pc);
+  if (f.vwapAcc) add(f.vwapAcc, 'cost', '매집 구간 평균가', `${f.accStart} ~ ${f.accEnd} 매집 추정 구간의 거래량 가중 평균가`, '일봉 계산', null, !!pc && !f.accNew);
+  if (f.accLow) add(f.accLow, 'floor', '매집 구간 최저가', `매집 추정 구간(${f.accStart} ~ ${f.accEnd})의 가장 낮은 가격`, '일봉 계산', null, !!pc && !f.accNew);
   if (f.low20?.p && close && f.low20.p < close) add(f.low20.p, 'floor', '최근 20일 저점', `${f.low20.d} 저점 — 최근 20거래일 중 가장 낮은 가격 (깨지면 바닥이 무너진 신호)`, '일봉 계산');
   for (const m of (f.marks || []).filter((m) => m.ok && m.h !== 'broke' && ['acc', 'absorb'].includes(m.k) && m.lvl && (!close || m.lvl < close)).slice(-2)) add(m.lvl, 'floor', `매집봉 저점 (${m.d})`, `${m.d} ${m.k === 'acc' ? '매집봉' : '물량 받아먹는 음봉'}의 저점 — 세력이 지키는 가격일 수 있음`, '일봉 계산');
   if (f.post?.low && close && f.post.low < close) add(f.post.low, 'floor', '털기 뒤 바닥', `${f.post.lowD} 바닥 — 고점 ${f.post.topD} 대비 ${f.post.fall}% 빠진 뒤 가장 낮은 가격`, '일봉 계산');
@@ -1679,7 +1686,7 @@ function rankRow0(x) {
   return { ...chipsOf(x), df, cf, m20: x.f?.m20 ?? null, cka: cka == null ? null : cka ? 1 : 0, pex: x.pex ? { lv: x.pex.lv, net: x.pex.net, su: x.pex.su } : null, ht: hv ? hv.since : null, rbt: rbk?.type || null, av: x.f?.avgV20 ?? null, ckg: cl?.grade || null, bm: cl?.bombs?.length || 0, cnp: cl?.np ?? null, cnk: cl?.nk ?? null, cnr: cl?.nr ?? null, rr: rrR, cm, pn: pn ? { c: pn.cum, pd: pn.pend, u: pn.unknown } : null, wn: x.warn?.lv || null, lk: (x.links || []).length || null, fl: x.f?.fromLow60 ?? null, d: d.dir, us: d.upS, ds: d.downS, nr: d.net ?? null, nt: d.notes?.length ? d.notes : null, tg: d.tgt ? d.tgt.map((t) => ({ p: t.p, s: t.s })) : null, nd: nd ? `${nd.d} ${nd.t.split(' ')[1] === 'CB' ? 'CB 전환 가능' : nd.t.includes('신주') ? '신주 매도 가능' : '추가 상장'}${nd.real ? '' : '(추정)'}` : null, ur: d.up.slice(0, 2).map((r) => r.t), dr: d.down.slice(0, 2).map((r) => r.t), gap: d.gap, n: x.name, m: x.mkt, s: x.score, st: x.stage, lv: a?.level || null, c: x.close, pct: x.pct, cl: d.cost?.low ?? a?.cost?.low ?? null, ch: d.cost?.high ?? a?.cost?.high ?? null, cr: d.cost?.rep ?? null, va: pastCycle(x) ? null : x.f?.vwapAcc ?? null, oc: d.old?.rep ?? null, big: d.big ?? null, acc: x.f?.accStart ? `${x.f.accStart} ~ ${x.f.accEnd}` : a?.acc?.period || null, up: Date.now(), sum: a?.summary?.slice(0, 120) || null };
 }
 // 판단 규칙 버전 — 규칙을 바꾸면 +1. 이전 규칙으로 저장된 카드는 다음 저장 1번만 '단계·분류 변화' 알림을 안 보냄 (규칙 변경 때문에 생긴 변화라 알림 폭주 방지)
-export const RULE_V = 216; // v288 매집 구간은 끝에서 거꾸로 고저 폭 40% 안 박스만 · 215: // v283 하락 구간 매집 제외 · 최근 20일 급등(60일 저점 1.5배↑+거래량 폭증)은 띄우기/털기 · 214: // v274 규칙 1판(GK 10/22 승인): 피할 조합 3개 → 🔴 · 1차 띄우기 판 끝(−40%↓) 판 나누기 · 급락 가드 20일 −25% · 3·6개월 고점 저항 · 매도 안내 3번 나눠 사기·손절 −30%·고점 −20%·60일 · 🧮 우선순위 점수 ·  // v234b: 2차 매집 구간은 고점 뒤 바닥(20일↑ 유지)부터만 · v234: 급락 가드(20일 −35%↓면 털기·하락 근거·털기 후 상승 높음 금지) · // v227: 하락장 🟢 대기 · 매집 흔적 필수 · 임원 매매 매수/매도 구분 · 털기 후 상승 바닥 확인 ·  // v225: 엑시트 뒤 새 저점이면 2차 판 깔기·매집 아님 · CB 전환가 아래 리픽싱 위험 · 실패 패턴 아래로 · // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
+export const RULE_V = 218; // v291 지난 판 뒤 바닥 10일↑면 새 매집 구간(acc2c) · 판 깔기·매집인데 원가 +50%↑/−40%↓면 🔴 · 217: // v289 2차 매집도 박스만 · 급락/급등 가드 맨 앞 · 216: // v288 매집 구간은 끝에서 거꾸로 고저 폭 40% 안 박스만 · 215: // v283 하락 구간 매집 제외 · 최근 20일 급등(60일 저점 1.5배↑+거래량 폭증)은 띄우기/털기 · 214: // v274 규칙 1판(GK 10/22 승인): 피할 조합 3개 → 🔴 · 1차 띄우기 판 끝(−40%↓) 판 나누기 · 급락 가드 20일 −25% · 3·6개월 고점 저항 · 매도 안내 3번 나눠 사기·손절 −30%·고점 −20%·60일 · 🧮 우선순위 점수 ·  // v234b: 2차 매집 구간은 고점 뒤 바닥(20일↑ 유지)부터만 · v234: 급락 가드(20일 −35%↓면 털기·하락 근거·털기 후 상승 높음 금지) · // v227: 하락장 🟢 대기 · 매집 흔적 필수 · 임원 매매 매수/매도 구분 · 털기 후 상승 바닥 확인 ·  // v225: 엑시트 뒤 새 저점이면 2차 판 깔기·매집 아님 · CB 전환가 아래 리픽싱 위험 · 실패 패턴 아래로 · // v224: 검증된 이긴/실패 패턴을 🟢·🟡에 반영
 // v212 서버 부담 점검: 정기 분석이 언제 시작·끝났고 몇 분 걸렸는지 최근 20번 기록 (/api/health?db=1 · 이상치 점검에서 봄)
 async function runHist(st, err) {
   const h = (await getJSON('mp/runhist')) || [];
@@ -1710,7 +1717,9 @@ export function verdictOf(r, pat = null) {
   if (r.d === 'down') red.push('하락 위험 분류');
   if (['털기', '엑시트 후', '거래정지'].includes(r.st)) red.push(`단계 ${r.st}`);
   if (r.st === '띄우기' && (r.gap ?? 0) > 50) red.push(`띄우기 중 평단 +${r.gap}%`);
-  const av = avoidCombo(r.df); if (av) red.push(`피할 조합: ${av}`); // v274 4년치 🧭 규칙 찾기 ✅ (안 본 기간 실패 72~78%)
+  const av = avoidCombo(r.df); if (av) red.push(`피할 조합: ${av}`);
+  if (['판 깔기', '매집'].includes(r.st) && r.gap != null && r.gap >= 50) red.push(`${r.st}인데 이미 세력 원가 +${r.gap}% (띄운 뒤일 수 있음)`); // v291 (GK '남은 것 2번' MSDI +71%)
+  if (['판 깔기', '매집'].includes(r.st) && r.gap != null && r.gap <= -40) red.push(`${r.st}인데 세력 원가 ${r.gap}% (판이 깨졌을 수 있음)`); // v291 (제이케이시냅스 −59%) // v274 4년치 🧭 규칙 찾기 ✅ (안 본 기간 실패 72~78%)
   if (red.length) return tag({ c: 'r', t: red.slice(0, 2).join(' · ') });
   const f = pickFails(r);
   // v227 하락장 대기: 시장 20일 −3%↓면 🟢를 🟡로 (과거 재현 60일 손익비 하락장 1:0.93 vs 상승장 1:1.55)

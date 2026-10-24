@@ -843,7 +843,10 @@ export async function simRows(src, s, limit = 500) {
   { const cm = await capMap(); L = L.filter((t) => !tooBig(cm, t.c, t.e)); }
   const [ai, gai] = await Promise.all([getJSON('mp/sim/ai'), getJSON('mp/sim/gai')]);
   const p = src === 'bt' ? 'b' : 'l';
-  const rows = L.filter((t) => t.s === s).sort((a, b) => (a.d < b.d ? 1 : -1)).slice(0, limit).map(({ g, ...t }) => ({ ...t, ai: ai?.m?.[`${p}|${t.c}|${t.d}`]?.t || null }));
+  const A = L.filter((t) => t.s === s).sort((a, b) => (a.d < b.d ? 1 : -1));
+  // v290 (GK 10/24 🔥 띄우기·엑시트 후 '종목 0번'): 거래가 많은 신호는 최근 500번이 전부 120거래일이 안 지나 최고·최저 보기에서 다 빠졌음 → 최근 300번 + 120거래일 지난 것 최근 500번을 합쳐 보냄
+  const seen = new Set(), pick = []; for (const t of [...A.slice(0, 300), ...A.filter((t) => t.pk?.[3]).slice(0, limit)]) { const k = `${t.c}|${t.d}`; if (!seen.has(k)) { seen.add(k); pick.push(t); } }
+  const rows = pick.map(({ g, ...t }) => ({ ...t, ai: ai?.m?.[`${p}|${t.c}|${t.d}`]?.t || null }));
   return { rows: await fixNames(rows), gai: gai?.m?.[`${p}|${s}`]?.t || null };
 }
 

@@ -112,7 +112,7 @@ export async function runAnomaly({ force = false, now = Date.now() } = {}) {
           const pk20 = f.fromLow60 != null && f.offHigh20 != null ? (1 + f.fromLow60 / 100) / (1 + f.offHigh20 / 100) : 0;
           if (buy && pk20 >= 1.5 && (f.maxVolX10 ?? 0) >= 5) why.push(`'${r.st}'인데 최근 20일 60일 저점 대비 +${Math.round((pk20 - 1) * 100)}%까지 쏨`);
           if (buy && (f.ret20 ?? 0) <= -25) why.push(`'${r.st}'인데 20일 ${f.ret20}% 급락`);
-          if (buy && r.gap != null && (r.gap <= -35 || r.gap >= 60)) why.push(`'${r.st}'인데 현재가가 평단 대비 ${r.gap > 0 ? '+' : ''}${r.gap}%`);
+          if (false && buy && r.gap != null && (r.gap <= -35 || r.gap >= 60)) why.push(`'${r.st}'인데 현재가가 평단 대비 ${r.gap > 0 ? '+' : ''}${r.gap}%`);
           if (r.rr?.t && r.c && r.rr.t / r.c >= 2 && r.vd?.c !== 'r') why.push(`1차 목표 ${r.rr.t}가 현재가의 ${(r.rr.t / r.c).toFixed(1)}배`);
           const top = f.cyc?.topD || (f.pump1?.ended && !f.pump1.acc2 ? f.pump1.topD : null);
           if (buy && top && f.accStart && f.accStart < top) why.push(`지난 판(고점 ${top}) 전 구간이 매집으로 잡힘`);
